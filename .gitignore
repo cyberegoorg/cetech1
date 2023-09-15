@@ -1,0 +1,21 @@
+# Build
+/build
+
+# Docs
+/docs/src
+/docs/**/*.js
+/docs/**/*.html
+/docs/**/*.cs
+
+# ZIG
+/zig-cache
+/zig-out
+
+# csharp
+/bindings/cs/c2cs/ast
+/**/Generated
+
+# MacOS
+*.DS_Store
+.DS_Store
+   

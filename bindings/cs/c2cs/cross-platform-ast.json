@@ -1,0 +1,121 @@
+{
+  "platforms": [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin"
+  ],
+  "macroObjects": {},
+  "variables": {},
+  "functions": {},
+  "records": {
+    "ct_api_registry_api_t": {
+      "size_of": 16,
+      "align_of": 8,
+      "fields": [
+        {
+          "name": "add_api",
+          "type": {
+            "name": "void (const char *, void *)",
+            "kind": "functionPointer",
+            "sizeOf": 8,
+            "alignOf": 8
+          }
+        },
+        {
+          "name": "get_api",
+          "type": {
+            "name": "void *(const char *)",
+            "kind": "functionPointer",
+            "sizeOf": 8,
+            "alignOf": 8
+          },
+          "offset_of": 8
+        }
+      ]
+    }
+  },
+  "enums": {},
+  "typeAliases": {},
+  "opaqueTypes": {},
+  "functionPointers": {
+    "void (const char *, void *)": {
+      "type": {
+        "name": "void (const char *, void *)",
+        "kind": "functionPointer",
+        "sizeOf": 1,
+        "alignOf": 4
+      },
+      "returnType": {
+        "name": "void",
+        "kind": "primitive"
+      },
+      "parameters": [
+        {
+          "name": "",
+          "type": {
+            "name": "const char*",
+            "kind": "pointer",
+            "sizeOf": 8,
+            "alignOf": 8,
+            "innerType": {
+              "name": "const char",
+              "kind": "primitive",
+              "sizeOf": 1,
+              "alignOf": 1,
+              "isConst": true
+            }
+          }
+        },
+        {
+          "name": "",
+          "type": {
+            "name": "void*",
+            "kind": "pointer",
+            "sizeOf": 8,
+            "alignOf": 8,
+            "innerType": {
+              "name": "void",
+              "kind": "primitive"
+            }
+          }
+        }
+      ]
+    },
+    "void *(const char *)": {
+      "type": {
+        "name": "void *(const char *)",
+        "kind": "functionPointer",
+        "sizeOf": 1,
+        "alignOf": 4
+      },
+      "returnType": {
+        "name": "void*",
+        "kind": "pointer",
+        "sizeOf": 8,
+        "alignOf": 8,
+        "innerType": {
+          "name": "void",
+          "kind": "primitive"
+        }
+      },
+      "parameters": [
+        {
+          "name": "",
+          "type": {
+            "name": "const char*",
+            "kind": "pointer",
+            "sizeOf": 8,
+            "alignOf": 8,
+            "innerType": {
+              "name": "const char",
+              "kind": "primitive",
+              "sizeOf": 1,
+              "alignOf": 1,
+              "isConst": true
+            }
+          }
+        }
+      ]
+    }
+  },
+  "enumConstants": {}
+}

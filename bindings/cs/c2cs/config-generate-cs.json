@@ -1,0 +1,12 @@
+{
+    "inputFilePath": "./cross-platform-ast.json",
+    "outputFileDirectory": "./Generated",
+    "namespaceName": "cetech.Interop.cetech",
+    "className": "PInvoke",
+    "libraryName": "cetech1",
+    "isEnabledGeneratingRuntimeCode": false,
+    "isEnabledLibraryImport": true,
+    "isEnabledFunctionPointers": true,
+    "isEnabledFileScopedNamespace": true
+
+  } 
