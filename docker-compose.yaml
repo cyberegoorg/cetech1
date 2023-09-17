@@ -1,0 +1,6 @@
+services:
+  cetech1-linux:
+    image: alpine
+    working_dir: /tmp/cetech1
+    volumes:
+      - ./:/tmp/cetech1

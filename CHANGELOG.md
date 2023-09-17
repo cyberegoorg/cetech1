@@ -8,9 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- zig: Kernel
-- zig: ModulesAPI
-- zig: ApiRegistryAPI
-- zig: test build
-- gitub: actions with cross-compile
-- repo: init structures
+
+- **core:zig:** StrId{32, 64}
+- **core:zig**: ApiDbAPI
+- **core:zig**: LogAPI
+- **core:zig**: BAG (before-after graph)
+
+- **core:kernel**: Boot
+- **core:kernel**: Task and Phases
+
+- **core:apidb**: Global variable
+- **core:apidb**: Set/Get api
+- **core:apidb**: Impl/iter interface
+- **core:apidb**: Interface generation number for change watching
+
+- **core:modules**: Dynamic modules with hot-reload
+- **core:modules**: Static moduels
+
+- **core:log**: Basic scoped logging
+
+- **gitub**: actions with cross-compile
+- **test**: init setup
+- **repo**: init structures

@@ -1,33 +1,35 @@
-const std = @import("std");
+//! Kernel is entry point/runner for engine.
 
-const api_registry = @import("api_registry.zig");
-const modules = @import("modules.zig");
+const c = @import("c.zig");
+const stringid = @import("stringid.zig");
 
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+pub const OnLoad = stringid.strId64(c.c.CT_KERNEL_PHASE_ONLOAD);
+pub const PostLoad = stringid.strId64(c.c.CT_KERNEL_PHASE_POSTLOAD);
+pub const PreUpdate = stringid.strId64(c.c.CT_KERNEL_PHASE_PREUPDATE);
+pub const OnUpdate = stringid.strId64(c.c.CT_KERNEL_PHASE_ONUPDATE);
+pub const OnValidate = stringid.strId64(c.c.CT_KERNEL_PHASE_ONVALIDATE);
+pub const PostUpdate = stringid.strId64(c.c.CT_KERNEL_PHASE_POSTUPDATE);
+pub const PreStore = stringid.strId64(c.c.CT_KERNEL_PHASE_PRESTORE);
+pub const OnStore = stringid.strId64(c.c.CT_KERNEL_PHASE_ONSTORE);
 
-pub const Kernel = struct {
-    const Self = @This();
-    allocator: std.mem.Allocator,
-    api_reg_api: *api_registry.ApiRegistryAPI,
-    modules_api: modules.ModulesAPI,
+pub inline fn KernelTaskInterface(name: [*c]const u8, depends: []const stringid.StrId64, init: ?*const fn () callconv(.C) void, shutdown: ?*const fn () callconv(.C) void) c.c.ct_kernel_task_i {
+    return c.c.ct_kernel_task_i{
+        .name = name,
+        .depends = depends.ptr,
+        .depends_n = depends.len,
+        .init = init,
+        .shutdown = shutdown,
+    };
+}
 
-    pub fn init() !Self {
-        var allocator = gpa.allocator();
+pub inline fn KernelTaskUpdateInterface(phase: stringid.StrId64, name: [*c]const u8, depends: []const stringid.StrId64, update: ?*const fn (u64, f32) callconv(.C) void) c.c.ct_kernel_task_update_i {
+    return c.c.ct_kernel_task_update_i{
+        .phase = phase,
+        .name = name,
+        .depends = depends.ptr,
+        .depends_n = depends.len,
+        .update = update,
+    };
+}
 
-        var api_reg_api = try allocator.create(api_registry.ApiRegistryAPI);
-        api_reg_api.* = api_registry.ApiRegistryAPI.init(allocator);
-
-        return Self{ .allocator = allocator, .api_reg_api = api_reg_api, .modules_api = modules.ModulesAPI.init(allocator, api_reg_api) };
-    }
-
-    pub fn powerOn(self: *Self, static_modules: ?[]const modules.ModulesAPI.ModulePair) !void {
-        if (static_modules != null) {
-            try self.modules_api.addStaticModule(static_modules.?);
-        }
-        try self.modules_api.loadAll();
-    }
-
-    pub fn powerOff(self: *Self) !void {
-        try self.modules_api.unloadAll();
-    }
-};
+pub extern fn cetech1_kernel_boot(static_modules: ?[*]c.c.ct_module_desc_t, static_modules_n: u32) u8;

@@ -1,5 +1,5 @@
 {
-    "inputFilePath": "../src/cetech1/kernel/api_registry.h",
+    "inputFilePath": "../../../includes/cetech1/core/core.h",
     "platforms": {
       "aarch64-apple-darwin": {},
       "x86_64-apple-darwin": {}

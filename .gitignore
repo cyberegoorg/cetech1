@@ -11,11 +11,13 @@
 /zig-cache
 /zig-out
 
+# VSCode
+
 # csharp
 /bindings/cs/c2cs/ast
+/bindings/cs/c2cs/cross-platform-ast.json
 /**/Generated
 
 # MacOS
 *.DS_Store
 .DS_Store
-   

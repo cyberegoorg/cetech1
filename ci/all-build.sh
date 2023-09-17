@@ -19,3 +19,5 @@ function build() {
 build x86_64-linux
 build x86_64-windows
 build x86_64-macos
+
+ls -Rhal build/

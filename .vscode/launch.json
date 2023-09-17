@@ -8,6 +8,14 @@
             "program": "${workspaceFolder}/zig-out/bin/cetech1",
             "args": [],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug Test",
+            "program": "${workspaceFolder}/zig-out/bin/cetech1_test",
+            "args": [],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }

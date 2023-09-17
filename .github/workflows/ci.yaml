@@ -1,4 +1,4 @@
-name: "Cross-compile and test"
+name: "CI"
 on:
   pull_request:
   push:
@@ -9,11 +9,11 @@ on:
       - "include/**"
       - "externals/**"
       - "build.zig"
-
 jobs:
   build:
     name: Cross-compile build
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,19 +22,19 @@ jobs:
 
       - name: Build
         run: ci/all-build.sh x86_64-linux
-      
+
       - name: x86_64-linux
         uses: actions/cache@v3
         with:
           path: build/x86_64-linux/
           key: x86_64-linux-cache-${{ github.sha }}
-      
+
       - name: x86_64-macos
         uses: actions/cache@v3
         with:
           path: build/x86_64-macos/
           key: x86_64-macos-cache-${{ github.sha }}
-      
+
       - name: x86_64-windows
         uses: actions/cache@v3
         with:
@@ -44,6 +44,7 @@ jobs:
   test-x86_64-macos:
     name: Test x86_64-macos
     runs-on: macos-13
+    timeout-minutes: 2
     needs: build
     steps:
       - name: Checkout
@@ -55,12 +56,14 @@ jobs:
         with:
           path: build/x86_64-macos/
           key: x86_64-macos-cache-${{ github.sha }}
+          fail-on-cache-miss: true
       - name: Test
         run: sh ci/x86_64-macos-test.sh
 
   test-x86_64-linux:
     name: Test x86_64-linux
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     needs: build
     steps:
       - name: Checkout
@@ -72,12 +75,15 @@ jobs:
         with:
           path: build/x86_64-linux/
           key: x86_64-linux-cache-${{ github.sha }}
+          fail-on-cache-miss: true
       - name: Test
+        #continue-on-error: true # TODO: Linux build has problem with dll.
         run: sh ci/x86_64-linux-test.sh
 
   test-x86_64-windows:
     name: Test x86_64-windows
     runs-on: windows-latest
+    timeout-minutes: 2
     needs: build
     steps:
       - name: Checkout
@@ -89,12 +95,19 @@ jobs:
         with:
           path: build/x86_64-windows/
           key: x86_64-windows-cache-${{ github.sha }}
+          fail-on-cache-miss: true
           enableCrossOsArchive: true
       - name: Test
         run: ci/x86_64-windows-test.ps1
 
+  # docs:
+  #   name: Publish docs
+  #   needs: [test-x86_64-linux, test-x86_64-macos, test-x86_64-windows]
+  #   uses: ./.github/workflows/docs.yaml
+
   cleanup:
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     if: ${{ always() }}
     needs: [test-x86_64-linux, test-x86_64-macos, test-x86_64-windows]
     steps:
@@ -104,13 +117,13 @@ jobs:
       - name: Cleanup
         run: |
           gh extension install actions/gh-actions-cache
-          
+
           REPO=${{ github.repository }}
 
           ## Setting this to not fail the workflow while deleting cache keys. 
           set +e
           echo "Deleting caches..."
-          
+
           gh actions-cache delete x86_64-linux-cache-${{ github.sha }} -R $REPO --confirm
           gh actions-cache delete x86_64-macos-cache-${{ github.sha }} -R $REPO  --confirm
           gh actions-cache delete x86_64-windows-cache-${{ github.sha }} -R $REPO --confirm
