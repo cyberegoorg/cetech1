@@ -1,6 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+const ztracy = @import("externals/shared/lib/zig-gamedev/libs/ztracy/build.zig");
+
 fn get_dll_extension(tag: std.Target.Os.Tag) []const u8 {
     return switch (tag) {
         .linux, .freebsd, .openbsd => ".so",
@@ -122,6 +124,12 @@ pub fn build(b: *std.Build) !void {
         optimize,
     );
     _ = ct_bar_module;
+
+    const ztracy_pkg = ztracy.package(b, target, optimize, .{
+        .options = .{ .enable_ztracy = true },
+    });
+    ztracy_pkg.link(exe);
+    ztracy_pkg.link(test_exe);
 
     b.installArtifact(test_exe);
     b.installArtifact(exe);

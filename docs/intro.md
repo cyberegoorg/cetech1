@@ -20,7 +20,7 @@ Yet another experimental game engine.
 ## Clone
 
 ```sh
-GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/cyberegoorg/cetech1.git 
+GIT_LFS_SKIP_SMUDGE=1 git clone --recursive https://github.com/cyberegoorg/cetech1.git 
 ./lfs_pull.sh <ARCH> # This download zig binary from LFS. Only need for your arch where you develop
 ```
 

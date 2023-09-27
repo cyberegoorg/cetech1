@@ -35,3 +35,5 @@ download_zig_bin "x86_64-linux"
 download_zig_bin "aarch64-linux"
 download_zig_bin_win "x86_64-windows"
 download_zig_bin_win "aarch64-windows"
+
+rm -rf ./tmp

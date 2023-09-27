@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const ztracy = @import("ztracy");
+
 const strid = @import("stringid.zig");
 const log = @import("log.zig");
 const apidb = @import("apidb.zig");
@@ -178,7 +180,10 @@ pub fn boot(static_modules: ?[*]c.c.ct_module_desc_t, static_modules_n: u32) !vo
     var kernel_update_gen = apidb.api.getInterafceGen(c.c.ct_kernel_task_update_i);
 
     while (true) : (kernel_tick += 1) {
-        log.api.debug(LOG_SCOPE, "FRAME BEGIN", .{});
+        ztracy.FrameMarkStart("KernelTick");
+
+        log.api.debug(LOG_SCOPE, "", .{});
+        log.api.debug(LOG_SCOPE, "TICK BEGIN", .{});
         var now = std.time.milliTimestamp();
         var dt = now - last_call;
         last_call = now;
@@ -196,7 +201,8 @@ pub fn boot(static_modules: ?[*]c.c.ct_module_desc_t, static_modules_n: u32) !vo
 
         updateKernelTasks(kernel_tick, dt);
 
-        log.api.debug(LOG_SCOPE, "FRAME END", .{});
+        log.api.debug(LOG_SCOPE, "TICK END", .{});
+        log.api.debug(LOG_SCOPE, "", .{});
 
         if (max_kernel_tick > 0) {
             if (kernel_tick >= max_kernel_tick) {
@@ -204,6 +210,8 @@ pub fn boot(static_modules: ?[*]c.c.ct_module_desc_t, static_modules_n: u32) !vo
             }
         }
         std.time.sleep(std.time.ns_per_s * 1);
+
+        ztracy.FrameMarkEnd("KernelTick");
     }
 }
 
