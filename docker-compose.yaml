@@ -1,6 +1,9 @@
 services:
   cetech1-linux:
     image: alpine
+    ports:
+      # tracy
+      - 8086:8086 
     working_dir: /tmp/cetech1
     volumes:
       - ./:/tmp/cetech1

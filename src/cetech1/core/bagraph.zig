@@ -6,20 +6,26 @@ pub fn BAG(comptime T: type) type {
     const BAGArray = std.ArrayList(T);
     const BAGVisited = std.AutoArrayHashMap(T, bool);
     const BAGGraph = std.AutoArrayHashMap(T, BAGArray);
+    const BAGDepends = std.AutoArrayHashMap(T, BAGArray);
+    const BAGRoot = std.AutoArrayHashMap(T, bool);
 
     return struct {
         const Self = @This();
         allocator: Allocator,
         graph: BAGGraph,
+        depends: BAGDepends,
         output: BAGArray,
         visited: BAGVisited,
+        root: BAGRoot,
 
         pub fn init(allocator: Allocator) Self {
             return .{
                 .allocator = allocator,
                 .graph = BAGGraph.init(allocator),
-                .output = BAGArray.init(allocator),
                 .visited = BAGVisited.init(allocator),
+                .root = BAGRoot.init(allocator),
+                .depends = BAGDepends.init(allocator),
+                .output = BAGArray.init(allocator),
             };
         }
 
@@ -28,15 +34,40 @@ pub fn BAG(comptime T: type) type {
                 dep_arr.deinit();
             }
 
+            for (self.depends.values()) |*dep_arr| {
+                dep_arr.deinit();
+            }
+
             self.graph.deinit();
             self.output.deinit();
             self.visited.deinit();
+            self.root.deinit();
+            self.depends.deinit();
+        }
+
+        pub fn dependList(self: *Self, name: T) ?[]T {
+            var dep_arr = self.depends.getPtr(name);
+            if (dep_arr == null) {
+                return null;
+            }
+
+            if (dep_arr.?.items.len == 0) {
+                return null;
+            }
+
+            return dep_arr.?.items;
         }
 
         pub fn add(self: *Self, name: T, depend: []const T) !void {
             if (!self.graph.contains(name)) {
                 var dep_arr = BAGArray.init(self.allocator);
                 try self.graph.put(name, dep_arr);
+            }
+
+            if (!self.depends.contains(name)) {
+                var dep_arr = BAGArray.init(self.allocator);
+                try dep_arr.appendSlice(depend);
+                try self.depends.put(name, dep_arr);
             }
 
             for (depend) |dep_name| {
@@ -47,6 +78,8 @@ pub fn BAG(comptime T: type) type {
 
                 var dep_arr = self.graph.getPtr(dep_name).?;
                 try dep_arr.append(name);
+            } else {
+                try self.root.put(name, true);
             }
         }
 
@@ -55,8 +88,14 @@ pub fn BAG(comptime T: type) type {
                 dep_arr.deinit();
             }
 
-            self.graph.clearAndFree();
-            self.visited.clearAndFree();
+            for (self.depends.values()) |*dep_arr| {
+                dep_arr.deinit();
+            }
+
+            self.graph.clearRetainingCapacity();
+            self.depends.clearRetainingCapacity();
+            self.visited.clearRetainingCapacity();
+            self.root.clearRetainingCapacity();
             try self.output.resize(0);
         }
 
@@ -65,16 +104,13 @@ pub fn BAG(comptime T: type) type {
         }
 
         pub fn build_all(self: *Self) !void {
-            var iter = self.graph.iterator();
-            while (iter.next()) |entry| {
-                try self.build(entry.key_ptr.*);
+            for (self.root.keys()) |root| {
+                try self.build(root);
             }
         }
 
         fn _build(self: *Self, name: T) !void {
-            if (self.visited.contains(name)) {
-                return;
-            }
+            if (self.visited.contains(name)) return;
             try self.visited.put(name, true);
             try self.output.append(name);
 

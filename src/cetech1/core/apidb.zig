@@ -39,7 +39,7 @@ pub const ApiDbAPI = struct {
         }
     }
 
-    pub inline fn implOrRemove(self: *Self, comptime T: type, impl_ptr: *anyopaque, load: bool, reload: bool) !void {
+    pub inline fn implOrRemove(self: *Self, comptime T: type, impl_ptr: *T, load: bool, reload: bool) !void {
         _ = reload;
         if (load) {
             return self.implInterface(T, impl_ptr);

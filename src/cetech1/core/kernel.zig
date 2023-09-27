@@ -1,5 +1,8 @@
 //! Kernel is entry point/runner for engine.
 
+const std = @import("std");
+const ztracy = @import("ztracy");
+
 const c = @import("c.zig");
 const stringid = @import("stringid.zig");
 

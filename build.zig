@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const ztracy = @import("externals/shared/lib/zig-gamedev/libs/ztracy/build.zig");
+const zjobs = @import("externals/shared/lib/zig-gamedev/libs/zjobs/build.zig");
 
 fn get_dll_extension(tag: std.Target.Os.Tag) []const u8 {
     return switch (tag) {
@@ -69,6 +70,8 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const enable_tracy = b.option(bool, "with-tracy", "build with tracy.") orelse true;
+
     const cetech_core_module = b.createModule(.{
         .source_file = .{ .path = "src/cetech1/core/cetech1.zig" },
         .dependencies = &.{},
@@ -85,15 +88,15 @@ pub fn build(b: *std.Build) !void {
     core_lib_static.addCSourceFile(.{ .file = .{ .path = "src/cetech1/core/private/log.c" }, .flags = &.{} });
     core_lib_static.linkLibC();
 
-    const test_exe = b.addTest(.{
+    const exe_test = b.addTest(.{
         .name = "cetech1_test",
         .root_source_file = .{ .path = "src/cetech1/tests.zig" },
         .target = target,
         .optimize = optimize,
     });
-    test_exe.addIncludePath(.{ .path = "includes" });
-    test_exe.linkLibrary(core_lib_static);
-    test_exe.linkLibC();
+    exe_test.addIncludePath(.{ .path = "includes" });
+    exe_test.linkLibrary(core_lib_static);
+    exe_test.linkLibC();
 
     const exe = b.addExecutable(.{
         .name = "cetech1",
@@ -106,7 +109,7 @@ pub fn build(b: *std.Build) !void {
     exe.addModule("cetech1", cetech_core_module);
     exe.linkLibC();
 
-    var ct_foo_module = try addCetechZigModule(
+    var module_foo = try addCetechZigModule(
         b,
         "foo",
         "src/cetech1/modules/foo/private.zig",
@@ -114,24 +117,34 @@ pub fn build(b: *std.Build) !void {
         optimize,
         cetech_core_module,
     );
-    _ = ct_foo_module;
+    _ = module_foo;
 
-    var ct_bar_module = try addCetechCModule(
+    var module_bar = try addCetechCModule(
         b,
         "bar",
         "src/cetech1/modules/bar/module_bar.c",
         target,
         optimize,
     );
-    _ = ct_bar_module;
+    _ = module_bar;
 
     const ztracy_pkg = ztracy.package(b, target, optimize, .{
-        .options = .{ .enable_ztracy = true },
+        .options = .{
+            .enable_ztracy = enable_tracy,
+            .enable_fibers = true,
+        },
     });
+    if (enable_tracy) {
+        ztracy_pkg.ztracy_c_cpp.defineCMacro("TRACY_ON_DEMAND", null); // Collect only if client is connected
+    }
     ztracy_pkg.link(exe);
-    ztracy_pkg.link(test_exe);
+    ztracy_pkg.link(exe_test);
 
-    b.installArtifact(test_exe);
+    const zjobs_pkg = zjobs.package(b, target, optimize, .{});
+    zjobs_pkg.link(exe);
+    zjobs_pkg.link(exe_test);
+
+    b.installArtifact(exe_test);
     b.installArtifact(exe);
     b.installArtifact(core_lib_static);
 

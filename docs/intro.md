@@ -6,22 +6,25 @@ Yet another experimental game engine.
 
 ## Supported architectures
 
-| Arch              | Description   |
-|-------------------|---------------|
-| x86_64-macos      | Apple Intel   |
-| aarch64-macos     | Apple Arm     |
-| x86_64-linux      | Linux         |
-| aarch64-linux     | Linux ARM     |
-| x86_64-windows    | Windows       |
-| aarch64-windows   | Windows ARM   |
+| Arch                | Description   |
+|---------------------|---------------|
+| `x86_64-macos`      | Apple Intel   |
+| `aarch64-macos`     | Apple Arm     |
+| `x86_64-linux`      | Linux         |
+| `aarch64-linux`     | Linux ARM     |
+| `x86_64-windows`    | Windows       |
+| `aarch64-windows`   | Windows ARM   |
 
 ## Docs [API](https://cyberegoorg.github.io/cetech1/)/[Guide](https://cyberegoorg.github.io/cetech1/#G;)
 
 ## Clone
 
 ```sh
-GIT_LFS_SKIP_SMUDGE=1 git clone --recursive https://github.com/cyberegoorg/cetech1.git 
-./lfs_pull.sh <ARCH> # This download zig binary from LFS. Only need for your arch where you develop
+# GIT_LFS_SKIP_SMUDGE=1 disable loading all LFS objects
+GIT_LFS_SKIP_SMUDGE=1 git clone --recursive https://github.com/cyberegoorg/cetech1.git
+
+# This download zig binary from LFS. Only need for your arch where you develop
+./lfs_pull.sh <ARCH>
 ```
 
 ## Build
@@ -30,10 +33,14 @@ GIT_LFS_SKIP_SMUDGE=1 git clone --recursive https://github.com/cyberegoorg/cetec
 externals/shared/bin/zig/zig_<ARCH> build
 ```
 
+Args                      | Value           | Default     | Description
+--------------------------|-----------------|-------------|-----------------------------------
+`-Dwith-tracy=`           | true \| false   | true        | Build with [tracy](#tracy-profiler) support?
+
 ## Run
 
 ```sh
-zig-out/bin/cetech1
+zig-out/bin/cetech1_test && zig-out/bin/cetech1
 ```
 
 Args                      | Value    | Default     | Description
@@ -41,10 +48,17 @@ Args                      | Value    | Default     | Description
 `--load-dynamic`          | 1 \| 0   | 1           | Load dynamic modules?
 `--max-kernel-tick`       | n        | null        | Quit affter kernel make n ticks.
 
-## Test
+## Tracy profiler
+
+For more details go to [tracy](https://github.com/wolfpld/tracy) repository.
+
+### Macos
 
 ```sh
-zig-out/bin/cetech1_test
+brew install tracy
+tracy -a localhost 
+zig-out/bin/cetech1 # on separate terminal
+# Have fun
 ```
 
 ## Build docs
@@ -58,7 +72,7 @@ externals/shared/bin/zig/zig_<ARCH> build docs
 You must fetch valid zig version for container `ARCH` via `./lfs_pull.sh <ARCH>`
 
 ```sh
-docker compose run cetech1-linux 
+docker compose run --service-ports cetech1-linux 
 ```
 
 ## VScode

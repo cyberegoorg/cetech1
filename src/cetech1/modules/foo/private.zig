@@ -4,7 +4,7 @@ const Allocator = std.mem.Allocator;
 const cetech1 = @import("cetech1");
 const public = @import("module_foo.zig");
 
-const MODULE_NAME = "FooModule";
+const MODULE_NAME = "foo";
 
 var _allocator: Allocator = undefined;
 var _log: *cetech1.LogAPI = undefined;
@@ -22,6 +22,12 @@ const KernelTask = struct {
         _g.var_1 += 1;
 
         _log.info(MODULE_NAME, "kernel_tick:{}\tdt:{}\tg_var_1:{}", .{ kernel_tick, dt, _g.var_1 });
+
+        var foo = _allocator.create(public.FooAPI) catch return;
+        _log.info(MODULE_NAME, "alloc {}", .{foo});
+        defer _allocator.destroy(foo);
+
+        std.time.sleep(2 * std.time.ns_per_ms);
     }
 
     pub fn init() callconv(.C) void {
@@ -74,6 +80,38 @@ var update_task4 = cetech1.KernelTaskUpdateInterface(
     KernelTask.update,
 );
 
+var update_task5 = cetech1.KernelTaskUpdateInterface(
+    cetech1.OnStore,
+    "FooUpdate5",
+    &[_]cetech1.StrId64{
+        //cetech1.strId64("FooUpdate4"),
+    },
+    KernelTask.update,
+);
+var update_task6 = cetech1.KernelTaskUpdateInterface(
+    cetech1.OnStore,
+    "FooUpdate6",
+    &[_]cetech1.StrId64{
+        //cetech1.strId64("FooUpdate4"),
+    },
+    KernelTask.update,
+);
+var update_task7 = cetech1.KernelTaskUpdateInterface(
+    cetech1.OnStore,
+    "FooUpdate7",
+    &[_]cetech1.StrId64{
+        //cetech1.strId64("FooUpdate4"),
+    },
+    KernelTask.update,
+);
+var update_task8 = cetech1.KernelTaskUpdateInterface(
+    cetech1.OnStore,
+    "FooUpdate8",
+    &[_]cetech1.StrId64{
+        //cetech1.strId64("FooUpdate4"),
+    },
+    KernelTask.update,
+);
 pub fn load_module_zig(apidb: *cetech1.ApiDbAPI, allocator: Allocator, log: *cetech1.LogAPI, load: bool, reload: bool) anyerror!bool {
     // basic
     _allocator = allocator;
@@ -85,10 +123,16 @@ pub fn load_module_zig(apidb: *cetech1.ApiDbAPI, allocator: Allocator, log: *cet
 
     // simpl interface
     try apidb.implOrRemove(cetech1.c.ct_kernel_task_i, &kernel_task, load, reload);
+
     try apidb.implOrRemove(cetech1.c.ct_kernel_task_update_i, &update_task, load, reload);
     try apidb.implOrRemove(cetech1.c.ct_kernel_task_update_i, &update_task2, load, reload);
     try apidb.implOrRemove(cetech1.c.ct_kernel_task_update_i, &update_task3, load, reload);
     try apidb.implOrRemove(cetech1.c.ct_kernel_task_update_i, &update_task4, load, reload);
+
+    try apidb.implOrRemove(cetech1.c.ct_kernel_task_update_i, &update_task5, load, reload);
+    try apidb.implOrRemove(cetech1.c.ct_kernel_task_update_i, &update_task6, load, reload);
+    try apidb.implOrRemove(cetech1.c.ct_kernel_task_update_i, &update_task7, load, reload);
+    try apidb.implOrRemove(cetech1.c.ct_kernel_task_update_i, &update_task8, load, reload);
 
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, MODULE_NAME, "_g");
@@ -115,6 +159,6 @@ pub fn load_module_zig(apidb: *cetech1.ApiDbAPI, allocator: Allocator, log: *cet
     return true;
 }
 
-pub export fn load_module(__apidb: ?*const cetech1.c.ct_apidb_api_t, __allocator: ?*const cetech1.c.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
+pub export fn ct_load_module_foo(__apidb: ?*const cetech1.c.ct_apidb_api_t, __allocator: ?*const cetech1.c.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
     return cetech1.loadModuleZigHelper(load_module_zig, __apidb, __allocator, __load == 1, __reload == 1);
 }

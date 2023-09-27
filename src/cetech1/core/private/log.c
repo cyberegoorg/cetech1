@@ -5,7 +5,6 @@
 // TODO: how c varags to zig?
 
 const ct_log_api_t *_logapi = NULL;
-
 void _ct_log_set_log_api(const ct_log_api_t *logapi)
 {
     _logapi = logapi;

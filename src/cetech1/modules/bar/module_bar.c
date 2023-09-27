@@ -1,7 +1,7 @@
 #include <cetech1/core/core.h>
 #include <cetech1/modules/foo/foo.h>
 
-#define MODULE_NAME "BarModule"
+#define MODULE_NAME "bar"
 
 ct_foo_api_t *_foo_api = NULL;
 ct_log_api_t *_log = NULL;
@@ -44,7 +44,8 @@ ct_kernel_task_i kernel_task = {
 
 ct_kernel_task_update_i _update1 = {};
 
-CT_MODULE_EXPORT uint8_t load_module(const ct_apidb_api_t *apidb, const ct_allocator_t *allocator, uint8_t load, uint8_t reload)
+CT_DECL_MODULE(bar, "Simple module in C")
+(const ct_apidb_api_t *apidb, const ct_allocator_t *allocator, uint8_t load, uint8_t reload)
 {
     _log = apidb->get_api(CT_APIDB_LANG_C, ct_apidb_api_arg(ct_log_api_t));
     _strid = apidb->get_api(CT_APIDB_LANG_C, ct_apidb_api_arg(ct_strid_api_t));
@@ -57,7 +58,7 @@ CT_MODULE_EXPORT uint8_t load_module(const ct_apidb_api_t *apidb, const ct_alloc
     }
 
     _update1 = (ct_kernel_task_update_i){
-        .phase = _strid->strid64(CT_KERNEL_PHASE_ONLOAD),
+        .phase = _strid->strid64(CT_KERNEL_PHASE_ONUPDATE),
         .name = "BarUpdate",
         .depends = 0,
         .depends_n = 0,

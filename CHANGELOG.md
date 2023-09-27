@@ -12,7 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **core:zig:** StrId{32, 64}
 - **core:zig**: ApiDbAPI
 - **core:zig**: LogAPI
+- **core:zig**: TaskApi
 - **core:zig**: BAG (before-after graph)
+
+- **core:profiler:** Tracy support
+
+- **core:task:** Task support (zjobs)
 
 - **core:kernel**: Boot
 - **core:kernel**: Task and Phases

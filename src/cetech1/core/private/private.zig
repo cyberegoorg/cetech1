@@ -5,3 +5,4 @@ const modules = @import("modules.zig");
 const kernel = @import("kernel.zig");
 const log = @import("log.zig");
 const stringid = @import("stringid.zig");
+const task = @import("task.zig");

@@ -8,7 +8,7 @@ const StringArrayHashMap = std.StringArrayHashMap;
 const public = @import("../apidb.zig");
 const c = @import("../c.zig");
 
-const LOG_SCOPE = "apidb";
+const MODULE_NAME = "apidb";
 
 const ApiItem = struct {
     api_ptr: []u8,
@@ -105,7 +105,7 @@ fn setApiOpaqueue(language: []const u8, api_name: []const u8, api_ptr: *anyopaqu
         try _language_api_map.put(language, api_map);
     }
 
-    log.api.debug(LOG_SCOPE, "Register {s} api '{s}'", .{ language, api_name });
+    log.api.debug(MODULE_NAME, "Register {s} api '{s}'", .{ language, api_name });
 
     var api_ptr_intern = getApiOpaque(language, api_name, api_size);
 
@@ -166,11 +166,11 @@ fn getInterafceGen(interface_name: []const u8) u64 {
 }
 
 pub fn dumpGlobalVar() void {
-    log.api.debug(LOG_SCOPE, "GLOBAL APIDB VARIABLES", .{});
+    log.api.debug(MODULE_NAME, "GLOBAL APIDB VARIABLES", .{});
 
     var it = _global_var_map.iterator();
     while (it.next()) |entry| {
-        log.api.debug(LOG_SCOPE, " +- {s}", .{entry.key_ptr.*});
+        log.api.debug(MODULE_NAME, " +- {s}", .{entry.key_ptr.*});
     }
 }
 
@@ -200,7 +200,7 @@ fn implInterface(interface_name: []const u8, impl_ptr: *anyopaque) anyerror!void
 
     impl_list.append(node);
 
-    log.api.debug(LOG_SCOPE, "Register interface '{s}'", .{interface_name});
+    log.api.debug(MODULE_NAME, "Register interface '{s}'", .{interface_name});
 
     increaseIfaceGen(interface_name);
 }
@@ -276,25 +276,25 @@ fn removeImpl(interface_name: []const u8, impl_ptr: *anyopaque) void {
 }
 
 pub fn dumpApi() void {
-    log.api.debug(LOG_SCOPE, "SUPPORTED API", .{});
+    log.api.debug(MODULE_NAME, "SUPPORTED API", .{});
 
     var lang_iter = _language_api_map.iterator();
     while (lang_iter.next()) |lang_entry| {
-        log.api.debug(LOG_SCOPE, " +- LANG {s}", .{lang_entry.key_ptr.*});
+        log.api.debug(MODULE_NAME, " +- LANG {s}", .{lang_entry.key_ptr.*});
 
         var api_iter = lang_entry.value_ptr.*.iterator();
         while (api_iter.next()) |api_entry| {
-            log.api.debug(LOG_SCOPE, "     +- {s}", .{api_entry.key_ptr.*});
+            log.api.debug(MODULE_NAME, "     +- {s}", .{api_entry.key_ptr.*});
         }
     }
 }
 
 pub fn dumpInterfaces() void {
-    log.api.debug(LOG_SCOPE, "SUPPORTED INTERAFCE", .{});
+    log.api.debug(MODULE_NAME, "SUPPORTED INTERAFCE", .{});
 
     var iter = _interafce_map.iterator();
     while (iter.next()) |entry| {
-        log.api.debug(LOG_SCOPE, " +- {s}", .{entry.key_ptr.*});
+        log.api.debug(MODULE_NAME, " +- {s}", .{entry.key_ptr.*});
     }
 }
 

@@ -7,12 +7,20 @@ const StringHashMap = std.StringHashMap;
 
 const apidb = @import("apidb.zig");
 const log = @import("log.zig");
+const profiler = @import("profiler.zig");
 const c = @import("../c.zig");
+const cetech1 = @import("../cetech1.zig");
+
+const MODULE_NAME = "modules";
 
 const ModulesList = std.DoublyLinkedList(c.c.ct_module_desc_t);
 const ModulesListNodePool = std.heap.MemoryPool(ModulesList.Node);
 
-const LOG_SCOPE = "modules";
+const AllocatorItem = struct {
+    tracy: cetech1.AllocatorProfiler,
+    allocator: std.mem.Allocator = undefined,
+};
+const ModuleAlocatorMap = std.StringArrayHashMap(*AllocatorItem);
 
 const DynLibInfo = struct {
     full_path: [:0]u8,
@@ -27,7 +35,7 @@ const DynLibInfo = struct {
 
 const DynModuleHashMap = std.StringArrayHashMap(DynLibInfo);
 
-fn get_dll_extension() []const u8 {
+fn getDllExtension() []const u8 {
     return switch (builtin.os.tag) {
         .linux, .freebsd, .openbsd => ".so",
         .windows => ".dll",
@@ -40,12 +48,14 @@ var _allocator: Allocator = undefined;
 var _modules: ModulesList = undefined;
 var _modules_node_pool: ModulesListNodePool = undefined;
 var _dyn_modules_map: DynModuleHashMap = undefined;
+var _modules_allocator_map: ModuleAlocatorMap = undefined;
 
 pub fn init(allocator: Allocator) !void {
     _allocator = allocator;
     _modules = ModulesList{};
     _modules_node_pool = ModulesListNodePool.init(allocator);
     _dyn_modules_map = DynModuleHashMap.init(allocator);
+    _modules_allocator_map = ModuleAlocatorMap.init(allocator);
 }
 
 pub fn deinit() void {
@@ -54,6 +64,11 @@ pub fn deinit() void {
         entry.value_ptr.dyn_lib.close();
     }
 
+    for (_modules_allocator_map.values()) |value| {
+        _allocator.destroy(value);
+    }
+
+    _modules_allocator_map.deinit();
     _dyn_modules_map.deinit();
     _modules_node_pool.deinit();
 }
@@ -72,12 +87,22 @@ pub fn loadAll() !void {
         var module_desc = node.data;
 
         if (module_desc.module_fce == null) {
-            log.api.err(LOG_SCOPE, "Module {s} hash null load fce", .{module_desc.name});
+            log.api.err(MODULE_NAME, "Module {s} hash null load fce", .{module_desc.name});
             continue;
         }
 
-        if (0 == module_desc.module_fce.?(&apidb.apidb_global_c, @ptrCast(&_allocator), 1, 0)) {
-            log.api.err(LOG_SCOPE, "Problem with load module {s}", .{module_desc.name});
+        var alloc_item = _modules_allocator_map.getPtr(c.fromCstr(module_desc.name));
+        if (alloc_item == null) {
+            var item_ptr = try _allocator.create(AllocatorItem);
+            item_ptr.* = AllocatorItem{ .tracy = cetech1.AllocatorProfiler.init(&profiler.api, _allocator, module_desc.name[0..std.mem.len(module_desc.name) :0]) };
+            item_ptr.*.allocator = item_ptr.tracy.allocator();
+
+            try _modules_allocator_map.put(c.fromCstr(module_desc.name), item_ptr);
+            alloc_item = _modules_allocator_map.getPtr(c.fromCstr(module_desc.name));
+        }
+
+        if (0 == module_desc.module_fce.?(&apidb.apidb_global_c, @ptrCast(@alignCast(&alloc_item.?.*.allocator)), 1, 0)) {
+            log.api.err(MODULE_NAME, "Problem with load module {s}", .{module_desc.name});
         }
     }
 }
@@ -85,8 +110,10 @@ pub fn loadAll() !void {
 pub fn unloadAll() !void {
     var it = _modules.last;
     while (it) |node| : (it = node.prev) {
-        if (0 == node.data.module_fce.?(&apidb.apidb_global_c, @ptrCast(&_allocator), 0, 1)) {
-            log.api.err(LOG_SCOPE, "Problem with unload module {s}\n", .{node.data.name});
+        var alloc_item = _modules_allocator_map.getPtr(c.fromCstr(node.data.name)).?;
+
+        if (0 == node.data.module_fce.?(&apidb.apidb_global_c, @ptrCast(&alloc_item.*.allocator), 0, 1)) {
+            log.api.err(MODULE_NAME, "Problem with unload module {s}\n", .{node.data.name});
         }
     }
 
@@ -108,17 +135,25 @@ fn _getModule(name: []const u8) ?*c.c.ct_module_desc_t {
     return null;
 }
 
+fn getModuleName(path: []const u8) []const u8 {
+    const basename = std.fs.path.basename(path);
+    var name_with_ext = std.mem.splitBackwards(u8, basename, "ct_");
+    return std.fs.path.stem(name_with_ext.first());
+}
+
 fn _loadDynLib(path: []const u8) !DynLibInfo {
     var dll = std.DynLib.open(path) catch |err| {
-        log.api.err(LOG_SCOPE, "Error load module from {s} with error {any}\n", .{ path, err });
+        log.api.err(MODULE_NAME, "Error load module from {s} with error {any}\n", .{ path, err });
         return err;
     };
 
-    var symbol = dll.lookup(*c.c.ct_module_fce_t, "load_module");
+    var load_fce_name: [128:0]u8 = undefined;
+    const module_name = getModuleName(path);
+    _ = try std.fmt.bufPrintZ(&load_fce_name, "ct_load_module_{s}", .{module_name});
+
+    var symbol = dll.lookup(*c.c.ct_module_fce_t, &load_fce_name);
     if (symbol == null) {
-        log.api.err(LOG_SCOPE, "Error load find symbol load_module in {s}\n", .{
-            path,
-        });
+        log.api.err(MODULE_NAME, "Error load find symbol {s} in {s}\n", .{ load_fce_name, path });
         return error.SymbolNotFound;
     }
 
@@ -152,11 +187,11 @@ pub fn loadDynModules() !void {
 
         const basename = std.fs.path.basename(path.name);
         if (!std.mem.startsWith(u8, basename, "ct_")) continue;
-        if (!std.mem.endsWith(u8, basename, get_dll_extension())) continue;
+        if (!std.mem.endsWith(u8, basename, getDllExtension())) continue;
 
         var full_path = try std.fs.path.join(tmp_allocator, &[_][]const u8{ module_dir, path.name });
 
-        log.api.debug(LOG_SCOPE, "Loading module from {s}", .{full_path});
+        log.api.debug(MODULE_NAME, "Loading module from {s}", .{full_path});
 
         var dyn_lib_info = _loadDynLib(full_path) catch continue;
 
@@ -181,19 +216,22 @@ pub fn reloadAllIfNeeded() !bool {
         const f_stat = try f.stat();
 
         if (f_stat.mtime > v.mtime) {
-            log.api.debug(LOG_SCOPE, "Dynamic module {s} need reload.", .{k});
+            log.api.debug(MODULE_NAME, "Dynamic module {s} need reload.", .{k});
 
             //unload old
             var old_module_desc = _getModule(k).?;
-            if (0 == old_module_desc.module_fce.?(&apidb.apidb_global_c, @ptrCast(&_allocator), 0, 1)) {
-                log.api.err(LOG_SCOPE, "Problem with unload old module {s}\n", .{k});
+
+            var alloc_item = _modules_allocator_map.getPtr(c.fromCstr(old_module_desc.name)).?;
+
+            if (0 == old_module_desc.module_fce.?(&apidb.apidb_global_c, @ptrCast(&alloc_item.*.allocator), 0, 1)) {
+                log.api.err(MODULE_NAME, "Problem with unload old module {s}\n", .{k});
                 continue;
             }
 
             //load new
             var new_dyn_lib_info = _loadDynLib(k) catch continue;
-            if (0 == new_dyn_lib_info.symbol(&apidb.apidb_global_c, @ptrCast(&_allocator), 1, 1)) {
-                log.api.err(LOG_SCOPE, "Problem with load new module {s}\n", .{k});
+            if (0 == new_dyn_lib_info.symbol(&apidb.apidb_global_c, @ptrCast(&alloc_item.*.allocator), 1, 1)) {
+                log.api.err(MODULE_NAME, "Problem with load new module {s}\n", .{k});
                 continue;
             }
 
@@ -212,10 +250,10 @@ pub fn reloadAllIfNeeded() !bool {
 }
 
 pub fn dumpModules() void {
-    log.api.debug(LOG_SCOPE, "LOADED MODULES", .{});
+    log.api.debug(MODULE_NAME, "LOADED MODULES", .{});
     var it = _modules.first;
     while (it) |node| : (it = node.next) {
-        log.api.debug(LOG_SCOPE, " +- {s}", .{node.data.name});
+        log.api.debug(MODULE_NAME, " +- {s}", .{node.data.name});
     }
 }
 
