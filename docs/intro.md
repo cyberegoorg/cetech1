@@ -24,13 +24,13 @@ Yet another experimental game engine.
 GIT_LFS_SKIP_SMUDGE=1 git clone --recursive https://github.com/cyberegoorg/cetech1.git
 
 # This download zig binary from LFS. Only need for your arch where you develop
-./lfs_pull.sh <ARCH>
+./bin/zig/lfs_pull.sh <ARCH>
 ```
 
 ## Build
 
 ```sh
-externals/shared/bin/zig/zig_<ARCH> build
+bin/zig/zig_<ARCH> build
 ```
 
 Args                      | Value           | Default     | Description
@@ -64,12 +64,12 @@ zig-out/bin/cetech1 # on separate terminal
 ## Build docs
 
 ```sh
-externals/shared/bin/zig/zig_<ARCH> build docs
+bin/zig/zig_<ARCH> build docs
 ```
 
 ## Docker compose
 
-You must fetch valid zig version for container `ARCH` via `./lfs_pull.sh <ARCH>`
+You must fetch valid zig version for container `ARCH` via `./bin/zig/lfs_pull.sh <ARCH>`
 
 ```sh
 docker compose run --service-ports cetech1-linux 
@@ -79,4 +79,4 @@ docker compose run --service-ports cetech1-linux
 
 - Extension `ziglang.vscode-zig`
 - Use zls provided with extension (udate features is nice)
-- Set zig path to `<FULL_PATH_TO>/externals/shared/bin/zig/zig_<ARCH>`
+- Set zig path to `<FULL_PATH_TO>bin/zig/zig_<ARCH>`

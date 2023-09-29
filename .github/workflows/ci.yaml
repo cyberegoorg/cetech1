@@ -21,7 +21,7 @@ jobs:
           submodules: true
 
       - name: Build
-        run: ci/all-build.sh x86_64-linux
+        run: .ci/all-build.sh x86_64-linux
 
       - name: x86_64-linux
         uses: actions/cache@v3
@@ -50,7 +50,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          sparse-checkout: "ci/x86_64-macos-test.sh"
+          sparse-checkout: ".ci/x86_64-macos-test.sh"
       - name: Download build
         uses: actions/cache@v3
         with:
@@ -58,7 +58,7 @@ jobs:
           key: x86_64-macos-cache-${{ github.sha }}
           fail-on-cache-miss: true
       - name: Test
-        run: sh ci/x86_64-macos-test.sh
+        run: sh .ci/x86_64-macos-test.sh
 
   test-x86_64-linux:
     name: Test x86_64-linux
@@ -69,7 +69,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          sparse-checkout: "ci/x86_64-linux-test.sh"
+          sparse-checkout: ".ci/x86_64-linux-test.sh"
       - name: Download build
         uses: actions/cache@v3
         with:
@@ -78,7 +78,7 @@ jobs:
           fail-on-cache-miss: true
       - name: Test
         #continue-on-error: true # TODO: Linux build has problem with dll.
-        run: sh ci/x86_64-linux-test.sh
+        run: sh .ci/x86_64-linux-test.sh
 
   test-x86_64-windows:
     name: Test x86_64-windows
@@ -89,7 +89,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          sparse-checkout: "ci/x86_64-windows-test.ps1"
+          sparse-checkout: ".ci/x86_64-windows-test.ps1"
       - name: Download build
         uses: actions/cache@v3
         with:
@@ -98,7 +98,7 @@ jobs:
           fail-on-cache-miss: true
           enableCrossOsArchive: true
       - name: Test
-        run: ci/x86_64-windows-test.ps1
+        run: .ci/x86_64-windows-test.ps1
 
   # docs:
   #   name: Publish docs

@@ -1,3 +1,6 @@
 [submodule "externals/shared/lib/zig-gamedev"]
 	path = externals/shared/lib/zig-gamedev
 	url = https://github.com/michal-z/zig-gamedev.git
+[submodule "bin/zig"]
+	path = bin/zig
+	url = https://github.com/cyberegoorg/cetech1-zig.git
