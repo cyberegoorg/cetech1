@@ -9,15 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **core:zig:** StrId{32, 64}
-- **core:zig**: ApiDbAPI
-- **core:zig**: LogAPI
-- **core:zig**: TaskApi
-- **core:zig**: BAG (before-after graph)
+- **core:api:zig**: StrId{32, 64}
+- **core:api:zig**: ApiDbAPI
+- **core:api:zig**: LogAPI
+- **core:api:zig**: TaskApi
+- **core:api:zig**: BAG (before-after graph)
+- **core:api:zig**: Uuid
+- **core:api:zig**: CDB
 
-- **core:profiler:** Tracy support
-
-- **core:task:** Task support (zjobs)
+- **core:cdb:** Initial CDB support
+- **core:profiler:** Profler support (by Tracy)
+- **core:task:** Task support (by zjobs)
 
 - **core:kernel**: Boot
 - **core:kernel**: Task and Phases

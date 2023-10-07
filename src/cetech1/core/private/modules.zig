@@ -17,7 +17,7 @@ const ModulesList = std.DoublyLinkedList(c.c.ct_module_desc_t);
 const ModulesListNodePool = std.heap.MemoryPool(ModulesList.Node);
 
 const AllocatorItem = struct {
-    tracy: cetech1.AllocatorProfiler,
+    tracy: cetech1.profiler.AllocatorProfiler,
     allocator: std.mem.Allocator = undefined,
 };
 const ModuleAlocatorMap = std.StringArrayHashMap(*AllocatorItem);
@@ -94,7 +94,7 @@ pub fn loadAll() !void {
         var alloc_item = _modules_allocator_map.getPtr(c.fromCstr(module_desc.name));
         if (alloc_item == null) {
             var item_ptr = try _allocator.create(AllocatorItem);
-            item_ptr.* = AllocatorItem{ .tracy = cetech1.AllocatorProfiler.init(&profiler.api, _allocator, module_desc.name[0..std.mem.len(module_desc.name) :0]) };
+            item_ptr.* = AllocatorItem{ .tracy = cetech1.profiler.AllocatorProfiler.init(&profiler.api, _allocator, module_desc.name[0..std.mem.len(module_desc.name) :0]) };
             item_ptr.*.allocator = item_ptr.tracy.allocator();
 
             try _modules_allocator_map.put(c.fromCstr(module_desc.name), item_ptr);
@@ -153,7 +153,7 @@ fn _loadDynLib(path: []const u8) !DynLibInfo {
 
     var symbol = dll.lookup(*c.c.ct_module_fce_t, &load_fce_name);
     if (symbol == null) {
-        log.api.err(MODULE_NAME, "Error load find symbol {s} in {s}\n", .{ load_fce_name, path });
+        log.api.err(MODULE_NAME, "Error find symbol {s} in {s}\n", .{ load_fce_name, path });
         return error.SymbolNotFound;
     }
 
@@ -250,10 +250,10 @@ pub fn reloadAllIfNeeded() !bool {
 }
 
 pub fn dumpModules() void {
-    log.api.debug(MODULE_NAME, "LOADED MODULES", .{});
+    log.api.info(MODULE_NAME, "LOADED MODULES", .{});
     var it = _modules.first;
     while (it) |node| : (it = node.next) {
-        log.api.debug(MODULE_NAME, " +- {s}", .{node.data.name});
+        log.api.info(MODULE_NAME, " +- {s}", .{node.data.name});
     }
 }
 

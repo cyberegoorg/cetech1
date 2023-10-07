@@ -39,3 +39,9 @@ typedef struct ct_strid64_t
 {
     uint64_t id;
 } ct_strid64_t;
+
+#define CT_STRID32_ZERO \
+    ((ct_strid32_t){.id = 0})
+
+#define CT_STRID64_ZERO \
+    ((ct_strid64_t){.id = 0})

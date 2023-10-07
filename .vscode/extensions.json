@@ -1,5 +1,7 @@
 {
     "recommendations": [
-        "ziglang.vscode-zig"
+        "ziglang.vscode-zig", // ZIG support. 
+        "vadimcn.vscode-lldb", // Debugging support.
+        "Gruntfuggly.todo-tree", // Todo viewer.
     ]
 }

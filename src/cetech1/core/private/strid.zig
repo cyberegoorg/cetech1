@@ -1,6 +1,6 @@
 const c = @import("../c.zig");
 const apidb = @import("./apidb.zig");
-const stringid = @import("../stringid.zig");
+const strid = @import("../strid.zig");
 
 const public = @import("../cetech1.zig");
 
@@ -14,9 +14,9 @@ pub fn registerToApi() !void {
 }
 
 fn ct_strid32(str: [*c]const u8) callconv(.C) c.c.ct_strid32_t {
-    return stringid.strId32(c.fromCstr(str));
+    return strid.strId32(c.fromCstr(str));
 }
 
 fn ct_strid64(str: [*c]const u8) callconv(.C) c.c.ct_strid64_t {
-    return stringid.strId64(c.fromCstr(str));
+    return strid.strId64(c.fromCstr(str));
 }

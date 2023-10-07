@@ -4,34 +4,62 @@ const std = @import("std");
 const ztracy = @import("ztracy");
 
 const c = @import("c.zig");
-const stringid = @import("stringid.zig");
+const strid = @import("strid.zig");
+const log = @import("log.zig");
+const modules = @import("modules.zig");
 
-pub const OnLoad = stringid.strId64(c.c.CT_KERNEL_PHASE_ONLOAD);
-pub const PostLoad = stringid.strId64(c.c.CT_KERNEL_PHASE_POSTLOAD);
-pub const PreUpdate = stringid.strId64(c.c.CT_KERNEL_PHASE_PREUPDATE);
-pub const OnUpdate = stringid.strId64(c.c.CT_KERNEL_PHASE_ONUPDATE);
-pub const OnValidate = stringid.strId64(c.c.CT_KERNEL_PHASE_ONVALIDATE);
-pub const PostUpdate = stringid.strId64(c.c.CT_KERNEL_PHASE_POSTUPDATE);
-pub const PreStore = stringid.strId64(c.c.CT_KERNEL_PHASE_PRESTORE);
-pub const OnStore = stringid.strId64(c.c.CT_KERNEL_PHASE_ONSTORE);
+pub const OnLoad = strid.strId64(c.c.CT_KERNEL_PHASE_ONLOAD);
+pub const PostLoad = strid.strId64(c.c.CT_KERNEL_PHASE_POSTLOAD);
+pub const PreUpdate = strid.strId64(c.c.CT_KERNEL_PHASE_PREUPDATE);
+pub const OnUpdate = strid.strId64(c.c.CT_KERNEL_PHASE_ONUPDATE);
+pub const OnValidate = strid.strId64(c.c.CT_KERNEL_PHASE_ONVALIDATE);
+pub const PostUpdate = strid.strId64(c.c.CT_KERNEL_PHASE_POSTUPDATE);
+pub const PreStore = strid.strId64(c.c.CT_KERNEL_PHASE_PRESTORE);
+pub const OnStore = strid.strId64(c.c.CT_KERNEL_PHASE_ONSTORE);
 
-pub inline fn KernelTaskInterface(name: [*c]const u8, depends: []const stringid.StrId64, init: ?*const fn () callconv(.C) void, shutdown: ?*const fn () callconv(.C) void) c.c.ct_kernel_task_i {
+pub inline fn KernelTaskInterface(
+    name: [*c]const u8,
+    depends: []const strid.StrId64,
+    init: ?*const fn (main_db: ?*c.c.ct_cdb_db_t) anyerror!void,
+    shutdown: ?*const fn () anyerror!void,
+) c.c.ct_kernel_task_i {
+    const Wrap = struct {
+        pub fn init_fn(main_db: ?*c.c.ct_cdb_db_t) callconv(.C) void {
+            init.?(main_db) catch undefined;
+        }
+
+        pub fn shutdown_fn() callconv(.C) void {
+            shutdown.?() catch undefined;
+        }
+    };
+
     return c.c.ct_kernel_task_i{
         .name = name,
         .depends = depends.ptr,
         .depends_n = depends.len,
-        .init = init,
-        .shutdown = shutdown,
+        .init = if (init != null) Wrap.init_fn else null,
+        .shutdown = if (shutdown != null) Wrap.shutdown_fn else null,
     };
 }
 
-pub inline fn KernelTaskUpdateInterface(phase: stringid.StrId64, name: [*c]const u8, depends: []const stringid.StrId64, update: ?*const fn (u64, f32) callconv(.C) void) c.c.ct_kernel_task_update_i {
+pub inline fn KernelTaskUpdateInterface(
+    phase: strid.StrId64,
+    name: [:0]const u8,
+    depends: []const strid.StrId64,
+    update: ?*const fn (frame_allocator: std.mem.Allocator, main_db: ?*c.c.ct_cdb_db_t, u64, f32) anyerror!void,
+) c.c.ct_kernel_task_update_i {
+    const Wrap = struct {
+        pub fn update_fn(frame_allocator: ?*c.c.ct_allocator_t, main_db: ?*c.c.ct_cdb_db_t, kernel_tick: u64, dt: f32) callconv(.C) void {
+            update.?(modules._allocFromCApi(frame_allocator.?), main_db, kernel_tick, dt) catch undefined;
+        }
+    };
+
     return c.c.ct_kernel_task_update_i{
         .phase = phase,
         .name = name,
         .depends = depends.ptr,
         .depends_n = depends.len,
-        .update = update,
+        .update = Wrap.update_fn,
     };
 }
 

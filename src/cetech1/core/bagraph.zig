@@ -1,5 +1,9 @@
 const std = @import("std");
+const strid = @import("strid.zig");
 const Allocator = std.mem.Allocator;
+
+pub const StrId64BAG = BAG(strid.StrId64);
+pub const StrId32BAG = BAG(strid.StrId32);
 
 // TODO: !!!!!! braindump SHIT !!!!!!
 pub fn BAG(comptime T: type) type {
@@ -58,7 +62,7 @@ pub fn BAG(comptime T: type) type {
             return dep_arr.?.items;
         }
 
-        pub fn add(self: *Self, name: T, depend: []const T) !void {
+        pub fn add(self: *Self, name: T, depends: []const T) !void {
             if (!self.graph.contains(name)) {
                 var dep_arr = BAGArray.init(self.allocator);
                 try self.graph.put(name, dep_arr);
@@ -66,20 +70,22 @@ pub fn BAG(comptime T: type) type {
 
             if (!self.depends.contains(name)) {
                 var dep_arr = BAGArray.init(self.allocator);
-                try dep_arr.appendSlice(depend);
+                try dep_arr.appendSlice(depends);
                 try self.depends.put(name, dep_arr);
             }
 
-            for (depend) |dep_name| {
-                if (!self.graph.contains(dep_name)) {
-                    var dep_arr = BAGArray.init(self.allocator);
-                    try self.graph.put(dep_name, dep_arr);
-                }
-
-                var dep_arr = self.graph.getPtr(dep_name).?;
-                try dep_arr.append(name);
-            } else {
+            if (depends.len == 0) {
                 try self.root.put(name, true);
+            } else {
+                for (depends) |dep_name| {
+                    if (!self.graph.contains(dep_name)) {
+                        var dep_arr = BAGArray.init(self.allocator);
+                        try self.graph.put(dep_name, dep_arr);
+                    }
+
+                    var dep_arr = self.graph.getPtr(dep_name).?;
+                    try dep_arr.append(name);
+                }
             }
         }
 
@@ -96,7 +102,7 @@ pub fn BAG(comptime T: type) type {
             self.depends.clearRetainingCapacity();
             self.visited.clearRetainingCapacity();
             self.root.clearRetainingCapacity();
-            try self.output.resize(0);
+            self.output.clearRetainingCapacity();
         }
 
         pub fn build(self: *Self, name: T) !void {

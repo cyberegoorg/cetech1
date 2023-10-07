@@ -23,7 +23,7 @@ void kernel_task_shutdown()
     return;
 }
 
-void kernel_task_update1(uint64_t kernel_tick, float dt)
+void kernel_task_update1(ct_allocator_t *frame_allocator, ct_cdb_db_t *main_db, uint64_t kernel_tick, float dt)
 {
     float a = _foo_api->foo(42);
     _log->info(MODULE_NAME, "_foo_api->foo(42) => %f", a);
@@ -65,8 +65,8 @@ CT_DECL_MODULE(bar, "Simple module in C")
         .update = kernel_task_update1,
     };
 
-    apidb->impl_or_remove(ct_apidb_name(ct_kernel_task_i), &kernel_task, load, reload);
-    apidb->impl_or_remove(ct_apidb_name(ct_kernel_task_update_i), &_update1, load, reload);
+    apidb->impl_or_remove(ct_apidb_name(ct_kernel_task_i), &kernel_task, load);
+    apidb->impl_or_remove(ct_apidb_name(ct_kernel_task_update_i), &_update1, load);
 
     return 1;
 }

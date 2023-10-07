@@ -1,6 +1,10 @@
-[submodule "externals/shared/lib/zig-gamedev"]
-	path = externals/shared/lib/zig-gamedev
-	url = https://github.com/michal-z/zig-gamedev.git
 [submodule "bin/zig"]
 	path = bin/zig
 	url = https://github.com/cyberegoorg/cetech1-zig.git
+[submodule "externals/shared/lib/zig-gamedev"]
+	path = externals/shared/lib/zig-gamedev
+	url = https://github.com/OndraVoves/zig-gamedev.git
+	branch = tracy_update_0.10.0
+[submodule "externals/shared/lib/zig-uuid"]
+	path = externals/shared/lib/zig-uuid
+	url = https://github.com/tensorush/zig-uuid.git

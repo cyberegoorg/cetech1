@@ -4,7 +4,7 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug",
+            "name": "CeTech1",
             "program": "${workspaceFolder}/zig-out/bin/cetech1",
             "args": [],
             "cwd": "${workspaceFolder}"
@@ -12,10 +12,10 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug Test",
+            "name": "CeTech1 Tests",
             "program": "${workspaceFolder}/zig-out/bin/cetech1_test",
             "args": [],
             "cwd": "${workspaceFolder}"
-        }
+        },
     ]
 }

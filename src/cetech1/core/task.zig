@@ -16,10 +16,6 @@ pub const TaskStub = struct {
 pub const TaskAPI = struct {
     const Self = @This();
 
-    scheduleFn: ?*const fn (prereq: TaskID, task: TaskStub) anyerror!TaskID,
-    waitFn: ?*const fn (prereq: TaskID) void,
-    combineFn: ?*const fn (prereq: []const TaskID) anyerror!TaskID,
-
     pub fn schedule(self: *Self, prereq: TaskID, task: anytype) !TaskID {
         const T = @TypeOf(task);
 
@@ -40,4 +36,8 @@ pub const TaskAPI = struct {
     pub fn combine(self: *Self, prereq: []const TaskID) !TaskID {
         return self.combineFn.?(prereq);
     }
+
+    scheduleFn: ?*const fn (prereq: TaskID, task: TaskStub) anyerror!TaskID,
+    waitFn: ?*const fn (prereq: TaskID) void,
+    combineFn: ?*const fn (prereq: []const TaskID) anyerror!TaskID,
 };

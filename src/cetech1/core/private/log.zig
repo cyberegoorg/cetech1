@@ -5,18 +5,18 @@ const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");
 const task = @import("task.zig");
 
-pub var api = public.LogAPI{
+pub var api = public.log.LogAPI{
     .log = log,
 };
 
 pub fn registerToApi() !void {
-    try apidb.api.setZigApi(public.LogAPI, &api);
+    try apidb.api.setZigApi(public.log.LogAPI, &api);
 
     _ct_log_set_log_api(&api_c);
     try apidb.api.setOrRemoveCApi(public.c.ct_log_api_t, &api_c, true, false);
 }
 
-pub fn log(level: public.LogAPI.Level, scope: []const u8, msg: []const u8) void {
+pub fn log(level: public.log.LogAPI.Level, scope: []const u8, msg: []const u8) void {
     if (profiler.profiler_enabled) {
         const LOG_FORMAT_TRACY = "{s}: {s}";
         var color: u32 = switch (level) {

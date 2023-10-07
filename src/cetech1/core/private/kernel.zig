@@ -3,17 +3,20 @@ const builtin = @import("builtin");
 
 const profiler = @import("profiler.zig");
 
-const strid = @import("stringid.zig");
+const strid = @import("strid.zig");
 const log = @import("log.zig");
 const apidb = @import("apidb.zig");
 const modules = @import("modules.zig");
 const task = @import("task.zig");
-const cetech1 = @import("../cetech1.zig");
+const cdb = @import("cdb.zig");
+const uuid = @import("uuid.zig");
 const c = @import("../c.zig");
+
+const cetech1 = @import("../cetech1.zig");
 
 const UpdateArray = std.ArrayList(*cetech1.c.ct_kernel_task_update_i);
 const KernelTaskArray = std.ArrayList(*cetech1.c.ct_kernel_task_i);
-const PhaseMap = std.AutoArrayHashMap(cetech1.StrId64, Phase);
+const PhaseMap = std.AutoArrayHashMap(cetech1.strid.StrId64, Phase);
 
 const MODULE_NAME = "kernel";
 
@@ -21,13 +24,13 @@ const Phase = struct {
     const Self = @This();
 
     name: [:0]const u8,
-    update_bag: cetech1.BAG(cetech1.StrId64),
+    update_bag: cetech1.bagraph.StrId64BAG,
     update_chain: UpdateArray,
 
     pub fn init(allocator: std.mem.Allocator, name: [:0]const u8) Self {
         return .{
             .name = name,
-            .update_bag = cetech1.BAG(cetech1.StrId64).init(allocator),
+            .update_bag = cetech1.bagraph.StrId64BAG.init(allocator),
             .update_chain = UpdateArray.init(allocator),
         };
     }
@@ -39,85 +42,96 @@ const Phase = struct {
 
     pub fn reset(self: *Self) !void {
         try self.update_bag.reset();
-        try self.update_chain.resize(0);
+        self.update_chain.clearRetainingCapacity();
     }
 };
 
 var _root_allocator: std.mem.Allocator = undefined;
 var _kernel_allocator: std.mem.Allocator = undefined;
-var _main_profiler_allocator: cetech1.AllocatorProfiler = undefined;
-var _apidb_profiler_allocator: cetech1.AllocatorProfiler = undefined;
-var _modules_profiler_allocator: cetech1.AllocatorProfiler = undefined;
-var _task_profiler_allocator: cetech1.AllocatorProfiler = undefined;
-var _profiler_profiler_allocator: cetech1.AllocatorProfiler = undefined;
 
-var _update_bag: cetech1.BAG(cetech1.StrId64) = undefined;
+var _main_profiler_allocator: cetech1.profiler.AllocatorProfiler = undefined;
+var _apidb_profiler_allocator: cetech1.profiler.AllocatorProfiler = undefined;
+var _modules_profiler_allocator: cetech1.profiler.AllocatorProfiler = undefined;
+var _task_profiler_allocator: cetech1.profiler.AllocatorProfiler = undefined;
+var _profiler_profiler_allocator: cetech1.profiler.AllocatorProfiler = undefined;
+var _cdb_profiler_allocator: cetech1.profiler.AllocatorProfiler = undefined;
 
-var _task_bag: cetech1.BAG(cetech1.StrId64) = undefined;
+var _update_bag: cetech1.bagraph.StrId64BAG = undefined;
+
+var _task_bag: cetech1.bagraph.StrId64BAG = undefined;
 var _task_chain: KernelTaskArray = undefined;
 
 var _phase_map: PhaseMap = undefined;
-var _phases_bag: cetech1.BAG(cetech1.StrId64) = undefined;
+var _phases_bag: cetech1.bagraph.StrId64BAG = undefined;
 
 var _args: [][:0]u8 = undefined;
 var _args_map: std.StringArrayHashMap([]const u8) = undefined;
 
-var _tmp_depend_array: std.ArrayList(cetech1.TaskID) = undefined;
-var _tmp_taskid_map: std.AutoArrayHashMap(cetech1.StrId64, cetech1.TaskID) = undefined;
+var _tmp_depend_array: std.ArrayList(cetech1.task.TaskID) = undefined;
+var _tmp_taskid_map: std.AutoArrayHashMap(cetech1.strid.StrId64, cetech1.task.TaskID) = undefined;
 
-var _iface_map: std.AutoArrayHashMap(cetech1.StrId64, *c.c.ct_kernel_task_update_i) = undefined;
+var _iface_map: std.AutoArrayHashMap(cetech1.strid.StrId64, *c.c.ct_kernel_task_update_i) = undefined;
 
 var _running: bool = false;
 var _quit: bool = false;
 
+var _main_db: cetech1.cdb.CdbDb = undefined;
+
 pub fn init(allocator: std.mem.Allocator) !void {
     _root_allocator = allocator;
-    _main_profiler_allocator = cetech1.AllocatorProfiler.init(&profiler.api, allocator, null);
+    _main_profiler_allocator = cetech1.profiler.AllocatorProfiler.init(&profiler.api, allocator, null);
     _kernel_allocator = _main_profiler_allocator.allocator();
 
-    _profiler_profiler_allocator = cetech1.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "profiler");
+    _profiler_profiler_allocator = cetech1.profiler.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "profiler");
     profiler.init(_profiler_profiler_allocator.allocator());
 
-    _apidb_profiler_allocator = cetech1.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "apidb");
-    _modules_profiler_allocator = cetech1.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "modules");
-    _task_profiler_allocator = cetech1.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "task");
+    _apidb_profiler_allocator = cetech1.profiler.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "apidb");
+    _modules_profiler_allocator = cetech1.profiler.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "modules");
+    _task_profiler_allocator = cetech1.profiler.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "task");
+    _cdb_profiler_allocator = cetech1.profiler.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "cdb");
 
-    _update_bag = cetech1.BAG(cetech1.StrId64).init(_kernel_allocator);
+    _update_bag = cetech1.bagraph.StrId64BAG.init(_kernel_allocator);
 
-    _phases_bag = cetech1.BAG(cetech1.StrId64).init(_kernel_allocator);
+    _phases_bag = cetech1.bagraph.StrId64BAG.init(_kernel_allocator);
     _phase_map = PhaseMap.init(_kernel_allocator);
 
-    _task_bag = cetech1.BAG(cetech1.StrId64).init(_kernel_allocator);
+    _task_bag = cetech1.bagraph.StrId64BAG.init(_kernel_allocator);
     _task_chain = KernelTaskArray.init(_kernel_allocator);
 
     _args_map = std.StringArrayHashMap([]const u8).init(_kernel_allocator);
 
-    _tmp_depend_array = std.ArrayList(cetech1.TaskID).init(_kernel_allocator);
-    _tmp_taskid_map = std.AutoArrayHashMap(cetech1.StrId64, cetech1.TaskID).init(_kernel_allocator);
+    _tmp_depend_array = std.ArrayList(cetech1.task.TaskID).init(_kernel_allocator);
+    _tmp_taskid_map = std.AutoArrayHashMap(cetech1.strid.StrId64, cetech1.task.TaskID).init(_kernel_allocator);
 
-    _iface_map = std.AutoArrayHashMap(cetech1.StrId64, *c.c.ct_kernel_task_update_i).init(_kernel_allocator);
+    _iface_map = std.AutoArrayHashMap(cetech1.strid.StrId64, *c.c.ct_kernel_task_update_i).init(_kernel_allocator);
 
     try apidb.init(_apidb_profiler_allocator.allocator());
     try modules.init(_modules_profiler_allocator.allocator());
     try task.init(_task_profiler_allocator.allocator());
+    try cdb.init(_cdb_profiler_allocator.allocator());
 
     try log.registerToApi();
     try strid.registerToApi();
     try task.registerToApi();
+    try uuid.registerToApi();
+    try cdb.registerToApi();
 
     try initProgramArgs();
 
-    try addPhase(cetech1.c.CT_KERNEL_PHASE_ONLOAD, &[_]cetech1.StrId64{});
-    try addPhase(cetech1.c.CT_KERNEL_PHASE_POSTLOAD, &[_]cetech1.StrId64{cetech1.OnLoad});
-    try addPhase(cetech1.c.CT_KERNEL_PHASE_PREUPDATE, &[_]cetech1.StrId64{cetech1.PostLoad});
-    try addPhase(cetech1.c.CT_KERNEL_PHASE_ONUPDATE, &[_]cetech1.StrId64{cetech1.PreUpdate});
-    try addPhase(cetech1.c.CT_KERNEL_PHASE_ONVALIDATE, &[_]cetech1.StrId64{cetech1.OnUpdate});
-    try addPhase(cetech1.c.CT_KERNEL_PHASE_POSTUPDATE, &[_]cetech1.StrId64{cetech1.OnValidate});
-    try addPhase(cetech1.c.CT_KERNEL_PHASE_PRESTORE, &[_]cetech1.StrId64{cetech1.PostUpdate});
-    try addPhase(cetech1.c.CT_KERNEL_PHASE_ONSTORE, &[_]cetech1.StrId64{cetech1.PreStore});
+    try addPhase(cetech1.c.CT_KERNEL_PHASE_ONLOAD, &[_]cetech1.strid.StrId64{});
+    try addPhase(cetech1.c.CT_KERNEL_PHASE_POSTLOAD, &[_]cetech1.strid.StrId64{cetech1.kernel.OnLoad});
+    try addPhase(cetech1.c.CT_KERNEL_PHASE_PREUPDATE, &[_]cetech1.strid.StrId64{cetech1.kernel.PostLoad});
+    try addPhase(cetech1.c.CT_KERNEL_PHASE_ONUPDATE, &[_]cetech1.strid.StrId64{cetech1.kernel.PreUpdate});
+    try addPhase(cetech1.c.CT_KERNEL_PHASE_ONVALIDATE, &[_]cetech1.strid.StrId64{cetech1.kernel.OnUpdate});
+    try addPhase(cetech1.c.CT_KERNEL_PHASE_POSTUPDATE, &[_]cetech1.strid.StrId64{cetech1.kernel.OnValidate});
+    try addPhase(cetech1.c.CT_KERNEL_PHASE_PRESTORE, &[_]cetech1.strid.StrId64{cetech1.kernel.PostUpdate});
+    try addPhase(cetech1.c.CT_KERNEL_PHASE_ONSTORE, &[_]cetech1.strid.StrId64{cetech1.kernel.PreStore});
 }
 
-pub fn deinit() void {
+pub fn deinit() !void {
+    cdb.api.destroyDb(_main_db);
+
+    cdb.deinit();
     task.deinit();
     modules.deinit();
     apidb.deinit();
@@ -181,6 +195,10 @@ pub fn bigInit(static_modules: ?[]const c.c.ct_module_desc_t, load_dynamic: bool
 
     modules.dumpModules();
 
+    try task.start();
+
+    _main_db = try cdb.api.createDb("Main");
+
     try generateKernelTaskChain();
 
     initKernelTasks();
@@ -188,11 +206,9 @@ pub fn bigInit(static_modules: ?[]const c.c.ct_module_desc_t, load_dynamic: bool
     apidb.dumpApi();
     apidb.dumpInterfaces();
     apidb.dumpGlobalVar();
-
-    try task.start();
 }
 
-pub fn bitDeinit() !void {
+pub fn bigDeinit() !void {
     task.stop();
 
     shutdownKernelTasks();
@@ -231,12 +247,12 @@ pub fn boot(static_modules: ?[*]c.c.ct_module_desc_t, static_modules_n: u32) !vo
     const load_dynamic = try getIntArgs("--load-dynamic", 1) == 1;
 
     try bigInit(static_modules.?[0..static_modules_n], load_dynamic);
-    defer bitDeinit() catch unreachable;
+    defer bigDeinit() catch unreachable;
 
     var kernel_tick: u64 = 1;
     var last_call = std.time.milliTimestamp();
 
-    try _phases_bag.build(cetech1.OnLoad);
+    try _phases_bag.build(cetech1.kernel.OnLoad);
 
     try generateTaskUpdateChain();
     var kernel_task_update_gen = apidb.api.getInterafceGen(c.c.ct_kernel_task_update_i);
@@ -246,17 +262,26 @@ pub fn boot(static_modules: ?[*]c.c.ct_module_desc_t, static_modules_n: u32) !vo
 
     try registerSignals();
 
+    var tmp_allocator_main = std.heap.ArenaAllocator.init(_kernel_allocator);
+    defer tmp_allocator_main.deinit();
+    var frame_allocator = tmp_allocator_main.allocator();
+
     while (_running and !_quit) : (kernel_tick += 1) {
         profiler.api.frameMark();
 
         var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "kernelUpdate");
         defer update_zone_ctx.End();
 
-        log.api.debug(MODULE_NAME, "", .{});
+        _ = tmp_allocator_main.reset(.retain_capacity);
+
         log.api.debug(MODULE_NAME, "TICK BEGIN", .{});
+
         var now = std.time.milliTimestamp();
         var dt = now - last_call;
         last_call = now;
+
+        // Do hard work.
+        try updateKernelTasks(&frame_allocator, kernel_tick, dt);
 
         // Any dynamic modules changed?
         const reloaded_modules = try modules.reloadAllIfNeeded();
@@ -271,22 +296,19 @@ pub fn boot(static_modules: ?[*]c.c.ct_module_desc_t, static_modules_n: u32) !vo
             kernel_task_update_gen = new_kernel_update_gen;
         }
 
-        // Do hard work.
-        try updateKernelTasks(kernel_tick, dt);
+        // clean main DB
+        try _main_db.gc(frame_allocator);
 
         log.api.debug(MODULE_NAME, "TICK END", .{});
-        log.api.debug(MODULE_NAME, "", .{});
 
         // If set max-kernel-tick and reach limit then quit
         if (max_kernel_tick > 0) _quit = kernel_tick >= max_kernel_tick;
-
-        //std.time.sleep(std.time.ns_per_s * 1);
     }
     log.api.info(MODULE_NAME, "QUIT", .{});
 }
 
-fn addPhase(name: [:0]const u8, depend: []const cetech1.StrId64) !void {
-    const name_hash = cetech1.strId64(name);
+fn addPhase(name: [:0]const u8, depend: []const cetech1.strid.StrId64) !void {
+    const name_hash = cetech1.strid.strId64(name);
     var phase = Phase.init(_kernel_allocator, name);
     try _phase_map.put(name_hash, phase);
     try _phases_bag.add(name_hash, depend);
@@ -294,17 +316,17 @@ fn addPhase(name: [:0]const u8, depend: []const cetech1.StrId64) !void {
 
 fn generateKernelTaskChain() !void {
     try _task_bag.reset();
-    try _task_chain.resize(0);
+    _task_chain.clearRetainingCapacity();
 
-    var iface_map = std.AutoArrayHashMap(cetech1.StrId64, *c.c.ct_kernel_task_i).init(_kernel_allocator);
+    var iface_map = std.AutoArrayHashMap(cetech1.strid.StrId64, *c.c.ct_kernel_task_i).init(_kernel_allocator);
     defer iface_map.deinit();
 
     var it = apidb.api.getFirstImpl(c.c.ct_kernel_task_i);
     while (it) |node| : (it = node.next) {
-        var iface = cetech1.ApiDbAPI.toInterface(c.c.ct_kernel_task_i, node);
-        var depends = if (iface.depends_n != 0) iface.depends[0..iface.depends_n] else &[_]cetech1.StrId64{};
+        var iface = cetech1.apidb.ApiDbAPI.toInterface(c.c.ct_kernel_task_i, node);
+        var depends = if (iface.depends_n != 0) iface.depends[0..iface.depends_n] else &[_]cetech1.strid.StrId64{};
 
-        const name_hash = cetech1.strId64(iface.name[0..std.mem.len(iface.name)]);
+        const name_hash = cetech1.strid.strId64(iface.name[0..std.mem.len(iface.name)]);
 
         try _task_bag.add(name_hash, depends);
         try iface_map.put(name_hash, iface);
@@ -333,10 +355,10 @@ fn generateTaskUpdateChain() !void {
 
     var it = apidb.api.getFirstImpl(c.c.ct_kernel_task_update_i);
     while (it) |node| : (it = node.next) {
-        var iface = cetech1.ApiDbAPI.toInterface(c.c.ct_kernel_task_update_i, node);
-        var depends = if (iface.depends_n != 0) iface.depends[0..iface.depends_n] else &[_]cetech1.StrId64{};
+        var iface = cetech1.apidb.ApiDbAPI.toInterface(c.c.ct_kernel_task_update_i, node);
+        var depends = if (iface.depends_n != 0) iface.depends[0..iface.depends_n] else &[_]cetech1.strid.StrId64{};
 
-        const name_hash = cetech1.strId64(iface.name[0..std.mem.len(iface.name)]);
+        const name_hash = cetech1.strid.strId64(iface.name[0..std.mem.len(iface.name)]);
 
         var phase = _phase_map.getPtr(iface.phase).?;
         try phase.update_bag.add(name_hash, depends);
@@ -359,9 +381,12 @@ fn generateTaskUpdateChain() !void {
 
 const UpdateFrameName = "UpdateFrame";
 
-fn updateKernelTasks(kernel_tick: u64, dt: i64) !void {
+fn updateKernelTasks(frame_allocator: *std.mem.Allocator, kernel_tick: u64, dt: i64) !void {
     var fce_zone_ctx = profiler.ztracy.Zone(@src());
     defer fce_zone_ctx.End();
+
+    var all_phase_update_task_id = cetech1.task.TaskID.none;
+    var last_phase_task_id = cetech1.task.TaskID.none;
 
     for (_phases_bag.output.items) |phase_hash| {
         var phase = _phase_map.get(phase_hash).?;
@@ -370,14 +395,17 @@ fn updateKernelTasks(kernel_tick: u64, dt: i64) !void {
             continue;
         }
 
-        var phase_zone_ctx = profiler.ztracy.Zone(@src());
-        phase_zone_ctx.Name(phase.name);
-        defer phase_zone_ctx.End();
+        // var phase_zone_ctx = profiler.ztracy.Zone(@src());
+        // phase_zone_ctx.Name(phase.name);
+        // defer phase_zone_ctx.End();
 
         for (phase.update_chain.items) |update_handler| {
+            //update_handler.update.?(_main_db.db, kernel_tick, @floatFromInt(dt));
+
             const KernelTask = struct {
-                update_handler: cetech1.c.ct_kernel_task_update_i,
+                update_handler: *cetech1.c.ct_kernel_task_update_i,
                 kernel_tick: u64,
+                frame_allocator: *std.mem.Allocator,
                 dt: i64,
                 pub fn exec(self: *@This()) void {
                     var zone_ctx = profiler.ztracy.Zone(@src());
@@ -386,30 +414,33 @@ fn updateKernelTasks(kernel_tick: u64, dt: i64) !void {
 
                     // profiler.FiberEnter(self.update_handler.name);
                     // defer profiler.FiberLeave();
-                    self.update_handler.update.?(self.kernel_tick, @floatFromInt(self.dt));
+                    self.update_handler.update.?(@ptrCast(self.frame_allocator), @ptrCast(_main_db.db), self.kernel_tick, @floatFromInt(self.dt));
                 }
             };
 
-            const task_strid = cetech1.strId64(c.fromCstr(update_handler.name));
+            const task_strid = cetech1.strid.strId64(c.fromCstr(update_handler.name));
 
-            var prereq = cetech1.TaskID.none;
+            var prereq = cetech1.task.TaskID.none;
 
             var depeds = phase.update_bag.dependList(task_strid);
             if (depeds != null) {
-                try _tmp_depend_array.resize(0);
+                _tmp_depend_array.clearRetainingCapacity();
 
                 for (depeds.?) |d| {
                     try _tmp_depend_array.append(_tmp_taskid_map.get(d).?);
                 }
 
                 prereq = try task.api.combine(_tmp_depend_array.items);
-            } else {}
+            } else {
+                prereq = last_phase_task_id;
+            }
 
             const job_id = try task.api.schedule(
                 prereq,
                 KernelTask{
-                    .update_handler = update_handler.*,
+                    .update_handler = update_handler,
                     .kernel_tick = kernel_tick,
+                    .frame_allocator = frame_allocator,
                     .dt = dt,
                 },
             );
@@ -417,23 +448,31 @@ fn updateKernelTasks(kernel_tick: u64, dt: i64) !void {
         }
 
         var sync_job = try task.api.combine(_tmp_taskid_map.values());
-        task.api.wait(sync_job);
+        last_phase_task_id = sync_job;
+
+        if (all_phase_update_task_id != cetech1.task.TaskID.none) {
+            all_phase_update_task_id = sync_job;
+        } else {
+            all_phase_update_task_id = try task.api.combine(&[_]cetech1.task.TaskID{ all_phase_update_task_id, sync_job });
+        }
     }
 
-    try _tmp_depend_array.resize(0);
+    task.api.wait(all_phase_update_task_id);
+
+    _tmp_depend_array.clearRetainingCapacity();
     _tmp_taskid_map.clearRetainingCapacity();
 }
 
 fn dumpKernelUpdatePhaseTree() !void {
-    log.api.debug(MODULE_NAME, "UPDATE PHASE", .{});
+    log.api.info(MODULE_NAME, "UPDATE PHASE", .{});
     for (_phases_bag.output.items, 0..) |phase_hash, idx| {
         var phase = _phase_map.getPtr(phase_hash).?;
-        log.api.debug(MODULE_NAME, " +- PHASE: {s}", .{phase.name});
+        log.api.info(MODULE_NAME, " +- PHASE: {s}", .{phase.name});
 
         const last_idx = if (_phases_bag.output.items.len != 0) _phases_bag.output.items.len else 0;
         const is_last = (last_idx - 1) == idx;
         for (phase.update_chain.items) |update_fce| {
-            const task_name_strid = cetech1.strId64(c.fromCstr(update_fce.name));
+            const task_name_strid = cetech1.strid.strId64(c.fromCstr(update_fce.name));
             const dep_arr = phase.update_bag.dependList(task_name_strid);
             const is_root = dep_arr == null;
             const tags = if (is_root) "R" else " ";
@@ -456,10 +495,10 @@ fn dumpKernelUpdatePhaseTree() !void {
             //const vert_line = if (!is_last) "|" else " ";
 
             if (depends_line == null) {
-                log.api.debug(MODULE_NAME, " {s}   +- [{s}] TASK: {s}", .{ vert_line, tags, update_fce.name });
+                log.api.info(MODULE_NAME, " {s}   +- [{s}] TASK: {s}", .{ vert_line, tags, update_fce.name });
             } else {
                 defer _kernel_allocator.free(depends_line.?);
-                log.api.debug(MODULE_NAME, " {s}   +- [{s}] TASK: {s} [{s}]", .{ vert_line, tags, update_fce.name, depends_line.? });
+                log.api.info(MODULE_NAME, " {s}   +- [{s}] TASK: {s} [{s}]", .{ vert_line, tags, update_fce.name, depends_line.? });
             }
         }
     }
@@ -467,14 +506,14 @@ fn dumpKernelUpdatePhaseTree() !void {
 
 fn initKernelTasks() void {
     for (_task_chain.items) |iface| {
-        iface.init.?();
+        iface.init.?(@ptrCast(_main_db.db));
     }
 }
 
 fn dumpKernelTask() void {
-    log.api.debug(MODULE_NAME, "TASKS", .{});
+    log.api.info(MODULE_NAME, "TASKS", .{});
     for (_task_chain.items) |t| {
-        log.api.debug(MODULE_NAME, " +- {s}", .{t.name});
+        log.api.info(MODULE_NAME, " +- {s}", .{t.name});
     }
 }
 
@@ -509,11 +548,11 @@ test "Can create kernel" {
     };
 
     try init(allocator);
-    defer deinit();
+    defer deinit() catch undefined;
 
     var static_modules = [_]c.c.ct_module_desc_t{.{ .name = "module1", .module_fce = &Module1.load_module }};
     try bigInit(&static_modules, false);
-    try bitDeinit();
+    try bigDeinit();
 
     try std.testing.expect(Module1.called);
 }

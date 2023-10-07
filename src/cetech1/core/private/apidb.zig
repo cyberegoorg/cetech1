@@ -5,6 +5,7 @@ const ArrayList = std.ArrayList;
 const StringHashMap = std.StringHashMap;
 const StringArrayHashMap = std.StringArrayHashMap;
 
+const log = @import("log.zig");
 const public = @import("../apidb.zig");
 const c = @import("../c.zig");
 
@@ -26,7 +27,17 @@ const InterfaceHashMap = StringArrayHashMap(InterfaceImplList);
 const InterfaceGen = StringArrayHashMap(u64);
 const GlobalVarMap = StringArrayHashMap([]u8);
 
-const log = @import("log.zig");
+pub var api = public.ApiDbAPI{
+    .globalVarFn = globalVar,
+    .setApiOpaqueueFn = setApiOpaqueue,
+    .getApiOpaaqueFn = getApiOpaque,
+    .removeApiFn = removeApi,
+    .implInterfaceFn = implInterface,
+    .getFirstImplFn = getFirstImpl,
+    .getLastImplFn = getLastImpl,
+    .removeImplFn = removeImpl,
+    .getInterafceGenFn = getInterafceGen,
+};
 
 var _allocator: Allocator = undefined;
 var _language_api_map: LanguagesApiHashMap = undefined;
@@ -105,7 +116,7 @@ fn setApiOpaqueue(language: []const u8, api_name: []const u8, api_ptr: *anyopaqu
         try _language_api_map.put(language, api_map);
     }
 
-    log.api.debug(MODULE_NAME, "Register {s} api '{s}'", .{ language, api_name });
+    //log.api.debug(MODULE_NAME, "Register {s} api '{s}'", .{ language, api_name });
 
     var api_ptr_intern = getApiOpaque(language, api_name, api_size);
 
@@ -166,11 +177,11 @@ fn getInterafceGen(interface_name: []const u8) u64 {
 }
 
 pub fn dumpGlobalVar() void {
-    log.api.debug(MODULE_NAME, "GLOBAL APIDB VARIABLES", .{});
+    log.api.info(MODULE_NAME, "GLOBAL APIDB VARIABLES", .{});
 
     var it = _global_var_map.iterator();
     while (it.next()) |entry| {
-        log.api.debug(MODULE_NAME, " +- {s}", .{entry.key_ptr.*});
+        log.api.info(MODULE_NAME, " +- {s}", .{entry.key_ptr.*});
     }
 }
 
@@ -200,7 +211,7 @@ fn implInterface(interface_name: []const u8, impl_ptr: *anyopaque) anyerror!void
 
     impl_list.append(node);
 
-    log.api.debug(MODULE_NAME, "Register interface '{s}'", .{interface_name});
+    //log.api.debug(MODULE_NAME, "Register interface '{s}'", .{interface_name});
 
     increaseIfaceGen(interface_name);
 }
@@ -320,10 +331,10 @@ pub const apidb_global_c = blk: {
             }
         }
 
-        pub fn impl_or_remove(interface_name: [*c]const u8, api_ptr: ?*anyopaque, load: bool, reload: bool) callconv(.C) void {
+        pub fn impl_or_remove(interface_name: [*c]const u8, api_ptr: ?*anyopaque, load: bool) callconv(.C) void {
             if (load) {
                 Self.impl(interface_name, api_ptr);
-            } else if (!reload) {
+            } else {
                 Self.remove_impl(interface_name, api_ptr);
             }
         }
@@ -353,18 +364,6 @@ pub const apidb_global_c = blk: {
         .get_first_impl = c_api.get_first_impl,
         .global_var = c_api.global_var,
     };
-};
-
-pub var api = public.ApiDbAPI{
-    .globalVarFn = globalVar,
-    .setApiOpaqueueFn = setApiOpaqueue,
-    .getApiOpaaqueFn = getApiOpaque,
-    .removeApiFn = removeApi,
-    .implInterfaceFn = implInterface,
-    .getFirstImplFn = getFirstImpl,
-    .getLastImplFn = getLastImpl,
-    .removeImplFn = removeImpl,
-    .getInterafceGenFn = getInterafceGen,
 };
 
 test "Can create global var" {

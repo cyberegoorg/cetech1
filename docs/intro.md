@@ -15,8 +15,6 @@ Yet another experimental game engine.
 | `x86_64-windows`    | Windows       |
 | `aarch64-windows`   | Windows ARM   |
 
-## Docs [API](https://cyberegoorg.github.io/cetech1/)/[Guide](https://cyberegoorg.github.io/cetech1/#G;)
-
 ## Clone
 
 ```sh
@@ -35,7 +33,8 @@ bin/zig/zig_<ARCH> build
 
 Args                      | Value           | Default     | Description
 --------------------------|-----------------|-------------|-----------------------------------
-`-Dwith-tracy=`           | true \| false   | true        | Build with [tracy](#tracy-profiler) support?
+`-dwith-tracy=`           | true \| false   | true        | Build with [tracy](#tracy-profiler) support?
+`-dtracy-on-demand=`      | true \| false   | true        | Collect data only if exist client.
 
 ## Run
 
@@ -59,12 +58,6 @@ brew install tracy
 tracy -a localhost 
 zig-out/bin/cetech1 # on separate terminal
 # Have fun
-```
-
-## Build docs
-
-```sh
-bin/zig/zig_<ARCH> build docs
 ```
 
 ## Docker compose

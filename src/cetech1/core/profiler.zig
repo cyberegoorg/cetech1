@@ -70,10 +70,15 @@ pub const ProfilerAPI = struct {
         self.frameMarkFn.?();
     }
 
+    pub fn plotU64(self: *Self, name: [*:0]const u8, val: u64) void {
+        self.plotU64Fn.?(name, val);
+    }
+
     msgWithColorFn: ?*const fn (text: []const u8, color: u32) void,
     allocFn: ?*const fn (ptr: ?*const anyopaque, size: usize) void,
     freeFn: ?*const fn (ptr: ?*const anyopaque) void,
     allocNamedFn: ?*const fn (name: [*:0]const u8, ptr: ?*const anyopaque, size: usize) void,
     freeNamedFn: ?*const fn (name: [*:0]const u8, ptr: ?*const anyopaque) void,
     frameMarkFn: ?*const fn () void,
+    plotU64Fn: ?*const fn (name: [*:0]const u8, val: u64) void,
 };

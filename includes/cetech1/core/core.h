@@ -6,3 +6,5 @@
 #include "apidb.h"
 #include "modules.h"
 #include "kernel.h"
+
+#include "cdb.h"

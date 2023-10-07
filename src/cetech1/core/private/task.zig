@@ -4,17 +4,19 @@ const zjobs = @import("zjobs");
 
 const apidb = @import("apidb.zig");
 const log = @import("log.zig");
-const public = @import("../cetech1.zig");
+const profiler = @import("profiler.zig");
+
+const cetech1 = @import("../cetech1.zig");
 
 const MODULE_NAME = "task";
 
-pub var api = public.TaskAPI{
+pub var api = cetech1.task.TaskAPI{
     .scheduleFn = schedule,
     .waitFn = wait,
     .combineFn = combine,
 };
 
-const JobQueue = zjobs.JobQueue(.{});
+const JobQueue = zjobs.JobQueue(.{ .idle_sleep_ns = 1 });
 
 var _allocator: std.mem.Allocator = undefined;
 var _job_queue: JobQueue = undefined;
@@ -27,6 +29,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
 }
 
 pub fn deinit() void {
+    _job_queue.stop();
     _job_queue.deinit();
     _thread_to_name.deinit();
 }
@@ -50,21 +53,21 @@ pub fn stop() void {
 }
 
 pub fn registerToApi() !void {
-    try apidb.api.setZigApi(public.TaskAPI, &api);
+    try apidb.api.setZigApi(cetech1.task.TaskAPI, &api);
     // try apidb.api.setOrRemoveCApi(public.c.ct_log_api_t, &api_c, true, false);
 }
 
-fn taskToJob(t: public.TaskID) zjobs.JobId {
+fn taskToJob(t: cetech1.task.TaskID) zjobs.JobId {
     return @enumFromInt(@intFromEnum(t));
 }
 
-fn jobToTask(j: zjobs.JobId) public.TaskID {
+fn jobToTask(j: zjobs.JobId) cetech1.task.TaskID {
     return @enumFromInt(@intFromEnum(j));
 }
 
-fn schedule(prereq: public.TaskID, task: public.TaskStub) !public.TaskID {
+fn schedule(prereq: cetech1.task.TaskID, task: cetech1.task.TaskStub) !cetech1.task.TaskID {
     const Job = struct {
-        t: public.TaskStub,
+        t: cetech1.task.TaskStub,
         pub fn exec(self: *@This()) void {
             self.t.task_fn(&self.t.data);
         }
@@ -78,11 +81,13 @@ fn schedule(prereq: public.TaskID, task: public.TaskStub) !public.TaskID {
     return jobToTask(job_id);
 }
 
-fn wait(prereq: public.TaskID) void {
+fn wait(prereq: cetech1.task.TaskID) void {
+    var update_zone_ctx = profiler.ztracy.Zone(@src());
+    defer update_zone_ctx.End();
     _job_queue.wait(taskToJob(prereq));
 }
 
-fn combine(prereq: []const public.TaskID) !public.TaskID {
+fn combine(prereq: []const cetech1.task.TaskID) !cetech1.task.TaskID {
     var prereq_j: *[]zjobs.JobId = @ptrFromInt(@intFromPtr(&prereq));
 
     var ret = try _job_queue.combine(prereq_j.*);

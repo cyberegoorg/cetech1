@@ -26,6 +26,6 @@ typedef struct ct_apidb_api_t
 
     void (*impl)(const char *interface_name, void *impl_ptr);
     void (*remove_impl)(const char *interface_name, void *impl_ptr);
-    void (*impl_or_remove)(const char *interface_name, void *impl_ptr, bool load, bool reload);
+    void (*impl_or_remove)(const char *interface_name, void *impl_ptr, bool load);
     const ct_apidb_impl_iter_t *(*get_first_impl)(const char *interface_name);
 } ct_apidb_api_t;

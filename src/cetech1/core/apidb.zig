@@ -39,8 +39,7 @@ pub const ApiDbAPI = struct {
         }
     }
 
-    pub inline fn implOrRemove(self: *Self, comptime T: type, impl_ptr: *T, load: bool, reload: bool) !void {
-        _ = reload;
+    pub inline fn implOrRemove(self: *Self, comptime T: type, impl_ptr: *T, load: bool) !void {
         if (load) {
             return self.implInterface(T, impl_ptr);
         } else {
@@ -98,11 +97,11 @@ pub const ApiDbAPI = struct {
     getInterafceGenFn: ?*const fn (interface_name: []const u8) u64,
 };
 
-inline fn _sanitizeApiName(comptime T: type) []const u8 {
+// get type name and return only last name withou struct_ prefix for c structs.
+fn _sanitizeApiName(comptime T: type) []const u8 {
     const struct_len = "struct_".len;
     const type_str = @typeName(T);
     var name_iter = std.mem.splitBackwardsAny(u8, type_str, ".");
-
     const first = name_iter.first();
     const is_struct = std.mem.startsWith(u8, first, "struct_");
     const api_name = if (is_struct) first[struct_len..] else first;

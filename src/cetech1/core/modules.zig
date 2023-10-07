@@ -23,7 +23,7 @@ pub inline fn loadModuleZigHelper(comptime load_module_zig: LoadModuleZigFn, _ap
     return @intFromBool(r);
 }
 
-inline fn _allocFromCApi(allocator: *const c.c.ct_allocator_t) std.mem.Allocator {
+pub inline fn _allocFromCApi(allocator: *const c.c.ct_allocator_t) std.mem.Allocator {
     var _a: *std.mem.Allocator = @ptrFromInt(@intFromPtr(allocator));
     return _a.*;
 }

@@ -71,11 +71,15 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     const enable_tracy = b.option(bool, "with-tracy", "build with tracy.") orelse true;
+    const tracy_on_demand = b.option(bool, "tracy-on-demand", "build tracy with TRACY_ON_DEMAND") orelse true;
 
     const cetech_core_module = b.createModule(.{
         .source_file = .{ .path = "src/cetech1/core/cetech1.zig" },
         .dependencies = &.{},
     });
+
+    // UUID
+    const uuid_module = b.addModule("Uuid", .{ .source_file = .{ .path = "externals/shared/lib/zig-uuid/src/Uuid.zig" } });
 
     const core_lib_static = b.addStaticLibrary(.{
         .name = "cetech1",
@@ -87,6 +91,7 @@ pub fn build(b: *std.Build) !void {
     core_lib_static.addIncludePath(.{ .path = "includes" });
     core_lib_static.addCSourceFile(.{ .file = .{ .path = "src/cetech1/core/private/log.c" }, .flags = &.{} });
     core_lib_static.linkLibC();
+    core_lib_static.addModule("Uuid", uuid_module);
 
     const exe_test = b.addTest(.{
         .name = "cetech1_test",
@@ -97,6 +102,7 @@ pub fn build(b: *std.Build) !void {
     exe_test.addIncludePath(.{ .path = "includes" });
     exe_test.linkLibrary(core_lib_static);
     exe_test.linkLibC();
+    exe_test.addModule("Uuid", uuid_module);
 
     const exe = b.addExecutable(.{
         .name = "cetech1",
@@ -107,6 +113,7 @@ pub fn build(b: *std.Build) !void {
     exe.addIncludePath(.{ .path = "includes" });
     exe.linkLibrary(core_lib_static);
     exe.addModule("cetech1", cetech_core_module);
+    exe.addModule("Uuid", uuid_module);
     exe.linkLibC();
 
     var module_foo = try addCetechZigModule(
@@ -135,7 +142,8 @@ pub fn build(b: *std.Build) !void {
         },
     });
     if (enable_tracy) {
-        ztracy_pkg.ztracy_c_cpp.defineCMacro("TRACY_ON_DEMAND", null); // Collect only if client is connected
+        // Collect only if client is connected
+        if (tracy_on_demand) ztracy_pkg.ztracy_c_cpp.defineCMacro("TRACY_ON_DEMAND", null);
     }
     ztracy_pkg.link(exe);
     ztracy_pkg.link(exe_test);
@@ -148,25 +156,25 @@ pub fn build(b: *std.Build) !void {
     b.installArtifact(exe);
     b.installArtifact(core_lib_static);
 
-    const run_cmd = b.addRunArtifact(exe);
-    run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    // const run_cmd = b.addRunArtifact(exe);
+    // run_cmd.step.dependOn(b.getInstallStep());
+    // if (b.args) |args| {
+    //     run_cmd.addArgs(args);
+    // }
 
-    const run_step = b.step("run", "Run the app");
-    run_step.dependOn(&run_cmd.step);
+    // const run_step = b.step("run", "Run the app");
+    // run_step.dependOn(&run_cmd.step);
 
-    const build_docs = b.addSystemCommand(&[_][]const u8{
-        b.zig_exe,
-        "test",
-        "src/cetech1/core/cetech1.zig",
-        "-femit-docs",
-        "-fno-emit-bin",
-        "-Iincludes",
-    });
+    // const build_docs = b.addSystemCommand(&[_][]const u8{
+    //     b.zig_exe,
+    //     "test",
+    //     "src/cetech1/core/cetech1.zig",
+    //     "-femit-docs",
+    //     "-fno-emit-bin",
+    //     "-Iincludes",
+    // });
 
-    const docs = b.step("docs", "Builds docs");
+    // const docs = b.step("docs", "Builds docs");
 
-    docs.dependOn(&build_docs.step);
+    // docs.dependOn(&build_docs.step);
 }

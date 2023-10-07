@@ -40,6 +40,10 @@ fn frameMark() void {
     ztracy.FrameMark();
 }
 
+fn plotU64(name: [*:0]const u8, val: u64) void {
+    ztracy.PlotU(name, val);
+}
+
 pub var api = public.ProfilerAPI{
     .msgWithColorFn = msgWithColor,
     .allocFn = alloc,
@@ -47,4 +51,5 @@ pub var api = public.ProfilerAPI{
     .allocNamedFn = allocNamed,
     .freeNamedFn = freeNamed,
     .frameMarkFn = frameMark,
+    .plotU64Fn = plotU64,
 };
