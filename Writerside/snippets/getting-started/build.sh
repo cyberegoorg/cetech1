@@ -1,0 +1,1 @@
+bin/zig/zig_<ARCH> build

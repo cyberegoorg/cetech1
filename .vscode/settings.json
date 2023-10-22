@@ -1,6 +1,10 @@
 {
-    "[python]": {
-        "editor.defaultFormatter": "ms-python.black-formatter"
+    "files.associations": {
+        "*.ct_*": "json",
+    },
+    "[json]": {
+        "editor.insertSpaces": true,
+        "editor.tabSize": 2
     },
     "todo-tree.filtering.excludeGlobs": [
         "bin",

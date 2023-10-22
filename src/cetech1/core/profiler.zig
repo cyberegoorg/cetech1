@@ -1,6 +1,8 @@
 const std = @import("std");
 const Src = std.builtin.SourceLocation;
 
+/// Priler alocator wraping struct
+/// Wrap given alocator and trace alloc/free with profiler
 pub const AllocatorProfiler = struct {
     const Self = @This();
     name: ?[:0]const u8,
@@ -43,42 +45,53 @@ pub const AllocatorProfiler = struct {
     }
 };
 
+/// Main profiler API.
+/// Using awesome Tracy profiler.
 pub const ProfilerAPI = struct {
     const Self = @This();
 
-    pub fn msgWithColor(self: *Self, text: []const u8, color: u32) void {
-        self.msgWithColorFn.?(text, color);
+    /// Trace this msg with color
+    pub fn msgWithColor(self: Self, text: []const u8, color: u32) void {
+        self.msgWithColorFn(text, color);
     }
 
-    pub fn alloc(self: *Self, ptr: ?*const anyopaque, size: usize) void {
-        self.allocFn.?(ptr, size);
+    /// Trace allocation
+    pub fn alloc(self: Self, ptr: ?*const anyopaque, size: usize) void {
+        self.allocFn(ptr, size);
     }
 
-    pub fn free(self: *Self, ptr: ?*const anyopaque) void {
-        self.freeFn.?(ptr);
+    /// Trace free
+    pub fn free(self: Self, ptr: ?*const anyopaque) void {
+        self.freeFn(ptr);
     }
 
-    pub fn allocNamed(self: *Self, name: [*:0]const u8, ptr: ?*const anyopaque, size: usize) void {
-        self.allocNamedFn.?(name, ptr, size);
+    /// Trace allocation with name
+    pub fn allocNamed(self: Self, name: [*:0]const u8, ptr: ?*const anyopaque, size: usize) void {
+        self.allocNamedFn(name, ptr, size);
     }
 
-    pub fn freeNamed(self: *Self, name: [*:0]const u8, ptr: ?*const anyopaque) void {
-        self.freeNamedFn.?(name, ptr);
+    /// Trace free with name
+    pub fn freeNamed(self: Self, name: [*:0]const u8, ptr: ?*const anyopaque) void {
+        self.freeNamedFn(name, ptr);
     }
 
-    pub fn frameMark(self: *Self) void {
-        self.frameMarkFn.?();
+    /// Mark frame begin
+    pub fn frameMark(self: Self) void {
+        self.frameMarkFn();
     }
 
-    pub fn plotU64(self: *Self, name: [*:0]const u8, val: u64) void {
-        self.plotU64Fn.?(name, val);
+    /// Plot u64 value with name
+    pub fn plotU64(self: Self, name: [*:0]const u8, val: u64) void {
+        self.plotU64Fn(name, val);
     }
 
-    msgWithColorFn: ?*const fn (text: []const u8, color: u32) void,
-    allocFn: ?*const fn (ptr: ?*const anyopaque, size: usize) void,
-    freeFn: ?*const fn (ptr: ?*const anyopaque) void,
-    allocNamedFn: ?*const fn (name: [*:0]const u8, ptr: ?*const anyopaque, size: usize) void,
-    freeNamedFn: ?*const fn (name: [*:0]const u8, ptr: ?*const anyopaque) void,
-    frameMarkFn: ?*const fn () void,
-    plotU64Fn: ?*const fn (name: [*:0]const u8, val: u64) void,
+    //#region Pointers to implementation
+    msgWithColorFn: *const fn (text: []const u8, color: u32) void,
+    allocFn: *const fn (ptr: ?*const anyopaque, size: usize) void,
+    freeFn: *const fn (ptr: ?*const anyopaque) void,
+    allocNamedFn: *const fn (name: [*:0]const u8, ptr: ?*const anyopaque, size: usize) void,
+    freeNamedFn: *const fn (name: [*:0]const u8, ptr: ?*const anyopaque) void,
+    frameMarkFn: *const fn () void,
+    plotU64Fn: *const fn (name: [*:0]const u8, val: u64) void,
+    //#endregion
 };

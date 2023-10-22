@@ -1,0 +1,7 @@
+{
+  "__version": "0.1.0",
+  "__type_name": "ct_asset_folder",
+  "__uuid": "018b616e-e03c-79eb-a032-68d443fc3b2b",
+  "name": "core_subfolder",
+  "parent": "ct_asset_folder:018b616e-e03b-7546-80d4-3877ac279534"
+}

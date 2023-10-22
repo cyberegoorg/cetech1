@@ -6,14 +6,14 @@ const profiler = @import("profiler.zig");
 const task = @import("task.zig");
 
 pub var api = public.log.LogAPI{
-    .log = log,
+    .logFn = log,
 };
 
 pub fn registerToApi() !void {
     try apidb.api.setZigApi(public.log.LogAPI, &api);
 
     _ct_log_set_log_api(&api_c);
-    try apidb.api.setOrRemoveCApi(public.c.ct_log_api_t, &api_c, true, false);
+    try apidb.api.setOrRemoveCApi(public.c.ct_log_api_t, &api_c, true);
 }
 
 pub fn log(level: public.log.LogAPI.Level, scope: []const u8, msg: []const u8) void {
@@ -40,6 +40,12 @@ pub fn log(level: public.log.LogAPI.Level, scope: []const u8, msg: []const u8) v
         .debug => std.log.debug(LOG_FORMAT, args),
         .warn => std.log.warn(LOG_FORMAT, args),
         .err => std.log.err(LOG_FORMAT, args),
+    }
+
+    var it = apidb.api.getFirstImpl(public.log.LogHandlerI);
+    while (it) |node| : (it = node.next) {
+        var iface = public.apidb.ApiDbAPI.toInterface(public.log.LogHandlerI, node);
+        iface.log(level, scope, msg);
     }
 }
 

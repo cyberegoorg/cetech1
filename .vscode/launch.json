@@ -6,7 +6,37 @@
             "request": "launch",
             "name": "CeTech1",
             "program": "${workspaceFolder}/zig-out/bin/cetech1",
-            "args": [],
+            "args": [
+                "--asset-root",
+                "tests/test_asset/"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "CeTech1 max 5 tick",
+            "program": "${workspaceFolder}/zig-out/bin/cetech1",
+            "args": [
+                "--max-kernel-tick",
+                "5",
+                "--asset-root",
+                "tests/test_asset/"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "CeTech1 --headless",
+            "program": "${workspaceFolder}/zig-out/bin/cetech1",
+            "args": [
+                "--max-kernel-tick",
+                "5",
+                "--asset-root",
+                "tests/test_asset/",
+                "--headless"
+            ],
             "cwd": "${workspaceFolder}"
         },
         {

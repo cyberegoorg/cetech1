@@ -1,4 +1,6 @@
 // NOTE: Braindump shit, features first for api then optimize internals.
+// TODO: remove typestorage lookup, use typhe_hash => type_idx fce,  storages[objid.type_idx]
+// TODO: linkedlist for objects to delete, *Object.next to Object
 
 const builtin = @import("builtin");
 const std = @import("std");
@@ -23,12 +25,14 @@ const MODULE_NAME = "cdb";
 
 const Blob = []u8;
 const IdSet = std.AutoArrayHashMap(public.ObjId, void);
+const ReferencerIdSet = std.AutoArrayHashMap(public.ObjId, u32);
+const PrototypeInstanceSet = std.AutoArrayHashMap(public.ObjId, void);
 const IdSetPool = cetech1.mem.VirtualPool(ObjIdSet);
 const OverridesSet = std.bit_set.DynamicBitSet;
 
-const AtomicInt = std.atomic.Atomic(u32);
+const AtomicInt32 = std.atomic.Atomic(u32);
+const AtomicInt64 = std.atomic.Atomic(u64);
 const TypeStorageMap = std.AutoArrayHashMap(StrId32, TypeStorage);
-const Uuid2ObjId = std.AutoArrayHashMap(cetech1.uuid.Uuid, public.ObjId);
 const ToFreeIdQueue = std.atomic.Queue(*Object);
 const FreeIdQueueNodePool = cetech1.mem.PoolWithLock(cetech1.FreeIdQueue.Node);
 const ToFreeIdQueueNodePool = cetech1.mem.PoolWithLock(ToFreeIdQueue.Node);
@@ -36,6 +40,8 @@ const ToFreeIdQueueNodePool = cetech1.mem.PoolWithLock(ToFreeIdQueue.Node);
 const TypeAspectMap = std.AutoArrayHashMap(StrId32, *anyopaque);
 const PropertyAspectPair = struct { StrId32, u32 };
 const PropertyTypeAspectMap = std.AutoArrayHashMap(PropertyAspectPair, *anyopaque);
+
+const OnObjIdDestroyMap = std.AutoArrayHashMap(public.OnObjIdDestroyed, void);
 
 inline fn toObjFromObjO(obj: *public.Obj) *Object {
     return @alignCast(@ptrCast(obj));
@@ -52,7 +58,7 @@ inline fn makeTypeTuple(comptime T: type) TypeInfoTuple {
 }
 inline fn getCdbTypeInfo(cdb_type: public.PropType) TypeInfoTuple {
     return switch (cdb_type) {
-        public.PropType.REFERENCE_SET => makeTypeTuple(*ObjIdSet),
+        public.PropType.BOOL => makeTypeTuple(bool),
         public.PropType.U64 => makeTypeTuple(u64),
         public.PropType.I64 => makeTypeTuple(i64),
         public.PropType.U32 => makeTypeTuple(u32),
@@ -64,6 +70,7 @@ inline fn getCdbTypeInfo(cdb_type: public.PropType) TypeInfoTuple {
         public.PropType.SUBOBJECT => makeTypeTuple(public.ObjId),
         public.PropType.REFERENCE => makeTypeTuple(public.ObjId),
         public.PropType.SUBOBJECT_SET => makeTypeTuple(*ObjIdSet),
+        public.PropType.REFERENCE_SET => makeTypeTuple(*ObjIdSet),
         else => unreachable,
     };
 }
@@ -73,8 +80,8 @@ pub const Object = struct {
     const Self = @This();
 
     // ObjId associated with this Object.
-    // ObjId can have multiple object because write clone entire obj.
-    objid: public.ObjId = .{}, // TODO
+    // ObjId can have multiple object because write clone entire object.
+    objid: public.ObjId = .{},
 
     // Property memory.
     props_mem: []u8 = undefined,
@@ -147,18 +154,28 @@ pub const ObjIdSet = struct {
         return removed;
     }
 
-    pub fn getItems(self: *Self, allocator: std.mem.Allocator) ![]public.ObjId {
+    pub fn getAddedItems(self: *Self, allocator: std.mem.Allocator) ![]public.ObjId {
         var new = try allocator.alloc(public.ObjId, self.added.count());
         @memcpy(new, self.added.keys());
         return new;
     }
+
+    pub fn getRemovedItems(self: *Self, allocator: std.mem.Allocator) ![]public.ObjId {
+        var new = try allocator.alloc(public.ObjId, self.removed.count());
+        @memcpy(new, self.removed.keys());
+        return new;
+    }
 };
+
+const limit_max = true;
+const force_max = 10_000;
 
 pub const TypeStorage = struct {
     const Self = @This();
 
-    const MAX_OBJECTS = 1_000_000; // TODO: From max ID
-    const MAX_OBJIDSETS = 1_000_000;
+    // TODO: For now allocate minimal object count, need better sage of vram on windows.
+    const MAX_OBJECTS = if (limit_max) force_max else 1_000_000; // TODO: From max ID
+    const MAX_OBJIDSETS = if (limit_max) force_max else 1_000_000;
 
     allocator: std.mem.Allocator,
     db: *Db,
@@ -166,7 +183,7 @@ pub const TypeStorage = struct {
     // Type data
     name: []const u8,
     type_hash: StrId32,
-    props_def: []const public.PropDef,
+    props_def: []public.PropDef,
     props_size: usize,
     prop_offset: std.ArrayList(usize),
 
@@ -175,8 +192,14 @@ pub const TypeStorage = struct {
     // Per ObjectId data
     objid_pool: cetech1.mem.IdPool(u32),
     objid2obj: cetech1.mem.VirtualArray(?*Object),
-    objid_ref_count: cetech1.mem.VirtualArray(AtomicInt),
-    objid2uuid: cetech1.mem.VirtualArray(cetech1.uuid.Uuid),
+    objid_ref_count: cetech1.mem.VirtualArray(AtomicInt32),
+    objid_version: cetech1.mem.VirtualArray(AtomicInt64),
+
+    objid2refs: cetech1.mem.VirtualArray(ReferencerIdSet),
+    objid2refs_lock: cetech1.mem.VirtualArray(std.Thread.Mutex), //TODO: without lock?
+
+    prototype2instances: cetech1.mem.VirtualArray(PrototypeInstanceSet),
+    prototype2instances_lock: cetech1.mem.VirtualArray(std.Thread.Mutex), //TODO: without lock?
 
     // Per Object data
     object_pool: cetech1.mem.VirtualPool(Object),
@@ -211,24 +234,34 @@ pub const TypeStorage = struct {
             props_size += size + padding;
         }
 
-        return .{
+        var copy_def = try std.ArrayList(public.PropDef).initCapacity(_allocator, props_def.len);
+        try copy_def.appendSlice(props_def);
+
+        return TypeStorage{
             .db = db,
             .name = name,
             .type_hash = strId32(name),
-            .props_def = props_def,
+            .props_def = try copy_def.toOwnedSlice(),
             .allocator = allocator,
-            .object_pool = cetech1.mem.VirtualPool(Object).init(allocator, MAX_OBJECTS),
+            .object_pool = try cetech1.mem.VirtualPool(Object).init(allocator, MAX_OBJECTS),
 
-            .objid2obj = cetech1.mem.VirtualArray(?*Object).init(MAX_OBJECTS),
+            .objid2obj = try cetech1.mem.VirtualArray(?*Object).init(MAX_OBJECTS),
             .objid_pool = cetech1.mem.IdPool(u32).init(allocator),
-            .objid_ref_count = cetech1.mem.VirtualArray(AtomicInt).init(MAX_OBJECTS),
-            .objid2uuid = cetech1.mem.VirtualArray(cetech1.uuid.Uuid).init(MAX_OBJECTS),
-            .objs_mem = cetech1.mem.VirtualArray(u8).init(MAX_OBJECTS * props_size),
+            .objid_ref_count = try cetech1.mem.VirtualArray(AtomicInt32).init(MAX_OBJECTS),
+            .objid_version = try cetech1.mem.VirtualArray(AtomicInt64).init(MAX_OBJECTS),
+
+            .objid2refs = try cetech1.mem.VirtualArray(ReferencerIdSet).init(MAX_OBJECTS),
+            .objid2refs_lock = try cetech1.mem.VirtualArray(std.Thread.Mutex).init(MAX_OBJECTS),
+
+            .prototype2instances = try cetech1.mem.VirtualArray(PrototypeInstanceSet).init(MAX_OBJECTS),
+            .prototype2instances_lock = try cetech1.mem.VirtualArray(std.Thread.Mutex).init(MAX_OBJECTS),
+
+            .objs_mem = try cetech1.mem.VirtualArray(u8).init(MAX_OBJECTS * props_size),
 
             .to_free_queue = ToFreeIdQueue.init(),
             .to_free_obj_node_pool = ToFreeIdQueueNodePool.init(allocator),
 
-            .idset_pool = IdSetPool.init(allocator, MAX_OBJIDSETS),
+            .idset_pool = try IdSetPool.init(allocator, MAX_OBJIDSETS),
 
             .props_size = props_size,
             .prop_offset = prop_offset,
@@ -248,6 +281,16 @@ pub const TypeStorage = struct {
             obj.deinit();
         }
 
+        // idx 0 is null element
+        for (self.objid2refs.items[1..self.objid_pool.count.value]) |*obj| {
+            obj.deinit();
+        }
+
+        // idx 0 is null element
+        for (self.prototype2instances.items[1..self.objid_pool.count.value]) |*obj| {
+            obj.deinit();
+        }
+
         self.prop_offset.deinit();
         self.object_pool.deinit();
         self.objid_pool.deinit();
@@ -257,7 +300,13 @@ pub const TypeStorage = struct {
         self.objs_mem.deinit();
         self.aspect_map.deinit();
         self.property_aspect_map.deinit();
-        self.objid2uuid.deinit();
+
+        self.objid2refs.deinit();
+        self.objid2refs_lock.deinit();
+        self.prototype2instances.deinit();
+        self.prototype2instances_lock.deinit();
+
+        _allocator.free(self.props_def);
     }
 
     pub fn isTypeHashValidForProperty(self: *Self, prop_idx: u32, type_hash: StrId32) bool {
@@ -265,19 +314,32 @@ pub const TypeStorage = struct {
         return std.meta.eql(self.props_def[prop_idx].type_hash, type_hash);
     }
 
-    fn allocateObjId(self: *Self, with_uuid: ?cetech1.uuid.Uuid) !public.ObjId {
+    fn allocateObjId(self: *Self) !public.ObjId {
         var zone_ctx = profiler.ztracy.Zone(@src());
         defer zone_ctx.End();
 
-        var id = self.objid_pool.create(null);
-        self.objid_ref_count.items[id] = AtomicInt.init(1);
-        self.objid2uuid.items[id] = with_uuid orelse uuid.api.newUUID7();
+        var is_new = false;
+        var id = self.objid_pool.create(&is_new);
+        self.objid_ref_count.items[id] = AtomicInt32.init(1);
+        self.objid_version.items[id] = AtomicInt64.init(1);
+
+        if (is_new) {
+            self.objid2refs.items[id] = ReferencerIdSet.init(_allocator);
+            self.prototype2instances.items[id] = PrototypeInstanceSet.init(_allocator);
+        } else {
+            self.objid2refs.items[id].clearRetainingCapacity();
+            self.prototype2instances.items[id].clearRetainingCapacity();
+        }
+        self.objid2refs_lock.items[id] = std.Thread.Mutex{};
+        self.prototype2instances_lock.items[id] = std.Thread.Mutex{};
 
         const objid = .{ .id = id, .type_hash = self.type_hash };
 
-        try self.db.mapUuidToObjid(self.objid2uuid.items[id], objid);
-
         return objid;
+    }
+
+    pub fn increaseVersion(self: *Self, obj: public.ObjId) void {
+        _ = self.objid_version.items[obj.id].fetchAdd(1, .Monotonic);
     }
 
     pub fn increaseReference(self: *Self, obj: public.ObjId) void {
@@ -296,7 +358,7 @@ pub const TypeStorage = struct {
         }
     }
 
-    fn decreaseReferenceFree(self: *Self, object: *Object, tmp_allocator: std.mem.Allocator) anyerror!u32 {
+    fn decreaseReferenceFree(self: *Self, object: *Object, destroyed_objid: *std.ArrayList(public.ObjId), tmp_allocator: std.mem.Allocator) anyerror!u32 {
         var ref_count = &self.objid_ref_count.items[object.objid.id];
 
         if (ref_count.value == 0) return 0; // TODO: need this?
@@ -304,7 +366,7 @@ pub const TypeStorage = struct {
 
         if (1 == ref_count.fetchSub(1, .Release)) {
             ref_count.fence(.Acquire);
-            return try self.freeObject(object, tmp_allocator);
+            return try self.freeObject(object, destroyed_objid, tmp_allocator);
         }
         return 0;
     }
@@ -321,7 +383,7 @@ pub const TypeStorage = struct {
     }
 
     fn freeObjId(self: *Self, objid: public.ObjId) !void {
-        try self.db.unmapUuid(self.db.getUuid(objid));
+        //try self.db.unmapUuid(self.db.getUuid(objid));
         try self.objid_pool.destroy(objid.id);
     }
 
@@ -409,15 +471,15 @@ pub const TypeStorage = struct {
         return new_blob;
     }
 
-    pub fn createObj(self: *Self, with_uuid: ?cetech1.uuid.Uuid) !public.ObjId {
+    pub fn createObj(self: *Self) !public.ObjId {
         var zone_ctx = profiler.ztracy.Zone(@src());
         defer zone_ctx.End();
 
         if (!self.default_obj.isEmpty()) {
-            return self.cloneObject(self.default_obj, with_uuid);
+            return self.cloneObject(self.default_obj);
         }
 
-        var id = try self.allocateObjId(with_uuid);
+        var id = try self.allocateObjId();
         var obj = try self.allocateObject(id, true);
 
         self.objid2obj.items[id.id] = obj;
@@ -431,17 +493,20 @@ pub const TypeStorage = struct {
         defer zone_ctx.End();
 
         var prototype_obj = self.db.getObjectPtr(prototype).?;
-        var new_object = try self.cloneObjectRaw(prototype_obj, true, null);
+        var new_object = try self.cloneObjectRaw(prototype_obj, true, false);
         new_object.prototype_id = prototype_obj.objid.id;
+
+        try self.addPrototypeInstance(prototype, new_object.objid);
+
         return new_object.objid;
     }
 
-    pub fn cloneObject(self: *Self, boj: public.ObjId, with_uuid: ?cetech1.uuid.Uuid) !public.ObjId {
+    pub fn cloneObject(self: *Self, obj: public.ObjId) !public.ObjId {
         var zone_ctx = profiler.ztracy.Zone(@src());
         defer zone_ctx.End();
 
-        var prototype_obj = self.db.getObjectPtr(boj).?;
-        var new_object = try self.cloneObjectRaw(prototype_obj, true, with_uuid);
+        var true_obj = self.db.getObjectPtr(obj).?;
+        var new_object = try self.cloneObjectRaw(true_obj, true, true);
         return new_object.objid;
     }
 
@@ -454,16 +519,19 @@ pub const TypeStorage = struct {
         try self.decreaseReferenceToFree(true_obj.?);
     }
 
-    pub fn cloneObjectRaw(self: *Self, obj: *Object, create_new: bool, with_uuid: ?cetech1.uuid.Uuid) !*Object {
+    pub fn cloneObjectRaw(self: *Self, obj: *Object, create_new: bool, clone_subobject: bool) !*Object {
         var zone_ctx = profiler.ztracy.Zone(@src());
         defer zone_ctx.End();
 
-        var obj_id = if (!create_new) obj.objid else try self.allocateObjId(with_uuid);
+        var obj_id = if (!create_new) obj.objid else try self.allocateObjId();
         var new_obj = try self.allocateObject(obj_id, false);
 
         if (!create_new) {
             new_obj.prototype_id = obj.prototype_id;
+            new_obj.parent = obj.parent;
+            new_obj.parent_prop_idx = obj.parent_prop_idx;
         }
+
         var it = obj.overrides_set.iterator(.{});
         while (it.next()) |value| {
             new_obj.overrides_set.setValue(value, obj.overrides_set.isSet(value));
@@ -482,25 +550,72 @@ pub const TypeStorage = struct {
                     }
                 },
 
+                // Clone subobject if alocate new
+                public.PropType.SUBOBJECT => {
+                    var true_ptr = new_obj.getPropPtr(public.ObjId, idx);
+                    if (true_ptr.*.id == 0) continue;
+                    //var storage = self.db.getTypeStorage(true_ptr.*.type_hash).?;
+                    if (clone_subobject) {
+                        const clone_subobj = try self.db.cloneObject(true_ptr.*);
+                        true_ptr.* = clone_subobj;
+                        //try self.db.setSubObj(new_obj, @truncate(idx), self.db.getObjectPtr(clone_subobj).?);
+                        self.db.setParent(self.db.getObjectPtr(clone_subobj).?, new_obj.objid, @truncate(idx));
+                        //storage.increaseReference(true_ptr.*);
+                    } else {
+                        //storage.increaseReference(true_ptr.*);
+                    }
+                },
+
                 // Increase ref
-                public.PropType.SUBOBJECT, public.PropType.REFERENCE => {
+                public.PropType.REFERENCE => {
                     var true_ptr = new_obj.getPropPtr(public.ObjId, idx);
                     if (true_ptr.*.id == 0) continue;
                     var storage = self.db.getTypeStorage(true_ptr.*.type_hash).?;
                     storage.increaseReference(true_ptr.*);
                 },
 
-                // Duplicate set and increase ref
-                public.PropType.REFERENCE_SET, public.PropType.SUBOBJECT_SET => {
+                public.PropType.SUBOBJECT_SET => {
                     var true_ptr = new_obj.getPropPtr(*ObjIdSet, idx);
-                    true_ptr.* = try self.cloneIdSet(true_ptr.*, create_new);
 
-                    var set = try true_ptr.*.getItems(self.allocator);
+                    if (clone_subobject) {
+                        var new_set = try self.allocateObjIdSet();
+
+                        var set = try true_ptr.*.getAddedItems(self.allocator);
+                        defer self.allocator.free(set);
+                        for (set) |subobj| {
+                            const clone_subobj = try self.db.cloneObject(subobj);
+
+                            //try self.db.addToSubObjSet(new_obj, @truncate(idx), &.{self.db.getObjectPtr(clone_subobj).?});
+
+                            //var storage = self.db.getTypeStorage(subobj.type_hash).?;
+                            self.db.setParent(self.db.getObjectPtr(clone_subobj).?, new_obj.objid, @truncate(idx));
+                            _ = try new_set.add(clone_subobj);
+                            //storage.increaseReference(clone_subobj);
+                        }
+                        true_ptr.* = new_set;
+                    } else {
+                        true_ptr.* = try self.cloneIdSet(true_ptr.*, create_new);
+                        var set = try true_ptr.*.getAddedItems(self.allocator);
+                        defer self.allocator.free(set);
+                        for (set) |ref| {
+                            var storage = self.db.getTypeStorage(ref.type_hash).?;
+                            _ = storage;
+                            //storage.increaseReference(ref);
+                        }
+                    }
+                },
+
+                // Duplicate set and increase ref
+                public.PropType.REFERENCE_SET => {
+                    var true_ptr = new_obj.getPropPtr(*ObjIdSet, idx);
+
+                    true_ptr.* = try self.cloneIdSet(true_ptr.*, create_new);
+                    var set = try true_ptr.*.getAddedItems(self.allocator);
                     defer self.allocator.free(set);
                     for (set) |ref| {
                         var storage = self.db.getTypeStorage(ref.type_hash).?;
-                        _ = storage;
-                        //storage.increaseReference(ref);
+                        //_ = storage;
+                        storage.increaseReference(ref);
                     }
                 },
 
@@ -521,86 +636,122 @@ pub const TypeStorage = struct {
         return new_obj;
     }
 
-    pub fn freeObject(self: *Self, obj: *Object, tmp_allocator: std.mem.Allocator) !u32 {
+    pub fn freeObject(self: *Self, obj: *Object, destroyed_objid: *std.ArrayList(public.ObjId), tmp_allocator: std.mem.Allocator) !u32 {
         var zone_ctx = profiler.ztracy.Zone(@src());
         defer zone_ctx.End();
+
+        const is_writer = self.objid2obj.items[obj.objid.id] != obj;
 
         var free_objects: u32 = 1;
         for (self.props_def, 0..) |prop_def, idx| {
             switch (prop_def.type) {
-                public.PropType.STR => {
+                .STR => {
                     var true_ptr = obj.getPropPtr([:0]u8, idx);
                     if (true_ptr.len != 0) {
                         self.allocator.free(true_ptr.*);
                     }
                 },
-                public.PropType.SUBOBJECT => {
+                .BLOB => {
+                    var true_ptr = obj.getPropPtr(Blob, idx);
+                    self.destroyBlob(true_ptr.*);
+                },
+                .SUBOBJECT => {
                     var subobj = obj.getPropPtr(public.ObjId, idx);
                     var subobj_ptr = self.db.getObjectPtr(subobj.*) orelse continue;
                     var storage = self.db.getTypeStorage(subobj_ptr.objid.type_hash).?;
-                    free_objects += try storage.decreaseReferenceFree(subobj_ptr, tmp_allocator);
-                },
-                public.PropType.REFERENCE => {
-                    var ref = obj.getPropPtr(public.ObjId, idx);
-                    var ref_ptr = self.db.getObjectPtr(ref.*) orelse continue;
-                    var storage = self.db.getTypeStorage(ref_ptr.objid.type_hash).?;
-                    free_objects += try storage.decreaseReferenceFree(ref_ptr, tmp_allocator);
-                },
-                public.PropType.REFERENCE_SET => {
-                    var true_ptr = obj.getPropPtr(*ObjIdSet, idx);
 
-                    var set = try true_ptr.*.getItems(tmp_allocator);
-                    defer tmp_allocator.free(set);
-                    for (set) |ref_id| {
-                        var ref_ptr = self.db.getObjectPtr(ref_id) orelse continue;
-                        var storage = self.db.getTypeStorage(ref_ptr.objid.type_hash).?;
-                        free_objects += try storage.decreaseReferenceFree(ref_ptr, tmp_allocator);
+                    if (!is_writer) {
+                        free_objects += try storage.decreaseReferenceFree(subobj_ptr, destroyed_objid, tmp_allocator);
+                        //free_objects += try storage.decreaseReferenceFree(subobj_ptr, destroyed_objid, tmp_allocator);
                     }
-                    try self.destroyObjIdSet(true_ptr.*);
                 },
-                public.PropType.SUBOBJECT_SET => {
+                .SUBOBJECT_SET => {
                     var true_ptr = obj.getPropPtr(*ObjIdSet, idx);
 
-                    var set = try true_ptr.*.getItems(tmp_allocator);
+                    var set = try true_ptr.*.getAddedItems(tmp_allocator);
                     defer tmp_allocator.free(set);
 
                     for (set) |subobj| {
                         var subobj_ptr = self.db.getObjectPtr(subobj) orelse continue;
                         var storage = self.db.getTypeStorage(subobj.type_hash).?;
-                        free_objects += try storage.decreaseReferenceFree(subobj_ptr, tmp_allocator);
+                        if (!is_writer) {
+                            free_objects += try storage.decreaseReferenceFree(subobj_ptr, destroyed_objid, tmp_allocator);
+                            //free_objects += try storage.decreaseReferenceFree(subobj_ptr, destroyed_objid, tmp_allocator);
+                        }
                     }
                     try self.destroyObjIdSet(true_ptr.*);
                 },
-                public.PropType.BLOB => {
-                    var true_ptr = obj.getPropPtr(Blob, idx);
-                    self.destroyBlob(true_ptr.*);
+                .REFERENCE => {
+                    var ref = obj.getPropPtr(public.ObjId, idx);
+                    var ref_ptr = self.db.getObjectPtr(ref.*) orelse continue;
+                    var storage = self.db.getTypeStorage(ref_ptr.objid.type_hash).?;
+                    if (!is_writer) {
+                        storage.removeObjIdReferencer(ref.*, obj.objid);
+                    }
+                    free_objects += try storage.decreaseReferenceFree(ref_ptr, destroyed_objid, tmp_allocator);
                 },
+                .REFERENCE_SET => {
+                    var true_ptr = obj.getPropPtr(*ObjIdSet, idx);
+
+                    var set = try true_ptr.*.getAddedItems(tmp_allocator);
+                    defer tmp_allocator.free(set);
+                    for (set) |ref_id| {
+                        var ref_ptr = self.db.getObjectPtr(ref_id) orelse continue;
+                        var storage = self.db.getTypeStorage(ref_ptr.objid.type_hash).?;
+                        if (!is_writer) {
+                            storage.removeObjIdReferencer(ref_id, obj.objid);
+                        }
+                        free_objects += try storage.decreaseReferenceFree(ref_ptr, destroyed_objid, tmp_allocator);
+                    }
+                    try self.destroyObjIdSet(true_ptr.*);
+                },
+
                 else => continue,
             }
         }
 
-        if (!obj.parent.isEmpty()) {
-            var parent_obj = self.db.getObjectPtr(obj.parent);
-            var storage = self.db.getTypeStorage(obj.parent.type_hash).?;
-            var ref_count = &storage.objid_ref_count.items[obj.parent.id];
+        // Destroy objid
+        if (!is_writer) {
+            // Has parent? (subobj || in subobjset)
+            if (!obj.parent.isEmpty()) {
+                var parent_obj = self.db.getObjectPtr(obj.parent);
+                var storage = self.db.getTypeStorage(obj.parent.type_hash).?;
+                var ref_count = &storage.objid_ref_count.items[obj.parent.id];
+                if (ref_count.value != 0) {
+                    switch (storage.props_def[obj.parent_prop_idx].type) {
+                        public.PropType.SUBOBJECT => try self.db.clearSubObj(@ptrCast(parent_obj.?), obj.parent_prop_idx),
+                        public.PropType.SUBOBJECT_SET => try self.db.removeFromSubObjSet(@ptrCast(parent_obj.?), obj.parent_prop_idx, @ptrCast(obj)),
+                        else => undefined,
+                    }
+                }
+                obj.parent = .{};
+            }
 
-            if (ref_count.value != 0) {
-                switch (self.props_def[obj.parent_prop_idx].type) {
-                    public.PropType.SUBOBJECT => try self.db.clearSubObj(@ptrCast(parent_obj.?), obj.parent_prop_idx),
-                    public.PropType.SUBOBJECT_SET => try self.db.removeFromSubObjSet(@ptrCast(parent_obj.?), obj.parent_prop_idx, @ptrCast(obj)),
+            const referencers = self.objid2refs.items[obj.objid.id].keys();
+            const referencers_prop_idx = self.objid2refs.items[obj.objid.id].values();
+            for (referencers, referencers_prop_idx) |referencer, prop_idx| {
+                // TODO: why need  orelse continue
+                var storage = self.db.getTypeStorage(referencer.type_hash) orelse continue;
+                var parent_obj = self.db.getObjectPtr(referencer) orelse continue;
+                switch (storage.props_def[prop_idx].type) {
+                    public.PropType.REFERENCE => try self.db.clearRef(@ptrCast(parent_obj), prop_idx),
+                    public.PropType.REFERENCE_SET => try self.db.removeFromRefSet(@ptrCast(parent_obj), prop_idx, obj.objid),
                     else => undefined,
                 }
             }
-            obj.parent = .{};
-        }
 
-        if (self.objid2obj.items[obj.objid.id] == obj) {
+            if (obj.prototype_id != 0) {
+                self.removePrototypeInstance(.{ .id = obj.prototype_id, .type_hash = obj.objid.type_hash }, obj.objid);
+            }
+
+            //std.debug.assert(obj.objid.id == 6 and obj.objid.type_hash.id == 2358001782);
+
             try self.freeObjId(obj.objid);
             self.objid2obj.items[obj.objid.id] = null;
+            try destroyed_objid.append(obj.objid);
         }
 
         obj.overrides_set.setRangeValue(std.bit_set.Range{ .start = 0, .end = self.props_def.len }, false);
-
         try self.object_pool.destroy(obj);
 
         return free_objects;
@@ -615,11 +766,17 @@ pub const TypeStorage = struct {
             zone_ctx.Name(&self.gc_name);
         }
 
+        var destroyed_ids = std.ArrayList(public.ObjId).init(tmp_allocator);
+        defer destroyed_ids.deinit();
+
         var free_objects: u32 = 0;
         while (self.to_free_queue.get()) |node| {
-            free_objects += try self.freeObject(node.data, tmp_allocator);
+            free_objects += try self.freeObject(node.data, &destroyed_ids, tmp_allocator);
             self.to_free_obj_node_pool.destroy(node);
         }
+
+        self.db.callOnObjIdDestroyed(destroyed_ids.items);
+
         return free_objects;
     }
 
@@ -689,7 +846,7 @@ pub const TypeStorage = struct {
     pub fn isPropertyOverrided(self: *Self, obj: *public.Obj, prop_idx: u32) bool {
         _ = self;
         var true_obj = toObjFromObjO(obj);
-        return (true_obj.prototype_id != 0 and true_obj.overrides_set.isSet(prop_idx));
+        return true_obj.overrides_set.isSet(prop_idx);
     }
 
     pub fn instantiateSubObj(self: *Self, writer: *public.Obj, prop_idx: u32) !void {
@@ -704,6 +861,68 @@ pub const TypeStorage = struct {
         //self.setTT(public.CdbObjIdT, writer, prop_idx, c.c.CT_CDB_OBJID_ZERO, public.PropertyType.SUBOBJECT);
         try self.db.setSubObj(writer, prop_idx, @ptrCast(self.db.getObjectPtr(new_subobj).?));
     }
+
+    pub fn instantiateSubObjFromSet(self: *Self, writer: *public.Obj, prop_idx: u32, set_obj: public.ObjId) !public.ObjId {
+        var zone_ctx = profiler.ztracy.Zone(@src());
+        defer zone_ctx.End();
+
+        var storage = self.db.getTypeStorage(set_obj.type_hash).?;
+        var new_subobj = try storage.createObjectFromPrototype(set_obj);
+        var true_ptr = self.db.getObjectPtr(new_subobj).?;
+
+        try self.db.addToSubObjSet(writer, prop_idx, &.{@ptrCast(true_ptr)});
+
+        var set_obj_w = self.db.getObjectPtr(set_obj).?;
+        try self.db.removeFromSubObjSet(writer, prop_idx, @ptrCast(set_obj_w));
+
+        return new_subobj;
+    }
+
+    pub fn addPrototypeInstance(self: *Self, prototype: public.ObjId, instance: public.ObjId) !void {
+        var lock = &self.prototype2instances_lock.items[prototype.id];
+        lock.lock();
+        defer lock.unlock();
+
+        try self.prototype2instances.items[prototype.id].put(instance, {});
+    }
+
+    pub fn removePrototypeInstance(self: *Self, prototype: public.ObjId, instance: public.ObjId) void {
+        var lock = &self.prototype2instances_lock.items[prototype.id];
+        lock.lock();
+        defer lock.unlock();
+
+        _ = self.prototype2instances.items[prototype.id].swapRemove(instance);
+    }
+
+    pub fn addObjIdReferencer(self: *Self, objid: public.ObjId, referencer: public.ObjId, referencer_prop_idx: u32) !void {
+        var lock = &self.objid2refs_lock.items[objid.id];
+        lock.lock();
+        defer lock.unlock();
+
+        try self.objid2refs.items[objid.id].put(referencer, referencer_prop_idx);
+    }
+
+    pub fn removeObjIdReferencer(self: *Self, objid: public.ObjId, referencer: public.ObjId) void {
+        var lock = &self.objid2refs_lock.items[objid.id];
+        lock.lock();
+        defer lock.unlock();
+
+        _ = self.objid2refs.items[objid.id].swapRemove(referencer);
+    }
+
+    pub fn tranferObjIdReferencer(self: *Self, from_objid: public.ObjId, to_objid: public.ObjId) !void {
+        var lock_from = &self.objid2refs_lock.items[from_objid.id];
+        var lock_to = &self.objid2refs_lock.items[to_objid.id];
+        lock_from.lock();
+        lock_to.lock();
+        defer lock_from.unlock();
+        defer lock_to.unlock();
+
+        var it = self.objid2refs.items[from_objid.id].iterator();
+        while (it.next()) |kv| {
+            try self.objid2refs.items[to_objid.id].put(kv.key_ptr.*, kv.value_ptr.*);
+        }
+    }
 };
 
 pub const Db = struct {
@@ -716,15 +935,14 @@ pub const Db = struct {
     prev: ?*Db = null,
     next: ?*Db = null,
 
-    uuid2objid: Uuid2ObjId,
-    uuid2objid_lock: std.Thread.Mutex,
-
     // Stats
-    write_commit_count: AtomicInt,
-    writers_count: AtomicInt,
-    read_count: AtomicInt,
+    write_commit_count: AtomicInt32,
+    writers_count: AtomicInt32,
+    read_count: AtomicInt32,
     free_objects: u32,
     obj_alocated: u32,
+
+    on_obj_destroy_map: OnObjIdDestroyMap,
 
     // Buffers for profiler
     write_commit_name: [64:0]u8 = undefined,
@@ -739,11 +957,11 @@ pub const Db = struct {
             .allocator = allocator,
             .typestorage_map = TypeStorageMap.init(allocator),
 
-            .uuid2objid = Uuid2ObjId.init(allocator),
-            .uuid2objid_lock = std.Thread.Mutex{},
-            .write_commit_count = AtomicInt.init(0),
-            .writers_count = AtomicInt.init(0),
-            .read_count = AtomicInt.init(0),
+            .on_obj_destroy_map = OnObjIdDestroyMap.init(allocator),
+
+            .write_commit_count = AtomicInt32.init(0),
+            .writers_count = AtomicInt32.init(0),
+            .read_count = AtomicInt32.init(0),
             .free_objects = 0,
             .obj_alocated = 0,
         };
@@ -759,26 +977,8 @@ pub const Db = struct {
             value.deinit();
         }
 
+        self.on_obj_destroy_map.deinit();
         self.typestorage_map.deinit();
-        self.uuid2objid.deinit();
-    }
-
-    pub fn mapUuidToObjid(self: *Self, obj_uuid: cetech1.uuid.Uuid, objid: public.ObjId) !void {
-        self.uuid2objid_lock.lock();
-        defer self.uuid2objid_lock.unlock();
-        try self.uuid2objid.put(obj_uuid, objid);
-    }
-
-    pub fn unmapUuid(self: *Self, obj_uuid: cetech1.uuid.Uuid) !void {
-        self.uuid2objid_lock.lock();
-        defer self.uuid2objid_lock.unlock();
-        _ = self.uuid2objid.swapRemove(obj_uuid);
-    }
-
-    pub fn getObjIdFromUuid(self: *Self, obj_uuid: cetech1.uuid.Uuid) ?public.ObjId {
-        self.uuid2objid_lock.lock();
-        defer self.uuid2objid_lock.unlock();
-        return self.uuid2objid.get(obj_uuid);
     }
 
     pub fn gc(self: *Self, tmp_allocator: std.mem.Allocator) !void {
@@ -824,9 +1024,22 @@ pub const Db = struct {
             }
         }
 
-        self.write_commit_count = AtomicInt.init(0);
-        self.writers_count = AtomicInt.init(0);
-        self.read_count = AtomicInt.init(0);
+        self.write_commit_count = AtomicInt32.init(0);
+        self.writers_count = AtomicInt32.init(0);
+        self.read_count = AtomicInt32.init(0);
+    }
+
+    pub fn addOnObjIdDestroyed(self: *Self, fce: public.OnObjIdDestroyed) !void {
+        try self.on_obj_destroy_map.put(fce, {});
+    }
+    pub fn removeOnObjIdDestroyed(self: *Self, fce: public.OnObjIdDestroyed) void {
+        _ = self.on_obj_destroy_map.swapRemove(fce);
+    }
+
+    pub fn callOnObjIdDestroyed(self: *Self, objects: []public.ObjId) void {
+        for (self.on_obj_destroy_map.keys()) |fce| {
+            fce(@ptrCast(self), objects);
+        }
     }
 
     pub fn getTypeStorage(self: *Self, type_hash: StrId32) ?*TypeStorage {
@@ -849,6 +1062,54 @@ pub const Db = struct {
         obj.parent = parent;
         obj.parent_prop_idx = prop_index;
     }
+
+    fn getVersion(self: *Self, obj: public.ObjId) u64 {
+        var zone_ctx = profiler.ztracy.Zone(@src());
+        defer zone_ctx.End();
+
+        var storage = self.getTypeStorage(obj.type_hash).?;
+        var true_obj = self.getObjectPtr(obj) orelse return 0;
+
+        return storage.objid_version.items[true_obj.objid.id].value;
+
+        // var version_hasher = std.hash.Wyhash.init(0);
+        // self.fillVersionHaser(@TypeOf(version_hasher), &version_hasher, true_obj);
+        // return version_hasher.final();
+    }
+
+    // TODO: GetVersionHash
+    // fn fillVersionHaser(self: *Self, comptime hasherT: type, hasher: *hasherT, obj: *Object) void {
+    //     var zone_ctx = profiler.ztracy.Zone(@src());
+    //     defer zone_ctx.End();
+
+    //     std.hash.autoHash(hasher, @intFromPtr(obj));
+    //     const props_def = self.getTypePropDef(obj.objid.type_hash).?;
+
+    //     if (obj.prototype_id != 0) {
+    //         var proto_obj = self.getObjectPtr(.{ .id = obj.prototype_id, .type_hash = obj.objid.type_hash }).?;
+    //         std.hash.autoHash(hasher, @intFromPtr(proto_obj));
+    //     }
+
+    //     for (props_def, 0..) |prop_def, idx| {
+    //         switch (prop_def.type) {
+    //             .SUBOBJECT => {
+    //                 var subobj = obj.getPropPtr(public.ObjId, idx);
+    //                 var subobj_ptr = self.getObjectPtr(subobj.*) orelse continue;
+    //                 self.fillVersionHaser(hasherT, hasher, subobj_ptr);
+    //             },
+    //             .SUBOBJECT_SET => {
+    //                 var true_ptr = obj.getPropPtr(*ObjIdSet, idx);
+
+    //                 var set = true_ptr.*.added.keys();
+    //                 for (set) |subobj| {
+    //                     var subobj_ptr = self.getObjectPtr(subobj) orelse continue;
+    //                     self.fillVersionHaser(hasherT, hasher, subobj_ptr);
+    //                 }
+    //             },
+    //             else => continue,
+    //         }
+    //     }
+    // }
 
     pub fn addAspect(self: *Self, type_hash: StrId32, apect_name: []const u8, aspect_ptr: *anyopaque) !void {
         var storage = self.getTypeStorage(type_hash) orelse return;
@@ -873,10 +1134,20 @@ pub const Db = struct {
         return storage.name;
     }
 
+    pub fn getTypePropDefIdx(self: *Self, type_hash: strid.StrId32, prop_name: []const u8) ?u32 {
+        const prop_def = self.getTypePropDef(type_hash) orelse return null;
+
+        for (prop_def, 0..) |def, idx| {
+            if (std.mem.eql(u8, def.name, prop_name)) return @truncate(idx);
+        }
+        return null;
+    }
     pub fn getOrCreateTypeStorage(self: *Self, type_hash: StrId32, name: []const u8, prop_def: []const public.PropDef) !*TypeStorage {
         var result = try self.typestorage_map.getOrPut(type_hash);
         if (!result.found_existing) {
-            result.value_ptr.* = try TypeStorage.init(_allocator, self, name, prop_def);
+            var ts = try TypeStorage.init(_allocator, self, name, prop_def);
+
+            result.value_ptr.* = ts;
         }
         return result.value_ptr;
     }
@@ -886,12 +1157,15 @@ pub const Db = struct {
         return storage.props_def;
     }
 
-    pub fn addType(self: *Self, name: []const u8, prop_def: []const public.PropDef) !StrId32 {
+    pub fn addType(self: *Self, name: []const u8, prop_defs: []const public.PropDef) !StrId32 {
+        for (prop_defs, 0..) |prop_def, real_idx| {
+            std.debug.assert(prop_def.prop_idx == real_idx);
+        }
+
         const type_hash = strId32(name);
         log.api.debug(MODULE_NAME, "Register type {s}:{d}", .{ name, type_hash.id });
-        var storage = try self.getOrCreateTypeStorage(type_hash, name, prop_def);
-        storage.props_def = prop_def;
-
+        var storage = try self.getOrCreateTypeStorage(type_hash, name, prop_defs);
+        _ = storage;
         return type_hash;
     }
 
@@ -905,12 +1179,7 @@ pub const Db = struct {
 
     pub fn createObject(self: *Self, type_hash: StrId32) !public.ObjId {
         var storage = self.getTypeStorage(type_hash).?;
-        return try storage.createObj(null);
-    }
-
-    pub fn createObjectWithUuid(self: *Self, type_hash: StrId32, with_uuid: cetech1.uuid.Uuid) !public.ObjId {
-        var storage = self.getTypeStorage(type_hash).?;
-        return try storage.createObj(with_uuid);
+        return try storage.createObj();
     }
 
     pub fn createObjectFromPrototype(self: *Self, prototype: public.ObjId) !public.ObjId {
@@ -923,9 +1192,9 @@ pub const Db = struct {
         storage.setDefaultObject(default);
     }
 
-    pub fn cloneObject(self: *Self, obj: public.ObjId) !public.ObjId {
+    pub fn cloneObject(self: *Self, obj: public.ObjId) anyerror!public.ObjId { // TODO:why anyerorr?
         var storage = self.getTypeStorage(obj.type_hash).?;
-        return try storage.createObjectFromPrototype(obj);
+        return storage.cloneObject(obj);
     }
 
     pub fn destroyObject(self: *Self, obj: public.ObjId) void {
@@ -935,32 +1204,36 @@ pub const Db = struct {
         };
     }
 
-    pub fn getUuid(self: *Self, objid: public.ObjId) cetech1.uuid.Uuid {
-        var storage = self.getTypeStorage(objid.type_hash) orelse return .{};
-        return storage.objid2uuid.items[objid.id];
-    }
-
     pub fn writerObj(self: *Self, obj: public.ObjId) ?*public.Obj {
         _ = self.writers_count.fetchAdd(1, .Monotonic);
 
         var true_obj = self.getObjectPtr(obj);
         var storage = self.getTypeStorage(obj.type_hash) orelse return null;
         storage.increaseReference(obj);
-        var new_obj = storage.cloneObjectRaw(true_obj.?, false, null) catch |err| {
+        var new_obj = storage.cloneObjectRaw(true_obj.?, false, false) catch |err| {
             log.api.err(MODULE_NAME, "Could not crate writer {}", .{err});
             return null;
         };
         return @ptrCast(new_obj);
     }
 
-    pub fn retargetWriter(self: *Self, writer: *public.Obj, obj: public.ObjId) void {
+    pub fn retargetWriter(self: *Self, writer: *public.Obj, obj: public.ObjId) !void {
         var true_obj = toObjFromObjO(writer);
         var storage = self.getTypeStorage(true_obj.objid.type_hash).?;
 
         _ = storage.decreaseReferenceToFree(true_obj) catch undefined; // we increse this on creating writer.
         storage.increaseReference(obj);
 
+        try storage.tranferObjIdReferencer(obj, true_obj.objid);
+
+        var destination_obj = toObjFromObjO(self.readObj(obj).?);
+
+        // set id from old (commit swap objects*)
         true_obj.objid = obj;
+
+        // maybe we are in subobject relation.
+        true_obj.parent = destination_obj.parent;
+        true_obj.parent_prop_idx = destination_obj.parent_prop_idx;
     }
 
     pub fn writerCommit(self: *Self, writer: *public.Obj) !void {
@@ -976,6 +1249,30 @@ pub const Db = struct {
         var old_obj = storage.objid2obj.items[new_obj.objid.id].?;
         storage.objid2obj.items[new_obj.objid.id] = new_obj;
         storage.addToFreeQueue(old_obj) catch undefined;
+
+        self.increaseVersionToAll(new_obj);
+    }
+
+    pub fn increaseVersionToAll(self: *Self, obj: *Object) void {
+        // TODO: no recursion
+
+        var zone_ctx = profiler.ztracy.Zone(@src());
+        defer zone_ctx.End();
+        std.debug.assert(obj.objid.id != obj.parent.id or obj.objid.type_hash.id != obj.parent.type_hash.id);
+
+        var storage = self.getTypeStorage(obj.objid.type_hash).?;
+        storage.increaseVersion(obj.objid);
+
+        // increase version for instances if any
+        var instances = storage.prototype2instances.items[obj.objid.id];
+        for (instances.keys()) |instance| {
+            self.increaseVersionToAll(self.getObjectPtr(instance).?);
+        }
+
+        // increase version for parent
+        if (obj.parent.id != 0) {
+            self.increaseVersionToAll(self.getObjectPtr(obj.parent).?);
+        }
     }
 
     pub fn readObj(self: *Self, obj: public.ObjId) ?*public.Obj {
@@ -1029,11 +1326,18 @@ pub const Db = struct {
 
     pub fn setStr(self: *Self, writer: *public.Obj, prop_idx: u32, value: [:0]const u8) !void {
         var true_obj = toObjFromObjO(writer);
+
         var true_ptr = true_obj.getPropPtr([:0]u8, prop_idx);
         if (true_ptr.len != 0) {
             self.allocator.free(true_ptr.*);
         }
+
         true_ptr.* = (try self.allocator.dupeZ(u8, value));
+
+        // If exist prototype set override flag to prop.
+        if (true_obj.prototype_id != 0) {
+            true_obj.overrides_set.set(prop_idx);
+        }
     }
 
     pub fn setSubObj(self: *Self, writer: *public.Obj, prop_idx: u32, subobj_writer: *public.Obj) !void {
@@ -1046,19 +1350,39 @@ pub const Db = struct {
             return;
         }
 
+        const has_prototype = !self.getPrototype(writer).isEmpty();
+        const is_overided = self.isPropertyOverrided(writer, prop_idx);
+
+        if (!has_prototype and !is_overided) {
+            if (self.readSubObj(writer, prop_idx)) |old_subobj| {
+                var old_subobj_ptr = self.getObjectPtr(old_subobj).?;
+                var old_subobj_storage = self.getTypeStorage(old_subobj.type_hash).?;
+                _ = try old_subobj_storage.decreaseReferenceToFree(old_subobj_ptr);
+            }
+        }
+
         self.setParent(true_sub_obj, true_obj.objid, prop_idx);
 
-        if (self.readSubObj(writer, prop_idx)) |old_subobj| {
-            var old_subobj_ptr = self.getObjectPtr(old_subobj).?;
-            var old_subobj_storage = self.getTypeStorage(old_subobj.type_hash).?;
-            _ = try old_subobj_storage.decreaseReferenceToFree(old_subobj_ptr);
-        }
+        // var storage = self.getTypeStorage(true_sub_obj.objid.type_hash).?;
+        // storage.increaseReference(true_sub_obj.objid);
 
         obj_storage.setTT(public.ObjId, writer, prop_idx, true_sub_obj.objid, public.PropType.SUBOBJECT);
     }
 
     pub fn clearSubObj(self: *Self, writer: *public.Obj, prop_idx: u32) !void {
         var true_obj = toObjFromObjO(writer);
+
+        const has_prototype = !self.getPrototype(writer).isEmpty();
+        const is_overided = self.isPropertyOverrided(writer, prop_idx);
+
+        if (!has_prototype and !is_overided) {
+            if (self.readSubObj(writer, prop_idx)) |old_subobj| {
+                var old_subobj_ptr = self.getObjectPtr(old_subobj).?;
+                var old_subobj_storage = self.getTypeStorage(old_subobj.type_hash).?;
+                _ = try old_subobj_storage.decreaseReferenceToFree(old_subobj_ptr);
+            }
+        }
+
         var obj_storage = self.getTypeStorage(true_obj.objid.type_hash).?;
         obj_storage.setTT(public.ObjId, writer, prop_idx, public.OBJID_ZERO, public.PropType.SUBOBJECT);
     }
@@ -1070,6 +1394,7 @@ pub const Db = struct {
         if (self.readRef(writer, prop_idx)) |ref| {
             var old_ref_ptr = self.getObjectPtr(ref).?;
             var old_ref_storage = self.getTypeStorage(ref.type_hash).?;
+            old_ref_storage.removeObjIdReferencer(ref, true_obj.objid);
             _ = try old_ref_storage.decreaseReferenceToFree(old_ref_ptr);
         }
 
@@ -1087,10 +1412,12 @@ pub const Db = struct {
 
         var storage = self.getTypeStorage(value.type_hash).?;
         storage.increaseReference(value);
+        try storage.addObjIdReferencer(value, true_obj.objid, prop_idx);
 
         if (self.readRef(writer, prop_idx)) |ref| {
             var old_ref_ptr = self.getObjectPtr(ref).?;
             var old_ref_storage = self.getTypeStorage(ref.type_hash).?;
+            old_ref_storage.removeObjIdReferencer(ref, true_obj.objid);
             _ = try old_ref_storage.decreaseReferenceToFree(old_ref_ptr);
         }
 
@@ -1120,6 +1447,7 @@ pub const Db = struct {
 
             var storage = self.getTypeStorage(value.type_hash).?;
             storage.increaseReference(value);
+            try storage.addObjIdReferencer(value, true_obj.objid, prop_idx);
         }
     }
 
@@ -1131,11 +1459,13 @@ pub const Db = struct {
         if (try array.*.remove(value)) {
             var ref_obj_storage = self.getTypeStorage(value.type_hash).?;
             var ref_obj = self.getObjectPtr(value);
+            ref_obj_storage.removeObjIdReferencer(value, true_obj.objid);
             _ = try ref_obj_storage.decreaseReferenceToFree(ref_obj.?);
         }
     }
 
     pub fn removeFromSubObjSet(self: *Self, writer: *public.Obj, prop_idx: u32, sub_writer: *public.Obj) !void {
+        //        _ = self;
         var true_obj = toObjFromObjO(writer);
         var true_sub_obj = toObjFromObjO(sub_writer);
 
@@ -1147,13 +1477,15 @@ pub const Db = struct {
         }
     }
 
-    pub fn createBlob(self: *Self, writer: *public.Obj, prop_idx: u32, size: u8) !?[]u8 {
+    pub fn createBlob(self: *Self, writer: *public.Obj, prop_idx: u32, size: usize) !?[]u8 {
         var true_obj = toObjFromObjO(writer);
 
         var obj_storage = self.getTypeStorage(true_obj.objid.type_hash).?;
 
-        var prev_blob = self.readBlob(writer, prop_idx);
-        obj_storage.destroyBlob(prev_blob);
+        // var prev_blob = self.readBlob(writer, prop_idx);
+        // obj_storage.destroyBlob(prev_blob);
+        var prev_blob: *Blob = true_obj.getPropPtr(Blob, prop_idx);
+        obj_storage.destroyBlob(prev_blob.*);
 
         var blob = try obj_storage.allocateBlob(size);
         obj_storage.setTT(Blob, writer, prop_idx, blob, public.PropType.BLOB);
@@ -1177,13 +1509,71 @@ pub const Db = struct {
         };
     }
 
-    pub fn readReferenceSet(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const public.ObjId {
+    pub fn readSubObjSetShallow(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const public.ObjId {
+        var zone_ctx = profiler.ztracy.Zone(@src());
+        defer zone_ctx.End();
+
+        return self.readSetAddedShallow(writer, prop_idx, allocator) catch |err| {
+            log.api.err(MODULE_NAME, "Could not read suboj set {}", .{err});
+            return null;
+        };
+    }
+
+    pub fn readRefSetShallow(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const public.ObjId {
+        var zone_ctx = profiler.ztracy.Zone(@src());
+        defer zone_ctx.End();
+        return self.readSetAddedShallow(writer, prop_idx, allocator) catch |err| {
+            log.api.err(MODULE_NAME, "Could not read ref set {}", .{err});
+            return null;
+        };
+    }
+
+    pub fn readSubObjSetRemovedShallow(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const public.ObjId {
+        var zone_ctx = profiler.ztracy.Zone(@src());
+        defer zone_ctx.End();
+
+        return self.readSetRemovedShallow(writer, prop_idx, allocator) catch |err| {
+            log.api.err(MODULE_NAME, "Could not read suboj set {}", .{err});
+            return null;
+        };
+    }
+
+    pub fn readRefSetRemovedShallow(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const public.ObjId {
+        var zone_ctx = profiler.ztracy.Zone(@src());
+        defer zone_ctx.End();
+        return self.readSetRemovedShallow(writer, prop_idx, allocator) catch |err| {
+            log.api.err(MODULE_NAME, "Could not read ref set {}", .{err});
+            return null;
+        };
+    }
+
+    pub fn readRefSet(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const public.ObjId {
         var zone_ctx = profiler.ztracy.Zone(@src());
         defer zone_ctx.End();
         return self.readSet(writer, prop_idx, allocator) catch |err| {
             log.api.err(MODULE_NAME, "Could not read ref set {}", .{err});
             return null;
         };
+    }
+
+    fn readSetAddedShallow(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) !?[]const public.ObjId {
+        _ = self;
+        var zone_ctx = profiler.ztracy.Zone(@src());
+        defer zone_ctx.End();
+
+        var true_obj = toObjFromObjO(writer);
+        var array = true_obj.getPropPtr(*ObjIdSet, prop_idx);
+        return try array.*.getAddedItems(allocator);
+    }
+
+    fn readSetRemovedShallow(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) !?[]const public.ObjId {
+        _ = self;
+        var zone_ctx = profiler.ztracy.Zone(@src());
+        defer zone_ctx.End();
+
+        var true_obj = toObjFromObjO(writer);
+        var array = true_obj.getPropPtr(*ObjIdSet, prop_idx);
+        return try array.*.getRemovedItems(allocator);
     }
 
     fn readSet(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) !?[]const public.ObjId {
@@ -1195,7 +1585,7 @@ pub const Db = struct {
         // Fast path for non prototype
         if (true_obj.prototype_id == 0) {
             var array = true_obj.getPropPtr(*ObjIdSet, prop_idx);
-            return try array.*.getItems(allocator);
+            return try array.*.getAddedItems(allocator);
         }
 
         var added = IdSet.init(allocator);
@@ -1254,8 +1644,8 @@ pub const Db = struct {
 
             self.setParent(true_sub_obj, true_obj.objid, prop_idx);
 
-            var storage = self.getTypeStorage(true_sub_obj.objid.type_hash).?;
-            storage.increaseReference(true_sub_obj.objid);
+            // var storage = self.getTypeStorage(true_sub_obj.objid.type_hash).?;
+            // storage.increaseReference(true_sub_obj.objid);
         }
     }
 
@@ -1284,6 +1674,29 @@ pub const Db = struct {
         try obj_storage.instantiateSubObj(writer, prop_idx);
     }
 
+    pub fn instantiateSubObjFromSet(self: *Self, writer: *public.Obj, prop_idx: u32, set_obj: public.ObjId) !public.ObjId {
+        var true_obj = toObjFromObjO(writer);
+        var obj_storage = self.getTypeStorage(true_obj.objid.type_hash).?;
+        return obj_storage.instantiateSubObjFromSet(writer, prop_idx, set_obj);
+    }
+
+    fn isIinisiated(self: *Self, obj: *public.Obj, set_prop_idx: u32, inisiated_obj: *public.Obj) bool {
+        _ = self;
+        var true_obj = toObjFromObjO(obj);
+        var true_inisiated_obj = toObjFromObjO(inisiated_obj);
+
+        if (true_obj.prototype_id == 0) return false;
+
+        var idset = true_obj.getPropPtr(*ObjIdSet, set_prop_idx);
+
+        const protoype_id = .{
+            .id = true_inisiated_obj.prototype_id,
+            .type_hash = true_inisiated_obj.objid.type_hash,
+        };
+
+        return idset.*.added.contains(true_inisiated_obj.objid) and idset.*.removed.contains(protoype_id);
+    }
+
     pub fn stressIt(self: *Self, type_hash: cetech1.strid.StrId32, type_hash2: cetech1.strid.StrId32, ref_obj1: cetech1.cdb.ObjId) !void {
         var obj1 = try self.createObject(type_hash);
 
@@ -1292,6 +1705,7 @@ pub const Db = struct {
 
         var writer = self.writerObj(obj1).?;
 
+        self.setT(bool, writer, cetech1.cdb.propIdx(cetech1.cdb.BigTypeProps.BOOL), true);
         self.setT(u64, writer, cetech1.cdb.propIdx(cetech1.cdb.BigTypeProps.U64), 10);
         self.setT(i64, writer, cetech1.cdb.propIdx(cetech1.cdb.BigTypeProps.I64), 20);
         self.setT(u32, writer, cetech1.cdb.propIdx(cetech1.cdb.BigTypeProps.U32), 10);
@@ -1311,9 +1725,19 @@ pub const Db = struct {
 
         try self.writerCommit(writer);
 
+        _ = self.getVersion(obj1);
+
         self.destroyObject(obj1);
         self.destroyObject(obj2);
         self.destroyObject(obj3);
+    }
+
+    pub fn getReferencerSet(self: *Self, obj: public.ObjId, allocator: std.mem.Allocator) ![]public.ObjId {
+        var storage = self.getTypeStorage(obj.type_hash).?;
+        const keys = storage.objid2refs.items[obj.id].keys();
+        var new_set = try allocator.alloc(public.ObjId, keys.len);
+        @memcpy(new_set, keys);
+        return new_set;
     }
 };
 
@@ -1331,7 +1755,7 @@ pub inline fn toDbFromDbT(db: *public.Db) *Db {
 }
 
 pub fn registerToApi() !void {
-    try apidb.api.setOrRemoveZigApi(public.CdbAPI, &api, true, false);
+    try apidb.api.setOrRemoveZigApi(public.CdbAPI, &api, true);
 }
 
 pub fn registerAllTypes() void {
@@ -1352,23 +1776,22 @@ pub var api = public.CdbAPI{
     .addTypeFn = addType,
     .getTypePropDefFn = getTypePropDef,
     .getTypeNameFn = getTypeName,
-
+    .getTypePropDefIdxFn = getTypePropDefIdx,
     .addAspectFn = addAspect,
     .getAspectFn = getAspect,
 
     .addPropertyAspectFn = addPropertyAspect,
     .getPropertyAspectFn = getPropertyAspect,
 
-    .getObjIdFromUuidFn = getObjIdFromUuid,
-
+    .getReferencerSetFn = getReferencerSet,
     .createObjectFn = createObject,
-    .createObjectWithUuidFn = createObjectWithUuid,
     .createObjectFromPrototypeFn = createObjectFromPrototype,
     .cloneObjectFn = cloneObject,
     .destroyObjectFn = destroyObject,
     .setDefaultObjectFn = setDefaultObject,
-    .getUuidFn = getUuid,
     .readObjFn = readObj,
+    .getParentFn = getParent,
+    .getVersionFn = getVersion,
 
     .writeObjFn = writerObj,
     .writeCommitFn = writerCommit,
@@ -1388,10 +1811,14 @@ pub var api = public.CdbAPI{
 
     .addRefToSetFn = addRefToSet,
     .readRefSetFn = readRefSet,
+    .readRefSetAddedFn = readRefSetShallow,
+    .readRefSetRemovedFn = readRefSetRemovedShallow,
     .removeFromRefSetFn = removeFromRefSet,
 
     .addSubObjToSetFn = addSubObjToSet,
     .readSubObjSetFn = readSubObjSet,
+    .readSubObjSetAddedFn = readSubObjSetShallow,
+    .readSubObjSetRemovedFn = readSubObjSetRemovedShallow,
     .removeFromSubObjSetFn = removeFromSubObjSet,
 
     .createBlobFn = createBlob,
@@ -1401,11 +1828,22 @@ pub var api = public.CdbAPI{
     .isPropertyOverridedFn = isPropertyOverrided,
     .getPrototypeFn = getPrototype,
     .instantiateSubObjFn = instantiateSubObj,
+    .instantiateSubObjFromSetFn = instantiateSubObjFromSet,
 
     .stressItFn = @ptrCast(&Db.stressIt),
 
+    .addOnObjIdDestroyedFn = addOnObjIdDestroyed,
+    .removeOnObjIdDestroyedFn = removeOnObjIdDestroyed,
+
     .gcFn = gc,
+
+    .isIinisiatedFn = isIinisiated,
 };
+
+fn isIinisiated(db_: *public.Db, obj: *public.Obj, set_prop_idx: u32, inisiated_obj: *public.Obj) bool {
+    var db = toDbFromDbT(db_);
+    return db.isIinisiated(obj, set_prop_idx, inisiated_obj);
+}
 
 fn createDb(name: [:0]const u8) !*public.Db {
     var db = try _allocator.create(Db);
@@ -1461,14 +1899,14 @@ fn getTypeName(db_: *public.Db, type_hash: StrId32) ?[]const u8 {
     return db.getTypeName(type_hash);
 }
 
+fn getTypePropDefIdx(db_: *public.Db, type_hash: strid.StrId32, prop_name: []const u8) ?u32 {
+    var db = toDbFromDbT(db_);
+    return db.getTypePropDefIdx(type_hash, prop_name);
+}
+
 fn createObject(db_: *public.Db, type_hash: StrId32) !public.ObjId {
     var db = toDbFromDbT(db_);
     return db.createObject(type_hash);
-}
-
-fn createObjectWithUuid(db_: *public.Db, type_hash: StrId32, with_uuid: cetech1.uuid.Uuid) !public.ObjId {
-    var db = toDbFromDbT(db_);
-    return db.createObjectWithUuid(type_hash, with_uuid);
 }
 
 fn createObjectFromPrototype(db_: *public.Db, prototype: public.ObjId) !public.ObjId {
@@ -1478,7 +1916,7 @@ fn createObjectFromPrototype(db_: *public.Db, prototype: public.ObjId) !public.O
 
 fn cloneObject(db_: *public.Db, obj: public.ObjId) !public.ObjId {
     var db = toDbFromDbT(db_);
-    return db.createObjectFromPrototype(obj);
+    return db.cloneObject(obj);
 }
 fn setDefaultObject(db_: *public.Db, obj: public.ObjId) void {
     var db = toDbFromDbT(db_);
@@ -1490,14 +1928,20 @@ fn destroyObject(db_: *public.Db, obj: public.ObjId) void {
     return db.destroyObject(obj);
 }
 
-pub fn getUuid(db_: *public.Db, objid: public.ObjId) cetech1.uuid.Uuid {
-    var db = toDbFromDbT(db_);
-    return db.getUuid(objid);
-}
-
 fn readObj(db_: *public.Db, obj: public.ObjId) ?*public.Obj {
     var db = toDbFromDbT(db_);
     return db.readObj(obj);
+}
+
+fn getParent(db_: *public.Db, obj: *public.Obj) public.ObjId {
+    var db = toDbFromDbT(db_);
+    var true_obj = toObjFromObjO(obj);
+    return db.getParent(true_obj.objid);
+}
+
+fn getVersion(db_: *public.Db, obj: public.ObjId) u64 {
+    var db = toDbFromDbT(db_);
+    return db.getVersion(obj);
 }
 
 fn writerObj(db_: *public.Db, obj: public.ObjId) ?*public.Obj {
@@ -1510,9 +1954,9 @@ fn writerCommit(db_: *public.Db, writer: *public.Obj) void {
     return db.writerCommit(writer) catch undefined;
 }
 
-fn retargetWrite(db_: *public.Db, writer: *public.Obj, obj: public.ObjId) void {
+fn retargetWrite(db_: *public.Db, writer: *public.Obj, obj: public.ObjId) !void {
     var db = toDbFromDbT(db_);
-    db.retargetWriter(writer, obj);
+    try db.retargetWriter(writer, obj);
 }
 
 fn addAspect(db_: *public.Db, type_hash: StrId32, apect_name: []const u8, aspect_ptr: *anyopaque) !void {
@@ -1535,9 +1979,14 @@ fn getPropertyAspect(db_: *public.Db, type_hash: StrId32, prop_idx: u32, aspect_
     return db.getPropertyAspect(type_hash, prop_idx, aspect_hash);
 }
 
-pub fn getObjIdFromUuid(db_: *public.Db, obj_uuid: cetech1.uuid.Uuid) ?public.ObjId {
+// pub fn getObjIdFromUuid(db_: *public.Db, obj_uuid: cetech1.uuid.Uuid) ?public.ObjId {
+//     var db = toDbFromDbT(db_);
+//     return db.getObjIdFromUuid(obj_uuid);
+// }
+
+pub fn getReferencerSet(db_: *public.Db, obj: public.ObjId, allocator: std.mem.Allocator) ![]public.ObjId {
     var db = toDbFromDbT(db_);
-    return db.getObjIdFromUuid(obj_uuid);
+    return db.getReferencerSet(obj, allocator);
 }
 
 fn readSubObj(db_: *public.Db, obj: *public.Obj, prop_idx: u32) ?public.ObjId {
@@ -1577,7 +2026,17 @@ fn addRefToSet(db_: *public.Db, obj: *public.Obj, prop_idx: u32, values: []const
 
 fn readRefSet(db_: *public.Db, obj: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const public.ObjId {
     var db = toDbFromDbT(db_);
-    return db.readReferenceSet(obj, prop_idx, allocator);
+    return db.readRefSet(obj, prop_idx, allocator);
+}
+
+fn readRefSetShallow(db_: *public.Db, obj: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const public.ObjId {
+    var db = toDbFromDbT(db_);
+    return db.readRefSetShallow(obj, prop_idx, allocator);
+}
+
+fn readRefSetRemovedShallow(db_: *public.Db, obj: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const public.ObjId {
+    var db = toDbFromDbT(db_);
+    return db.readRefSetRemovedShallow(obj, prop_idx, allocator);
 }
 
 fn removeFromRefSet(db_: *public.Db, obj: *public.Obj, prop_idx: u32, value: public.ObjId) !void {
@@ -1595,12 +2054,22 @@ fn readSubObjSet(db_: *public.Db, obj: *public.Obj, prop_idx: u32, allocator: st
     return db.readSubObjSet(obj, prop_idx, allocator);
 }
 
+fn readSubObjSetShallow(db_: *public.Db, obj: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const public.ObjId {
+    var db = toDbFromDbT(db_);
+    return db.readSubObjSetShallow(obj, prop_idx, allocator);
+}
+
+fn readSubObjSetRemovedShallow(db_: *public.Db, obj: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const public.ObjId {
+    var db = toDbFromDbT(db_);
+    return db.readSubObjSetRemovedShallow(obj, prop_idx, allocator);
+}
+
 fn removeFromSubObjSet(db_: *public.Db, obj: *public.Obj, prop_idx: u32, sub_obj: *public.Obj) !void {
     var db = toDbFromDbT(db_);
     try db.removeFromSubObjSet(obj, prop_idx, sub_obj);
 }
 
-fn createBlob(db_: *public.Db, obj: *public.Obj, prop_idx: u32, size: u8) !?[]u8 {
+fn createBlob(db_: *public.Db, obj: *public.Obj, prop_idx: u32, size: usize) !?[]u8 {
     var db = toDbFromDbT(db_);
     return try db.createBlob(obj, prop_idx, size);
 }
@@ -1630,9 +2099,24 @@ pub fn instantiateSubObj(db_: *public.Db, writer: *public.Obj, prop_idx: u32) !v
     return db.instantiateSubObj(writer, prop_idx);
 }
 
+pub fn instantiateSubObjFromSet(db_: *public.Db, writer: *public.Obj, prop_idx: u32, set_obj: public.ObjId) !public.ObjId {
+    var db = toDbFromDbT(db_);
+    return db.instantiateSubObjFromSet(writer, prop_idx, set_obj);
+}
+
+pub fn addOnObjIdDestroyed(db_: *public.Db, fce: public.OnObjIdDestroyed) !void {
+    var db = toDbFromDbT(db_);
+    try db.addOnObjIdDestroyed(fce);
+}
+pub fn removeOnObjIdDestroyed(db_: *public.Db, fce: public.OnObjIdDestroyed) void {
+    var db = toDbFromDbT(db_);
+    db.removeOnObjIdDestroyed(fce);
+}
+
 // Assert C and Zig Enums
 comptime {
     std.debug.assert(c.c.CT_CDB_TYPE_NONE == @intFromEnum(public.PropType.NONE));
+    std.debug.assert(c.c.CT_CDB_TYPE_BOOL == @intFromEnum(public.PropType.BOOL));
     std.debug.assert(c.c.CT_CDB_TYPE_U64 == @intFromEnum(public.PropType.U64));
     std.debug.assert(c.c.CT_CDB_TYPE_I64 == @intFromEnum(public.PropType.I64));
     std.debug.assert(c.c.CT_CDB_TYPE_U32 == @intFromEnum(public.PropType.U32));
@@ -1664,18 +2148,18 @@ test "cdb: Test alocate/free id" {
     var storage = _db.getTypeStorage(strId32("foo")).?;
 
     // Allocate two IDs
-    var obj1 = try storage.allocateObjId(null);
-    var obj2 = try storage.allocateObjId(null);
+    var obj1 = try storage.allocateObjId();
+    var obj2 = try storage.allocateObjId();
     try std.testing.expect(obj1.id != obj2.id);
     try std.testing.expectEqual(@as(u32, 1), obj1.id);
     try std.testing.expectEqual(@as(u32, 2), obj2.id);
 
     // Free one and alocate one then has same ID because free pool.
     try storage.freeObjId(obj2);
-    var obj3 = try storage.allocateObjId(null);
+    var obj3 = try storage.allocateObjId();
     try std.testing.expectEqual(@as(u32, obj2.id), obj3.id);
 
-    var obj4 = try storage.allocateObjId(null);
+    var obj4 = try storage.allocateObjId();
     try std.testing.expectEqual(@as(u32, 3), obj4.id);
 }
 

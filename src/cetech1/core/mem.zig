@@ -79,6 +79,7 @@ pub fn IdPool(comptime T: type) type {
 }
 
 pub fn VirtualArray(comptime T: type) type {
+    // TODO better windows virtual alloc
     return struct {
         const Self = @This();
 
@@ -86,7 +87,7 @@ pub fn VirtualArray(comptime T: type) type {
         raw: [*]u8,
         items: [*]T,
 
-        pub fn init(max_items: usize) Self {
+        pub fn init(max_items: usize) !Self {
             var objs_raw = if (max_items != 0) std.heap.page_allocator.rawAlloc(@sizeOf(T) * max_items, 0, 0).? else undefined;
             return .{
                 .max_items = max_items,
@@ -115,11 +116,11 @@ pub fn VirtualPool(comptime T: type) type {
         free_id: Queue,
         free_id_node_pool: PoolWithLock(Queue.Node),
 
-        pub fn init(allocator: std.mem.Allocator, max_items: usize) Self {
+        pub fn init(allocator: std.mem.Allocator, max_items: usize) !Self {
             return .{
                 .max_size = max_items,
                 .alocated_items = AtomicInt.init(1),
-                .mem = VirtualArray(T).init(max_items),
+                .mem = try VirtualArray(T).init(max_items),
                 .free_id = Queue.init(),
                 .free_id_node_pool = PoolWithLock(Queue.Node).init(allocator),
             };
@@ -156,3 +157,42 @@ pub fn VirtualPool(comptime T: type) type {
         }
     };
 }
+
+pub const TmpAllocatorPool = struct {
+    const Self = @This();
+    const TempAllocator = std.heap.ArenaAllocator;
+
+    allocator: std.mem.Allocator,
+    arena_pool: VirtualPool(TempAllocator),
+
+    pub fn init(allocator: std.mem.Allocator, max_items: usize) !Self {
+        return Self{
+            .allocator = allocator,
+            .arena_pool = try VirtualPool(TempAllocator).init(allocator, max_items),
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        // idx 0 is null element
+        for (self.arena_pool.mem.items[1..self.arena_pool.alocated_items.value]) |*obj| {
+            obj.deinit();
+        }
+        self.arena_pool.deinit();
+    }
+
+    pub fn create(self: *Self) *TempAllocator {
+        var new: bool = false;
+        var tmp_alloc = self.arena_pool.create(&new);
+
+        if (new) {
+            tmp_alloc.* = TempAllocator.init(self.allocator);
+        }
+
+        return tmp_alloc;
+    }
+
+    pub fn destroy(self: *Self, alloc: *TempAllocator) void {
+        _ = alloc.reset(.retain_capacity);
+        self.arena_pool.destroy(alloc) catch undefined;
+    }
+};

@@ -1,0 +1,1 @@
+zig-out/bin/cetech1_test && zig-out/bin/cetech1

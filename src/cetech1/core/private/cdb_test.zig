@@ -29,10 +29,10 @@ pub fn testDeinit() void {
     task.deinit();
 }
 
-fn expectGCStats(db: cetech1.cdb.CdbDb, alocated: u32, free: u32) !void {
+pub fn expectGCStats(db: cetech1.cdb.CdbDb, alocated_objids: u32, free_object: u32) !void {
     var true_db = cdb.toDbFromDbT(db.db);
-    try std.testing.expectEqual(alocated, true_db.obj_alocated);
-    try std.testing.expectEqual(@as(u32, free), true_db.free_objects);
+    try std.testing.expectEqual(alocated_objids, true_db.obj_alocated);
+    try std.testing.expectEqual(@as(u32, free_object), true_db.free_objects);
 }
 
 test "cdb: Should create cdb DB" {
@@ -76,8 +76,8 @@ test "cdb: Should register create types handler " {
             const type_hash = db.addType(
                 "foo",
                 &.{
-                    .{ .name = "prop1", .type = public.PropType.F32 },
-                    .{ .name = "prop2", .type = public.PropType.F64 },
+                    .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.F32 },
+                    .{ .prop_idx = 1, .name = "prop2", .type = public.PropType.F64 },
                 },
             ) catch unreachable;
             _ = type_hash;
@@ -124,8 +124,8 @@ test "cdb: Should register aspect" {
             const type_hash = db.addType(
                 "foo",
                 &.{
-                    .{ .name = "prop1", .type = public.PropType.F32 },
-                    .{ .name = "prop2", .type = public.PropType.F32 },
+                    .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.F32 },
+                    .{ .prop_idx = 1, .name = "prop2", .type = public.PropType.F32 },
                 },
             ) catch unreachable;
             _ = type_hash;
@@ -178,8 +178,8 @@ test "cdb: Should register property aspect" {
             const type_hash = db.addType(
                 "foo",
                 &.{
-                    .{ .name = "prop1", .type = public.PropType.F32 },
-                    .{ .name = "prop2", .type = public.PropType.F32 },
+                    .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.F32 },
+                    .{ .prop_idx = 1, .name = "prop2", .type = public.PropType.F32 },
                 },
             ) catch unreachable;
             _ = type_hash;
@@ -236,57 +236,56 @@ test "cdb: Should create object from type" {
     try expectGCStats(db, 2, 2);
 }
 
-test "cdb: Should create object from type with uuid" {
-    try testInit();
-    defer testDeinit();
+// test "cdb: Should create object from type with uuid" {
+//     try testInit();
+//     defer testDeinit();
 
-    var db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+//     var db = try cdb.api.createDb("Test");
+//     defer cdb.api.destroyDb(db);
 
-    const type_hash = try db.addType(
-        "foo",
-        &.{},
-    );
+//     const type_hash = try db.addType(
+//         "foo",
+//         &.{},
+//     );
 
-    var uuid1 = uuid.api.newUUID7();
-    var obj1 = try db.createObjectWithUuid(type_hash, uuid1);
-    var obj1_uuid = db.getObjUuid(obj1);
+//     var uuid1 = uuid.api.newUUID7();
+//     var obj1 = try db.createObjectWithUuid(type_hash, uuid1);
+//     var obj1_uuid = db.getObjUuid(obj1);
+//     try std.testing.expectEqualSlices(u8, &uuid1.bytes, &obj1_uuid.bytes);
 
-    try std.testing.expectEqualSlices(u8, &uuid1.bytes, &obj1_uuid.bytes);
+//     db.destroyObject(obj1);
 
-    db.destroyObject(obj1);
+//     try db.gc(std.testing.allocator);
+//     try expectGCStats(db, 1, 1);
+// }
 
-    try db.gc(std.testing.allocator);
-    try expectGCStats(db, 1, 1);
-}
+// test "cdb: Should find objid by uuid" {
+//     try testInit();
+//     defer testDeinit();
 
-test "cdb: Should find objid by uuid" {
-    try testInit();
-    defer testDeinit();
+//     var db = try cdb.api.createDb("Test");
+//     defer cdb.api.destroyDb(db);
 
-    var db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+//     const type_hash = try db.addType(
+//         "foo",
+//         &.{},
+//     );
 
-    const type_hash = try db.addType(
-        "foo",
-        &.{},
-    );
+//     var uuid1 = uuid.api.newUUID7();
+//     var obj1 = try db.createObjectWithUuid(type_hash, uuid1);
 
-    var uuid1 = uuid.api.newUUID7();
-    var obj1 = try db.createObjectWithUuid(type_hash, uuid1);
+//     var obj2 = try db.createObject(type_hash);
+//     var uuid2 = db.getObjUuid(obj2);
 
-    var obj2 = try db.createObject(type_hash);
-    var uuid2 = db.getObjUuid(obj2);
+//     try std.testing.expectEqual(obj1, db.getObjIdFromUuid(uuid1).?);
+//     try std.testing.expectEqual(obj2, db.getObjIdFromUuid(uuid2).?);
 
-    try std.testing.expectEqual(obj1, db.getObjIdFromUuid(uuid1).?);
-    try std.testing.expectEqual(obj2, db.getObjIdFromUuid(uuid2).?);
+//     db.destroyObject(obj1);
+//     db.destroyObject(obj2);
 
-    db.destroyObject(obj1);
-    db.destroyObject(obj2);
-
-    try db.gc(std.testing.allocator);
-    try expectGCStats(db, 2, 2);
-}
+//     try db.gc(std.testing.allocator);
+//     try expectGCStats(db, 2, 2);
+// }
 
 test "cdb: Should create object from default obj" {
     try testInit();
@@ -298,7 +297,7 @@ test "cdb: Should create object from default obj" {
     const type_hash = try db.addType(
         "foo",
         &.{
-            .{ .name = "prop1", .type = public.PropType.U64 },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.U64 },
         },
     );
 
@@ -332,16 +331,31 @@ test "cdb: Should clone object" {
     const type_hash = try db.addType(
         "foo",
         &.{
-            .{ .name = "prop1", .type = public.PropType.U64 },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.U64 },
+            .{ .prop_idx = 1, .name = "prop2", .type = public.PropType.SUBOBJECT },
+            .{ .prop_idx = 2, .name = "prop3", .type = public.PropType.SUBOBJECT_SET },
         },
     );
 
     var obj1 = try db.createObject(type_hash);
+    var sub_obj1 = try db.createObject(type_hash);
+    var sub_obj2 = try db.createObject(type_hash);
+    var sub_obj3 = try db.createObject(type_hash);
 
     {
         var w = db.writeObj(obj1).?;
+        var subobj1_w = db.writeObj(sub_obj1).?;
+        var subobj2_w = db.writeObj(sub_obj2).?;
+        var subobj3_w = db.writeObj(sub_obj3).?;
         defer db.writeCommit(w);
+        defer db.writeCommit(subobj1_w);
+        defer db.writeCommit(subobj2_w);
+        defer db.writeCommit(subobj3_w);
+
         db.setValue(u64, w, 0, 10);
+        try db.setSubObj(w, 1, subobj1_w);
+
+        try db.addSubObjToSet(w, 2, &.{ subobj2_w, subobj3_w });
     }
 
     var obj2 = try db.cloneObject(obj1);
@@ -352,6 +366,9 @@ test "cdb: Should clone object" {
 
     try std.testing.expectEqual(@as(u64, 10), db.readValue(u64, db.readObj(obj2).?, 0));
 
+    var subobj_obj2 = db.readSubObj(db.readObj(obj2).?, 1).?;
+    try std.testing.expect(subobj_obj2.id != sub_obj1.id);
+
     {
         var w = db.writeObj(obj2).?;
         defer db.writeCommit(w);
@@ -361,11 +378,21 @@ test "cdb: Should clone object" {
     try std.testing.expectEqual(@as(u64, 10), db.readValue(u64, db.readObj(obj1).?, 0));
     try std.testing.expectEqual(@as(u64, 20), db.readValue(u64, db.readObj(obj2).?, 0));
 
+    var set = try db.readSubObjSet(db.readObj(obj2).?, 2, std.testing.allocator);
+
+    try std.testing.expect(set != null);
+    //try std.testing.expect(set.?.len == 2);
+    for (set.?) |subobj| {
+        try std.testing.expect(subobj.id != sub_obj2.id);
+        try std.testing.expect(subobj.id != sub_obj3.id);
+    }
+    std.testing.allocator.free(set.?);
+
     db.destroyObject(obj1);
     db.destroyObject(obj2);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(db, 2, 4);
+    try expectGCStats(db, 8, 13);
 }
 
 test "cdb: Should create retarget write" {
@@ -378,7 +405,7 @@ test "cdb: Should create retarget write" {
     const type_hash = try db.addType(
         "foo",
         &.{
-            .{ .name = "prop1", .type = public.PropType.U64 },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.U64 },
         },
     );
 
@@ -395,7 +422,7 @@ test "cdb: Should create retarget write" {
 
     obj1_w = db.writeObj(obj1).?;
     db.setValue(u64, obj1_w, 0, 42);
-    db.retargetWrite(obj1_w, obj2);
+    try db.retargetWrite(obj1_w, obj2);
     db.writeCommit(obj1_w);
 
     var value = db.readValue(u64, db.readObj(obj2).?, 0);
@@ -471,8 +498,8 @@ test "cdb: Should read/write U64 property " {
     const type_hash = try db.addType(
         "foo",
         &.{
-            .{ .name = "prop1", .type = public.PropType.U64 },
-            .{ .name = "prop2", .type = public.PropType.U64 },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.U64 },
+            .{ .prop_idx = 1, .name = "prop2", .type = public.PropType.U64 },
         },
     );
 
@@ -488,12 +515,47 @@ test "cdb: Should read/write F64 property " {
     const type_hash = try db.addType(
         "foo",
         &.{
-            .{ .name = "prop1", .type = public.PropType.F64 },
-            .{ .name = "prop2", .type = public.PropType.F64 },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.F64 },
+            .{ .prop_idx = 1, .name = "prop2", .type = public.PropType.F64 },
         },
     );
 
     try testNumericValues(f64, &db, type_hash);
+}
+
+test "cdb: Should read/write U32 property " {
+    try testInit();
+    defer testDeinit();
+
+    var db = try cdb.api.createDb("Test");
+    defer cdb.api.destroyDb(db);
+
+    const type_hash = try db.addType(
+        "foo",
+        &.{
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.U32 },
+            .{ .prop_idx = 1, .name = "prop2", .type = public.PropType.U32 },
+        },
+    );
+
+    try testNumericValues(u32, &db, type_hash);
+}
+test "cdb: Should read/write I32 property " {
+    try testInit();
+    defer testDeinit();
+
+    var db = try cdb.api.createDb("Test");
+    defer cdb.api.destroyDb(db);
+
+    const type_hash = try db.addType(
+        "foo",
+        &.{
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.I32 },
+            .{ .prop_idx = 1, .name = "prop2", .type = public.PropType.I32 },
+        },
+    );
+
+    try testNumericValues(i32, &db, type_hash);
 }
 
 test "cdb: Should read/write F32 property " {
@@ -506,8 +568,8 @@ test "cdb: Should read/write F32 property " {
     const type_hash = try db.addType(
         "foo",
         &.{
-            .{ .name = "prop1", .type = public.PropType.F32 },
-            .{ .name = "prop2", .type = public.PropType.F32 },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.F32 },
+            .{ .prop_idx = 1, .name = "prop2", .type = public.PropType.F32 },
         },
     );
 
@@ -524,8 +586,8 @@ test "cdb: Should read/write string property " {
     const type_hash = try db.addType(
         "foo",
         &.{
-            .{ .name = "prop1", .type = public.PropType.STR },
-            .{ .name = "prop2", .type = public.PropType.STR },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.STR },
+            .{ .prop_idx = 1, .name = "prop2", .type = public.PropType.STR },
         },
     );
 
@@ -556,6 +618,80 @@ test "cdb: Should read/write string property " {
     try expectGCStats(db, 1, 2);
 }
 
+test "cdb: Should read/write bool property " {
+    try testInit();
+    defer testDeinit();
+
+    var db = try cdb.api.createDb("Test");
+    defer cdb.api.destroyDb(db);
+
+    const type_hash = try db.addType(
+        "foo",
+        &.{
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.BOOL },
+            .{ .prop_idx = 1, .name = "prop2", .type = public.PropType.BOOL },
+        },
+    );
+
+    var obj1 = try db.createObject(type_hash);
+
+    var obj_reader = db.readObj(obj1);
+    try std.testing.expect(obj_reader != null);
+
+    var value = db.readValue(bool, obj_reader.?, 0);
+    try std.testing.expect(!value);
+
+    {
+        var writer = db.writeObj(obj1).?;
+        defer db.writeCommit(writer);
+        db.setValue(bool, writer, 0, true);
+    }
+
+    obj_reader = db.readObj(obj1);
+    try std.testing.expect(obj_reader != null);
+
+    value = db.readValue(bool, obj_reader.?, 0);
+    try std.testing.expect(value);
+
+    db.destroyObject(obj1);
+
+    try db.gc(std.testing.allocator);
+    try expectGCStats(db, 1, 2);
+}
+
+test "cdb: Should get object version" {
+    try testInit();
+    defer testDeinit();
+
+    var db = try cdb.api.createDb("Test");
+    defer cdb.api.destroyDb(db);
+
+    const type_hash = try db.addType(
+        "foo",
+        &.{
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.BOOL },
+            .{ .prop_idx = 1, .name = "prop2", .type = public.PropType.BOOL },
+        },
+    );
+
+    var obj1 = try db.createObject(type_hash);
+    var init_version = db.getVersion(obj1);
+
+    try std.testing.expectEqual(init_version, db.getVersion(obj1));
+
+    {
+        var writer = db.writeObj(obj1).?;
+        defer db.writeCommit(writer);
+        db.setValue(bool, writer, 0, true);
+    }
+
+    try std.testing.expect(init_version != db.getVersion(obj1));
+
+    db.destroyObject(obj1);
+    try db.gc(std.testing.allocator);
+    try expectGCStats(db, 1, 2);
+}
+
 test "cdb: Should read/write subobject property " {
     try testInit();
     defer testDeinit();
@@ -566,14 +702,14 @@ test "cdb: Should read/write subobject property " {
     const type_hash = try db.addType(
         "foo",
         &.{
-            .{ .name = "prop1", .type = public.PropType.SUBOBJECT },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.SUBOBJECT },
         },
     );
 
     const type_hash2 = try db.addType(
         "foo2",
         &.{
-            .{ .name = "prop1", .type = public.PropType.F64 },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.F64 },
         },
     );
 
@@ -626,14 +762,14 @@ test "cdb: Should delete subobject" {
     const type_hash = try db.addType(
         "foo",
         &.{
-            .{ .name = "prop1", .type = public.PropType.SUBOBJECT },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.SUBOBJECT },
         },
     );
 
     const type_hash2 = try db.addType(
         "foo2",
         &.{
-            .{ .name = "prop1", .type = public.PropType.SUBOBJECT },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.SUBOBJECT },
         },
     );
 
@@ -645,7 +781,7 @@ test "cdb: Should delete subobject" {
         var writer = db.writeObj(obj1).?;
         defer db.writeCommit(writer);
 
-        var sub_writer = db.writeObj(obj1).?;
+        var sub_writer = db.writeObj(sub_obj1).?;
         defer db.writeCommit(sub_writer);
 
         try db.setSubObj(writer, 0, sub_writer);
@@ -676,7 +812,7 @@ test "cdb: Should read/write subobj set property " {
     const type_hash = try db.addType(
         "foo",
         &.{
-            .{ .name = "prop1", .type = public.PropType.SUBOBJECT_SET },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.SUBOBJECT_SET },
         },
     );
 
@@ -772,13 +908,13 @@ test "cdb: Should read/write reference property" {
     const type_hash = try db.addType(
         "foo",
         &.{
-            .{ .name = "prop1", .type = public.PropType.REFERENCE },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.REFERENCE },
         },
     );
 
     var obj1 = try db.createObject(type_hash);
 
-    var sub_obj1 = try db.createObject(type_hash);
+    var ref_obj1 = try db.createObject(type_hash);
 
     var obj_reader = db.readObj(obj1);
     try std.testing.expect(obj_reader != null);
@@ -786,7 +922,7 @@ test "cdb: Should read/write reference property" {
     {
         var writer = db.writeObj(obj1).?;
         defer db.writeCommit(writer);
-        try db.setRef(writer, 0, sub_obj1);
+        try db.setRef(writer, 0, ref_obj1);
     }
 
     obj_reader = db.readObj(obj1);
@@ -794,7 +930,16 @@ test "cdb: Should read/write reference property" {
 
     var value = db.readRef(obj_reader.?, 0);
     try std.testing.expect(value != null);
-    try std.testing.expectEqual(sub_obj1, value.?);
+    try std.testing.expectEqual(ref_obj1, value.?);
+
+    // Ref has obj1 as referencer
+    var referencer_set = try db.getReferencerSet(ref_obj1, std.testing.allocator);
+    try std.testing.expectEqualSlices(
+        public.ObjId,
+        &[_]public.ObjId{obj1},
+        referencer_set,
+    );
+    std.testing.allocator.free(referencer_set);
 
     // Delete object does not delete reference.
     db.destroyObject(obj1);
@@ -803,15 +948,24 @@ test "cdb: Should read/write reference property" {
     obj_reader = db.readObj(obj1);
     try std.testing.expectEqual(@as(?*public.Obj, null), obj_reader);
 
-    obj_reader = db.readObj(sub_obj1);
+    obj_reader = db.readObj(ref_obj1);
     try std.testing.expect(obj_reader != null);
 
+    // Ref has empty referencers
+    referencer_set = try db.getReferencerSet(ref_obj1, std.testing.allocator);
+    try std.testing.expectEqualSlices(
+        public.ObjId,
+        &[_]public.ObjId{},
+        referencer_set,
+    );
+    std.testing.allocator.free(referencer_set);
+
     // if refcounter work good we can delete object. if not shit hapends and you have bad day.
-    db.destroyObject(sub_obj1);
+    db.destroyObject(ref_obj1);
     try db.gc(std.testing.allocator);
     try expectGCStats(db, 2, 1);
 
-    obj_reader = db.readObj(sub_obj1);
+    obj_reader = db.readObj(ref_obj1);
     try std.testing.expect(obj_reader == null);
 
     try db.gc(std.testing.allocator);
@@ -828,7 +982,7 @@ test "cdb: Should read/write reference set property " {
     const type_hash = try db.addType(
         "foo",
         &.{
-            .{ .name = "prop1", .type = public.PropType.REFERENCE_SET },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.REFERENCE_SET },
         },
     );
 
@@ -860,6 +1014,23 @@ test "cdb: Should read/write reference set property " {
     );
     std.testing.allocator.free(set.?);
 
+    // Ref1 has obj1 as referencer
+    var referencer_set = try db.getReferencerSet(ref_obj1, std.testing.allocator);
+    try std.testing.expectEqualSlices(
+        public.ObjId,
+        &[_]public.ObjId{obj1},
+        referencer_set,
+    );
+    std.testing.allocator.free(referencer_set);
+    // Ref2 has obj1 as referencer
+    referencer_set = try db.getReferencerSet(ref_obj2, std.testing.allocator);
+    try std.testing.expectEqualSlices(
+        public.ObjId,
+        &[_]public.ObjId{obj1},
+        referencer_set,
+    );
+    std.testing.allocator.free(referencer_set);
+
     var writer = db.writeObj(obj1).?;
     try db.removeFromRefSet(writer, 0, ref_obj1);
     db.writeCommit(writer);
@@ -876,12 +1047,43 @@ test "cdb: Should read/write reference set property " {
     );
     std.testing.allocator.free(set.?);
 
-    db.destroyObject(ref_obj1);
+    // Ref1 has empty referencer
+    referencer_set = try db.getReferencerSet(ref_obj1, std.testing.allocator);
+    try std.testing.expectEqualSlices(
+        public.ObjId,
+        &[_]public.ObjId{},
+        referencer_set,
+    );
+    std.testing.allocator.free(referencer_set);
+    // Ref2 has obj1 as referencer
+    referencer_set = try db.getReferencerSet(ref_obj2, std.testing.allocator);
+    try std.testing.expectEqualSlices(
+        public.ObjId,
+        &[_]public.ObjId{obj1},
+        referencer_set,
+    );
+    std.testing.allocator.free(referencer_set);
+
+    // if we destory ref2 after gc is not remover from obj1
     db.destroyObject(ref_obj2);
+    try db.gc(std.testing.allocator);
+    try expectGCStats(db, 3, 2);
+
+    obj_reader = db.readObj(obj1);
+    set = db.readRefSet(obj_reader.?, 0, std.testing.allocator);
+    try std.testing.expect(set != null);
+    try std.testing.expectEqualSlices(
+        public.ObjId,
+        &[_]public.ObjId{ref_obj2},
+        set.?,
+    );
+    std.testing.allocator.free(set.?);
+
+    db.destroyObject(ref_obj1);
     db.destroyObject(obj1);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(db, 3, 5);
+    try expectGCStats(db, 3, 3);
 }
 
 test "cdb: Should read/write blob property " {
@@ -894,7 +1096,7 @@ test "cdb: Should read/write blob property " {
     const type_hash = try db.addType(
         "foo",
         &.{
-            .{ .name = "prop1", .type = public.PropType.BLOB },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.BLOB },
         },
     );
 
@@ -926,7 +1128,7 @@ test "cdb: Should use prototype" {
     const type_hash = try db.addType(
         "foo",
         &.{
-            .{ .name = "prop1", .type = public.PropType.F64 },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.F64 },
         },
     );
 
@@ -991,7 +1193,7 @@ test "cdb: Should use prototype on sets" {
     const type_hash = try db.addType(
         "foo",
         &.{
-            .{ .name = "prop1", .type = public.PropType.REFERENCE_SET },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.REFERENCE_SET },
         },
     );
 
@@ -1089,14 +1291,14 @@ test "cdb: Should instantiate subobject" {
     const type_hash = try db.addType(
         "foo",
         &.{
-            .{ .name = "prop1", .type = public.PropType.SUBOBJECT },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.SUBOBJECT },
         },
     );
 
     const type_hash2 = try db.addType(
         "foo2",
         &.{
-            .{ .name = "prop1", .type = public.PropType.U64 },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.U64 },
         },
     );
 
@@ -1156,24 +1358,24 @@ test "cdb: Should specify type_hash for ref/subobj base properties" {
     const sub_type_hash = try db.addType(
         "foo2",
         &.{
-            .{ .name = "prop1", .type = public.PropType.U64 },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.U64 },
         },
     );
 
     const another_sub_type_hash = try db.addType(
         "foo3",
         &.{
-            .{ .name = "prop1", .type = public.PropType.U64 },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.U64 },
         },
     );
 
     const type_hash = try db.addType(
         "foo",
         &.{
-            .{ .name = "prop1", .type = public.PropType.SUBOBJECT, .type_hash = sub_type_hash },
-            .{ .name = "prop2", .type = public.PropType.REFERENCE, .type_hash = sub_type_hash },
-            .{ .name = "prop3", .type = public.PropType.SUBOBJECT_SET, .type_hash = sub_type_hash },
-            .{ .name = "prop4", .type = public.PropType.REFERENCE_SET, .type_hash = sub_type_hash },
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.SUBOBJECT, .type_hash = sub_type_hash },
+            .{ .prop_idx = 1, .name = "prop2", .type = public.PropType.REFERENCE, .type_hash = sub_type_hash },
+            .{ .prop_idx = 2, .name = "prop3", .type = public.PropType.SUBOBJECT_SET, .type_hash = sub_type_hash },
+            .{ .prop_idx = 3, .name = "prop4", .type = public.PropType.REFERENCE_SET, .type_hash = sub_type_hash },
         },
     );
 

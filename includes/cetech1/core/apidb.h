@@ -22,7 +22,7 @@ typedef struct ct_apidb_api_t
     void (*remove_api)(const char *language, const char *api_name);
     void (*set_or_remove)(const char *language, const char *api_name, void *api_ptr, uint32_t api_size, bool load, bool reload);
 
-    void *(*global_var)(const char *module, const char *var_name, uint32_t size);
+    void *(*global_var)(const char *module, const char *var_name, uint32_t size, const void *defaultt);
 
     void (*impl)(const char *interface_name, void *impl_ptr);
     void (*remove_impl)(const char *interface_name, void *impl_ptr);

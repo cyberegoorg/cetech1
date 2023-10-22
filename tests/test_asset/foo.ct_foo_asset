@@ -1,0 +1,34 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "018b5846-c2d5-7b88-95f9-a7538a00e76b",
+  "__type_name": "ct_foo_asset",
+  "__uuid": "018b5846-c2d5-712f-bb12-9d9d15321ecb",
+  "BOOL": true,
+  "U64": 10,
+  "I64": 20,
+  "U32": 10,
+  "I32": 20,
+  "F32": 3.0e+01,
+  "F64": 2.0e+01,
+  "STR": "foo",
+  "BLOB": "6d331beb3f1f6a11",
+  "SUBOBJECT": {
+    "__type_name": "ct_foo_asset",
+    "__uuid": "018b5846-c2d5-7c82-82b4-525348222242"
+  },
+  "REFERENCE": "ct_foo_asset:018b5c72-5350-7d06-b5ed-6fed2793fdd4",
+  "SUBOBJECT_SET": [
+    {
+      "__type_name": "ct_foo_asset",
+      "__uuid": "018b5846-c2d5-7584-9183-a95f78095230"
+    },
+    {
+      "__type_name": "ct_foo_asset",
+      "__uuid": "9986f5cc-bc90-4443-8ad0-83357c02d28d"
+    }
+  ],
+  "REFERENCE_SET": [
+    "ct_foo_asset:018b5c72-5350-7d06-b5ed-6fed2793fdd4",
+    "ct_foo_asset:028ef368-9b36-44f9-b8cc-d377365f836c"
+  ]
+}

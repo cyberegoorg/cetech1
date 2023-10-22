@@ -3,5 +3,7 @@
         "ziglang.vscode-zig", // ZIG support. 
         "vadimcn.vscode-lldb", // Debugging support.
         "Gruntfuggly.todo-tree", // Todo viewer.
+        "tintinweb.graphviz-interactive-preview", // DOT preview (asset_graph, etc...)
+        "bierner.markdown-mermaid", // mermaid preview
     ]
 }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../core/core.h"
+#include <cetech1/core/core.h>
 
 typedef struct ct_foo_api_t
 {

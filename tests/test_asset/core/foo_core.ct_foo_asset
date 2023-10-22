@@ -1,0 +1,24 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "018b5c72-5350-7f9e-a806-ae87e360ff12",
+  "__type_name": "ct_foo_asset",
+  "__uuid": "018b5c72-5350-7d06-b5ed-6fed2793fdd4",
+  "U64": 10,
+  "I64": 20,
+  "U32": 10,
+  "I32": 20,
+  "F32": 3.0e+01,
+  "F64": 2.0e+01,
+  "STR": "foo core",
+  "BLOB": "140fa7cb3f1f6a11",
+  "SUBOBJECT": {
+    "__type_name": "ct_foo_asset",
+    "__uuid": "018b5c72-5350-7d98-acbe-4b42fcc44fa2"
+  },
+  "SUBOBJECT_SET": [
+    {
+      "__type_name": "ct_foo_asset",
+      "__uuid": "018b5c72-5350-7716-b04c-f3c34ac465fd"
+    }
+  ]
+}

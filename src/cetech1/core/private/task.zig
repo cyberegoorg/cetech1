@@ -5,7 +5,6 @@ const zjobs = @import("zjobs");
 const apidb = @import("apidb.zig");
 const log = @import("log.zig");
 const profiler = @import("profiler.zig");
-
 const cetech1 = @import("../cetech1.zig");
 
 const MODULE_NAME = "task";
@@ -14,9 +13,14 @@ pub var api = cetech1.task.TaskAPI{
     .scheduleFn = schedule,
     .waitFn = wait,
     .combineFn = combine,
+    .getThreadNum = getThreadNum,
 };
 
-const JobQueue = zjobs.JobQueue(.{ .idle_sleep_ns = 1 });
+fn getThreadNum() u64 {
+    return _job_queue._num_threads;
+}
+
+const JobQueue = zjobs.JobQueue(.{ .idle_sleep_ns = 0 });
 
 var _allocator: std.mem.Allocator = undefined;
 var _job_queue: JobQueue = undefined;
@@ -54,7 +58,6 @@ pub fn stop() void {
 
 pub fn registerToApi() !void {
     try apidb.api.setZigApi(cetech1.task.TaskAPI, &api);
-    // try apidb.api.setOrRemoveCApi(public.c.ct_log_api_t, &api_c, true, false);
 }
 
 fn taskToJob(t: cetech1.task.TaskID) zjobs.JobId {
@@ -89,7 +92,6 @@ fn wait(prereq: cetech1.task.TaskID) void {
 
 fn combine(prereq: []const cetech1.task.TaskID) !cetech1.task.TaskID {
     var prereq_j: *[]zjobs.JobId = @ptrFromInt(@intFromPtr(&prereq));
-
     var ret = try _job_queue.combine(prereq_j.*);
     return jobToTask(ret);
 }

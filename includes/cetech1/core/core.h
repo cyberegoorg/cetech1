@@ -8,3 +8,4 @@
 #include "kernel.h"
 
 #include "cdb.h"
+#include "editorui.h"

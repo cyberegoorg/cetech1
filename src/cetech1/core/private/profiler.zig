@@ -6,12 +6,10 @@ pub const profiler_enabled = @import("ztracy_options").enable_ztracy;
 
 const public = @import("../profiler.zig");
 
-var _zone_pool: std.heap.MemoryPool(ztracy.ZoneCtx) = undefined;
 var _allocator: std.mem.Allocator = undefined;
 
 pub fn init(allocator: std.mem.Allocator) void {
     _allocator = allocator;
-    _zone_pool = std.heap.MemoryPool(ztracy.ZoneCtx).init(allocator);
 }
 
 pub fn deinit() void {}

@@ -175,7 +175,9 @@ fn _loadDynLib(path: []const u8) !DynLibInfo {
 
 pub fn loadDynModules() !void {
     const module_dir = "./zig-out/lib";
-    const dir = try std.fs.cwd().openIterableDir(module_dir, .{});
+    var dir = try std.fs.cwd().openIterableDir(module_dir, .{});
+    defer dir.close();
+
     var iterator = dir.iterate();
 
     var buffer: [256]u8 = undefined;

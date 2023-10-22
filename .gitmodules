@@ -4,7 +4,9 @@
 [submodule "externals/shared/lib/zig-gamedev"]
 	path = externals/shared/lib/zig-gamedev
 	url = https://github.com/OndraVoves/zig-gamedev.git
-	branch = tracy_update_0.10.0
 [submodule "externals/shared/lib/zig-uuid"]
 	path = externals/shared/lib/zig-uuid
 	url = https://github.com/tensorush/zig-uuid.git
+[submodule "externals/shared/lib/nfd-zig"]
+	path = externals/shared/lib/nfd-zig
+	url = https://github.com/fabioarnold/nfd-zig.git

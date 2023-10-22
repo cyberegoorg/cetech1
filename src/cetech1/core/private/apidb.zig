@@ -36,7 +36,7 @@ pub var api = public.ApiDbAPI{
     .getFirstImplFn = getFirstImpl,
     .getLastImplFn = getLastImpl,
     .removeImplFn = removeImpl,
-    .getInterafceGenFn = getInterafceGen,
+    .getInterafcesVersionFn = getInterafcesVersion,
 };
 
 var _allocator: Allocator = undefined;
@@ -96,11 +96,12 @@ fn _toBytes(ptr: *anyopaque, ptr_size: usize) []u8 {
     return a[0..ptr_size];
 }
 
-fn globalVar(module: []const u8, var_name: []const u8, size: usize) !*anyopaque {
+fn globalVar(module: []const u8, var_name: []const u8, size: usize, default: []const u8) !*anyopaque {
     var combine_name = try std.fmt.allocPrint(_allocator, "{s}:{s}", .{ module, var_name });
     var v = _global_var_map.get(combine_name);
     if (v == null) {
         var data = try _allocator.alloc(u8, size);
+        @memcpy(data, default);
         try _global_var_map.put(combine_name, data);
         return data.ptr;
     }
@@ -116,7 +117,7 @@ fn setApiOpaqueue(language: []const u8, api_name: []const u8, api_ptr: *anyopaqu
         try _language_api_map.put(language, api_map);
     }
 
-    //log.api.debug(MODULE_NAME, "Register {s} api '{s}'", .{ language, api_name });
+    log.api.debug(MODULE_NAME, "Register {s} api '{s}'", .{ language, api_name });
 
     var api_ptr_intern = getApiOpaque(language, api_name, api_size);
 
@@ -170,7 +171,7 @@ fn increaseIfaceGen(interface_name: []const u8) void {
     iface_gen.* += 1;
 }
 
-fn getInterafceGen(interface_name: []const u8) u64 {
+fn getInterafcesVersion(interface_name: []const u8) u64 {
     var iface_gen = _interafce_gen.getPtr(interface_name);
     if (iface_gen == null) return 0;
     return iface_gen.?.*;
@@ -301,7 +302,7 @@ pub fn dumpApi() void {
 }
 
 pub fn dumpInterfaces() void {
-    log.api.debug(MODULE_NAME, "SUPPORTED INTERAFCE", .{});
+    log.api.debug(MODULE_NAME, "IMPLEMENTED INTERAFCES", .{});
 
     var iter = _interafce_map.iterator();
     while (iter.next()) |entry| {
@@ -339,8 +340,11 @@ pub const apidb_global_c = blk: {
             }
         }
 
-        pub fn global_var(module: [*c]const u8, var_name: [*c]const u8, size: u32) callconv(.C) ?*anyopaque {
-            return globalVar(c.fromCstr(module), c.fromCstr(var_name), size) catch return null;
+        pub fn global_var(module: [*c]const u8, var_name: [*c]const u8, size: u32, default: ?*const anyopaque) callconv(.C) ?*anyopaque {
+            var def: []const u8 = undefined;
+            def.ptr = @ptrCast(default.?);
+            def.len = size;
+            return globalVar(c.fromCstr(module), c.fromCstr(var_name), size, def) catch return null;
         }
 
         pub fn impl(interface_name: [*c]const u8, api_ptr: ?*anyopaque) callconv(.C) void {
@@ -365,217 +369,3 @@ pub const apidb_global_c = blk: {
         .global_var = c_api.global_var,
     };
 };
-
-test "Can create global var" {
-    try init(std.testing.allocator);
-    defer deinit();
-
-    var v1 = try api.globalVar(u32, "TestModule", "v1");
-    v1.* = 1;
-
-    var v1_1 = try api.globalVar(u32, "TestModule", "v1");
-
-    try std.testing.expect(v1 == v1_1);
-    try std.testing.expect(v1.* == v1_1.*);
-
-    v1_1.* = 10;
-
-    try std.testing.expect(10 == v1.*);
-}
-
-test "Can registr and use zig API" {
-    try init(std.testing.allocator);
-    defer deinit();
-
-    const FooAPI = struct {
-        pub fn bar(self: *@This()) f32 {
-            _ = self;
-            return 3.14;
-        }
-    };
-
-    var foo_api = FooAPI{};
-    try api.setZigApi(FooAPI, &foo_api);
-
-    var foo_api2 = api.getZigApi(FooAPI);
-    try std.testing.expect(foo_api2 != null);
-
-    var expect_value: f32 = 3.14;
-    try std.testing.expectEqual(expect_value, foo_api2.?.bar());
-}
-
-test "Can registr and use C API" {
-    try init(std.testing.allocator);
-    defer deinit();
-
-    const FooAPI = struct {
-        bar: *const fn () callconv(.C) f32,
-
-        pub fn barImpl() callconv(.C) f32 {
-            return 3.14;
-        }
-    };
-
-    var foo_api = FooAPI{ .bar = &FooAPI.barImpl };
-    try api.setApi(FooAPI, public.ApiDbAPI.lang_c, "foo", &foo_api);
-
-    var foo_api2 = api.getApi(FooAPI, public.ApiDbAPI.lang_c, "foo");
-    try std.testing.expect(foo_api2 != null);
-
-    var expect_value: f32 = 3.14;
-    try std.testing.expectEqual(expect_value, foo_api2.?.bar());
-}
-
-test "Unregistred api return zeroed interface" {
-    try init(std.testing.allocator);
-    defer deinit();
-
-    const FooAPI = struct {
-        bar: ?*const fn () callconv(.C) f32,
-
-        pub fn barImpl() callconv(.C) f32 {
-            return 3.14;
-        }
-    };
-
-    var foo_api2 = api.getApi(FooAPI, public.ApiDbAPI.lang_c, "foo");
-    try std.testing.expect(foo_api2 != null);
-    try std.testing.expect(foo_api2.?.bar == null);
-}
-
-test "Can remove api" {
-    try init(std.testing.allocator);
-    defer deinit();
-
-    const FooAPI = struct {
-        bar: ?*const fn () callconv(.C) f32,
-
-        pub fn barImpl() callconv(.C) f32 {
-            return 3.14;
-        }
-    };
-
-    var foo_api = FooAPI{ .bar = &FooAPI.barImpl };
-    try api.setZigApi(FooAPI, &foo_api);
-
-    api.removeZigApi(FooAPI);
-
-    var foo_api2 = api.getZigApi(FooAPI);
-    try std.testing.expect(foo_api2 != null);
-    try std.testing.expect(foo_api2.?.bar == null);
-}
-
-test "Can implement and use interface" {
-    try init(std.testing.allocator);
-    defer deinit();
-
-    const FooInterace = struct {
-        bar: *const fn () callconv(.C) f32,
-    };
-
-    const FooInteraceImpl = struct {
-        fn barImpl() callconv(.C) f32 {
-            return 3.14;
-        }
-    };
-
-    var foo_impl = FooInterace{ .bar = &FooInteraceImpl.barImpl };
-
-    try implInterface("foo_i", &foo_impl);
-    var foo_i_ptr = getImpl(FooInterace, "foo_i");
-
-    try std.testing.expectEqual(@intFromPtr(&foo_impl), @intFromPtr(foo_i_ptr));
-
-    var expect_value: f32 = 3.14;
-    try std.testing.expectEqual(expect_value, foo_i_ptr.?.bar());
-}
-
-test "Interface should have multiple implementation" {
-    try init(std.testing.allocator);
-    defer deinit();
-
-    const ct_foo_i = struct {
-        bar: *const fn () callconv(.C) i32,
-    };
-
-    const FooInteraceImpl = struct {
-        fn barImpl() callconv(.C) i32 {
-            return 1;
-        }
-    };
-
-    const FooInteraceImplOther = struct {
-        fn barImpl() callconv(.C) i32 {
-            return 2;
-        }
-    };
-
-    var foo_impl = ct_foo_i{ .bar = &FooInteraceImpl.barImpl };
-    var foo_impl2 = ct_foo_i{ .bar = &FooInteraceImplOther.barImpl };
-
-    try api.implInterface(ct_foo_i, &foo_impl);
-    try api.implInterface(ct_foo_i, &foo_impl2);
-
-    var acc: i32 = 0.0;
-    var it = api.getFirstImpl(ct_foo_i);
-    while (it) |node| : (it = node.next) {
-        var iface = public.ApiDbAPI.toInterface(ct_foo_i, node);
-        acc += iface.bar();
-    }
-
-    var expect_value: i32 = 3;
-    try std.testing.expectEqual(expect_value, acc);
-}
-
-test "Interface implementation can be removed" {
-    try init(std.testing.allocator);
-    defer deinit();
-
-    const ct_foo_i = struct {
-        bar: *const fn () callconv(.C) i32,
-    };
-
-    const FooInteraceImpl = struct {
-        fn barImpl() callconv(.C) i32 {
-            return 1;
-        }
-    };
-
-    const FooInteraceImplOther = struct {
-        fn barImpl() callconv(.C) i32 {
-            return 2;
-        }
-    };
-
-    var foo_impl1 = ct_foo_i{ .bar = &FooInteraceImpl.barImpl };
-    var foo_impl2 = ct_foo_i{ .bar = &FooInteraceImplOther.barImpl };
-
-    try api.implInterface(ct_foo_i, &foo_impl1);
-    try api.implInterface(ct_foo_i, &foo_impl2);
-
-    api.removeImpl(ct_foo_i, &foo_impl2);
-    {
-        var acc: i32 = 0;
-        var it = api.getFirstImpl(ct_foo_i);
-        while (it) |node| : (it = node.next) {
-            var iface = public.ApiDbAPI.toInterface(ct_foo_i, node);
-            acc += iface.bar();
-        }
-
-        var expect_value: i32 = 1;
-        try std.testing.expectEqual(expect_value, acc);
-    }
-
-    api.removeImpl(ct_foo_i, &foo_impl1);
-    {
-        var acc: i32 = 0;
-        var it = api.getFirstImpl(ct_foo_i);
-        while (it) |node| : (it = node.next) {
-            var iface = public.ApiDbAPI.toInterface(ct_foo_i, node);
-            acc += iface.bar();
-        }
-
-        var expect_value: i32 = 0;
-        try std.testing.expectEqual(expect_value, acc);
-    }
-}

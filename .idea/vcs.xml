@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/bin/zig" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/lib/nfd-zig" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/lib/zig-gamedev" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/lib/zig-uuid" vcs="Git" />
+  </component>
+</project>

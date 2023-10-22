@@ -1,45 +1,72 @@
-//! ApiDbAPI is main api db and purpose is shared api/interafce across all part of enfine+language
-//! API is struct with pointers to functions.
-//! Interaface is similiar to API but Interaface can have multiple implementation and must be valid C struct because he is shared across langugage.
-
 const std = @import("std");
 const c = @import("c.zig").c;
 
+/// ApiDbAPI is main api db and purpose is shared api/interafce across all part of enfine+language
+/// API is struct with pointers to functions.
+/// Interaface is similiar to API but Interaface can have multiple implementation and must be valid C struct because he is shared across langugage.
+/// You can create variable that can survive module reload.
+/// You can register API for any language.
+/// You can implement interface.
 pub const ApiDbAPI = struct {
     const Self = @This();
 
+    /// Zig api
     pub const lang_zig = "zig";
+
+    /// C api
     pub const lang_c = "c";
 
-    pub inline fn globalVar(self: *Self, comptime T: type, module_name: []const u8, var_name: []const u8) !*T {
-        return @ptrFromInt(@intFromPtr(try self.globalVarFn.?(module_name, var_name, @sizeOf(T))));
+    /// Crete variable that can survive reload.
+    pub inline fn globalVar(self: Self, comptime T: type, module_name: []const u8, var_name: []const u8, default: T) !*T {
+        var ptr: *T = @ptrFromInt(@intFromPtr(try self.globalVarFn(module_name, var_name, @sizeOf(T), &std.mem.toBytes(default))));
+        return ptr;
     }
 
-    pub inline fn setApi(self: *Self, comptime T: type, language: []const u8, api_name: []const u8, api_ptr: *T) !void {
-        return try self.setApiOpaqueueFn.?(language, api_name, api_ptr, @sizeOf(T));
+    /// Register api for given language and api name.
+    pub inline fn setApi(self: Self, comptime T: type, language: []const u8, api_name: []const u8, api_ptr: *T) !void {
+        return try self.setApiOpaqueueFn(language, api_name, api_ptr, @sizeOf(T));
     }
 
-    pub inline fn getApi(self: *Self, comptime T: type, language: []const u8, api_name: []const u8) ?*T {
-        return @ptrFromInt(@intFromPtr(self.getApiOpaaqueFn.?(language, api_name, @sizeOf(T))));
+    /// Unregister api for given language and api name.
+    pub inline fn removeApi(self: Self, language: []const u8, api_name: []const u8) void {
+        return self.removeApiFn(language, api_name);
     }
 
-    pub inline fn setOrRemoveCApi(self: *Self, comptime T: type, api_ptr: *T, load: bool, reload: bool) !void {
+    /// Get api for given language.
+    /// If api not exist create place holder with zeroed values and return it. (setApi fill the valid pointers)
+    pub inline fn getApi(self: Self, comptime T: type, language: []const u8, api_name: []const u8) ?*T {
+        return @ptrFromInt(@intFromPtr(self.getApiOpaaqueFn(language, api_name, @sizeOf(T))));
+    }
+
+    // Set or remove C API
+    pub inline fn setOrRemoveCApi(self: Self, comptime T: type, api_ptr: *T, load: bool) !void {
         if (load) {
             return self.setApi(T, lang_c, _sanitizeApiName(T), api_ptr);
-        } else if (!reload) {
-            return self.removeApiFn.?(lang_c, _sanitizeApiName(T));
+        } else {
+            return self.removeApi(lang_c, _sanitizeApiName(T));
         }
     }
 
-    pub inline fn setOrRemoveZigApi(self: *Self, comptime T: type, api_ptr: *T, load: bool, reload: bool) !void {
+    // Set or remove API for given language and api name
+    pub inline fn setOrRemoveApi(self: Self, comptime T: type, language: []const u8, api_name: []const u8, api_ptr: *T, load: bool) !void {
+        if (load) {
+            return self.setApi(T, language, api_name, api_ptr);
+        } else {
+            return self.removeApi(language, api_name);
+        }
+    }
+
+    // Set or remove Zig API
+    pub inline fn setOrRemoveZigApi(self: Self, comptime T: type, api_ptr: *T, load: bool) !void {
         if (load) {
             return self.setZigApi(T, api_ptr);
-        } else if (!reload) {
+        } else {
             return self.removeZigApi(T);
         }
     }
 
-    pub inline fn implOrRemove(self: *Self, comptime T: type, impl_ptr: *T, load: bool) !void {
+    // Implement or remove interface
+    pub inline fn implOrRemove(self: Self, comptime T: type, impl_ptr: *T, load: bool) !void {
         if (load) {
             return self.implInterface(T, impl_ptr);
         } else {
@@ -47,54 +74,66 @@ pub const ApiDbAPI = struct {
         }
     }
 
-    pub inline fn setZigApi(self: *Self, comptime T: type, api_ptr: *T) !void {
+    // Set zig api
+    pub inline fn setZigApi(self: Self, comptime T: type, api_ptr: *T) !void {
         var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
-        return try self.setApiOpaqueueFn.?(lang_zig, name_iter.first(), api_ptr, @sizeOf(T));
+        return try self.setApiOpaqueueFn(lang_zig, name_iter.first(), api_ptr, @sizeOf(T));
     }
 
-    pub inline fn getZigApi(self: *Self, comptime T: type) ?*T {
+    // Get zig api
+    pub inline fn getZigApi(self: Self, comptime T: type) ?*T {
         var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
-        return @ptrFromInt(@intFromPtr(self.getApiOpaaqueFn.?(lang_zig, name_iter.first(), @sizeOf(T))));
+        return @ptrFromInt(@intFromPtr(self.getApiOpaaqueFn(lang_zig, name_iter.first(), @sizeOf(T))));
     }
 
-    pub inline fn removeZigApi(self: *Self, comptime T: type) void {
+    // Remove zig api
+    pub inline fn removeZigApi(self: Self, comptime T: type) void {
         var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
-        self.removeApiFn.?(lang_zig, name_iter.first());
+        self.removeApiFn(lang_zig, name_iter.first());
     }
 
-    pub inline fn implInterface(self: *Self, comptime T: type, impl_ptr: *anyopaque) !void {
-        return self.implInterfaceFn.?(_sanitizeApiName(T), impl_ptr);
+    // Implement interface
+    pub inline fn implInterface(self: Self, comptime T: type, impl_ptr: *anyopaque) !void {
+        return self.implInterfaceFn(_sanitizeApiName(T), impl_ptr);
     }
 
+    // Cast generic interface to true type
     pub inline fn toInterface(comptime T: type, iter: *const c.ct_apidb_impl_iter_t) *T {
         return @ptrFromInt(@intFromPtr(iter.interface));
     }
 
-    pub inline fn getFirstImpl(self: *Self, comptime T: type) ?*const c.ct_apidb_impl_iter_t {
-        return self.getFirstImplFn.?(_sanitizeApiName(T));
+    // Get first interface that implement given interface
+    pub inline fn getFirstImpl(self: Self, comptime T: type) ?*const c.ct_apidb_impl_iter_t {
+        return self.getFirstImplFn(_sanitizeApiName(T));
     }
 
-    pub inline fn getLastImpl(self: *Self, comptime T: type) ?*const c.ct_apidb_impl_iter_t {
-        return self.getLastImplFn.?(_sanitizeApiName(T));
+    // Get last interface that implement given interface
+    pub inline fn getLastImpl(self: Self, comptime T: type) ?*const c.ct_apidb_impl_iter_t {
+        return self.getLastImplFn(_sanitizeApiName(T));
     }
 
-    pub inline fn removeImpl(self: *Self, comptime T: type, impl_ptr: *anyopaque) void {
-        self.removeImplFn.?(_sanitizeApiName(T), impl_ptr);
+    // Remove interface
+    pub inline fn removeImpl(self: Self, comptime T: type, impl_ptr: *anyopaque) void {
+        self.removeImplFn(_sanitizeApiName(T), impl_ptr);
     }
 
-    pub inline fn getInterafceGen(self: *Self, comptime T: type) u64 {
-        return self.getInterafceGenFn.?(_sanitizeApiName(T));
+    // Get version for given interface.
+    // Version is number that is increment every time is interface implementation added or removed
+    pub inline fn getInterafcesVersion(self: Self, comptime T: type) u64 {
+        return self.getInterafcesVersionFn(_sanitizeApiName(T));
     }
 
-    globalVarFn: ?*const fn (module: []const u8, var_name: []const u8, size: usize) anyerror!*anyopaque,
-    setApiOpaqueueFn: ?*const fn (language: []const u8, api_name: []const u8, api_ptr: *anyopaque, api_size: usize) anyerror!void,
-    getApiOpaaqueFn: ?*const fn (language: []const u8, api_name: []const u8, api_size: usize) ?*anyopaque,
-    removeApiFn: ?*const fn (language: []const u8, api_name: []const u8) void,
-    implInterfaceFn: ?*const fn (interface_name: []const u8, impl_ptr: *anyopaque) anyerror!void,
-    getFirstImplFn: ?*const fn (interface_name: []const u8) ?*const c.ct_apidb_impl_iter_t,
-    getLastImplFn: ?*const fn (interface_name: []const u8) ?*const c.ct_apidb_impl_iter_t,
-    removeImplFn: ?*const fn (interface_name: []const u8, impl_ptr: *anyopaque) void,
-    getInterafceGenFn: ?*const fn (interface_name: []const u8) u64,
+    //#region Pointers to implementation.
+    globalVarFn: *const fn (module: []const u8, var_name: []const u8, size: usize, default: []const u8) anyerror!*anyopaque,
+    setApiOpaqueueFn: *const fn (language: []const u8, api_name: []const u8, api_ptr: *anyopaque, api_size: usize) anyerror!void,
+    getApiOpaaqueFn: *const fn (language: []const u8, api_name: []const u8, api_size: usize) ?*anyopaque,
+    removeApiFn: *const fn (language: []const u8, api_name: []const u8) void,
+    implInterfaceFn: *const fn (interface_name: []const u8, impl_ptr: *anyopaque) anyerror!void,
+    getFirstImplFn: *const fn (interface_name: []const u8) ?*const c.ct_apidb_impl_iter_t,
+    getLastImplFn: *const fn (interface_name: []const u8) ?*const c.ct_apidb_impl_iter_t,
+    removeImplFn: *const fn (interface_name: []const u8, impl_ptr: *anyopaque) void,
+    getInterafcesVersionFn: *const fn (interface_name: []const u8) u64,
+    //#endregion
 };
 
 // get type name and return only last name withou struct_ prefix for c structs.

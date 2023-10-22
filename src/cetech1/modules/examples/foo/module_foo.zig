@@ -1,5 +1,5 @@
 pub const c = @cImport({
-    @cInclude("cetech1/modules/foo/foo.h");
+    @cInclude("cetech1/modules/examples/foo/foo.h");
 });
 
 pub const FooAPI = struct {

@@ -23,3 +23,11 @@ zig-out
 .DS_Store
 
 kcov-output/
+
+imgui.ini
+
+# temp folder for tests
+/tests/tmp
+
+# folder for generated tmp data, cache and debug purpose files
+.ct_temp

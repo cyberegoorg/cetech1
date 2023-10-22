@@ -3,6 +3,13 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+const MAX_LOG_ENTRY_SIZE = 256;
+
+pub const LogHandlerI = struct {
+    log: *const fn (level: LogAPI.Level, scope: []const u8, log_msg: []const u8) void,
+};
+
+// Main log API
 pub const LogAPI = struct {
     const Self = @This();
 
@@ -19,27 +26,37 @@ pub const LogAPI = struct {
         debug,
     };
 
-    log: *const fn (level: Level, scope: []const u8, log_msg: []const u8) void,
-
-    pub inline fn info(self: *Self, scope: []const u8, fmt: []const u8, args: anytype) void {
+    // Info logging
+    pub inline fn info(self: Self, scope: []const u8, fmt: []const u8, args: anytype) void {
         self._log(.info, scope, fmt, args);
     }
-    pub inline fn warn(self: *Self, scope: []const u8, fmt: []const u8, args: anytype) void {
+
+    // Warning logging
+    pub inline fn warn(self: Self, scope: []const u8, fmt: []const u8, args: anytype) void {
         self._log(.warn, scope, fmt, args);
     }
-    pub inline fn err(self: *Self, scope: []const u8, fmt: []const u8, args: anytype) void {
+
+    // Error logging
+    pub inline fn err(self: Self, scope: []const u8, fmt: []const u8, args: anytype) void {
         self._log(.err, scope, fmt, args);
     }
-    pub inline fn debug(self: *Self, scope: []const u8, fmt: []const u8, args: anytype) void {
+
+    // Debug logging
+    // Not present in non debug builds.
+    pub inline fn debug(self: Self, scope: []const u8, fmt: []const u8, args: anytype) void {
         if (builtin.mode != .Debug) {
             return;
         }
         self._log(.debug, scope, fmt, args);
     }
 
-    pub inline fn _log(self: *Self, level: Level, scope: []const u8, fmt: []const u8, args: anytype) void {
-        var buffer: [128]u8 = undefined;
+    pub inline fn _log(self: Self, level: Level, scope: []const u8, fmt: []const u8, args: anytype) void {
+        var buffer: [MAX_LOG_ENTRY_SIZE]u8 = undefined;
         var log_line = std.fmt.bufPrint(&buffer, fmt, args) catch return;
-        self.log(level, scope, log_line);
+        self.logFn(level, scope, log_line);
     }
+
+    //#region Pointers to implementation
+    logFn: *const fn (level: Level, scope: []const u8, log_msg: []const u8) void,
+    //#endregion
 };
