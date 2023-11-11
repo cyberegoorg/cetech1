@@ -6,6 +6,8 @@ const builtin = @import("builtin");
 const MAX_LOG_ENTRY_SIZE = 256;
 
 pub const LogHandlerI = struct {
+    pub const c_name = "ct_log_handler_i";
+
     log: *const fn (level: LogAPI.Level, scope: []const u8, log_msg: []const u8) void,
 };
 

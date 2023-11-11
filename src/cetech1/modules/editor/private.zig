@@ -22,8 +22,8 @@ var _editorui: *cetech1.editorui.EditorUIApi = undefined;
 var _assetdb: *cetech1.assetdb.AssetDBAPI = undefined;
 var _tempalloc: *cetech1.tempalloc.TempAllocApi = undefined;
 
-const TabsSelectedObject = std.AutoArrayHashMap(*public.c.struct_ct_editorui_tab_i, cetech1.cdb.ObjId);
-const TabsMap = std.AutoArrayHashMap(*anyopaque, *public.c.struct_ct_editorui_tab_i);
+const TabsSelectedObject = std.AutoArrayHashMap(*public.EditorTabI, cetech1.cdb.ObjId);
+const TabsMap = std.AutoArrayHashMap(*anyopaque, *public.EditorTabI);
 const TabsIdPool = cetech1.mem.IdPool(u32);
 const TabsIds = std.AutoArrayHashMap(cetech1.strid.StrId32, TabsIdPool);
 
@@ -35,7 +35,7 @@ const G = struct {
     tabids: TabsIds = undefined,
     tab2selectedobj: TabsSelectedObject = undefined,
     last_selected_obj: cetech1.cdb.ObjId = undefined,
-    last_focused_tab: ?*public.c.struct_ct_editorui_tab_i = null,
+    last_focused_tab: ?*public.EditorTabI = null,
 };
 var _g: *G = undefined;
 
@@ -392,9 +392,9 @@ fn cdbPropertiesView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: 
 
 fn cdbPropertiesObj(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, args: public.cdbPropertiesViewArgs) !void {
     // Find properties asspect for obj type.
-    var ui_aspect = db.getAspect(public.c.ct_editorui_ui_properties_aspect, obj.type_hash);
+    var ui_aspect = db.getAspect(public.UiPropertiesAspect, obj.type_hash);
     if (ui_aspect) |aspect| {
-        aspect.ui_properties.?(@constCast(@ptrCast(&allocator)), @ptrCast(db.db), obj.toC(public.c.ct_cdb_objid_t));
+        aspect.ui_properties.?(&allocator, db.db, obj);
         return;
     }
 
@@ -418,7 +418,7 @@ fn cdbPropertiesObj(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: c
         const prop_name = try api.formatedPropNameToBuff(&prop_name_buff, prop_def.name);
         const prop_color = api.getPropertyColor(db, obj, prop_idx);
 
-        var ui_prop_aspect = db.getPropertyAspect(public.c.ct_editorui_ui_property_aspect, obj.type_hash, prop_idx);
+        var ui_prop_aspect = db.getPropertyAspect(public.UiPropertyAspect, obj.type_hash, prop_idx);
 
         // If exist aspect and is empty hide property.
         if (ui_prop_aspect) |aspect| {
@@ -504,7 +504,7 @@ fn cdbPropertiesObj(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: c
 
                 if (ui_prop_aspect) |aspect| {
                     if (aspect.ui_property) |ui| {
-                        ui(@constCast(@ptrCast(&allocator)), @ptrCast(db.db), obj.toC(public.c.ct_cdb_objid_t), prop_idx);
+                        ui(&allocator, @ptrCast(db.db), obj, prop_idx, args);
                     }
                 } else {
                     try api.uiPropInput(db, obj, prop_idx);
@@ -514,7 +514,14 @@ fn cdbPropertiesObj(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: c
     }
 }
 
-fn cdbTreeNode(label: [:0]const u8, default_open: bool, no_push: bool, selected: bool) bool {
+fn cdbTreeNode(
+    label: [:0]const u8,
+    default_open: bool,
+    no_push: bool,
+    selected: bool,
+    args: public.CdbTreeViewArgs,
+) bool {
+    _ = args;
     return _editorui.treeNodeFlags(label, .{ .open_on_arrow = true, .default_open = default_open, .no_tree_push_on_open = no_push, .selected = selected });
 }
 
@@ -529,7 +536,7 @@ fn openTabWithPinnedObj(db: *cetech1.cdb.CdbDb, tab_type_hash: cetech1.strid.Str
     }
 }
 
-fn tabSelectObj(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, tab: *public.c.struct_ct_editorui_tab_i) void {
+fn tabSelectObj(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, tab: *public.EditorTabI) void {
     _g.tab2selectedobj.put(tab, obj) catch undefined;
     if (tab.vt.*.obj_selected) |obj_selected| {
         obj_selected(tab.inst, @ptrCast(db.db), .{ .id = obj.id, .type_hash = .{ .id = obj.type_hash.id } });
@@ -560,26 +567,25 @@ fn dealocateTabId(tab_hash: cetech1.strid.StrId32, tabid: u32) !void {
     try pool.destroy(tabid);
 }
 
-fn createNewTab(tab_hash: cetech1.strid.StrId32) ?*public.c.ct_editorui_tab_i {
-    var it = _apidb.getFirstImpl(public.c.ct_editorui_tab_type_i);
+fn createNewTab(tab_hash: cetech1.strid.StrId32) ?*public.EditorTabI {
+    var it = _apidb.getFirstImpl(public.EditorTabTypeI);
     while (it) |node| : (it = node.next) {
-        var iface = cetech1.apidb.ApiDbAPI.toInterface(public.c.ct_editorui_tab_type_i, node);
+        var iface = cetech1.apidb.ApiDbAPI.toInterface(public.EditorTabTypeI, node);
         if (iface.tab_hash.id != tab_hash.id) continue;
 
-        var tab_inst = iface.*.create.?(@ptrCast(_g.main_db.db));
-        _g.tabs.put(tab_inst.*.inst.?, tab_inst) catch undefined;
+        var tab_inst = iface.*.create.?(_g.main_db.db) orelse continue;
+        _g.tabs.put(tab_inst.*.inst, tab_inst) catch undefined;
         tab_inst.*.tabid = alocateTabId(.{ .id = tab_inst.*.vt.*.tab_hash.id }) catch undefined;
         return tab_inst;
     }
     return null;
 }
 
-fn destroyTab(tab: *public.c.ct_editorui_tab_i) void {
-    if (tab.vt.*.destroy) |tab_destroy| {
-        std.debug.assert(_g.tabs.swapRemove(tab.inst));
-        dealocateTabId(.{ .id = tab.vt.*.tab_hash.id }, tab.tabid) catch undefined;
-        tab_destroy(tab);
-    }
+fn destroyTab(tab: *public.EditorTabI) void {
+    std.debug.assert(_g.tabs.swapRemove(tab.inst));
+    dealocateTabId(.{ .id = tab.vt.*.tab_hash.id }, tab.tabid) catch undefined;
+    tab.vt.destroy.?(tab);
+
     if (_g.last_focused_tab == tab) {
         _g.last_focused_tab = null;
     }
@@ -696,10 +702,10 @@ fn doTabMainMenu(alocator: std.mem.Allocator) !void {
     if (_editorui.beginMenu("Tabs", true)) {
         if (_editorui.beginMenu(public.Icons.OpenTab ++ "  " ++ "Create", true)) {
             // Create tabs
-            var it = _apidb.getFirstImpl(public.c.ct_editorui_tab_type_i);
+            var it = _apidb.getFirstImpl(public.EditorTabTypeI);
             while (it) |node| : (it = node.next) {
-                var iface = cetech1.apidb.ApiDbAPI.toInterface(public.c.ct_editorui_tab_type_i, node);
-                var menu_name = if (iface.menu_name) |menu_name_fce| menu_name_fce() else continue;
+                var iface = cetech1.apidb.ApiDbAPI.toInterface(public.EditorTabTypeI, node);
+                var menu_name = iface.menu_name.?();
 
                 var tab_type_menu_name = cetech1.fromCstrZ(menu_name);
                 if (_editorui.menuItem(tab_type_menu_name, .{})) {
@@ -711,7 +717,7 @@ fn doTabMainMenu(alocator: std.mem.Allocator) !void {
         }
 
         if (_editorui.beginMenu(public.Icons.CloseTab ++ "  " ++ "Close", _g.tabs.count() != 0)) {
-            var tabs = std.ArrayList(*public.c.struct_ct_editorui_tab_i).init(alocator);
+            var tabs = std.ArrayList(*public.EditorTabI).init(alocator);
             defer tabs.deinit();
             try tabs.appendSlice(_g.tabs.values());
 
@@ -730,14 +736,14 @@ fn doTabMainMenu(alocator: std.mem.Allocator) !void {
 }
 
 fn doTabs(tmp_allocator: std.mem.Allocator) !void {
-    var tabs = std.ArrayList(*public.c.struct_ct_editorui_tab_i).init(tmp_allocator);
+    var tabs = std.ArrayList(*public.EditorTabI).init(tmp_allocator);
     defer tabs.deinit();
     try tabs.appendSlice(_g.tabs.values());
 
     for (tabs.items) |tab| {
         var tab_open = true;
 
-        var tab_title = tab.vt.*.title.?(tab.inst.?);
+        var tab_title = tab.vt.title.?(tab.inst);
 
         var tab_selected_object = _g.tab2selectedobj.get(tab);
         var asset_name_buf: [128]u8 = undefined;
@@ -762,7 +768,7 @@ fn doTabs(tmp_allocator: std.mem.Allocator) !void {
                 cetech1.fromCstrZ(tab_title),
                 tab.tabid,
                 if (asset_name) |n| n else "",
-                tab.vt.*.tab_name.?,
+                tab.vt.tab_name.?,
                 tab.tabid,
             },
         );
@@ -811,8 +817,7 @@ fn doTabs(tmp_allocator: std.mem.Allocator) !void {
     }
 }
 
-fn editorui_ui(callocator: ?*const cetech1.c.ct_allocator_t) callconv(.C) void {
-    var allocator = cetech1.modules.allocFromCApi(callocator.?);
+fn editorui_ui(allocator: std.mem.Allocator) !void {
     doMainMenu(allocator) catch undefined;
     quitSaveModal() catch undefined;
     doTabs(allocator) catch undefined;
@@ -820,15 +825,15 @@ fn editorui_ui(callocator: ?*const cetech1.c.ct_allocator_t) callconv(.C) void {
     if (_g.show_demos) _editorui.showDemoWindow();
 }
 
-var editorui_ui_i = cetech1.c.ct_editorui_ui_i{ .ui = editorui_ui };
+var editorui_ui_i = cetech1.editorui.EditorUII.implement(editorui_ui);
 
 fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, selected_obj: cetech1.cdb.ObjId, args: public.CdbTreeViewArgs) !?cetech1.cdb.ObjId {
     // if exist aspect use it
-    var ui_aspect = db.getAspect(public.c.ct_editorui_ui_tree_aspect, obj.type_hash);
+    var ui_aspect = db.getAspect(public.UiTreeAspect, obj.type_hash);
     if (ui_aspect) |aspect| {
-        var new_selected = aspect.ui_tree.?(@constCast(@ptrCast(&allocator)), @ptrCast(db.db), obj.toC(public.c.ct_cdb_objid_t), selected_obj.toC(public.c.ct_cdb_objid_t), args.expand_object);
+        var new_selected = aspect.ui_tree.?(&allocator, db.db, obj, selected_obj, args);
         if (new_selected.id != 0) {
-            return cetech1.cdb.ObjId.fromC(public.c.ct_cdb_objid_t, new_selected);
+            return new_selected;
         }
         return null;
     }
@@ -871,7 +876,7 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech
                     _editorui.pushStyleColor4f(.{ .idx = .text, .c = c });
                 }
 
-                var open = api.cdbTreeNode(label, false, false, selected_obj.eq(subobj));
+                var open = api.cdbTreeNode(label, false, false, selected_obj.eq(subobj), args);
 
                 if (color != null) {
                     _editorui.popStyleColor(.{});
@@ -894,7 +899,7 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech
                     "{s}{s}",
                     .{ prop_name, if (prop_def.type == .REFERENCE_SET) " " ++ Icons.FA_LINK else "" },
                 );
-                var open = api.cdbTreeNode(prop_label, false, false, false);
+                var open = api.cdbTreeNode(prop_label, false, false, false, args);
 
                 if (open) {
                     // added
@@ -924,7 +929,7 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech
                                 try inisiated_prototypes.put(db.getPrototype(db.readObj(subobj).?), {});
                             }
 
-                            var open_inset = api.cdbTreeNode(label, false, false, selected_obj.eq(subobj));
+                            var open_inset = api.cdbTreeNode(label, false, false, selected_obj.eq(subobj), args);
 
                             if (is_inisiated) {
                                 _editorui.popStyleColor(.{});
@@ -988,16 +993,16 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech
     return new_selected;
 }
 
-fn init(main_db: ?*cetech1.c.ct_cdb_db_t) !void {
-    _g.main_db = cetech1.cdb.CdbDb.fromDbT(main_db.?, _cdb);
+fn init(main_db: *cetech1.cdb.Db) !void {
+    _g.main_db = cetech1.cdb.CdbDb.fromDbT(main_db, _cdb);
     _g.tabs = TabsMap.init(_allocator);
     _g.tabids = TabsIds.init(_allocator);
     _g.tab2selectedobj = TabsSelectedObject.init(_allocator);
 
     // Create tab that has create_on_init == true. Primary for basic toolchain
-    var it = _apidb.getFirstImpl(public.c.ct_editorui_tab_type_i);
+    var it = _apidb.getFirstImpl(public.EditorTabTypeI);
     while (it) |node| : (it = node.next) {
-        var iface = cetech1.apidb.ApiDbAPI.toInterface(public.c.ct_editorui_tab_type_i, node);
+        var iface = cetech1.apidb.ApiDbAPI.toInterface(public.EditorTabTypeI, node);
         if (iface.create_on_init) {
             _ = createNewTab(.{ .id = iface.tab_hash.id });
         }
@@ -1010,7 +1015,7 @@ fn shutdown() !void {
     _g.tab2selectedobj.deinit();
 }
 
-var editor_kernel_task = cetech1.kernel.KernelTaskInterface(
+var editor_kernel_task = cetech1.kernel.KernelTaskI.implement(
     "EditorUI",
     &[_]cetech1.strid.StrId64{},
     init,
@@ -1040,8 +1045,8 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
 
     try apidb.setOrRemoveZigApi(public.EditorAPI, &api, load);
 
-    try apidb.implOrRemove(cetech1.c.ct_kernel_task_i, &editor_kernel_task, load);
-    try apidb.implOrRemove(cetech1.c.ct_editorui_ui_i, &editorui_ui_i, load);
+    try apidb.implOrRemove(cetech1.kernel.KernelTaskI, &editor_kernel_task, load);
+    try apidb.implOrRemove(cetech1.editorui.EditorUII, &editorui_ui_i, load);
 
     _kernel.setCanQuit(kernelQuitHandler);
 
@@ -1049,6 +1054,13 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor(__apidb: ?*const cetech1.c.ct_apidb_api_t, __allocator: ?*const cetech1.c.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
+pub export fn ct_load_module_editor(__apidb: ?*const cetech1.apidb.ct_apidb_api_t, __allocator: ?*const cetech1.apidb.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, __apidb, __allocator, __load, __reload);
+}
+
+// Assert C api == C api in zig.
+comptime {
+    std.debug.assert(@sizeOf(public.c.ct_editorui_ui_properties_aspect) == @sizeOf(public.UiPropertiesAspect));
+    std.debug.assert(@sizeOf(public.c.ct_editorui_ui_property_aspect) == @sizeOf(public.UiPropertyAspect));
+    std.debug.assert(@sizeOf(public.c.ct_editorui_ui_tree_aspect) == @sizeOf(public.UiTreeAspect));
 }

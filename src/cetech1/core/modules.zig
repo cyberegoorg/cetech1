@@ -1,9 +1,11 @@
 //! Module is main plugin like part of engine.
 
 const std = @import("std");
-const c = @import("c.zig");
+const c = @import("private/c.zig");
 const apidb = @import("apidb.zig");
 const LogAPI = @import("log.zig").LogAPI;
+
+pub const ct_module_desc_t = c.c.ct_module_desc_t;
 
 pub const LoadModuleFn = fn (apidb: ?*const c.c.ct_apidb_api_t, _allocator: ?*const c.c.ct_allocator_t, load: u8, reload: u8) callconv(.C) u8;
 pub const LoadModuleZigFn = fn (apidb: *apidb.ApiDbAPI, allocator: std.mem.Allocator, _log: *LogAPI, load: bool, reload: bool) anyerror!bool;

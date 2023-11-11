@@ -7,21 +7,6 @@ const Murmur2_64 = std.hash.murmur.Murmur2_64;
 
 pub const StrId32 = extern struct {
     id: u32 = 0,
-
-    pub inline fn to(self: *const StrId32, comptime T: type) T {
-        return .{ .id = self.id };
-    }
-
-    pub inline fn from(comptime T: type, obj: T) StrId32 {
-        return .{ .id = obj.id };
-    }
-
-    pub inline fn fromCArray(comptime T: type, array: [*]const T, n: usize) []StrId32 {
-        var a: []StrId32 = undefined;
-        a.ptr = @ptrFromInt(@intFromPtr(array));
-        a.len = n;
-        return a;
-    }
 };
 
 pub const StrId64 = extern struct {

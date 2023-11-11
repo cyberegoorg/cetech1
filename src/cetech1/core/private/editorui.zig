@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const c = @import("c.zig").c;
+
 const zgpu = @import("zgpu");
 const zglfw = @import("zglfw");
 const zgui = @import("zgui");
@@ -109,13 +111,6 @@ pub fn labelText(label: [:0]const u8, text: [:0]const u8) void {
     zgui.labelText(label, "{s}", .{text});
 }
 
-var editorUITask = cetech1.kernel.KernelTaskUpdateInterface(
-    cetech1.kernel.OnStore,
-    "EditorUI",
-    &[_]cetech1.strid.StrId64{},
-    editorUI,
-);
-
 var _allocator: std.mem.Allocator = undefined;
 var _backed_initialised = false;
 var _true_gpuctx: ?*zgpu.GraphicsContext = null;
@@ -124,19 +119,15 @@ pub fn init(allocator: std.mem.Allocator) !void {
     _allocator = allocator;
     zgui.init(_allocator);
     zgui.plot.init();
-
-    //try apidb.api.implInterface(cetech1.c.ct_kernel_task_update_i, &editorUITask);
 }
 
 pub fn deinit() void {
-    apidb.api.removeImpl(cetech1.c.ct_kernel_task_i, &editorUITask);
-
     if (_backed_initialised) zgui.backend.deinit();
     zgui.plot.deinit();
     zgui.deinit();
 }
 
-pub fn editorUI(tmp_allocator: std.mem.Allocator, main_db: ?*cetech1.c.ct_cdb_db_t, kernel_tick: u64, dt: f32) !void {
+pub fn editorUI(tmp_allocator: std.mem.Allocator, main_db: *cetech1.cdb.Db, kernel_tick: u64, dt: f32) !void {
     _ = kernel_tick;
     _ = dt;
     _ = main_db;
@@ -147,10 +138,10 @@ pub fn editorUI(tmp_allocator: std.mem.Allocator, main_db: ?*cetech1.c.ct_cdb_db
     // Headless mode
     if (_true_gpuctx == null) return;
 
-    var it = apidb.api.getFirstImpl(cetech1.c.ct_editorui_ui_i);
+    var it = apidb.api.getFirstImpl(cetech1.editorui.EditorUII);
     while (it) |node| : (it = node.next) {
-        var iface = cetech1.apidb.ApiDbAPI.toInterface(cetech1.c.ct_editorui_ui_i, node);
-        iface.*.ui.?(@constCast(@ptrCast(&tmp_allocator)));
+        var iface = cetech1.apidb.ApiDbAPI.toInterface(cetech1.editorui.EditorUII, node);
+        iface.*.ui(&tmp_allocator);
     }
 }
 
@@ -177,7 +168,7 @@ pub fn useWithWindow(window: *cetech1.system.Window, gpuctx: *cetech1.gpu.GpuCon
         if (false) _fa_regular_font else _fa_solid_font,
         std.math.floor(16.0 * scale_factor),
         fa_cfg,
-        &[_]u16{ cetech1.c.ICON_MIN_FA, cetech1.c.ICON_MAX_FA, 0 },
+        &[_]u16{ c.ICON_MIN_FA, c.ICON_MAX_FA, 0 },
     );
 
     zgui.io.setConfigFlags(zgui.ConfigFlags{ .nav_enable_keyboard = true, .nav_enable_gamepad = true });
@@ -349,4 +340,9 @@ fn inputU64(label: [:0]const u8, args: public.InputScalarGen(u64)) bool {
         .cfmt = args.cfmt,
         .flags = flags,
     });
+}
+
+// Assert C api == C api in zig.
+comptime {
+    std.debug.assert(@sizeOf(c.ct_editorui_ui_i) == @sizeOf(public.EditorUII));
 }

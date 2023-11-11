@@ -5,6 +5,8 @@ const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");
 const task = @import("task.zig");
 
+const c = @import("c.zig").c;
+
 pub var api = public.log.LogAPI{
     .logFn = log,
 };
@@ -13,7 +15,7 @@ pub fn registerToApi() !void {
     try apidb.api.setZigApi(public.log.LogAPI, &api);
 
     _ct_log_set_log_api(&api_c);
-    try apidb.api.setOrRemoveCApi(public.c.ct_log_api_t, &api_c, true);
+    try apidb.api.setOrRemoveCApi(c.ct_log_api_t, &api_c, true);
 }
 
 pub fn log(level: public.log.LogAPI.Level, scope: []const u8, msg: []const u8) void {
@@ -49,7 +51,7 @@ pub fn log(level: public.log.LogAPI.Level, scope: []const u8, msg: []const u8) v
     }
 }
 
-extern fn _ct_log_set_log_api(_logapi: *public.c.ct_log_api_t) callconv(.C) void;
+extern fn _ct_log_set_log_api(_logapi: *c.ct_log_api_t) callconv(.C) void;
 extern fn _ct_log_va(_logapi: *public.c.ct_log_api_t, log_level: public.c.ct_log_level_e, scope: [*c]const u8, msg: [*c]const u8, va: std.builtin.VaList) callconv(.C) void;
 extern fn ct_log_warn(scope: [*c]const u8, msg: [*c]const u8, ...) callconv(.C) void;
 extern fn ct_log_info(scope: [*c]const u8, msg: [*c]const u8, ...) callconv(.C) void;
@@ -58,11 +60,11 @@ extern fn ct_log_debug(scope: [*c]const u8, msg: [*c]const u8, ...) callconv(.C)
 
 var api_c = blk: {
     var c_api = struct {
-        pub fn c_log(level: public.c.ct_log_level_e, scope: [*c]const u8, log_msg: [*c]const u8) callconv(.C) void {
+        pub fn c_log(level: c.ct_log_level_e, scope: [*c]const u8, log_msg: [*c]const u8) callconv(.C) void {
             log(@enumFromInt(level), scope[0..std.mem.len(scope)], log_msg[0..std.mem.len(log_msg)]);
         }
     };
-    break :blk public.c.ct_log_api_t{
+    break :blk c.ct_log_api_t{
         .log = c_api.c_log,
         .info = ct_log_info,
         .debug = ct_log_debug,

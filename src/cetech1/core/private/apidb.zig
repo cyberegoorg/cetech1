@@ -5,9 +5,11 @@ const ArrayList = std.ArrayList;
 const StringHashMap = std.StringHashMap;
 const StringArrayHashMap = std.StringArrayHashMap;
 
+const cetech1 = @import("../cetech1.zig");
+
 const log = @import("log.zig");
 const public = @import("../apidb.zig");
-const c = @import("../c.zig");
+const c = @import("c.zig");
 
 const MODULE_NAME = "apidb";
 
@@ -315,13 +317,13 @@ pub const apidb_global_c = blk: {
         const Self = @This();
 
         pub fn set_api(language: [*c]const u8, api_name: [*c]const u8, api_ptr: ?*anyopaque, api_size: u32) callconv(.C) void {
-            setApiOpaqueue(c.fromCstr(language), c.fromCstr(api_name), api_ptr.?, api_size) catch return;
+            setApiOpaqueue(cetech1.fromCstr(language), cetech1.fromCstr(api_name), api_ptr.?, api_size) catch return;
         }
         pub fn get_api(language: [*c]const u8, api_name: [*c]const u8, api_size: u32) callconv(.C) ?*anyopaque {
-            return getApiOpaque(c.fromCstr(language), c.fromCstr(api_name), api_size);
+            return getApiOpaque(cetech1.fromCstr(language), cetech1.fromCstr(api_name), api_size);
         }
         pub fn remove_api(language: [*c]const u8, api_name: [*c]const u8) callconv(.C) void {
-            removeApi(c.fromCstr(language), c.fromCstr(api_name));
+            removeApi(cetech1.fromCstr(language), cetech1.fromCstr(api_name));
         }
 
         pub fn set_or_remove(language: [*c]const u8, api_name: [*c]const u8, api_ptr: ?*anyopaque, api_size: u32, load: bool, reload: bool) callconv(.C) void {
@@ -344,17 +346,17 @@ pub const apidb_global_c = blk: {
             var def: []const u8 = undefined;
             def.ptr = @ptrCast(default.?);
             def.len = size;
-            return globalVar(c.fromCstr(module), c.fromCstr(var_name), size, def) catch return null;
+            return globalVar(cetech1.fromCstr(module), cetech1.fromCstr(var_name), size, def) catch return null;
         }
 
         pub fn impl(interface_name: [*c]const u8, api_ptr: ?*anyopaque) callconv(.C) void {
-            return implInterface(c.fromCstr(interface_name), api_ptr.?) catch return;
+            return implInterface(cetech1.fromCstr(interface_name), api_ptr.?) catch return;
         }
         pub fn remove_impl(interface_name: [*c]const u8, api_ptr: ?*anyopaque) callconv(.C) void {
-            return removeImpl(c.fromCstr(interface_name), api_ptr.?);
+            return removeImpl(cetech1.fromCstr(interface_name), api_ptr.?);
         }
         pub fn get_first_impl(interface_name: [*c]const u8) callconv(.C) ?*const c.c.ct_apidb_impl_iter_t {
-            return getFirstImpl(c.fromCstr(interface_name));
+            return getFirstImpl(cetech1.fromCstr(interface_name));
         }
     };
     break :blk c.c.ct_apidb_api_t{

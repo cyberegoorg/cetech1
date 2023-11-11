@@ -5,7 +5,7 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-const c = @import("../c.zig");
+const c = @import("c.zig").c;
 const public = @import("../cdb.zig");
 const cetech1 = @import("../cetech1.zig");
 const strid = @import("../strid.zig");
@@ -858,7 +858,7 @@ pub const TypeStorage = struct {
 
         var storage = self.db.getTypeStorage(value.type_hash).?;
         var new_subobj = try storage.createObjectFromPrototype(value);
-        //self.setTT(public.CdbObjIdT, writer, prop_idx, c.c.CT_CDB_OBJID_ZERO, public.PropertyType.SUBOBJECT);
+        //self.setTT(public.CdbObjIdT, writer, prop_idx, c.CT_CDB_OBJID_ZERO, public.PropertyType.SUBOBJECT);
         try self.db.setSubObj(writer, prop_idx, @ptrCast(self.db.getObjectPtr(new_subobj).?));
     }
 
@@ -1170,10 +1170,10 @@ pub const Db = struct {
     }
 
     pub fn registerAllTypes(self: *Self) void {
-        var it = apidb.api.getFirstImpl(c.c.ct_cdb_create_types_i);
+        var it = apidb.api.getFirstImpl(public.CreateTypesI);
         while (it) |node| : (it = node.next) {
-            var iface = cetech1.apidb.ApiDbAPI.toInterface(c.c.ct_cdb_create_types_i, node);
-            iface.create_types.?(@ptrCast(self));
+            var iface = cetech1.apidb.ApiDbAPI.toInterface(public.CreateTypesI, node);
+            iface.create_types(@ptrCast(self));
         }
     }
 
@@ -1759,13 +1759,13 @@ pub fn registerToApi() !void {
 }
 
 pub fn registerAllTypes() void {
-    var it = apidb.api.getFirstImpl(c.c.ct_cdb_create_types_i);
+    var it = apidb.api.getFirstImpl(public.CreateTypesI);
     while (it) |node| : (it = node.next) {
-        var iface = cetech1.apidb.ApiDbAPI.toInterface(c.c.ct_cdb_create_types_i, node);
+        var iface = cetech1.apidb.ApiDbAPI.toInterface(public.CreateTypesI, node);
 
         var db_it = _first_db;
         while (db_it) |db_node| : (db_it = db_node.next) {
-            iface.create_types.?(@ptrCast(db_node));
+            iface.create_types(@ptrCast(db_node));
         }
     }
 }
@@ -1979,11 +1979,6 @@ fn getPropertyAspect(db_: *public.Db, type_hash: StrId32, prop_idx: u32, aspect_
     return db.getPropertyAspect(type_hash, prop_idx, aspect_hash);
 }
 
-// pub fn getObjIdFromUuid(db_: *public.Db, obj_uuid: cetech1.uuid.Uuid) ?public.ObjId {
-//     var db = toDbFromDbT(db_);
-//     return db.getObjIdFromUuid(obj_uuid);
-// }
-
 pub fn getReferencerSet(db_: *public.Db, obj: public.ObjId, allocator: std.mem.Allocator) ![]public.ObjId {
     var db = toDbFromDbT(db_);
     return db.getReferencerSet(obj, allocator);
@@ -2115,20 +2110,20 @@ pub fn removeOnObjIdDestroyed(db_: *public.Db, fce: public.OnObjIdDestroyed) voi
 
 // Assert C and Zig Enums
 comptime {
-    std.debug.assert(c.c.CT_CDB_TYPE_NONE == @intFromEnum(public.PropType.NONE));
-    std.debug.assert(c.c.CT_CDB_TYPE_BOOL == @intFromEnum(public.PropType.BOOL));
-    std.debug.assert(c.c.CT_CDB_TYPE_U64 == @intFromEnum(public.PropType.U64));
-    std.debug.assert(c.c.CT_CDB_TYPE_I64 == @intFromEnum(public.PropType.I64));
-    std.debug.assert(c.c.CT_CDB_TYPE_U32 == @intFromEnum(public.PropType.U32));
-    std.debug.assert(c.c.CT_CDB_TYPE_I32 == @intFromEnum(public.PropType.I32));
-    std.debug.assert(c.c.CT_CDB_TYPE_F32 == @intFromEnum(public.PropType.F32));
-    std.debug.assert(c.c.CT_CDB_TYPE_F64 == @intFromEnum(public.PropType.F64));
-    std.debug.assert(c.c.CT_CDB_TYPE_STR == @intFromEnum(public.PropType.STR));
-    std.debug.assert(c.c.CT_CDB_TYPE_BLOB == @intFromEnum(public.PropType.BLOB));
-    std.debug.assert(c.c.CT_CDB_TYPE_SUBOBJECT == @intFromEnum(public.PropType.SUBOBJECT));
-    std.debug.assert(c.c.CT_CDB_TYPE_REFERENCE == @intFromEnum(public.PropType.REFERENCE));
-    std.debug.assert(c.c.CT_CDB_TYPE_SUBOBJECT_SET == @intFromEnum(public.PropType.SUBOBJECT_SET));
-    std.debug.assert(c.c.CT_CDB_TYPE_REFERENCE_SET == @intFromEnum(public.PropType.REFERENCE_SET));
+    std.debug.assert(c.CT_CDB_TYPE_NONE == @intFromEnum(public.PropType.NONE));
+    std.debug.assert(c.CT_CDB_TYPE_BOOL == @intFromEnum(public.PropType.BOOL));
+    std.debug.assert(c.CT_CDB_TYPE_U64 == @intFromEnum(public.PropType.U64));
+    std.debug.assert(c.CT_CDB_TYPE_I64 == @intFromEnum(public.PropType.I64));
+    std.debug.assert(c.CT_CDB_TYPE_U32 == @intFromEnum(public.PropType.U32));
+    std.debug.assert(c.CT_CDB_TYPE_I32 == @intFromEnum(public.PropType.I32));
+    std.debug.assert(c.CT_CDB_TYPE_F32 == @intFromEnum(public.PropType.F32));
+    std.debug.assert(c.CT_CDB_TYPE_F64 == @intFromEnum(public.PropType.F64));
+    std.debug.assert(c.CT_CDB_TYPE_STR == @intFromEnum(public.PropType.STR));
+    std.debug.assert(c.CT_CDB_TYPE_BLOB == @intFromEnum(public.PropType.BLOB));
+    std.debug.assert(c.CT_CDB_TYPE_SUBOBJECT == @intFromEnum(public.PropType.SUBOBJECT));
+    std.debug.assert(c.CT_CDB_TYPE_REFERENCE == @intFromEnum(public.PropType.REFERENCE));
+    std.debug.assert(c.CT_CDB_TYPE_SUBOBJECT_SET == @intFromEnum(public.PropType.SUBOBJECT_SET));
+    std.debug.assert(c.CT_CDB_TYPE_REFERENCE_SET == @intFromEnum(public.PropType.REFERENCE_SET));
 }
 
 test "cdb: Test alocate/free id" {
@@ -2190,4 +2185,9 @@ test "cdb: Test alocate/free idset" {
 
     // can destroy list
     try storage.destroyObjIdSet(array);
+}
+
+// Assert C api == C api in zig.
+comptime {
+    std.debug.assert(@sizeOf(c.ct_cdb_create_types_i) == @sizeOf(public.CreateTypesI));
 }

@@ -10,7 +10,6 @@ const log = @import("log.zig");
 const uuid = @import("uuid.zig");
 const tempalloc = @import("tempalloc.zig");
 
-const c = @import("../c.zig");
 const public = @import("../assetdb.zig");
 const cetech1 = @import("../cetech1.zig");
 const propIdx = cetech1.cdb.propIdx;
@@ -242,8 +241,8 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
     }
 });
 
-pub fn create_cdb_types(db_: ?*c.c.struct_ct_cdb_db_t) callconv(.C) void {
-    var db = cetech1.cdb.CdbDb.fromDbT(@ptrCast(db_), &cdb.api);
+pub fn create_cdb_types(db_: *cetech1.cdb.Db) !void {
+    var db = cetech1.cdb.CdbDb.fromDbT(db_, &cdb.api);
 
     // Asset type is wrapper for asset object
     const asset_type_hash = db.addType(
@@ -292,13 +291,11 @@ pub fn create_cdb_types(db_: ?*c.c.struct_ct_cdb_db_t) callconv(.C) void {
     _ = cetech1.cdb.addBigType(&db, public.BazAsset.name) catch unreachable;
 }
 
-var create_cdb_types_i = c.c.ct_cdb_create_types_i{
-    .create_types = create_cdb_types,
-};
+var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(create_cdb_types);
 
 pub fn registerToApi() !void {
     try apidb.api.setZigApi(public.AssetDBAPI, &api);
-    try apidb.api.implOrRemove(c.c.ct_cdb_create_types_i, &create_cdb_types_i, true);
+    try apidb.api.implOrRemove(cetech1.cdb.CreateTypesI, &create_cdb_types_i, true);
 }
 
 pub fn init(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb) !void {

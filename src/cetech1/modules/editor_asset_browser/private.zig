@@ -31,68 +31,67 @@ var _kernel: *cetech1.kernel.KernelApi = undefined;
 var _tempalloc: *cetech1.tempalloc.TempAllocApi = undefined;
 
 const G = struct {
-    asset_browser_tab_vt: *editor.c.ct_editorui_tab_type_i = undefined,
-    asset_prop_aspect: *cetech1.c.ct_editorui_ui_properties_aspect = undefined,
-    folder_name_prop_aspect: *cetech1.c.ct_editorui_ui_property_aspect = undefined,
-    asset_tree_aspect: *cetech1.c.ct_editorui_ui_tree_aspect = undefined,
-    folder_tree_aspect: *cetech1.c.ct_editorui_ui_tree_aspect = undefined,
+    asset_browser_tab_vt: *editor.EditorTabTypeI = undefined,
+    asset_prop_aspect: *editor.UiPropertiesAspect = undefined,
+    folder_name_prop_aspect: *editor.UiPropertyAspect = undefined,
+    asset_tree_aspect: *editor.UiTreeAspect = undefined,
+    folder_tree_aspect: *editor.UiTreeAspect = undefined,
 };
 var _g: *G = undefined;
 
 const AssetBrowserTab = struct {
-    tab_i: editor.c.ct_editorui_tab_i,
+    tab_i: editor.EditorTabI,
     db: cetech1.cdb.CdbDb,
     selected_obj: cetech1.cdb.ObjId = .{},
 };
 
 // Fill editor tab interface
-var foo_tab = editor.c.ct_editorui_tab_type_i{
+
+var foo_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     .tab_name = ASSET_BROWSER_NAME,
     .tab_hash = .{ .id = cetech1.strid.strId32(ASSET_BROWSER_NAME).id },
     .create_on_init = true,
-
-    .menu_name = tabMenuItem,
+    .menu_name = tabMenuName,
     .title = tabTitle,
-    .create = @ptrCast(&tabCreate),
+    .create = tabCreate,
     .destroy = tabDestroy,
     .ui = tabUi,
     .menu = tabMenu,
-    //.obj_selected = tabSelectedObject,
     .focused = tabFocused,
-};
+});
 
-fn tabMenuItem() callconv(.C) [*]const u8 {
+fn tabMenuName() [:0]const u8 {
     return ASSET_BROWSER_ICON ++ " Asset browser";
 }
 
 // Return tab title
-fn tabTitle(inst: ?*editor.c.ct_editorui_tab_o) callconv(.C) [*]const u8 {
+fn tabTitle(inst: *editor.TabO) [:0]const u8 {
     _ = inst;
     return ASSET_BROWSER_ICON ++ " Asset browser";
 }
 
 // Create new FooTab instantce
-fn tabCreate(db: ?*cetech1.c.ct_cdb_db_t) callconv(.C) ?*editor.c.ct_editorui_tab_i {
+fn tabCreate(db: *cetech1.cdb.Db) ?*editor.EditorTabI {
     var tab_inst = _allocator.create(AssetBrowserTab) catch undefined;
     tab_inst.* = AssetBrowserTab{
         .tab_i = .{
             .vt = _g.asset_browser_tab_vt,
             .inst = @ptrCast(tab_inst),
         },
-        .db = cetech1.cdb.CdbDb.fromDbT(db.?, _cdb),
+        .db = cetech1.cdb.CdbDb.fromDbT(db, _cdb),
     };
     return &tab_inst.tab_i;
 }
 
 // Destroy FooTab instantce
-fn tabDestroy(tab_inst: ?*editor.c.ct_editorui_tab_i) callconv(.C) void {
-    var tab_o: *AssetBrowserTab = @alignCast(@ptrCast(tab_inst.?.inst));
+fn tabDestroy(tab_inst: *editor.EditorTabI) void {
+    var tab_o: *AssetBrowserTab = @alignCast(@ptrCast(tab_inst.inst));
     _allocator.destroy(tab_o);
 }
 
 // Draw tab content
-fn tabUi(inst: ?*editor.c.ct_editorui_tab_o) callconv(.C) void {
-    var tab_o: *AssetBrowserTab = @alignCast(@ptrCast(inst.?));
+fn tabUi(inst: *editor.TabO) void {
+    var tab_o: *AssetBrowserTab = @alignCast(@ptrCast(inst));
 
     const root_folder = _assetdb.getRootFolder();
     if (root_folder.isEmpty()) {
@@ -110,8 +109,8 @@ fn tabUi(inst: ?*editor.c.ct_editorui_tab_o) callconv(.C) void {
     }
 }
 
-fn tabFocused(inst: ?*editor.c.ct_editorui_tab_o) callconv(.C) void {
-    var tab_o: *AssetBrowserTab = @alignCast(@ptrCast(inst.?));
+fn tabFocused(inst: *editor.TabO) void {
+    var tab_o: *AssetBrowserTab = @alignCast(@ptrCast(inst));
 
     // If asset browser is focused then select obj for editor by obj selected in tab =D
     if (!tab_o.selected_obj.isEmpty()) {
@@ -120,13 +119,13 @@ fn tabFocused(inst: ?*editor.c.ct_editorui_tab_o) callconv(.C) void {
 }
 
 // Folder aspect
-var folder_ui_tree_aspect = editorui.EditorUiTreeUiAspect(folderUiTreeAspect);
+var folder_ui_tree_aspect = editor.UiTreeAspect.implement(folderUiTreeAspect);
 fn folderUiTreeAspect(
     allocator: std.mem.Allocator,
-    dbc: *cetech1.c.ct_cdb_db_t,
+    dbc: *cetech1.cdb.Db,
     obj: cetech1.cdb.ObjId,
     selected_obj: cetech1.cdb.ObjId,
-    expand_object: bool,
+    args: editor.CdbTreeViewArgs,
 ) !?cetech1.cdb.ObjId {
     var db = cetech1.cdb.CdbDb.fromDbT(dbc, _cdb);
 
@@ -152,7 +151,7 @@ fn folderUiTreeAspect(
         if (is_modified) {
             _editorui.pushStyleColor4f(.{ .idx = .text, .c = ASSET_MODIFIED_TEXT_COLOR });
         }
-        const open = _editor.cdbTreeNode(folder_label, false, false, selected_obj.eq(obj));
+        const open = _editor.cdbTreeNode(folder_label, false, false, selected_obj.eq(obj), args);
         if (is_modified) {
             _editorui.popStyleColor(.{});
         }
@@ -182,7 +181,7 @@ fn folderUiTreeAspect(
             var set = try db.getReferencerSet(obj, allocator);
             defer allocator.free(set);
             for (set) |ref_obj| {
-                if (try _editor.cdbTreeView(allocator, &db, ref_obj, selected_obj, .{ .expand_object = expand_object })) |new| {
+                if (try _editor.cdbTreeView(allocator, &db, ref_obj, selected_obj, args)) |new| {
                     new_selected = new;
                 }
             }
@@ -193,7 +192,7 @@ fn folderUiTreeAspect(
         var set = try db.getReferencerSet(obj, allocator);
         defer allocator.free(set);
         for (set) |ref_obj| {
-            if (try _editor.cdbTreeView(allocator, &db, ref_obj, selected_obj, .{ .expand_object = expand_object })) |new| {
+            if (try _editor.cdbTreeView(allocator, &db, ref_obj, selected_obj, args)) |new| {
                 new_selected = new;
             }
         }
@@ -202,13 +201,13 @@ fn folderUiTreeAspect(
 }
 
 // Asset tree aspect
-var asset_ui_tree_aspect = editorui.EditorUiTreeUiAspect(assetUiTreeAsspect);
+var asset_ui_tree_aspect = editor.UiTreeAspect.implement(assetUiTreeAsspect);
 fn assetUiTreeAsspect(
     allocator: std.mem.Allocator,
-    dbc: *cetech1.c.ct_cdb_db_t,
+    dbc: *cetech1.cdb.Db,
     obj: cetech1.cdb.ObjId,
     selected_obj: cetech1.cdb.ObjId,
-    recursive: bool,
+    args: editor.CdbTreeViewArgs,
 ) !?cetech1.cdb.ObjId {
     var db = cetech1.cdb.CdbDb.fromDbT(dbc, _cdb);
     var buff: [128]u8 = undefined;
@@ -263,8 +262,8 @@ fn assetUiTreeAsspect(
         _editorui.treePop();
     }
 
-    if (recursive) {
-        if (try _editor.cdbTreeView(allocator, &db, asset_obj, selected_obj, .{ .expand_object = recursive })) |s| {
+    if (args.expand_object) {
+        if (try _editor.cdbTreeView(allocator, &db, asset_obj, selected_obj, args)) |s| {
             new_selected = s;
         }
     }
@@ -409,10 +408,10 @@ fn objContextMenu(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cet
 //
 
 // Asset properties aspect
-var asset_properties_aspec = editorui.EditorUiPropertiesAspect(assetUiProperiesAspect);
+var asset_properties_aspec = editor.UiPropertiesAspect.implement(assetUiProperiesAspect);
 fn assetUiProperiesAspect(
     allocator: std.mem.Allocator,
-    dbc: *cetech1.c.ct_cdb_db_t,
+    dbc: *cetech1.cdb.Db,
     obj: cetech1.cdb.ObjId,
 ) !void {
     var db = cetech1.cdb.CdbDb.fromDbT(dbc, _cdb);
@@ -447,13 +446,15 @@ fn assetUiProperiesAspect(
 //
 
 // Folder properties aspect
-var folder_name_prop_aspect = editorui.EditorUiPropertyAspect(folderUiNameProperyAspect);
+var folder_name_prop_aspect = editor.UiPropertyAspect.implement(folderUiNameProperyAspect);
 fn folderUiNameProperyAspect(
     allocator: std.mem.Allocator,
-    dbc: *cetech1.c.ct_cdb_db_t,
+    dbc: *cetech1.cdb.Db,
     obj: cetech1.cdb.ObjId,
     prop_idx: u32,
+    args: editor.cdbPropertiesViewArgs,
 ) !void {
+    _ = args;
     _ = prop_idx;
 
     var db = cetech1.cdb.CdbDb.fromDbT(dbc, _cdb);
@@ -490,7 +491,7 @@ fn folderUiNameProperyAspect(
 //
 
 // Draw tab menu
-fn tabMenu(inst: ?*editor.c.ct_editorui_tab_o) callconv(.C) void {
+fn tabMenu(inst: *editor.TabO) void {
     var tab_o: *AssetBrowserTab = @alignCast(@ptrCast(inst));
 
     if (_editorui.beginMenu("Asset", !tab_o.selected_obj.isEmpty())) {
@@ -502,44 +503,45 @@ fn tabMenu(inst: ?*editor.c.ct_editorui_tab_o) callconv(.C) void {
     }
 }
 
-fn cdb_create_types(db_: ?*cetech1.c.struct_ct_cdb_db_t) callconv(.C) void {
-    var db = cetech1.cdb.CdbDb.fromDbT(@ptrCast(db_.?), _cdb);
+fn cdbCreateTypes(db_: *cetech1.cdb.Db) !void {
+    var db = cetech1.cdb.CdbDb.fromDbT(db_, _cdb);
 
     // FOLDER
-    cetech1.assetdb.FolderType.addAspect(
+    try cetech1.assetdb.FolderType.addAspect(
         &db,
-        cetech1.c.ct_editorui_ui_tree_aspect,
+        editor.UiTreeAspect,
         _g.folder_tree_aspect,
-    ) catch undefined;
+    );
 
-    cetech1.assetdb.FolderType.addPropertyAspect(
+    try cetech1.assetdb.FolderType.addPropertyAspect(
         &db,
-        editor.c.ct_editorui_ui_property_aspect,
+        editor.UiPropertyAspect,
         .Parent,
         @constCast(&editor.hidePropertyAspect),
-    ) catch undefined;
+    );
 
-    cetech1.assetdb.FolderType.addPropertyAspect(
+    try cetech1.assetdb.FolderType.addPropertyAspect(
         &db,
-        cetech1.c.ct_editorui_ui_property_aspect,
+        editor.UiPropertyAspect,
         .Name,
         _g.folder_name_prop_aspect,
-    ) catch undefined;
+    );
 
     // ASSET
-    cetech1.assetdb.AssetType.addAspect(
+    try cetech1.assetdb.AssetType.addAspect(
         &db,
-        cetech1.c.ct_editorui_ui_tree_aspect,
+        editor.UiTreeAspect,
         _g.asset_tree_aspect,
-    ) catch undefined;
+    );
 
-    cetech1.assetdb.AssetType.addAspect(
+    try cetech1.assetdb.AssetType.addAspect(
         &db,
-        cetech1.c.ct_editorui_ui_properties_aspect,
+        editor.UiPropertiesAspect,
         _g.asset_prop_aspect,
-    ) catch undefined;
+    );
 }
-var create_cdb_types_i = cetech1.c.ct_cdb_create_types_i{ .create_types = cdb_create_types };
+
+var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(cdbCreateTypes);
 
 // Create types, register api, interfaces etc...
 pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log: *cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
@@ -559,28 +561,28 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, MODULE_NAME, "_g", .{});
 
-    _g.asset_browser_tab_vt = try apidb.globalVar(editor.c.ct_editorui_tab_type_i, MODULE_NAME, ASSET_BROWSER_NAME, .{});
+    _g.asset_browser_tab_vt = try apidb.globalVar(editor.EditorTabTypeI, MODULE_NAME, ASSET_BROWSER_NAME, .{});
     _g.asset_browser_tab_vt.* = foo_tab;
 
-    _g.asset_prop_aspect = try apidb.globalVar(cetech1.c.ct_editorui_ui_properties_aspect, MODULE_NAME, ASSET_PROPERTIES_ASPECT_NAME, .{});
+    _g.asset_prop_aspect = try apidb.globalVar(editor.UiPropertiesAspect, MODULE_NAME, ASSET_PROPERTIES_ASPECT_NAME, .{});
     _g.asset_prop_aspect.* = asset_properties_aspec;
 
-    _g.folder_name_prop_aspect = try apidb.globalVar(cetech1.c.ct_editorui_ui_property_aspect, MODULE_NAME, FOLDER_NAME_PROPERTY_ASPECT_NAME, .{});
+    _g.folder_name_prop_aspect = try apidb.globalVar(editor.UiPropertyAspect, MODULE_NAME, FOLDER_NAME_PROPERTY_ASPECT_NAME, .{});
     _g.folder_name_prop_aspect.* = folder_name_prop_aspect;
 
-    _g.asset_tree_aspect = try apidb.globalVar(cetech1.c.ct_editorui_ui_tree_aspect, MODULE_NAME, ASSET_TREE_ASPECT_NAME, .{});
+    _g.asset_tree_aspect = try apidb.globalVar(editor.UiTreeAspect, MODULE_NAME, ASSET_TREE_ASPECT_NAME, .{});
     _g.asset_tree_aspect.* = asset_ui_tree_aspect;
 
-    _g.folder_tree_aspect = try apidb.globalVar(cetech1.c.ct_editorui_ui_tree_aspect, MODULE_NAME, FOLDER_TREE_ASPECT_NAME, .{});
+    _g.folder_tree_aspect = try apidb.globalVar(editor.UiTreeAspect, MODULE_NAME, FOLDER_TREE_ASPECT_NAME, .{});
     _g.folder_tree_aspect.* = folder_ui_tree_aspect;
 
-    try apidb.implOrRemove(cetech1.c.ct_cdb_create_types_i, &create_cdb_types_i, load);
-    try apidb.implOrRemove(editor.c.ct_editorui_tab_type_i, &foo_tab, load);
+    try apidb.implOrRemove(cetech1.cdb.CreateTypesI, &create_cdb_types_i, load);
+    try apidb.implOrRemove(editor.EditorTabTypeI, &foo_tab, load);
 
     return true;
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_asset_browser(__apidb: ?*const cetech1.c.ct_apidb_api_t, __allocator: ?*const cetech1.c.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
+pub export fn ct_load_module_editor_asset_browser(__apidb: ?*const cetech1.apidb.ct_apidb_api_t, __allocator: ?*const cetech1.apidb.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, __apidb, __allocator, __load, __reload);
 }

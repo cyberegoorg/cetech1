@@ -133,6 +133,7 @@ test "Interface should have multiple implementation" {
     defer apidb.deinit();
 
     const ct_foo_i = struct {
+        pub const c_name = "ct_foo_i";
         bar: *const fn () callconv(.C) i32,
     };
 
@@ -170,6 +171,7 @@ test "Interface implementation can be removed" {
     defer apidb.deinit();
 
     const ct_foo_i = struct {
+        pub const c_name = "ct_foo_i";
         bar: *const fn () callconv(.C) i32,
     };
 

@@ -1,5 +1,8 @@
 const std = @import("std");
-const c = @import("c.zig").c;
+const c = @import("private/c.zig").c;
+
+pub const ct_apidb_api_t = c.ct_apidb_api_t;
+pub const ct_allocator_t = c.ct_allocator_t;
 
 /// ApiDbAPI is main api db and purpose is shared api/interafce across all part of enfine+language
 /// API is struct with pointers to functions.
@@ -94,7 +97,7 @@ pub const ApiDbAPI = struct {
 
     // Implement interface
     pub inline fn implInterface(self: Self, comptime T: type, impl_ptr: *anyopaque) !void {
-        return self.implInterfaceFn(_sanitizeApiName(T), impl_ptr);
+        return self.implInterfaceFn(T.c_name, impl_ptr);
     }
 
     // Cast generic interface to true type
@@ -104,17 +107,17 @@ pub const ApiDbAPI = struct {
 
     // Get first interface that implement given interface
     pub inline fn getFirstImpl(self: Self, comptime T: type) ?*const c.ct_apidb_impl_iter_t {
-        return self.getFirstImplFn(_sanitizeApiName(T));
+        return self.getFirstImplFn(T.c_name);
     }
 
     // Get last interface that implement given interface
     pub inline fn getLastImpl(self: Self, comptime T: type) ?*const c.ct_apidb_impl_iter_t {
-        return self.getLastImplFn(_sanitizeApiName(T));
+        return self.getLastImplFn(T.c_name);
     }
 
     // Remove interface
     pub inline fn removeImpl(self: Self, comptime T: type, impl_ptr: *anyopaque) void {
-        self.removeImplFn(_sanitizeApiName(T), impl_ptr);
+        self.removeImplFn(T.c_name, impl_ptr);
     }
 
     // Get version for given interface.

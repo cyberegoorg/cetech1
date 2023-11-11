@@ -16,11 +16,13 @@ const system = @import("system.zig");
 const gpu = @import("gpu.zig");
 const editorui = @import("editorui.zig");
 
-const c = @import("../c.zig").c;
+const public = @import("../kernel.zig");
+
+const c = @import("c.zig").c;
 const cetech1 = @import("../cetech1.zig");
 
-const UpdateArray = std.ArrayList(*c.ct_kernel_task_update_i);
-const KernelTaskArray = std.ArrayList(*c.ct_kernel_task_i);
+const UpdateArray = std.ArrayList(*public.KernelTaskUpdateI);
+const KernelTaskArray = std.ArrayList(*public.KernelTaskI);
 const PhaseMap = std.AutoArrayHashMap(cetech1.strid.StrId64, Phase);
 
 const MODULE_NAME = "kernel";
@@ -80,7 +82,7 @@ var _args_map: std.StringArrayHashMap([]const u8) = undefined;
 var _tmp_depend_array: std.ArrayList(cetech1.task.TaskID) = undefined;
 var _tmp_taskid_map: std.AutoArrayHashMap(cetech1.strid.StrId64, cetech1.task.TaskID) = undefined;
 
-var _iface_map: std.AutoArrayHashMap(cetech1.strid.StrId64, *c.ct_kernel_task_update_i) = undefined;
+var _iface_map: std.AutoArrayHashMap(cetech1.strid.StrId64, *public.KernelTaskUpdateI) = undefined;
 
 var _running: bool = false;
 var _quit: bool = false;
@@ -141,7 +143,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
     _tmp_depend_array = std.ArrayList(cetech1.task.TaskID).init(_kernel_allocator);
     _tmp_taskid_map = std.AutoArrayHashMap(cetech1.strid.StrId64, cetech1.task.TaskID).init(_kernel_allocator);
 
-    _iface_map = std.AutoArrayHashMap(cetech1.strid.StrId64, *c.ct_kernel_task_update_i).init(_kernel_allocator);
+    _iface_map = std.AutoArrayHashMap(cetech1.strid.StrId64, *public.KernelTaskUpdateI).init(_kernel_allocator);
 
     try tempalloc.init(_tmp_alocator_pool_profiler_allocator.allocator(), 256);
     try apidb.init(_apidb_profiler_allocator.allocator());
@@ -346,7 +348,7 @@ pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32) !void
     }
 
     try generateTaskUpdateChain();
-    var kernel_task_update_gen = apidb.api.getInterafcesVersion(c.ct_kernel_task_update_i);
+    var kernel_task_update_gen = apidb.api.getInterafcesVersion(public.KernelTaskUpdateI);
 
     // Main window
     if (!headless) {
@@ -384,8 +386,8 @@ pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32) !void
             apidb.dumpGlobalVar();
         }
 
-        // Any ct_kernel_task_update_i iface changed? (add/remove)?
-        var new_kernel_update_gen = apidb.api.getInterafcesVersion(c.ct_kernel_task_update_i);
+        // Any public.KernelTaskUpdateI iface changed? (add/remove)?
+        var new_kernel_update_gen = apidb.api.getInterafcesVersion(public.KernelTaskUpdateI);
         if (new_kernel_update_gen != kernel_task_update_gen) {
             try generateTaskUpdateChain();
             kernel_task_update_gen = new_kernel_update_gen;
@@ -469,14 +471,14 @@ fn generateKernelTaskChain() !void {
     try _task_bag.reset();
     _task_chain.clearRetainingCapacity();
 
-    var iface_map = std.AutoArrayHashMap(cetech1.strid.StrId64, *c.ct_kernel_task_i).init(_kernel_allocator);
+    var iface_map = std.AutoArrayHashMap(cetech1.strid.StrId64, *public.KernelTaskI).init(_kernel_allocator);
     defer iface_map.deinit();
 
-    var it = apidb.api.getFirstImpl(c.ct_kernel_task_i);
+    var it = apidb.api.getFirstImpl(public.KernelTaskI);
     while (it) |node| : (it = node.next) {
-        var iface = cetech1.apidb.ApiDbAPI.toInterface(c.ct_kernel_task_i, node);
+        var iface = cetech1.apidb.ApiDbAPI.toInterface(public.KernelTaskI, node);
 
-        var depends = if (iface.depends_n != 0) cetech1.strid.StrId64.fromCArray(c.ct_strid64_t, iface.depends, iface.depends_n) else &[_]cetech1.strid.StrId64{};
+        var depends = if (iface.depends_n != 0) iface.depends[0..iface.depends_n] else &[_]cetech1.strid.StrId64{};
 
         const name_hash = cetech1.strid.strId64(iface.name[0..std.mem.len(iface.name)]);
 
@@ -505,15 +507,15 @@ fn generateTaskUpdateChain() !void {
 
     _iface_map.clearRetainingCapacity();
 
-    var it = apidb.api.getFirstImpl(c.ct_kernel_task_update_i);
+    var it = apidb.api.getFirstImpl(public.KernelTaskUpdateI);
     while (it) |node| : (it = node.next) {
-        var iface = cetech1.apidb.ApiDbAPI.toInterface(c.ct_kernel_task_update_i, node);
+        var iface = cetech1.apidb.ApiDbAPI.toInterface(public.KernelTaskUpdateI, node);
 
-        var depends = if (iface.depends_n != 0) cetech1.strid.StrId64.fromCArray(c.ct_strid64_t, iface.depends, iface.depends_n) else &[_]cetech1.strid.StrId64{};
+        var depends = if (iface.depends_n != 0) iface.depends[0..iface.depends_n] else &[_]cetech1.strid.StrId64{};
 
         const name_hash = cetech1.strid.strId64(iface.name[0..std.mem.len(iface.name)]);
 
-        var phase = _phase_map.getPtr(cetech1.strid.StrId64.from(c.ct_strid64_t, iface.phase)).?;
+        var phase = _phase_map.getPtr(iface.phase).?;
         try phase.update_bag.add(name_hash, depends);
 
         try _iface_map.put(name_hash, iface);
@@ -562,7 +564,7 @@ fn updateKernelTasks(kernel_tick: u64, dt: i64) !void {
             //update_handler.update.?(_main_db.db, kernel_tick, @floatFromInt(dt));
 
             const KernelTask = struct {
-                update_handler: *c.ct_kernel_task_update_i,
+                update_handler: *public.KernelTaskUpdateI,
                 kernel_tick: u64,
                 frame_allocator: std.mem.Allocator,
                 dt: i64,
@@ -573,7 +575,7 @@ fn updateKernelTasks(kernel_tick: u64, dt: i64) !void {
 
                     // profiler.FiberEnter(self.update_handler.name);
                     // defer profiler.FiberLeave();
-                    self.update_handler.update.?(@ptrCast(&self.frame_allocator), @ptrCast(_main_db.db), self.kernel_tick, @floatFromInt(self.dt));
+                    self.update_handler.update(&self.frame_allocator, _main_db.db, self.kernel_tick, @floatFromInt(self.dt));
                 }
             };
 
@@ -833,4 +835,10 @@ test "Can create kernel" {
     try bigDeinit();
 
     try std.testing.expect(Module1.called);
+}
+
+// Assert C api == C api in zig.
+comptime {
+    std.debug.assert(@sizeOf(c.ct_kernel_task_update_i) == @sizeOf(public.KernelTaskUpdateI));
+    std.debug.assert(@sizeOf(c.ct_kernel_task_i) == @sizeOf(public.KernelTaskI));
 }

@@ -10,86 +10,30 @@ const icons = @import("editorui_icons.zig");
 
 pub const Icons = icons.Icons;
 
-pub inline fn EditorUiTreeUiAspect(
-    ui_tree: *const fn (
-        allocator: std.mem.Allocator,
-        dbc: *c.ct_cdb_db_t,
-        obj: cdb.ObjId,
-        selected_obj: cdb.ObjId,
-        recursive: bool,
-    ) anyerror!?cdb.ObjId,
-) c.ct_editorui_ui_tree_aspect {
-    const Wrap = struct {
-        pub fn ui_c(
-            allocator: ?*const c.ct_allocator_t,
-            dbc: ?*c.ct_cdb_db_t,
-            objc: c.ct_cdb_objid_t,
-            selected_objc: c.ct_cdb_objid_t,
-            recursive: bool,
-        ) callconv(.C) c.ct_cdb_objid_t {
-            var new_selected = ui_tree(modules.allocFromCApi(allocator.?), dbc.?, cdb.ObjId.fromC(c.ct_cdb_objid_t, objc), cdb.ObjId.fromC(c.ct_cdb_objid_t, selected_objc), recursive) catch undefined;
-            if (new_selected == null) return .{};
-            return new_selected.?.toC(c.ct_cdb_objid_t);
-        }
-    };
+pub const EditorUII = extern struct {
+    pub const c_name = "ct_editorui_ui_i";
 
-    return c.ct_editorui_ui_tree_aspect{
-        .ui_tree = Wrap.ui_c,
-    };
-}
+    ui: *const fn (allocator: *const std.mem.Allocator) callconv(.C) void,
 
-pub inline fn EditorUiPropertiesAspect(
-    ui: *const fn (
-        allocator: std.mem.Allocator,
-        dbc: *c.ct_cdb_db_t,
-        obj: cdb.ObjId,
-    ) anyerror!void,
-) c.ct_editorui_ui_properties_aspect {
-    const Wrap = struct {
-        pub fn ui_c(
-            allocator: ?*const c.ct_allocator_t,
-            dbc: ?*c.ct_cdb_db_t,
-            objc: c.ct_cdb_objid_t,
-        ) callconv(.C) void {
-            ui(modules.allocFromCApi(allocator.?), dbc.?, cdb.ObjId.fromC(c.ct_cdb_objid_t, objc)) catch |err| {
-                std.log.err("EditorUiPropertiesAspect {}", .{err});
-            };
-        }
-    };
+    pub inline fn implement(
+        ui_fn: *const fn (
+            allocator: std.mem.Allocator,
+        ) anyerror!void,
+    ) EditorUII {
+        const Wrap = struct {
+            pub fn ui_c(
+                allocator: *const std.mem.Allocator,
+            ) callconv(.C) void {
+                ui_fn(allocator.*) catch |err| {
+                    std.log.err("UiPropertyAspect {}", .{err});
+                };
+            }
+        };
 
-    return c.ct_editorui_ui_properties_aspect{
-        .ui_properties = Wrap.ui_c,
-    };
-}
-
-pub inline fn EditorUiPropertyAspect(
-    ui: *const fn (
-        allocator: std.mem.Allocator,
-        dbc: *c.ct_cdb_db_t,
-        obj: cdb.ObjId,
-        prop_idx: u32,
-    ) anyerror!void,
-) c.ct_editorui_ui_property_aspect {
-    const Wrap = struct {
-        pub fn ui_c(
-            allocator: ?*const c.ct_allocator_t,
-            dbc: ?*c.ct_cdb_db_t,
-            objc: c.ct_cdb_objid_t,
-            prop_idx: u32,
-        ) callconv(.C) void {
-            ui(modules.allocFromCApi(allocator.?), dbc.?, cdb.ObjId.fromC(c.ct_cdb_objid_t, objc), prop_idx) catch |err| {
-                std.log.err("EditorUiPropertyAspect {}", .{err});
-            };
-        }
-    };
-
-    return c.ct_editorui_ui_property_aspect{
-        .ui_property = Wrap.ui_c,
-    };
-}
-
-pub const CdbTreeArgs = struct {
-    expand_object: bool,
+        return EditorUII{
+            .ui = Wrap.ui_c,
+        };
+    }
 };
 
 pub const EditorUIApi = struct {

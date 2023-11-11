@@ -4,7 +4,6 @@ const std = @import("std");
 const public = @import("../cdb.zig");
 const cdb = @import("cdb.zig");
 
-const c = @import("../c.zig");
 const cetech1 = @import("../cetech1.zig");
 
 const StrId32 = @import("../strid.zig").StrId32;
@@ -70,8 +69,8 @@ test "cdb: Should register create types handler " {
     defer testDeinit();
 
     const Handler = struct {
-        pub fn load_types(db_: ?*c.c.struct_ct_cdb_db_t) callconv(.C) void {
-            var db = public.CdbDb.fromDbT(@ptrCast(db_), &cdb.api);
+        pub fn load_types(db_: *cetech1.cdb.Db) !void {
+            var db = public.CdbDb.fromDbT(db_, &cdb.api);
 
             const type_hash = db.addType(
                 "foo",
@@ -83,9 +82,9 @@ test "cdb: Should register create types handler " {
             _ = type_hash;
         }
     };
-    var create_types_i = c.c.ct_cdb_create_types_i{ .create_types = Handler.load_types };
+    var create_types_i = public.CreateTypesI.implement(Handler.load_types);
 
-    try apidb.api.implOrRemove(c.c.ct_cdb_create_types_i, &create_types_i, true);
+    try apidb.api.implOrRemove(public.CreateTypesI, &create_types_i, true);
 
     var db = try cdb.api.createDb("Test");
     defer cdb.api.destroyDb(db);
@@ -118,8 +117,8 @@ test "cdb: Should register aspect" {
     var foo_aspect = FooAspect{ .barFn = &FooAspect.barImpl };
 
     const Handler = struct {
-        pub fn load_types(db_: ?*public.Db) callconv(.C) void {
-            var db = public.CdbDb.fromDbT(@ptrCast(db_), &cdb.api);
+        pub fn load_types(db_: *cetech1.cdb.Db) !void {
+            var db = public.CdbDb.fromDbT(db_, &cdb.api);
 
             const type_hash = db.addType(
                 "foo",
@@ -131,8 +130,10 @@ test "cdb: Should register aspect" {
             _ = type_hash;
         }
     };
-    var create_types_i = c.c.ct_cdb_create_types_i{ .create_types = @ptrCast(&Handler.load_types) };
-    try apidb.api.implOrRemove(c.c.ct_cdb_create_types_i, &create_types_i, true);
+
+    var create_types_i = public.CreateTypesI.implement(Handler.load_types);
+
+    try apidb.api.implOrRemove(public.CreateTypesI, &create_types_i, true);
 
     var db = try cdb.api.createDb("Test");
     defer cdb.api.destroyDb(db);
@@ -172,8 +173,8 @@ test "cdb: Should register property aspect" {
     var foo_aspect = FooAspect{ .barFn = &FooAspect.barImpl };
 
     const Handler = struct {
-        pub fn load_types(db_: ?*public.Db) callconv(.C) void {
-            var db = public.CdbDb.fromDbT(@ptrCast(db_), &cdb.api);
+        pub fn load_types(db_: *cetech1.cdb.Db) !void {
+            var db = public.CdbDb.fromDbT(db_, &cdb.api);
 
             const type_hash = db.addType(
                 "foo",
@@ -185,8 +186,9 @@ test "cdb: Should register property aspect" {
             _ = type_hash;
         }
     };
-    var create_types_i = c.c.ct_cdb_create_types_i{ .create_types = @ptrCast(&Handler.load_types) };
-    try apidb.api.implOrRemove(c.c.ct_cdb_create_types_i, &create_types_i, true);
+
+    var create_types_i = public.CreateTypesI.implement(Handler.load_types);
+    try apidb.api.implOrRemove(public.CreateTypesI, &create_types_i, true);
 
     var db = try cdb.api.createDb("Test");
     defer cdb.api.destroyDb(db);

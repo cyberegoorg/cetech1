@@ -1,5 +1,3 @@
-pub const c = @import("c.zig").c;
-
 pub const fromCstr = @import("c.zig").fromCstr;
 pub const fromCstrZ = @import("c.zig").fromCstrZ;
 

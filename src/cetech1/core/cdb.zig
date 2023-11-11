@@ -14,20 +14,6 @@ pub const ObjId = extern struct {
         return self.id == 0 and self.type_hash.id == 0;
     }
 
-    pub inline fn toC(self: *const ObjId, comptime T: type) T {
-        return .{
-            .id = self.id,
-            .type_hash = .{ .id = self.type_hash.id },
-        };
-    }
-
-    pub inline fn fromC(comptime T: type, obj: T) ObjId {
-        return .{
-            .id = obj.id,
-            .type_hash = .{ .id = obj.type_hash.id },
-        };
-    }
-
     pub fn eq(a: ObjId, b: ObjId) bool {
         return a.id == b.id and a.type_hash.id == b.type_hash.id;
     }
@@ -99,6 +85,26 @@ pub const PropDef = struct {
 
     /// Force type for ref/subobj base types
     type_hash: strid.StrId32 = .{},
+};
+
+pub const CreateTypesI = extern struct {
+    pub const c_name = "ct_cdb_create_types_i";
+
+    create_types: *const fn (db: *Db) callconv(.C) void,
+
+    pub inline fn implement(
+        create_types: ?*const fn (db: *Db) anyerror!void,
+    ) CreateTypesI {
+        const Wrap = struct {
+            pub fn init_fn(main_db: *Db) callconv(.C) void {
+                create_types.?(main_db) catch undefined;
+            }
+        };
+
+        return CreateTypesI{
+            .create_types = Wrap.init_fn,
+        };
+    }
 };
 
 /// Helper for using enum as property.

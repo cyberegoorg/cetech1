@@ -24,21 +24,21 @@ var _tempalloc: *cetech1.tempalloc.TempAllocApi = undefined;
 
 // Global state
 const G = struct {
-    tab_vt: *editor.c.ct_editorui_tab_type_i = undefined,
+    tab_vt: *editor.EditorTabTypeI = undefined,
 };
 var _g: *G = undefined;
 
 const ExplorerTab = struct {
-    tab_i: editor.c.ct_editorui_tab_i,
+    tab_i: editor.EditorTabI,
     db: cetech1.cdb.CdbDb,
     selected_obj: cetech1.cdb.ObjId = .{},
     selected_asset: ?cetech1.cdb.ObjId = null,
 };
 
 // Fill editor tab interface
-var explorer_tab = editor.c.ct_editorui_tab_type_i{
+var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     .tab_name = EXPLORER_TAB_NAME,
-    .tab_hash = .{ .id = cetech1.strid.strId32(EXPLORER_TAB_NAME).id },
+    .tab_hash = cetech1.strid.strId32(EXPLORER_TAB_NAME),
 
     .create_on_init = true,
     .show_pin_object = true,
@@ -46,51 +46,51 @@ var explorer_tab = editor.c.ct_editorui_tab_type_i{
 
     .menu_name = tabMenuItem,
     .title = tabTitle,
-    .create = @ptrCast(&tabCreate),
+    .create = tabCreate,
     .destroy = tabDestroy,
     .ui = tabUi,
     .menu = tabMenu,
     .obj_selected = tabSelectedObject,
-};
+});
 
-fn tabMenuItem() callconv(.C) [*]const u8 {
+fn tabMenuItem() [:0]const u8 {
     return EXPLORER_PROPERTIES_EDITOR_ICON ++ " Explorer";
 }
 
 // Return tab title
-fn tabTitle(inst: ?*editor.c.ct_editorui_tab_o) callconv(.C) [*]const u8 {
+fn tabTitle(inst: *editor.TabO) [:0]const u8 {
     _ = inst;
     return EXPLORER_PROPERTIES_EDITOR_ICON ++ " Explorer";
 }
 
 // Create new FooTab instantce
-fn tabCreate(db: ?*cetech1.c.ct_cdb_db_t) callconv(.C) ?*editor.c.ct_editorui_tab_i {
+fn tabCreate(db: *cetech1.cdb.Db) ?*editor.EditorTabI {
     var tab_inst = _allocator.create(ExplorerTab) catch undefined;
     tab_inst.* = ExplorerTab{
         .tab_i = .{
             .vt = _g.tab_vt,
             .inst = @ptrCast(tab_inst),
         },
-        .db = cetech1.cdb.CdbDb.fromDbT(db.?, _cdb),
+        .db = cetech1.cdb.CdbDb.fromDbT(db, _cdb),
     };
     return &tab_inst.tab_i;
 }
 
 // Destroy FooTab instantce
-fn tabDestroy(tab_inst: ?*editor.c.ct_editorui_tab_i) callconv(.C) void {
-    var tab_o: *ExplorerTab = @alignCast(@ptrCast(tab_inst.?.inst));
+fn tabDestroy(tab_inst: *editor.EditorTabI) void {
+    var tab_o: *ExplorerTab = @alignCast(@ptrCast(tab_inst.inst));
     _allocator.destroy(tab_o);
 }
 
 // Draw tab menu
-fn tabMenu(inst: ?*editor.c.ct_editorui_tab_o) callconv(.C) void {
+fn tabMenu(inst: *editor.TabO) void {
     var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
     _ = tab_o;
 }
 
 // Draw tab content
-fn tabUi(inst: ?*editor.c.ct_editorui_tab_o) callconv(.C) void {
-    var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst.?));
+fn tabUi(inst: *editor.TabO) void {
+    var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
 
     if (tab_o.selected_obj.id == 0 and tab_o.selected_obj.type_hash.id == 0) {
         return;
@@ -108,7 +108,7 @@ fn tabUi(inst: ?*editor.c.ct_editorui_tab_o) callconv(.C) void {
             const asset_name = std.fmt.bufPrintZ(&asset_name_buf, "{s}.{s}", .{ asset_name_str, type_name }) catch undefined;
 
             // Draw asset as tree root.
-            const open = _editor.cdbTreeNode(asset_name, true, false, tab_o.selected_obj.eq(selected_asset));
+            const open = _editor.cdbTreeNode(asset_name, true, false, tab_o.selected_obj.eq(selected_asset), .{});
             if (_editorui.isItemActivated()) {
                 _editor.selectObj(&tab_o.db, selected_asset);
             }
@@ -126,14 +126,13 @@ fn tabUi(inst: ?*editor.c.ct_editorui_tab_o) callconv(.C) void {
 }
 
 // Selected object
-fn tabSelectedObject(inst: ?*editor.c.ct_editorui_tab_o, cdb: ?*editor.c.ct_cdb_db_t, obj: editor.c.ct_cdb_objid_t) callconv(.C) void {
+fn tabSelectedObject(inst: *editor.TabO, cdb: *cetech1.cdb.Db, obj: cetech1.cdb.ObjId) void {
     _ = cdb;
-    var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst.?));
-    var objj = cetech1.cdb.ObjId.fromC(editor.c.ct_cdb_objid_t, obj);
+    var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
 
-    if (objj.isEmpty()) {
+    if (obj.isEmpty()) {
         tab_o.selected_asset = null;
-        tab_o.selected_obj = objj;
+        tab_o.selected_obj = obj;
     }
 
     if (obj.type_hash.id == cetech1.assetdb.AssetType.type_hash.id) {
@@ -143,11 +142,11 @@ fn tabSelectedObject(inst: ?*editor.c.ct_editorui_tab_o, cdb: ?*editor.c.ct_cdb_
     tab_o.selected_obj = .{ .id = obj.id, .type_hash = .{ .id = obj.type_hash.id } };
 }
 
-fn cdb_create_types(db_: ?*cetech1.c.struct_ct_cdb_db_t) callconv(.C) void {
-    var db = cetech1.cdb.CdbDb.fromDbT(@ptrCast(db_.?), _cdb);
-    _ = db;
+fn cdbCreateTypes(db_: ?*cetech1.cdb.Db) !void {
+    _ = db_;
 }
-var create_cdb_types_i = cetech1.c.ct_cdb_create_types_i{ .create_types = cdb_create_types };
+
+var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(cdbCreateTypes);
 
 // Create types, register api, interfaces etc...
 pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log: *cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
@@ -166,16 +165,16 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, MODULE_NAME, "_g", .{});
 
-    _g.tab_vt = try apidb.globalVar(editor.c.ct_editorui_tab_type_i, MODULE_NAME, EXPLORER_TAB_NAME, .{});
+    _g.tab_vt = try apidb.globalVar(editor.EditorTabTypeI, MODULE_NAME, EXPLORER_TAB_NAME, .{});
     _g.tab_vt.* = explorer_tab;
 
-    try apidb.implOrRemove(cetech1.c.ct_cdb_create_types_i, &create_cdb_types_i, load);
-    try apidb.implOrRemove(editor.c.ct_editorui_tab_type_i, &explorer_tab, load);
+    try apidb.implOrRemove(cetech1.cdb.CreateTypesI, &create_cdb_types_i, load);
+    try apidb.implOrRemove(editor.EditorTabTypeI, &explorer_tab, load);
 
     return true;
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_explorer(__apidb: ?*const cetech1.c.ct_apidb_api_t, __allocator: ?*const cetech1.c.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
+pub export fn ct_load_module_editor_explorer(__apidb: ?*const cetech1.apidb.ct_apidb_api_t, __allocator: ?*const cetech1.apidb.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, __apidb, __allocator, __load, __reload);
 }

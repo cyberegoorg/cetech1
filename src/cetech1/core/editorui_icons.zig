@@ -1,4 +1,4 @@
-const c = @import("c.zig").c;
+const c = @import("private/c.zig").c;
 
 pub const Icons = struct {
     pub const FA_0 = c.ICON_FA_0;
