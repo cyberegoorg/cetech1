@@ -1066,17 +1066,16 @@ test "cdb: Should read/write reference set property " {
     );
     std.testing.allocator.free(referencer_set);
 
-    // if we destory ref2 after gc is not remover from obj1
     db.destroyObject(ref_obj2);
     try db.gc(std.testing.allocator);
-    try expectGCStats(db, 3, 2);
+    try expectGCStats(db, 3, 3);
 
     obj_reader = db.readObj(obj1);
     set = db.readRefSet(obj_reader.?, 0, std.testing.allocator);
     try std.testing.expect(set != null);
     try std.testing.expectEqualSlices(
         public.ObjId,
-        &[_]public.ObjId{ref_obj2},
+        &[_]public.ObjId{},
         set.?,
     );
     std.testing.allocator.free(set.?);
@@ -1085,7 +1084,7 @@ test "cdb: Should read/write reference set property " {
     db.destroyObject(obj1);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(db, 3, 3);
+    try expectGCStats(db, 3, 2);
 }
 
 test "cdb: Should read/write blob property " {
@@ -1421,8 +1420,8 @@ fn stressTest(comptime task_count: u32, task_based: bool) !void {
     var db = try cdb.api.createDb("Test");
     defer cdb.api.destroyDb(db);
 
-    const type_hash = try cetech1.cdb.addBigType(&db, "foo");
-    const type_hash2 = try cetech1.cdb.addBigType(&db, "foo2");
+    const type_hash = try cetech1.cdb_types.addBigType(&db, "foo");
+    const type_hash2 = try cetech1.cdb_types.addBigType(&db, "foo2");
 
     const ref_obj1 = try db.createObject(type_hash2);
     if (task_based) {

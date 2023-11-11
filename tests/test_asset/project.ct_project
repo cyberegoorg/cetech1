@@ -5,5 +5,68 @@
   "__uuid": "018b7c93-ea84-7435-879e-67f393b58ba4",
   "name": "test_asset",
   "description": "Test project for asset root load",
-  "organization": "CyberEg{o.o}rg"
+  "organization": "CyberEg{o.o}rg",
+  "settings": [
+    {
+      "__type_name": "ct_asset_tag_project_settings",
+      "__uuid": "018bd49b-c552-7053-aee1-eedb5632ec01",
+      "tags": [
+        {
+          "__type_name": "ct_asset_tag",
+          "__uuid": "018bd49b-c553-740a-a8cc-e9a51b28ab14",
+          "name": "Red",
+          "color": {
+            "__type_name": "ct_color_4f",
+            "__uuid": "018bd49b-c553-70e4-bd69-eb9035bcf88f",
+            "g": 0.0e+00,
+            "b": 0.0e+00
+          }
+        },
+        {
+          "__type_name": "ct_asset_tag",
+          "__uuid": "018bd49b-c553-7117-b1b2-126982a78026",
+          "name": "Green",
+          "color": {
+            "__type_name": "ct_color_4f",
+            "__uuid": "018bd49b-c553-7402-8d71-077171608ddd",
+            "r": 0.0e+00,
+            "b": 0.0e+00
+          }
+        },
+        {
+          "__type_name": "ct_asset_tag",
+          "__uuid": "018bd49b-c554-7ad3-bf20-a5cdf4480667",
+          "name": "Blue",
+          "color": {
+            "__type_name": "ct_color_4f",
+            "__uuid": "018bd49b-c554-708c-83e3-88f5cd6d9bf2",
+            "r": 0.0e+00,
+            "g": 7.594938278198242e-01
+          }
+        },
+        {
+          "__type_name": "ct_asset_tag",
+          "__uuid": "018bde3b-b6aa-7c28-a2d0-59cdc94c29e1",
+          "name": "Yellow",
+          "color": {
+            "__type_name": "ct_color_4f",
+            "__uuid": "018bde3b-b6ab-7243-aed9-3a68332a3a2a",
+            "r": 9.620254039764404e-01,
+            "b": 0.0e+00
+          }
+        },
+        {
+          "__type_name": "ct_asset_tag",
+          "__uuid": "018bde3b-b6ab-7b97-baca-737f7544b9a7",
+          "name": "Orange",
+          "color": {
+            "__type_name": "ct_color_4f",
+            "__uuid": "018bde3b-b6ab-7193-91ff-3a22325bf916",
+            "g": 4.303797483444214e-01,
+            "b": 0.0e+00
+          }
+        }
+      ]
+    }
+  ]
 }

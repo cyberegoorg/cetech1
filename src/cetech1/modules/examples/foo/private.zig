@@ -53,8 +53,8 @@ fn cdbCreateTypes(db_: *cetech1.cdb.Db) !void {
         },
     );
 
-    _g.type_hash = cetech1.cdb.addBigType(&db, "stress_foo_1") catch unreachable;
-    _g.type_hash2 = cetech1.cdb.addBigType(&db, "stress_foo_2") catch unreachable;
+    _g.type_hash = cetech1.cdb_types.addBigType(&db, "stress_foo_1") catch unreachable;
+    _g.type_hash2 = cetech1.cdb_types.addBigType(&db, "stress_foo_2") catch unreachable;
 
     _g.ref_obj1 = db.createObject(_g.type_hash2) catch undefined;
 }

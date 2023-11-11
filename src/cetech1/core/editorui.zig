@@ -25,7 +25,8 @@ pub const EditorUII = extern struct {
                 allocator: *const std.mem.Allocator,
             ) callconv(.C) void {
                 ui_fn(allocator.*) catch |err| {
-                    std.log.err("UiPropertyAspect {}", .{err});
+                    std.log.err("EditorUII {}", .{err});
+                    std.debug.assert(false);
                 };
             }
         };
@@ -41,6 +42,10 @@ pub const EditorUIApi = struct {
     newFrame: *const fn () void,
     showDemoWindow: *const fn () void,
 
+    // Filter
+    uiFilter: *const fn (buf: []u8, filter: ?[:0]const u8) ?[:0]const u8,
+    uiFilterPass: *const fn (allocator: std.mem.Allocator, filter: [:0]const u8, value: [:0]const u8, is_path: bool) ?f64,
+
     // NFD
     openFileDialog: *const fn (filter: ?[:0]const u8, default_path: ?[:0]const u8) anyerror!?[:0]const u8,
     saveFileDialog: *const fn (filter: ?[:0]const u8, default_path: ?[:0]const u8) anyerror!?[:0]const u8,
@@ -52,15 +57,28 @@ pub const EditorUIApi = struct {
     end: *const fn () void,
 
     isItemToggledOpen: *const fn () bool,
+    dummy: *const fn (args: Dummy) void,
+    spacing: *const fn () void,
+    getScrollX: *const fn () f32,
 
+    getStyle: *const fn () *Style,
+    pushStyleVar2f: *const fn (args: PushStyleVar2f) void,
+    pushStyleVar1f: *const fn (args: PushStyleVar1f) void,
     pushStyleColor4f: *const fn (args: PushStyleColor4f) void,
     popStyleColor: *const fn (args: PopStyleColor) void,
+    popStyleVar: *const fn (args: PopStyleVar) void,
+
+    isKeyDown: *const fn (key: Key) bool,
+
     tableSetBgColor: *const fn (args: TableSetBgColor) void,
 
     colorConvertFloat4ToU32: *const fn (in: [4]f32) u32,
 
     textUnformatted: *const fn (txt: []const u8) void,
     textUnformattedColored: *const fn (color: [4]f32, txt: []const u8) void,
+
+    colorPicker4: *const fn (label: [:0]const u8, args: ColorPicker4) bool,
+    colorEdit4: *const fn (label: [:0]const u8, args: ColorEdit4) bool,
 
     beginMainMenuBar: *const fn () void,
     endMainMenuBar: *const fn () void,
@@ -72,8 +90,13 @@ pub const EditorUIApi = struct {
     menuItem: *const fn (label: [:0]const u8, args: MenuItem) bool,
     menuItemPtr: *const fn (label: [:0]const u8, args: MenuItemPtr) bool,
 
+    beginChild: *const fn (str_id: [:0]const u8, args: BeginChild) bool,
+    endChild: *const fn () void,
+
     pushPtrId: *const fn (ptr_id: *const anyopaque) void,
     pushIntId: *const fn (int_id: u32) void,
+    pushObjId: *const fn (obj: cdb.ObjId) void,
+
     popId: *const fn () void,
 
     treeNode: *const fn (label: [:0]const u8) bool,
@@ -87,6 +110,8 @@ pub const EditorUIApi = struct {
 
     labelText: *const fn (label: [:0]const u8, text: [:0]const u8) void,
     button: *const fn (label: [:0]const u8, args: Button) bool,
+    smallButton: *const fn (label: [:0]const u8) bool,
+    invisibleButton: *const fn (label: [:0]const u8, args: InvisibleButton) bool,
 
     sameLine: *const fn (args: SameLine) void,
 
@@ -125,6 +150,15 @@ pub const EditorUIApi = struct {
     tableHeadersRow: *const fn () void,
     tableNextColumn: *const fn () void,
     tableNextRow: *const fn (args: TableNextRow) void,
+    getItemRectMax: *const fn () [2]f32,
+    getItemRectMin: *const fn () [2]f32,
+    getCursorPosX: *const fn () f32,
+    calcTextSize: *const fn (txt: []const u8, args: CalcTextSize) [2]f32,
+    getWindowPos: *const fn () [2]f32,
+    getWindowContentRegionMax: *const fn () [2]f32,
+    getContentRegionMax: *const fn () [2]f32,
+    getContentRegionAvail: *const fn () [2]f32,
+    setCursorPosX: *const fn (x: f32) void,
 };
 
 // Copy from zgui
@@ -234,6 +268,155 @@ pub const MouseButton = enum(u32) {
     left = 0,
     right = 1,
     middle = 2,
+};
+
+pub const Key = enum(u32) {
+    none = 0,
+    tab = 512,
+    left_arrow,
+    right_arrow,
+    up_arrow,
+    down_arrow,
+    page_up,
+    page_down,
+    home,
+    end,
+    insert,
+    delete,
+    back_space,
+    space,
+    enter,
+    escape,
+    left_ctrl,
+    left_shift,
+    left_alt,
+    left_super,
+    right_ctrl,
+    right_shift,
+    right_alt,
+    right_super,
+    menu,
+    zero,
+    one,
+    two,
+    three,
+    four,
+    five,
+    six,
+    seven,
+    eight,
+    nine,
+    a,
+    b,
+    c,
+    d,
+    e,
+    f,
+    g,
+    h,
+    i,
+    j,
+    k,
+    l,
+    m,
+    n,
+    o,
+    p,
+    q,
+    r,
+    s,
+    t,
+    u,
+    v,
+    w,
+    x,
+    y,
+    z,
+    f1,
+    f2,
+    f3,
+    f4,
+    f5,
+    f6,
+    f7,
+    f8,
+    f9,
+    f10,
+    f11,
+    f12,
+    apostrophe,
+    comma,
+    minus,
+    period,
+    slash,
+    semicolon,
+    equal,
+    left_bracket,
+    back_slash,
+    right_bracket,
+    grave_accent,
+    caps_lock,
+    scroll_lock,
+    num_lock,
+    print_screen,
+    pause,
+    keypad_0,
+    keypad_1,
+    keypad_2,
+    keypad_3,
+    keypad_4,
+    keypad_5,
+    keypad_6,
+    keypad_7,
+    keypad_8,
+    keypad_9,
+    keypad_decimal,
+    keypad_divide,
+    keypad_multiply,
+    keypad_subtract,
+    keypad_add,
+    keypad_enter,
+    keypad_equal,
+
+    gamepad_start,
+    gamepad_back,
+    gamepad_faceleft,
+    gamepad_faceright,
+    gamepad_faceup,
+    gamepad_facedown,
+    gamepad_dpadleft,
+    gamepad_dpadright,
+    gamepad_dpadup,
+    gamepad_dpaddown,
+    gamepad_l1,
+    gamepad_r1,
+    gamepad_l2,
+    gamepad_r2,
+    gamepad_l3,
+    gamepad_r3,
+    gamepad_lstickleft,
+    gamepad_lstickright,
+    gamepad_lstickup,
+    gamepad_lstickdown,
+    gamepad_rstickleft,
+    gamepad_rstickright,
+    gamepad_rstickup,
+    gamepad_rstickdown,
+
+    mouse_left,
+    mouse_right,
+    mouse_middle,
+    mouse_x1,
+    mouse_x2,
+
+    mouse_wheel_x,
+    mouse_wheel_y,
+
+    mod_ctrl = 1 << 12,
+    mod_shift = 1 << 13,
+    mod_alt = 1 << 14,
+    mod_super = 1 << 15,
+    mod_mask_ = 0xf000,
 };
 
 pub const TableBorderFlags = packed struct(u4) {
@@ -553,4 +736,201 @@ pub const TableSetBgColor = struct {
     target: TableBgTarget,
     color: u32,
     column_n: i32 = -1,
+};
+
+pub const ColorEditFlags = packed struct(u32) {
+    no_alpha: bool = false,
+    no_picker: bool = false,
+    no_options: bool = false,
+    no_small_preview: bool = false,
+    no_inputs: bool = false,
+    no_tooltip: bool = false,
+    no_label: bool = false,
+    no_side_preview: bool = false,
+    no_drag_drop: bool = false,
+    no_border: bool = false,
+
+    _reserved0: bool = false,
+    _reserved1: bool = false,
+    _reserved2: bool = false,
+    _reserved3: bool = false,
+    _reserved4: bool = false,
+
+    alpha_bar: bool = false,
+    alpha_preview: bool = false,
+    alpha_preview_half: bool = false,
+    hdr: bool = false,
+    display_rgb: bool = false,
+    display_hsv: bool = false,
+    display_hex: bool = false,
+    uint8: bool = false,
+    float: bool = false,
+    picker_hue_bar: bool = false,
+    picker_hue_wheel: bool = false,
+    input_rgb: bool = false,
+    input_hsv: bool = false,
+
+    _padding: u4 = 0,
+
+    pub const default_options = ColorEditFlags{
+        .uint8 = true,
+        .display_rgb = true,
+        .input_rgb = true,
+        .picker_hue_bar = true,
+    };
+};
+const ColorPicker4 = struct {
+    col: *[4]f32,
+    flags: ColorEditFlags = .{},
+    ref_col: ?[*]const f32 = null,
+};
+
+const ColorEdit4 = struct {
+    col: *[4]f32,
+    flags: ColorEditFlags = .{},
+};
+
+const CalcTextSize = struct {
+    hide_text_after_double_hash: bool = false,
+    wrap_width: f32 = -1.0,
+};
+
+pub const Direction = enum(i32) {
+    none = -1,
+    left = 0,
+    right = 1,
+    up = 2,
+    down = 3,
+};
+
+pub const Style = extern struct {
+    alpha: f32,
+    disabled_alpha: f32,
+    window_padding: [2]f32,
+    window_rounding: f32,
+    window_border_size: f32,
+    window_min_size: [2]f32,
+    window_title_align: [2]f32,
+    window_menu_button_position: Direction,
+    child_rounding: f32,
+    child_border_size: f32,
+    popup_rounding: f32,
+    popup_border_size: f32,
+    frame_padding: [2]f32,
+    frame_rounding: f32,
+    frame_border_size: f32,
+    item_spacing: [2]f32,
+    item_inner_spacing: [2]f32,
+    cell_padding: [2]f32,
+    touch_extra_padding: [2]f32,
+    indent_spacing: f32,
+    columns_min_spacing: f32,
+    scrollbar_size: f32,
+    scrollbar_rounding: f32,
+    grab_min_size: f32,
+    grab_rounding: f32,
+    log_slider_deadzone: f32,
+    tab_rounding: f32,
+    tab_border_size: f32,
+    tab_min_width_for_close_button: f32,
+    color_button_position: Direction,
+    button_text_align: [2]f32,
+    selectable_text_align: [2]f32,
+    separator_text_border_size: f32,
+    separator_text_align: [2]f32,
+    separator_text_padding: [2]f32,
+    display_window_padding: [2]f32,
+    display_safe_area_padding: [2]f32,
+    mouse_cursor_scale: f32,
+    anti_aliased_lines: bool,
+    anti_aliased_lines_use_tex: bool,
+    anti_aliased_fill: bool,
+    curve_tessellation_tol: f32,
+    circle_tessellation_max_error: f32,
+
+    colors: [@typeInfo(StyleCol).Enum.fields.len][4]f32,
+
+    /// `pub fn init() Style`
+    pub const init = zguiStyle_Init;
+    extern fn zguiStyle_Init() Style;
+
+    /// `pub fn scaleAllSizes(style: *Style, scale_factor: f32) void`
+    pub const scaleAllSizes = zguiStyle_ScaleAllSizes;
+    extern fn zguiStyle_ScaleAllSizes(style: *Style, scale_factor: f32) void;
+
+    pub fn getColor(style: Style, idx: StyleCol) [4]f32 {
+        return style.colors[@intFromEnum(idx)];
+    }
+    pub fn setColor(style: *Style, idx: StyleCol, color: [4]f32) void {
+        style.colors[@intFromEnum(idx)] = color;
+    }
+};
+
+pub const ButtonFlags = packed struct(u32) {
+    mouse_button_left: bool = false,
+    mouse_button_right: bool = false,
+    mouse_button_middle: bool = false,
+    _padding: u29 = 0,
+};
+const InvisibleButton = struct {
+    w: f32,
+    h: f32,
+    flags: ButtonFlags = .{},
+};
+
+pub const StyleVar = enum(u32) {
+    alpha, // 1f
+    disabled_alpha, // 1f
+    window_padding, // 2f
+    window_rounding, // 1f
+    window_border_size, // 1f
+    window_min_size, // 2f
+    window_title_align, // 2f
+    child_rounding, // 1f
+    child_border_size, // 1f
+    popup_rounding, // 1f
+    popup_border_size, // 1f
+    frame_padding, // 2f
+    frame_rounding, // 1f
+    frame_border_size, // 1f
+    item_spacing, // 2f
+    item_inner_spacing, // 2f
+    indent_spacing, // 1f
+    cell_padding, // 2f
+    scrollbar_size, // 1f
+    scrollbar_rounding, // 1f
+    grab_min_size, // 1f
+    grab_rounding, // 1f
+    tab_rounding, // 1f
+    button_text_align, // 2f
+    selectable_text_align, // 2f
+    separator_text_border_size, // 1f
+    separator_text_align, // 2f
+    separator_text_padding, // 2f
+};
+
+const PushStyleVar2f = struct {
+    idx: StyleVar,
+    v: [2]f32,
+};
+
+const PushStyleVar1f = struct {
+    idx: StyleVar,
+    v: f32,
+};
+
+const PopStyleVar = struct {
+    count: i32 = 1,
+};
+
+const BeginChild = struct {
+    w: f32 = 0.0,
+    h: f32 = 0.0,
+    border: bool = false,
+    flags: WindowFlags = .{},
+};
+
+const Dummy = struct {
+    w: f32,
+    h: f32,
 };

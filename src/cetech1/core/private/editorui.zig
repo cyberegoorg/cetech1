@@ -6,6 +6,7 @@ const zgpu = @import("zgpu");
 const zglfw = @import("zglfw");
 const zgui = @import("zgui");
 const nfd = @import("nfd");
+const zf = @import("zf");
 
 const apidb = @import("apidb.zig");
 const log = @import("log.zig");
@@ -39,6 +40,9 @@ pub var api = public.EditorUIApi{
     .textUnformatted = @ptrCast(&zgui.textUnformatted),
     .textUnformattedColored = @ptrCast(&zgui.textUnformattedColored),
 
+    .colorPicker4 = @ptrCast(&zgui.colorPicker4),
+    .colorEdit4 = @ptrCast(&zgui.colorEdit4),
+
     .beginMainMenuBar = @ptrCast(&zgui.beginMainMenuBar),
     .endMainMenuBar = @ptrCast(&zgui.endMainMenuBar),
     .beginMenuBar = @ptrCast(&zgui.beginMenuBar),
@@ -48,12 +52,16 @@ pub var api = public.EditorUIApi{
     .menuItem = @ptrCast(&zgui.menuItem),
     .menuItemPtr = @ptrCast(&zgui.menuItemPtr),
 
+    .beginChild = @ptrCast(&zgui.beginChild),
+    .endChild = @ptrCast(&zgui.endChild),
+
     .separator = @ptrCast(&zgui.separator),
     .separatorText = @ptrCast(&zgui.separatorText),
     .setNextItemWidth = @ptrCast(&zgui.setNextItemWidth),
 
     .pushPtrId = @ptrCast(&zgui.pushPtrId),
     .pushIntId = @ptrCast(&zgui.pushIntId),
+    .pushObjId = pushObjId,
     .popId = @ptrCast(&zgui.popId),
 
     .treeNode = @ptrCast(&zgui.treeNode),
@@ -82,11 +90,29 @@ pub var api = public.EditorUIApi{
     .tableNextColumn = @ptrCast(&zgui.tableNextColumn),
     .tableNextRow = @ptrCast(&zgui.tableNextRow),
 
+    .getItemRectMax = @ptrCast(&zgui.getItemRectMax),
+    .getItemRectMin = @ptrCast(&zgui.getItemRectMin),
+    .getCursorPosX = @ptrCast(&zgui.getCursorPosX),
+    .calcTextSize = @ptrCast(&zgui.calcTextSize),
+    .getWindowPos = @ptrCast(&zgui.getWindowPos),
+    .getWindowContentRegionMax = @ptrCast(&zgui.getWindowContentRegionMax),
+    .getContentRegionMax = @ptrCast(&zgui.getContentRegionMax),
+    .getContentRegionAvail = @ptrCast(&zgui.getContentRegionAvail),
+    .setCursorPosX = @ptrCast(&zgui.setCursorPosX),
+
+    .getStyle = @ptrCast(&zgui.getStyle),
+    .pushStyleVar2f = @ptrCast(&zgui.pushStyleVar2f),
+    .pushStyleVar1f = @ptrCast(&zgui.pushStyleVar1f),
+    .popStyleVar = @ptrCast(&zgui.popStyleVar),
+    .isKeyDown = @ptrCast(&zgui.isKeyDown),
+
     .labelText = labelText,
 
     .sameLine = @ptrCast(&zgui.sameLine),
 
     .button = @ptrCast(&zgui.button),
+    .smallButton = @ptrCast(&zgui.smallButton),
+    .invisibleButton = @ptrCast(&zgui.invisibleButton),
 
     .inputText = @ptrCast(&zgui.inputText),
     .inputFloat = @ptrCast(&zgui.inputFloat),
@@ -100,12 +126,65 @@ pub var api = public.EditorUIApi{
     .alignTextToFramePadding = @ptrCast(&zgui.alignTextToFramePadding),
 
     .isItemToggledOpen = @ptrCast(&zgui.isItemToggledOpen),
+    .dummy = @ptrCast(&zgui.dummy),
+    .spacing = @ptrCast(&zgui.spacing),
+    .getScrollX = @ptrCast(&zgui.getScrollX),
 
     .openFileDialog = nfd.openFileDialog,
     .saveFileDialog = nfd.saveFileDialog,
     .openFolderDialog = nfd.openFolderDialog,
     .freePath = nfd.freePath,
+    .uiFilterPass = uiFilterPass,
+    .uiFilter = uiFilter,
 };
+
+fn pushObjId(obj: cetech1.cdb.ObjId) void {
+    zgui.pushPtrId(@ptrFromInt(obj.toU64()));
+}
+
+fn uiFilterPass(allocator: std.mem.Allocator, filter: [:0]const u8, value: [:0]const u8, is_path: bool) ?f64 {
+    // Collect token for filter
+    var tokens = std.ArrayList([]const u8).init(allocator);
+    defer tokens.deinit();
+
+    var split = std.mem.split(u8, filter, " ");
+    const first = split.first();
+    var it: ?[]const u8 = first;
+    while (it) |word| : (it = split.next()) {
+        if (word.len == 0) continue;
+        tokens.append(word) catch return null;
+    }
+
+    return zf.rank(value, tokens.items, false, !is_path);
+}
+
+fn uiFilter(buf: []u8, filter: ?[:0]const u8) ?[:0]const u8 {
+    api.textUnformatted(Icons.FA_MAGNIFYING_GLASS);
+    api.sameLine(.{});
+
+    var input_buff: [128:0]u8 = undefined;
+    _ = std.fmt.bufPrintZ(&input_buff, "{s}", .{filter orelse ""}) catch return null;
+
+    api.setNextItemWidth(-std.math.floatMin(f32));
+    if (api.inputText("###filter", .{
+        .buf = &input_buff,
+        .flags = .{
+            .auto_select_all = true,
+            //.enter_returns_true = true,
+        },
+    })) {
+        const input = std.mem.sliceTo(&input_buff, 0);
+        return std.fmt.bufPrintZ(buf, "{s}", .{input}) catch null;
+    }
+
+    if (filter) |f| {
+        const len = f.len;
+        if (len == 0) return null;
+        return std.mem.sliceTo(f, 0);
+    }
+
+    return null;
+}
 
 pub fn labelText(label: [:0]const u8, text: [:0]const u8) void {
     zgui.labelText(label, "{s}", .{text});
@@ -140,7 +219,7 @@ pub fn editorUI(tmp_allocator: std.mem.Allocator, main_db: *cetech1.cdb.Db, kern
 
     var it = apidb.api.getFirstImpl(cetech1.editorui.EditorUII);
     while (it) |node| : (it = node.next) {
-        var iface = cetech1.apidb.ApiDbAPI.toInterface(cetech1.editorui.EditorUII, node);
+        const iface = cetech1.apidb.ApiDbAPI.toInterface(cetech1.editorui.EditorUII, node);
         iface.*.ui(&tmp_allocator);
     }
 }
@@ -159,10 +238,13 @@ pub fn useWithWindow(window: *cetech1.system.Window, gpuctx: *cetech1.gpu.GpuCon
     };
 
     // Load main font
-    _ = zgui.io.addFontFromMemory(_main_font, std.math.floor(16.0 * scale_factor));
+    var main_cfg = zgui.FontConfig.init();
+    main_cfg.font_data_owned_by_atlas = false;
+    _ = zgui.io.addFontFromMemoryWithConfig(_main_font, std.math.floor(16.0 * scale_factor), main_cfg, null);
 
     // Merge Font Awesome
     var fa_cfg = zgui.FontConfig.init();
+    fa_cfg.font_data_owned_by_atlas = false;
     fa_cfg.merge_mode = true;
     _ = zgui.io.addFontFromMemoryWithConfig(
         if (false) _fa_regular_font else _fa_solid_font,
@@ -218,7 +300,7 @@ fn getPropertyColor(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: u3
 // next shit
 
 fn inputI32(label: [:0]const u8, args: public.InputScalarGen(i32)) bool {
-    var flags = zgui.InputTextFlags{
+    const flags = zgui.InputTextFlags{
         .chars_decimal = args.flags.chars_decimal,
         .chars_hexadecimal = args.flags.chars_hexadecimal,
         .chars_uppercase = args.flags.chars_uppercase,
@@ -249,7 +331,7 @@ fn inputI32(label: [:0]const u8, args: public.InputScalarGen(i32)) bool {
     });
 }
 fn inputU32(label: [:0]const u8, args: public.InputScalarGen(u32)) bool {
-    var flags = zgui.InputTextFlags{
+    const flags = zgui.InputTextFlags{
         .chars_decimal = args.flags.chars_decimal,
         .chars_hexadecimal = args.flags.chars_hexadecimal,
         .chars_uppercase = args.flags.chars_uppercase,

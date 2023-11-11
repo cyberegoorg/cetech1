@@ -98,4 +98,6 @@ pub const KernelApi = struct {
 
     getKernelTickRate: *const fn () u32,
     setKernelTickRate: *const fn (rate: u32) void,
+
+    restart: *const fn (asset_root: ?[]const u8) void,
 };

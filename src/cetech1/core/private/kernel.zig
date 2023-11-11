@@ -9,6 +9,7 @@ const apidb = @import("apidb.zig");
 const modules = @import("modules.zig");
 const task = @import("task.zig");
 const cdb = @import("cdb.zig");
+const cdb_types = @import("cdb_types.zig");
 const tempalloc = @import("tempalloc.zig");
 const uuid = @import("uuid.zig");
 const assetdb = @import("assetdb.zig");
@@ -92,13 +93,25 @@ var _main_db: cetech1.cdb.CdbDb = undefined;
 var can_quit_handler: ?*const fn () bool = null;
 
 var _max_tick_rate: u32 = 60;
+var _restart = true;
+
+var _next_asset_root_buff: [256]u8 = undefined;
+var _next_asset_root: ?[]u8 = null;
 
 pub var api = cetech1.kernel.KernelApi{
     .quit = quit,
     .setCanQuit = setCanQuit,
     .getKernelTickRate = getKernelTickRate,
     .setKernelTickRate = setKernelTickRate,
+    .restart = restart,
 };
+
+fn restart(asset_root: ?[]const u8) void {
+    _restart = true;
+    if (asset_root != null) {
+        _next_asset_root = std.fmt.bufPrint(&_next_asset_root_buff, "{s}", .{asset_root.?}) catch undefined;
+    }
+}
 
 fn getKernelTickRate() u32 {
     return _max_tick_rate;
@@ -162,6 +175,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
     try task.registerToApi();
     try uuid.registerToApi();
     try cdb.registerToApi();
+    try cdb_types.registerToApi();
     try assetdb.registerToApi();
     try system.registerToApi();
     try gpu.registerToApi();
@@ -179,18 +193,22 @@ pub fn init(allocator: std.mem.Allocator) !void {
     try addPhase(c.CT_KERNEL_PHASE_ONSTORE, &[_]cetech1.strid.StrId64{cetech1.kernel.PreStore});
 }
 
-pub fn deinit() !void {
-    editorui.deinit();
+pub fn deinit() void {
+    shutdownKernelTasks();
+    try modules.unloadAll();
 
+    editorui.deinit();
     if (gpu_context) |ctx| gpu.api.destroyContext(ctx);
     if (main_window) |window| system.api.destroyWindow(window);
     gpu.deinit();
     system.deinit();
-    assetdb.deinit();
 
+    assetdb.deinit();
     modules.deinit();
 
     cdb.api.destroyDb(_main_db);
+
+    task.stop();
 
     cdb.deinit();
     task.deinit();
@@ -201,6 +219,10 @@ pub fn deinit() !void {
     _tmp_depend_array.deinit();
     _tmp_taskid_map.deinit();
 
+    for (_phase_map.values()) |*value| {
+        value.deinit();
+    }
+
     _update_bag.deinit();
     _phases_bag.deinit();
     _phase_map.deinit();
@@ -210,7 +232,6 @@ pub fn deinit() !void {
 
     deinitArgs();
     profiler.deinit();
-    _ = gpa.deinit();
 }
 
 fn initProgramArgs() !void {
@@ -268,7 +289,6 @@ pub fn bigInit(static_modules: ?[]const c.ct_module_desc_t, load_dynamic: bool) 
     try task.start();
 
     _main_db = try cdb.api.createDb("Main");
-
     try assetdb.init(_asset_profiler_allocator.allocator(), &_main_db);
 
     try generateKernelTaskChain();
@@ -281,10 +301,6 @@ pub fn bigInit(static_modules: ?[]const c.ct_module_desc_t, load_dynamic: bool) 
 }
 
 pub fn bigDeinit() !void {
-    shutdownKernelTasks();
-
-    try modules.unloadAll();
-    task.stop();
     profiler.api.frameMark();
 }
 
@@ -317,115 +333,131 @@ fn registerSignals() !void {
 var main_window: ?*cetech1.system.Window = null;
 var gpu_context: ?*cetech1.gpu.GpuContext = null;
 
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-var gpa_allocator = gpa.allocator();
-
 pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32) !void {
-    try init(gpa_allocator);
+    while (_restart) {
+        _restart = false;
 
-    // Boot ARGS aka. command line args
-    const max_kernel_tick = getIntArgs("--max-kernel-tick") orelse 0;
-    _max_tick_rate = getIntArgs("--max-kernel-tick-rate") orelse 60;
-    const load_dynamic = 1 == getIntArgs("--load-dynamic") orelse 1;
-    const asset_root = getStrArgs("--asset-root") orelse "";
-    const headless = 1 == getIntArgs("--headless") orelse 0;
+        // Main Allocator
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        var gpa_allocator = gpa.allocator();
+        defer _ = gpa.deinit();
 
-    try bigInit(static_modules.?[0..static_modules_n], load_dynamic);
-    defer bigDeinit() catch unreachable;
+        // Init Kernel
+        try init(gpa_allocator);
+        defer deinit();
 
-    var kernel_tick: u64 = 1;
-    var last_call = std.time.milliTimestamp();
+        // Boot ARGS aka. command line args
+        const max_kernel_tick = getIntArgs("--max-kernel-tick") orelse 0;
+        _max_tick_rate = getIntArgs("--max-kernel-tick-rate") orelse 60;
+        const load_dynamic = 1 == getIntArgs("--load-dynamic") orelse 1;
+        const asset_root = getStrArgs("--asset-root") orelse "";
+        const headless = 1 == getIntArgs("--headless") orelse 0;
 
-    try _phases_bag.build_all();
+        // Init modules
+        try bigInit(static_modules.?[0..static_modules_n], load_dynamic);
+        defer bigDeinit() catch unreachable;
 
-    _running = true;
-    _quit = false;
+        var kernel_tick: u64 = 1;
+        var last_call = std.time.milliTimestamp();
 
-    try registerSignals();
+        // Build phase graph
+        try _phases_bag.build_all();
 
-    if (asset_root.len != 0) {
-        try assetdb.api.openAssetRootFolder(asset_root, _asset_profiler_allocator.allocator());
-    }
+        _running = true;
+        _quit = false;
 
-    try generateTaskUpdateChain();
-    var kernel_task_update_gen = apidb.api.getInterafcesVersion(public.KernelTaskUpdateI);
+        // Register OS signals
+        try registerSignals();
 
-    // Main window
-    if (!headless) {
-        main_window = try system.api.createWindow(1024, 768, "cetech1", null);
-        gpu_context = try gpu.api.createContext(main_window.?);
-        editorui.api.enableWithWindow(main_window.?, gpu_context.?);
-    } else {
-        // TODO: True headless
-    }
-
-    while (_running and !_quit) : (kernel_tick += 1) {
-        profiler.api.frameMark();
-
-        var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "kernelUpdate");
-        defer update_zone_ctx.End();
-
-        // log.api.debug(MODULE_NAME, "TICK BEGIN", .{});
-
-        var now = std.time.milliTimestamp();
-        var dt = now - last_call;
-
-        last_call = now;
-
-        system.api.poolEvents();
-        if (main_window != null) {
-            editorui.api.newFrame();
+        // If asset root is set open it.
+        if (asset_root.len != 0 or _next_asset_root != null) {
+            try assetdb.api.openAssetRootFolder(if (_next_asset_root) |root| root else asset_root, _asset_profiler_allocator.allocator());
+            try cdb.api.dump(_main_db.db);
+            _next_asset_root = null;
         }
 
-        // Do hard work.
-        try updateKernelTasks(kernel_tick, dt);
+        // Create update graph.
+        try generateTaskUpdateChain();
+        var kernel_task_update_gen = apidb.api.getInterafcesVersion(public.KernelTaskUpdateI);
 
-        // Any dynamic modules changed?
-        const reloaded_modules = try modules.reloadAllIfNeeded();
-        if (reloaded_modules) {
-            apidb.dumpGlobalVar();
+        // Main window
+        if (!headless) {
+            main_window = try system.api.createWindow(1024, 768, "cetech1", null);
+            gpu_context = try gpu.api.createContext(main_window.?);
+            editorui.api.enableWithWindow(main_window.?, gpu_context.?);
+        } else {
+            // TODO: True headless
         }
 
-        // Any public.KernelTaskUpdateI iface changed? (add/remove)?
-        var new_kernel_update_gen = apidb.api.getInterafcesVersion(public.KernelTaskUpdateI);
-        if (new_kernel_update_gen != kernel_task_update_gen) {
-            try generateTaskUpdateChain();
-            kernel_task_update_gen = new_kernel_update_gen;
-        }
+        while (_running and !_quit and !_restart) : (kernel_tick += 1) {
+            profiler.api.frameMark();
 
-        // TODO: Render graph
-        if (gpu_context) |ctx| {
-            var tmp = try tempalloc.api.createTempArena();
-            defer tempalloc.api.destroyTempArena(tmp);
+            var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "kernelUpdate");
+            defer update_zone_ctx.End();
 
-            try editorui.editorUI(tmp.allocator(), @ptrCast(_main_db.db), kernel_tick, @floatFromInt(dt));
-            gpu.api.shitTempRender(ctx);
-        }
+            var now = std.time.milliTimestamp();
+            var dt = now - last_call;
 
-        // clean main DB
-        var gc_tmp = try tempalloc.api.createTempArena();
-        defer tempalloc.api.destroyTempArena(gc_tmp);
-        try _main_db.gc(gc_tmp.allocator());
+            last_call = now;
 
-        // log.api.debug(MODULE_NAME, "TICK END", .{});
+            system.api.poolEvents();
+            if (main_window != null) {
+                editorui.api.newFrame();
+            }
 
-        if (main_window) |window| {
-            if (system.api.windowClosed(window)) {
-                if (can_quit_handler) |can_quit| {
-                    _ = can_quit();
-                } else {
-                    _quit = true;
+            // Do hard work.
+            try updateKernelTasks(kernel_tick, dt);
+
+            // Any dynamic modules changed?
+            const reloaded_modules = try modules.reloadAllIfNeeded();
+            if (reloaded_modules) {
+                apidb.dumpGlobalVar();
+            }
+
+            // Any public.KernelTaskUpdateI iface changed? (add/remove)?
+            var new_kernel_update_gen = apidb.api.getInterafcesVersion(public.KernelTaskUpdateI);
+            if (new_kernel_update_gen != kernel_task_update_gen) {
+                try generateTaskUpdateChain();
+                kernel_task_update_gen = new_kernel_update_gen;
+            }
+
+            // TODO: Render graph
+            if (gpu_context) |ctx| {
+                var tmp = try tempalloc.api.createTempArena();
+                defer tempalloc.api.destroyTempArena(tmp);
+
+                try editorui.editorUI(tmp.allocator(), @ptrCast(_main_db.db), kernel_tick, @floatFromInt(dt));
+                gpu.api.shitTempRender(ctx);
+            }
+
+            // clean main DB
+            var gc_tmp = try tempalloc.api.createTempArena();
+            defer tempalloc.api.destroyTempArena(gc_tmp);
+            try _main_db.gc(gc_tmp.allocator());
+
+            // Check window close request
+            if (main_window) |window| {
+                if (system.api.windowClosed(window)) {
+                    if (can_quit_handler) |can_quit| {
+                        _ = can_quit();
+                    } else {
+                        _quit = true;
+                    }
                 }
             }
+
+            // If set max-kernel-tick and reach limit then quit
+            if (max_kernel_tick > 0) _quit = kernel_tick >= max_kernel_tick;
+
+            // Dont drill cpu if there is no hard work.
+            try sleepIfNeed(last_call, _max_tick_rate);
         }
-
-        // If set max-kernel-tick and reach limit then quit
-        if (max_kernel_tick > 0) _quit = kernel_tick >= max_kernel_tick;
-
-        // Dont drill cpu if there is no hard work.
-        try sleepIfNeed(last_call, _max_tick_rate);
+        if (!_restart) {
+            log.api.info(MODULE_NAME, "QUIT", .{});
+        } else {
+            log.api.info(MODULE_NAME, "RESTART", .{});
+        }
     }
-    log.api.info(MODULE_NAME, "QUIT", .{});
 }
 
 fn sleepIfNeed(last_call: i64, max_rate: u32) !void {
@@ -633,7 +665,7 @@ fn updateKernelTasks(kernel_tick: u64, dt: i64) !void {
 }
 
 fn dumpKernelUpdatePhaseTree() !void {
-    try dumpKernelUpdatePhaseTreeDOT();
+    //try dumpKernelUpdatePhaseTreeDOT();
     try dumpKernelUpdatePhaseTreeMD();
 
     log.api.info(MODULE_NAME, "UPDATE PHASE", .{});
@@ -676,58 +708,58 @@ fn dumpKernelUpdatePhaseTree() !void {
     }
 }
 
-fn dumpKernelUpdatePhaseTreeDOT() !void {
-    var path_buff: [1024]u8 = undefined;
-    var file_path_buff: [1024]u8 = undefined;
-    // only if asset root is set.
-    var path = try assetdb.api.getTmpPath(&path_buff);
-    if (path == null) return;
-    path = try std.fmt.bufPrint(&file_path_buff, "{s}/" ++ "kernel_task_graph.dot", .{path.?});
+// fn dumpKernelUpdatePhaseTreeDOT() !void {
+//     var path_buff: [1024]u8 = undefined;
+//     var file_path_buff: [1024]u8 = undefined;
+//     // only if asset root is set.
+//     var path = try assetdb.api.getTmpPath(&path_buff);
+//     if (path == null) return;
+//     path = try std.fmt.bufPrint(&file_path_buff, "{s}/" ++ "kernel_task_graph.dot", .{path.?});
 
-    var dot_file = try std.fs.createFileAbsolute(path.?, .{});
-    defer dot_file.close();
+//     var dot_file = try std.fs.createFileAbsolute(path.?, .{});
+//     defer dot_file.close();
 
-    // write header
-    var writer = dot_file.writer();
-    try writer.print("digraph kernel_task_graph {{\n", .{});
+//     // write header
+//     var writer = dot_file.writer();
+//     try writer.print("digraph kernel_task_graph {{\n", .{});
 
-    // write nodes
-    try writer.print("    node [shape = box;];\n", .{});
+//     // write nodes
+//     try writer.print("    node [shape = box;];\n", .{});
 
-    var prev_phase: ?*Phase = null;
+//     var prev_phase: ?*Phase = null;
 
-    for (_phases_bag.output.keys()) |phase_hash| {
-        var phase = _phase_map.getPtr(phase_hash).?;
+//     for (_phases_bag.output.keys()) |phase_hash| {
+//         var phase = _phase_map.getPtr(phase_hash).?;
 
-        try writer.print("    \"{s}\" [shape = diamond];\n", .{phase.name});
+//         try writer.print("    \"{s}\" [shape = diamond];\n", .{phase.name});
 
-        if (prev_phase != null) {
-            try writer.print("    \"{s}\" -> \"{s}\";\n", .{ prev_phase.?.name, phase.name });
-        } else {
-            try writer.print("    \"{s}\";\n", .{phase.name});
-        }
+//         if (prev_phase != null) {
+//             try writer.print("    \"{s}\" -> \"{s}\";\n", .{ prev_phase.?.name, phase.name });
+//         } else {
+//             try writer.print("    \"{s}\";\n", .{phase.name});
+//         }
 
-        prev_phase = phase;
+//         prev_phase = phase;
 
-        for (phase.update_chain.items) |update_fce| {
-            const task_name_strid = cetech1.strid.strId64(cetech1.fromCstr(update_fce.name));
-            const dep_arr = phase.update_bag.dependList(task_name_strid);
-            const is_root = dep_arr == null;
-            var iface = _iface_map.getPtr(task_name_strid).?;
-            if (!is_root) {
-                for (dep_arr.?) |dep_id| {
-                    var dep_iface = _iface_map.getPtr(dep_id).?;
-                    try writer.print("    \"{s}\" -> \"{s}\";\n", .{ dep_iface.*.name, iface.*.name });
-                }
-            } else {
-                try writer.print("    \"{s}\" -> \"{s}\";\n", .{ phase.name, iface.*.name });
-            }
-        }
-    }
+//         for (phase.update_chain.items) |update_fce| {
+//             const task_name_strid = cetech1.strid.strId64(cetech1.fromCstr(update_fce.name));
+//             const dep_arr = phase.update_bag.dependList(task_name_strid);
+//             const is_root = dep_arr == null;
+//             var iface = _iface_map.getPtr(task_name_strid).?;
+//             if (!is_root) {
+//                 for (dep_arr.?) |dep_id| {
+//                     var dep_iface = _iface_map.getPtr(dep_id).?;
+//                     try writer.print("    \"{s}\" -> \"{s}\";\n", .{ dep_iface.*.name, iface.*.name });
+//                 }
+//             } else {
+//                 try writer.print("    \"{s}\" -> \"{s}\";\n", .{ phase.name, iface.*.name });
+//             }
+//         }
+//     }
 
-    // write footer
-    try writer.print("}}\n", .{});
-}
+//     // write footer
+//     try writer.print("}}\n", .{});
+// }
 
 fn dumpKernelUpdatePhaseTreeMD() !void {
     var path_buff: [1024]u8 = undefined;
@@ -828,7 +860,7 @@ test "Can create kernel" {
     };
 
     try init(allocator);
-    defer deinit() catch undefined;
+    defer deinit();
 
     var static_modules = [_]c.ct_module_desc_t{.{ .name = "module1", .module_fce = &Module1.load_module }};
     try bigInit(&static_modules, false);

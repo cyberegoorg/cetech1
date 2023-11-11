@@ -7,6 +7,7 @@ const zgui = @import("externals/shared/lib/zig-gamedev/libs/zgui/build.zig");
 const zglfw = @import("externals/shared/lib/zig-gamedev/libs/zglfw/build.zig");
 const zgpu = @import("externals/shared/lib/zig-gamedev/libs/zgpu/build.zig");
 const zpool = @import("externals/shared/lib/zig-gamedev/libs/zpool/build.zig");
+const zf = @import("externals/shared/lib/zf/build.zig");
 
 const CETECH1_MODULE_PREFIX = "ct_";
 const CETECH1_MAX_MODULE_NAME = 128;
@@ -21,6 +22,11 @@ pub fn build(b: *std.Build) !void {
 
     // UUID
     const uuid_module = b.addModule("Uuid", .{ .source_file = .{ .path = "externals/shared/lib/zig-uuid/src/Uuid.zig" } });
+
+    // Zf
+    const zf_module = b.addModule("zf", .{
+        .source_file = .{ .path = "externals/shared/lib/zf/src/lib.zig" },
+    });
 
     // NFD
     const nfd_module = b.addModule("nfd", .{
@@ -112,6 +118,7 @@ pub fn build(b: *std.Build) !void {
     core_lib_static.linkLibC();
     core_lib_static.addModule("Uuid", uuid_module);
     core_lib_static.addModule("nfd", nfd_module);
+    core_lib_static.addModule("zf", zf_module);
 
     // cetech1 standalone test
     const exe_test = b.addTest(.{
@@ -126,6 +133,8 @@ pub fn build(b: *std.Build) !void {
     exe_test.linkLibC();
     exe_test.addModule("Uuid", uuid_module);
     exe_test.addModule("nfd", nfd_module);
+    exe_test.addModule("Uuid", uuid_module);
+    exe_test.addModule("zf", zf_module);
 
     // cetech1 standalone exe
     const exe = b.addExecutable(.{
@@ -134,15 +143,15 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
+    exe.linkLibC();
+    exe.linkLibrary(core_lib_static);
     exe.addIncludePath(.{ .path = "includes" });
     exe.addIncludePath(.{ .path = "externals/shared/lib/nfd-zig/nativefiledialog/src/include" });
-    exe.linkLibrary(core_lib_static);
     if (lib_nfd2) |lib| exe.linkLibrary(lib);
     exe.addModule("cetech1", cetech1_module);
     exe.addModule("Uuid", uuid_module);
     exe.addModule("nfd", nfd_module);
-    exe.linkLibC();
-    exe.addModule("nfd", nfd_module);
+    exe.addModule("zf", zf_module);
 
     if (lib_nfd2) |lib| {
         exe_test.linkLibrary(lib);
@@ -197,7 +206,30 @@ pub fn build(b: *std.Build) !void {
     );
     _ = module_editor;
 
+    // Editor tree
+    // const module_editor_tree_public = b.createModule(.{
+    //     .source_file = .{ .path = "src/cetech1/modules/editor_tree/editor_tree.zig" },
+    //     .dependencies = &.{
+    //         .{ .name = "cetech1", .module = cetech1_module },
+    //     },
+    // });
+    var module_editor_tree = try addCetechModule(
+        b,
+        "editor_tree",
+        "src/cetech1/modules/editor_tree/private.zig",
+        target,
+        optimize,
+        cetech1_module,
+    );
+    module_editor_tree.addModule("editor", module_editor_public);
+
     // Editor asset browser
+    // const module_editor_asset_browser_public = b.createModule(.{
+    //     .source_file = .{ .path = "src/cetech1/modules/editor_asset_browser/editor_asset_browser.zig" },
+    //     .dependencies = &.{
+    //         .{ .name = "cetech1", .module = cetech1_module },
+    //     },
+    // });
     var module_editor_asset_browser = try addCetechModule(
         b,
         "editor_asset_browser",
@@ -209,17 +241,63 @@ pub fn build(b: *std.Build) !void {
     module_editor_asset_browser.addModule("editor", module_editor_public);
 
     // Editor properties
-    var module_editor_propeties = try addCetechModule(
+    // const module_editor_propeties_public = b.createModule(.{
+    //     .source_file = .{ .path = "src/cetech1/modules/editor_properties/editor_properties.zig" },
+    //     .dependencies = &.{
+    //         .{ .name = "cetech1", .module = cetech1_module },
+    //         .{ .name = "editor", .module = module_editor_public },
+    //     },
+    // });
+    // _ = module_editor_propeties_public;
+    var module_editor_inspector = try addCetechModule(
         b,
-        "editor_properties",
-        "src/cetech1/modules/editor_properties/private.zig",
+        "editor_inspector",
+        "src/cetech1/modules/editor_inspector/private.zig",
         target,
         optimize,
         cetech1_module,
     );
-    module_editor_propeties.addModule("editor", module_editor_public);
+    module_editor_inspector.addModule("editor", module_editor_public);
 
-    // Editor properties
+    // Editor project settings
+    // const module_editor_settings_public = b.createModule(.{
+    //     .source_file = .{ .path = "src/cetech1/modules/editor_settings/editor_settings.zig" },
+    //     .dependencies = &.{
+    //         .{ .name = "cetech1", .module = cetech1_module },
+    //         .{ .name = "editor", .module = module_editor_public },
+    //     },
+    // });
+    // _ = module_editor_settings_public;
+    var module_editor_settings = try addCetechModule(
+        b,
+        "editor_settings",
+        "src/cetech1/modules/editor_settings/private.zig",
+        target,
+        optimize,
+        cetech1_module,
+    );
+    module_editor_settings.addModule("editor", module_editor_public);
+
+    // Editor asset tags
+    // const module_editor_asset_tags_public = b.createModule(.{
+    //     .source_file = .{ .path = "src/cetech1/modules/editor_asset_tags/editor_asset_tags.zig" },
+    //     .dependencies = &.{
+    //         .{ .name = "cetech1", .module = cetech1_module },
+    //         .{ .name = "editor", .module = module_editor_public },
+    //     },
+    // });
+    // _ = module_editor_asset_tags_public;
+    var module_editor_asset_tags = try addCetechModule(
+        b,
+        "editor_asset_tags",
+        "src/cetech1/modules/editor_asset_tags/private.zig",
+        target,
+        optimize,
+        cetech1_module,
+    );
+    module_editor_asset_tags.addModule("editor", module_editor_public);
+
+    // Editor explorer
     var module_editor_explorer = try addCetechModule(
         b,
         "editor_explorer",
@@ -229,6 +307,24 @@ pub fn build(b: *std.Build) !void {
         cetech1_module,
     );
     module_editor_explorer.addModule("editor", module_editor_public);
+
+    // Editor fixtures
+    const module_editor_fixtures_public = b.createModule(.{
+        .source_file = .{ .path = "src/cetech1/modules/editor_fixtures/editor_fixtures.zig" },
+        .dependencies = &.{
+            .{ .name = "cetech1", .module = cetech1_module },
+        },
+    });
+    _ = module_editor_fixtures_public;
+    var module_editor_fixtures = try addCetechModule(
+        b,
+        "editor_fixtures",
+        "src/cetech1/modules/editor_fixtures/private.zig",
+        target,
+        optimize,
+        cetech1_module,
+    );
+    module_editor_fixtures.addModule("editor", module_editor_public);
 
     // Foo editor tab
     var module_editor_foo_tab = try addCetechModule(

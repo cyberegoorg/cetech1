@@ -1,6 +1,11 @@
 {
   "__version": "0.1.0",
   "__asset_uuid": "93db3ce1-39b6-4027-832a-4ed6283bcf3b",
+  "__tags": [
+    "ct_asset_tag:018bd49b-c553-7117-b1b2-126982a78026",
+    "ct_asset_tag:018bd49b-c553-740a-a8cc-e9a51b28ab14",
+    "ct_asset_tag:018bd49b-c554-7ad3-bf20-a5cdf4480667"
+  ],
   "__type_name": "ct_foo_asset",
   "__uuid": "028ef368-9b36-44f9-b8cc-d377365f836c",
   "U64": 10,

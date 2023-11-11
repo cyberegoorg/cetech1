@@ -5,13 +5,14 @@ const std = @import("std");
 const apidb = @import("apidb.zig");
 const task = @import("task.zig");
 const cdb = @import("cdb.zig");
-const cdb_test = @import("cdb_test.zig");
+const cdb_types = @import("../cdb_types.zig");
 const log = @import("log.zig");
 const uuid = @import("uuid.zig");
 const tempalloc = @import("tempalloc.zig");
 
 const public = @import("../assetdb.zig");
 const cetech1 = @import("../cetech1.zig");
+const editorui = @import("editorui.zig");
 const propIdx = cetech1.cdb.propIdx;
 
 const Uuid2ObjId = std.AutoArrayHashMap(cetech1.uuid.Uuid, cetech1.cdb.ObjId);
@@ -20,10 +21,13 @@ const ObjId2Uuid = std.AutoArrayHashMap(cetech1.cdb.ObjId, cetech1.uuid.Uuid);
 // File info
 // TODO: to struct
 const Path2Folder = std.StringArrayHashMap(cetech1.cdb.ObjId);
+const Folder2Path = std.AutoArrayHashMap(cetech1.cdb.ObjId, []u8);
 const Uuid2AssetUuid = std.AutoArrayHashMap(cetech1.uuid.Uuid, cetech1.uuid.Uuid);
 const AssetUuid2Path = std.AutoArrayHashMap(cetech1.uuid.Uuid, []u8);
 const AssetUuid2Depend = std.AutoArrayHashMap(cetech1.uuid.Uuid, UuidSet);
 const AssetObjIdVersion = std.AutoArrayHashMap(cetech1.cdb.ObjId, u64);
+
+const ToDeleteList = std.AutoArrayHashMap(cetech1.cdb.ObjId, void);
 
 const AssetIOSet = std.AutoArrayHashMap(*public.AssetIOI, void);
 
@@ -32,6 +36,7 @@ pub const MODULE_NAME = "assetdb";
 // Keywords for json format
 const JSON_ASSET_VERSION = "__version";
 const JSON_ASSET_UUID_TOKEN = "__asset_uuid";
+const JSON_TAGS_TOKEN = "__tags";
 const JSON_TYPE_NAME_TOKEN = "__type_name";
 const JSON_UUID_TOKEN = "__uuid";
 const JSON_PROTOTYPE_UUID = "__prototype_uuid";
@@ -59,6 +64,7 @@ const WriteBlobFn = *const fn (
     asset: cetech1.cdb.ObjId,
     obj_uuid: cetech1.uuid.Uuid,
     prop_hash: cetech1.strid.StrId32,
+    root_path: []const u8,
     tmp_allocator: std.mem.Allocator,
 ) anyerror!void;
 
@@ -86,7 +92,16 @@ pub var api = public.AssetDBAPI{
     .getAssetForObj = getAssetForObj,
     .isProjectOpened = isProjectOpened,
     .getFilePathForAsset = getFilePathForAsset,
+    .getPathForFolder = getPathForFolder,
     .createNewFolder = createNewFolder,
+    .filerAsset = filerAsset,
+    .isAssetNameValid = isAssetNameValid,
+    .saveAsAllAssets = saveAsAllAssets,
+    .deleteAsset = deleteAsset,
+    .deleteFolder = deleteFolder,
+    .isToDeleted = isToDeleted,
+    .reviveDeleted = reviveDeleted,
+    .getProjectSettingsFn = getProjectSettingsFn,
 };
 
 var asset_root_type: cetech1.strid.StrId32 = undefined;
@@ -109,6 +124,7 @@ var _assetio_set: AssetIOSet = undefined;
 // file info
 var _file_info_lck = std.Thread.Mutex{};
 var _path2folder: Path2Folder = undefined;
+var _folder2path: Folder2Path = undefined;
 var _uuid2asset_uuid: Uuid2AssetUuid = undefined;
 var _asset_uuid2path: AssetUuid2Path = undefined;
 var _asset_uuid2depend: AssetUuid2Depend = undefined;
@@ -117,8 +133,13 @@ var _asset_bag: cetech1.bagraph.BAG(cetech1.uuid.Uuid) = undefined;
 var _tmp_depend_array: std.ArrayList(cetech1.task.TaskID) = undefined;
 var _tmp_taskid_map: std.AutoArrayHashMap(cetech1.uuid.Uuid, cetech1.task.TaskID) = undefined;
 
+// Version check
 var _asset_objid2version: AssetObjIdVersion = undefined;
 var _asset_objid2version_lck = std.Thread.Mutex{};
+
+// Delete list
+var _assets_to_remove: ToDeleteList = undefined;
+var _folders_to_remove: ToDeleteList = undefined;
 
 //TODO:
 //  without lock? (actualy problem when creating ref_placeholder and real ref).
@@ -208,6 +229,7 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
 
     pub fn exportAsset(
         db: *cetech1.cdb.CdbDb,
+        root_path: []const u8,
         sub_path: []const u8,
         asset: cetech1.cdb.ObjId,
     ) !cetech1.task.TaskID {
@@ -215,6 +237,7 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
             db: *cetech1.cdb.CdbDb,
             asset: cetech1.cdb.ObjId,
             sub_path: []const u8,
+            root_path: []const u8,
             pub fn exec(self: *@This()) void {
                 var tmp_alloc = tempalloc.api.createTempArena() catch undefined;
                 defer tempalloc.api.destroyTempArena(tmp_alloc);
@@ -222,7 +245,7 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
 
                 const version = self.db.getVersion(self.asset);
 
-                saveCdbObj(self.asset, self.sub_path, allocator) catch |err| {
+                saveCdbObj(self.asset, self.root_path, self.sub_path, allocator) catch |err| {
                     log.api.err(MODULE_NAME, "Could not save asset {}", .{err});
                     return;
                 };
@@ -236,12 +259,57 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
                 .db = db,
                 .sub_path = sub_path,
                 .asset = asset,
+                .root_path = root_path,
             },
         );
     }
 });
 
-pub fn create_cdb_types(db_: *cetech1.cdb.Db) !void {
+fn getProjectSettingsFn(allocator: std.mem.Allocator, type_hash: cetech1.strid.StrId32) ?cetech1.cdb.ObjId {
+    var project_asset = _db.getFirstObject(cetech1.assetdb.ProjectType.type_hash) orelse return null;
+
+    var project_r = _db.readObj(project_asset).?;
+    var settings = try cetech1.assetdb.ProjectType.readSubObjSet(_db, project_r, .Settings, allocator);
+    if (settings) |settings_set| {
+        for (settings_set) |s| {
+            if (s.type_hash.id == type_hash.id) return s;
+        }
+    }
+    return null;
+}
+
+fn isAssetNameValid(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, folder: cetech1.cdb.ObjId, type_hash: cetech1.strid.StrId32, base_name: [:0]const u8) !bool {
+    var set = try db.getReferencerSet(folder, allocator);
+    defer allocator.free(set);
+
+    var name_set = std.StringArrayHashMap(void).init(allocator);
+    defer name_set.deinit();
+
+    if (type_hash.id != cetech1.assetdb.FolderType.type_hash.id) {
+        for (set) |obj| {
+            if (obj.type_hash.id != cetech1.assetdb.AssetType.type_hash.id) continue;
+
+            var asset_obj = cetech1.assetdb.AssetType.readSubObj(db, db.readObj(obj).?, .Object).?;
+            if (asset_obj.type_hash.id != type_hash.id) continue;
+
+            if (cetech1.assetdb.AssetType.readStr(db, db.readObj(obj).?, .Name)) |name| {
+                try name_set.put(name, {});
+            }
+        }
+    } else {
+        for (set) |obj| {
+            if (obj.type_hash.id != cetech1.assetdb.FolderType.type_hash.id) continue;
+
+            if (cetech1.assetdb.AssetType.readStr(db, db.readObj(obj).?, .Name)) |name| {
+                try name_set.put(name, {});
+            }
+        }
+    }
+
+    return !name_set.contains(base_name);
+}
+
+pub fn createCdbTypes(db_: *cetech1.cdb.Db) !void {
     var db = cetech1.cdb.CdbDb.fromDbT(db_, &cdb.api);
 
     // Asset type is wrapper for asset object
@@ -249,6 +317,8 @@ pub fn create_cdb_types(db_: *cetech1.cdb.Db) !void {
         public.AssetType.name,
         &.{
             .{ .prop_idx = public.AssetType.propIdx(.Name), .name = "name", .type = cetech1.cdb.PropType.STR },
+            .{ .prop_idx = public.AssetType.propIdx(.Description), .name = "description", .type = cetech1.cdb.PropType.STR },
+            .{ .prop_idx = public.AssetType.propIdx(.Tags), .name = "tags", .type = cetech1.cdb.PropType.REFERENCE_SET, .type_hash = public.AssetTagType.type_hash },
             .{ .prop_idx = public.AssetType.propIdx(.Object), .name = "object", .type = cetech1.cdb.PropType.SUBOBJECT },
             .{ .prop_idx = public.AssetType.propIdx(.Folder), .name = "folder", .type = cetech1.cdb.PropType.REFERENCE, .type_hash = public.FolderType.type_hash },
         },
@@ -260,6 +330,8 @@ pub fn create_cdb_types(db_: *cetech1.cdb.Db) !void {
         public.FolderType.name,
         &.{
             .{ .prop_idx = public.FolderType.propIdx(.Name), .name = "name", .type = cetech1.cdb.PropType.STR },
+            .{ .prop_idx = public.FolderType.propIdx(.Description), .name = "description", .type = cetech1.cdb.PropType.STR },
+            .{ .prop_idx = public.FolderType.propIdx(.Tags), .name = "tags", .type = cetech1.cdb.PropType.REFERENCE_SET, .type_hash = public.AssetTagType.type_hash },
             .{ .prop_idx = public.FolderType.propIdx(.Parent), .name = "parent", .type = cetech1.cdb.PropType.REFERENCE, .type_hash = public.FolderType.type_hash },
         },
     ) catch unreachable;
@@ -274,7 +346,7 @@ pub fn create_cdb_types(db_: *cetech1.cdb.Db) !void {
         },
     ) catch unreachable;
 
-    // Project description
+    // Project
     const project_type = db.addType(
         public.ProjectType.name,
         &.{
@@ -286,12 +358,38 @@ pub fn create_cdb_types(db_: *cetech1.cdb.Db) !void {
     ) catch unreachable;
     std.debug.assert(project_type.id == public.ProjectType.type_hash.id);
 
-    _ = cetech1.cdb.addBigType(&db, public.FooAsset.name) catch unreachable;
-    _ = cetech1.cdb.addBigType(&db, public.BarAsset.name) catch unreachable;
-    _ = cetech1.cdb.addBigType(&db, public.BazAsset.name) catch unreachable;
+    const ct_asset_tag_type = db.addType(
+        public.AssetTagType.name,
+        &.{
+            .{ .prop_idx = public.AssetTagType.propIdx(.Name), .name = "name", .type = cetech1.cdb.PropType.STR },
+            .{ .prop_idx = public.AssetTagType.propIdx(.Description), .name = "description", .type = cetech1.cdb.PropType.STR },
+            .{ .prop_idx = public.AssetTagType.propIdx(.Color), .name = "color", .type = cetech1.cdb.PropType.SUBOBJECT, .type_hash = cdb_types.Color4fType.type_hash },
+        },
+    ) catch unreachable;
+    _ = ct_asset_tag_type;
+
+    const ct_asset_tag_project_settings = db.addType(
+        public.AssetTagsProjectSettingsType.name,
+        &.{
+            .{ .prop_idx = public.AssetTagsProjectSettingsType.propIdx(.Tags), .name = "tags", .type = cetech1.cdb.PropType.SUBOBJECT_SET, .type_hash = public.AssetTagType.type_hash },
+        },
+    ) catch unreachable;
+    _ = ct_asset_tag_project_settings;
+
+    const ct_asset_tags = db.addType(
+        public.AssetTagsType.name,
+        &.{
+            .{ .prop_idx = public.AssetTagsType.propIdx(.Tags), .name = "tags", .type = cetech1.cdb.PropType.REFERENCE_SET, .type_hash = public.AssetTagType.type_hash },
+        },
+    ) catch unreachable;
+    _ = ct_asset_tags;
+
+    _ = cetech1.cdb_types.addBigType(&db, public.FooAsset.name) catch unreachable;
+    _ = cetech1.cdb_types.addBigType(&db, public.BarAsset.name) catch unreachable;
+    _ = cetech1.cdb_types.addBigType(&db, public.BazAsset.name) catch unreachable;
 }
 
-var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(create_cdb_types);
+var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(createCdbTypes);
 
 pub fn registerToApi() !void {
     try apidb.api.setZigApi(public.AssetDBAPI, &api);
@@ -315,9 +413,13 @@ pub fn init(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb) !void {
     _asset_objid2version = AssetObjIdVersion.init(allocator);
     _asset_bag = cetech1.bagraph.BAG(cetech1.uuid.Uuid).init(allocator);
     _path2folder = Path2Folder.init(allocator);
+    _folder2path = Folder2Path.init(allocator);
 
     _tmp_depend_array = std.ArrayList(cetech1.task.TaskID).init(allocator);
     _tmp_taskid_map = std.AutoArrayHashMap(cetech1.uuid.Uuid, cetech1.task.TaskID).init(allocator);
+
+    _assets_to_remove = ToDeleteList.init(allocator);
+    _folders_to_remove = ToDeleteList.init(allocator);
 
     _asset_root_folder = try public.FolderType.createObject(db);
     try addFolderToRoot(_asset_root_folder);
@@ -344,9 +446,13 @@ pub fn deinit() void {
     _uuid2asset_uuid.deinit();
     _asset_bag.deinit();
     _path2folder.deinit();
+    _folder2path.deinit();
     _tmp_depend_array.deinit();
     _tmp_taskid_map.deinit();
     _asset_objid2version.deinit();
+
+    _assets_to_remove.deinit();
+    _folders_to_remove.deinit();
 
     _db.removeOnObjIdDestroyed(onObjidDestroyed);
 }
@@ -391,7 +497,7 @@ pub fn isObjModified(asset: cetech1.cdb.ObjId) bool {
 
 pub fn isProjectModified() bool {
     const cur_version = _db.getVersion(_asset_root);
-    return cur_version != _asset_root_last_version;
+    return cur_version != _asset_root_last_version or (_folders_to_remove.count() != 0 or _assets_to_remove.count() != 0);
 }
 
 pub fn getTmpPath(path_buf: []u8) !?[]u8 {
@@ -470,7 +576,7 @@ fn createObject(type_hash: cetech1.strid.StrId32) !cetech1.cdb.ObjId {
 
 fn analyzFromJsonValue(parsed: std.json.Value, tmp_allocator: std.mem.Allocator, depend_on: *UuidSet, provide_uuids: *UuidSet) !void {
     const obj_uuid_str = parsed.object.get(JSON_UUID_TOKEN).?;
-    const obj_uuid = try uuid.api.fromStr(obj_uuid_str.string);
+    const obj_uuid = uuid.api.fromStr(obj_uuid_str.string).?;
     const obj_type = parsed.object.get(JSON_TYPE_NAME_TOKEN).?;
     const obj_type_hash = cetech1.strid.strId32(obj_type.string);
 
@@ -478,7 +584,7 @@ fn analyzFromJsonValue(parsed: std.json.Value, tmp_allocator: std.mem.Allocator,
 
     const prototype_uuid = parsed.object.get(JSON_PROTOTYPE_UUID);
     if (prototype_uuid) |proto_uuid| {
-        try depend_on.put(try uuid.fromStr(proto_uuid.string), {});
+        try depend_on.put(uuid.fromStr(proto_uuid.string).?, {});
     }
 
     var prop_defs = _db.getTypePropDef(obj_type_hash).?;
@@ -502,7 +608,7 @@ fn analyzFromJsonValue(parsed: std.json.Value, tmp_allocator: std.mem.Allocator,
             cetech1.cdb.PropType.REFERENCE => {
                 var ref_link = std.mem.split(u8, value.string, ":");
                 const ref_type = cetech1.strid.strId32(ref_link.first());
-                const ref_uuid = try uuid.api.fromStr(ref_link.next().?);
+                const ref_uuid = uuid.api.fromStr(ref_link.next().?).?;
                 _ = ref_type;
                 try depend_on.put(ref_uuid, {});
             },
@@ -515,7 +621,7 @@ fn analyzFromJsonValue(parsed: std.json.Value, tmp_allocator: std.mem.Allocator,
                 for (value.array.items) |ref| {
                     var ref_link = std.mem.split(u8, ref.string, ":");
                     const ref_type = cetech1.strid.strId32(ref_link.first());
-                    const ref_uuid = try uuid.api.fromStr(ref_link.next().?);
+                    const ref_uuid = uuid.api.fromStr(ref_link.next().?).?;
                     _ = ref_type;
                     try depend_on.put(ref_uuid, {});
                 }
@@ -561,6 +667,10 @@ fn resetAnalyzedFileInfo() !void {
         _allocator.free(path);
     }
 
+    for (_folder2path.values()) |path| {
+        _allocator.free(path);
+    }
+
     for (_asset_uuid2depend.values()) |*depend| {
         depend.deinit();
     }
@@ -569,6 +679,7 @@ fn resetAnalyzedFileInfo() !void {
     _uuid2asset_uuid.clearRetainingCapacity();
     _asset_uuid2depend.clearRetainingCapacity();
     _path2folder.clearRetainingCapacity();
+    _folder2path.clearRetainingCapacity();
     _asset_objid2version.clearRetainingCapacity();
     _tmp_depend_array.clearRetainingCapacity();
     _tmp_taskid_map.clearRetainingCapacity();
@@ -597,7 +708,7 @@ fn analyzeFile(tmp_allocator: std.mem.Allocator, path: []const u8) !void {
     try validateVersion(version_str.string);
 
     const asset_uuid_str = parsed.value.object.get(JSON_ASSET_UUID_TOKEN).?;
-    const asset_uuid = try uuid.api.fromStr(asset_uuid_str.string);
+    const asset_uuid = uuid.api.fromStr(asset_uuid_str.string).?;
 
     var depend_on = UuidSet.init(tmp_allocator);
     defer depend_on.deinit();
@@ -677,10 +788,11 @@ fn analyzeFolder(root_dir: std.fs.IterableDir, parent_folder: cetech1.cdb.ObjId,
                 try public.FolderType.setRef(_db, folder_obj_w, .Parent, parent_folder);
                 _db.writeCommit(folder_obj_w);
 
-                try saveFolderObj(folder_obj, tmp_allocator);
+                try saveFolderObj(tmp_allocator, folder_obj, _asset_root_path.?);
             }
 
             try _path2folder.put(try dir.dir.realpathAlloc(_allocator, "."), folder_obj);
+            try _folder2path.put(folder_obj, try dir.dir.realpathAlloc(_allocator, "."));
 
             try analyzeFolder(dir, folder_obj, tasks, tmp_allocator);
             try addFolderToRoot(folder_obj);
@@ -688,38 +800,90 @@ fn analyzeFolder(root_dir: std.fs.IterableDir, parent_folder: cetech1.cdb.ObjId,
     }
 }
 
-fn writeAssetDOTGraph() !void {
+fn deleteAsset(db: *cetech1.cdb.CdbDb, asset: cetech1.cdb.ObjId) anyerror!void {
+    _ = db;
+    try _assets_to_remove.put(asset, {});
+}
+
+fn deleteFolder(db: *cetech1.cdb.CdbDb, folder: cetech1.cdb.ObjId) anyerror!void {
+    _ = db;
+    try _folders_to_remove.put(folder, {});
+}
+
+fn isToDeleted(asset_or_folder: cetech1.cdb.ObjId) bool {
+    if (public.FolderType.isSameType(asset_or_folder)) {
+        return _folders_to_remove.contains(asset_or_folder);
+    } else {
+        return _assets_to_remove.contains(asset_or_folder);
+    }
+}
+
+fn reviveDeleted(asset_or_folder: cetech1.cdb.ObjId) void {
+    if (public.FolderType.isSameType(asset_or_folder)) {
+        _ = _folders_to_remove.swapRemove(asset_or_folder);
+    } else {
+        _ = _assets_to_remove.swapRemove(asset_or_folder);
+    }
+}
+
+fn commitDeleteChanges(db: *cetech1.cdb.CdbDb, tmp_allocator: std.mem.Allocator) !void {
     var root_dir = try std.fs.cwd().openDir(_asset_root_path.?, .{});
     defer root_dir.close();
-
-    var dot_file = try root_dir.createFile(CT_TEMP_FOLDER ++ "/" ++ "asset_graph.dot", .{});
-    defer dot_file.close();
-
-    // write header
-    var writer = dot_file.writer();
-    try writer.print("digraph asset_graph {{\n", .{});
-
-    // write nodes
-    try writer.print("    subgraph {{\n", .{});
-    try writer.print("        node [shape = box;];\n", .{});
-    for (_asset_uuid2path.keys(), _asset_uuid2path.values()) |asset_uuid, asset_path| {
-        var path = try std.fs.path.relative(_allocator, _asset_root_path.?, asset_path);
-        defer _allocator.free(path);
-
-        try writer.print("        \"{s}\" [label = \"{s}\";];\n", .{ asset_uuid, path });
+    for (_folders_to_remove.keys()) |folder| {
+        var path = try getPathForFolder(folder, tmp_allocator);
+        defer tmp_allocator.free(path);
+        try root_dir.deleteTree(std.fs.path.dirname(path).?);
+        db.destroyObject(folder);
     }
-    try writer.print("    }}\n", .{});
+    _folders_to_remove.clearRetainingCapacity();
 
-    // Edges
-    for (_asset_uuid2depend.keys(), _asset_uuid2depend.values()) |asset_uuid, depends| {
-        for (depends.keys()) |depend| {
-            try writer.print("    \"{s}\" -> \"{s}\";\n", .{ asset_uuid, _uuid2asset_uuid.get(depend).? });
-        }
+    for (_assets_to_remove.keys()) |asset| {
+        var path = try getFilePathForAsset(asset, tmp_allocator);
+        defer tmp_allocator.free(path);
+        // Blob
+        var blob_dir_path = try getPathForAsset(asset, BLOB_EXTENSION, tmp_allocator);
+        defer tmp_allocator.free(blob_dir_path);
+        try root_dir.deleteTree(blob_dir_path);
+
+        // asset
+        try root_dir.deleteTree(path);
+        db.destroyObject(asset);
     }
-
-    // write footer
-    try writer.print("}}\n", .{});
+    _assets_to_remove.clearRetainingCapacity();
 }
+
+// fn writeAssetDOTGraph() !void {
+//     var root_dir = try std.fs.cwd().openDir(_asset_root_path.?, .{});
+//     defer root_dir.close();
+
+//     var dot_file = try root_dir.createFile(CT_TEMP_FOLDER ++ "/" ++ "asset_graph.dot", .{});
+//     defer dot_file.close();
+
+//     // write header
+//     var writer = dot_file.writer();
+//     try writer.print("digraph asset_graph {{\n", .{});
+
+//     // write nodes
+//     try writer.print("    subgraph {{\n", .{});
+//     try writer.print("        node [shape = box;];\n", .{});
+//     for (_asset_uuid2path.keys(), _asset_uuid2path.values()) |asset_uuid, asset_path| {
+//         var path = try std.fs.path.relative(_allocator, _asset_root_path.?, asset_path);
+//         defer _allocator.free(path);
+
+//         try writer.print("        \"{s}\" [label = \"{s}\";];\n", .{ asset_uuid, path });
+//     }
+//     try writer.print("    }}\n", .{});
+
+//     // Edges
+//     for (_asset_uuid2depend.keys(), _asset_uuid2depend.values()) |asset_uuid, depends| {
+//         for (depends.keys()) |depend| {
+//             try writer.print("    \"{s}\" -> \"{s}\";\n", .{ asset_uuid, _uuid2asset_uuid.get(depend).? });
+//         }
+//     }
+
+//     // write footer
+//     try writer.print("}}\n", .{});
+// }
 
 fn writeAssetGraphMD() !void {
     var root_dir = try std.fs.cwd().openDir(_asset_root_path.?, .{});
@@ -755,6 +919,38 @@ fn writeAssetGraphMD() !void {
     try writer.print("```\n", .{});
 }
 
+fn loadProject(tmp_allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, asset_root_path: []const u8, asset_root_folder: cetech1.cdb.ObjId) !void {
+    var dir = try std.fs.cwd().openDir(asset_root_path, .{});
+
+    var asset_file = dir.openFile("project.ct_project", .{ .mode = .read_only }) catch |err| {
+        log.api.err(MODULE_NAME, "Could not load project.ct_project {}", .{err});
+        return;
+    };
+    defer asset_file.close();
+
+    var asset_reader = asset_file.reader();
+
+    var asset = readAssetFromReader(
+        @TypeOf(asset_reader),
+        asset_reader,
+        "project",
+        asset_root_folder,
+        ReadBlobFromFile,
+        tmp_allocator,
+    ) catch |err| {
+        log.api.err(MODULE_NAME, "Could not import asset {}", .{err});
+        return;
+    };
+
+    addAssetToRoot(asset) catch |err| {
+        log.api.err(MODULE_NAME, "Could not add asset to root {}", .{err});
+        return;
+    };
+
+    // Save current version to assedb.
+    markObjSaved(asset, db.getVersion(asset));
+}
+
 fn openAssetRootFolder(asset_root_path: []const u8, tmp_allocator: std.mem.Allocator) !void {
     _asset_root_path = asset_root_path;
     var root_dir = try std.fs.cwd().openIterableDir(asset_root_path, .{});
@@ -767,6 +963,8 @@ fn openAssetRootFolder(asset_root_path: []const u8, tmp_allocator: std.mem.Alloc
         _db.destroyObject(_asset_root_folder);
         _asset_root = try _db.createObject(asset_root_type);
     }
+
+    try resetAnalyzedFileInfo();
 
     // asset root folder
     if (existRootFolderMarker(root_dir.dir)) {
@@ -782,7 +980,7 @@ fn openAssetRootFolder(asset_root_path: []const u8, tmp_allocator: std.mem.Alloc
         markObjSaved(_asset_root_folder, _db.getVersion(_asset_root_folder));
     } else {
         _asset_root_folder = try public.FolderType.createObject(_db);
-        try saveFolderObj(_asset_root_folder, tmp_allocator);
+        try saveFolderObj(tmp_allocator, _asset_root_folder, _asset_root_path.?);
     }
     try addFolderToRoot(_asset_root_folder);
     const root_path = try root_dir.dir.realpathAlloc(_allocator, ".");
@@ -792,12 +990,14 @@ fn openAssetRootFolder(asset_root_path: []const u8, tmp_allocator: std.mem.Alloc
     if (!existRootProjectAsset(root_dir.dir)) {
         const project_obj = try public.ProjectType.createObject(_db);
         const project_asset = createAsset("project", _asset_root_folder, project_obj).?;
-        const save_task = try saveAsset(project_asset, tmp_allocator);
+        const save_task = try saveAsset(tmp_allocator, _asset_root_path.?, project_asset);
         task.api.wait(save_task);
+    } else {
+        try loadProject(tmp_allocator, _db, asset_root_path, _asset_root_folder);
     }
 
-    try resetAnalyzedFileInfo();
     try _path2folder.put(root_path, _asset_root_folder);
+    markObjSaved(_asset_root_folder, _db.getVersion(_asset_root_folder));
 
     var tasks = std.ArrayList(cetech1.task.TaskID).init(tmp_allocator);
     defer tasks.deinit();
@@ -835,6 +1035,9 @@ fn openAssetRootFolder(asset_root_path: []const u8, tmp_allocator: std.mem.Alloc
         const dir = std.fs.path.dirname(asset_path.*).?;
         const parent_folder = _path2folder.get(dir).?;
 
+        // skip
+        if (std.mem.eql(u8, extension, "." ++ public.ProjectType.name)) continue;
+
         var asset_io = findFirstAssetIOForImport(extension) orelse continue;
 
         var prereq = cetech1.task.TaskID.none;
@@ -855,13 +1058,15 @@ fn openAssetRootFolder(asset_root_path: []const u8, tmp_allocator: std.mem.Alloc
         }
     }
 
-    try writeAssetDOTGraph();
+    //try writeAssetDOTGraph();
     try writeAssetGraphMD();
     var sync_job = try task.api.combine(_tmp_taskid_map.values());
     task.api.wait(sync_job);
 
     // Resave obj version
-    for (_asset_objid2version.keys()) |obj| {
+    var all_asset_copy = try tmp_allocator.dupe(cetech1.cdb.ObjId, _asset_objid2version.keys());
+    defer tmp_allocator.free(all_asset_copy);
+    for (all_asset_copy) |obj| {
         try _asset_objid2version.put(obj, _db.getVersion(obj));
     }
 
@@ -944,9 +1149,15 @@ fn createAsset(asset_name: []const u8, asset_folder: cetech1.cdb.ObjId, asset_ob
     return asset;
 }
 
-pub fn saveAll(tmp_allocator: std.mem.Allocator) !void {
+pub fn saveAllTo(tmp_allocator: std.mem.Allocator, root_path: []const u8) !void {
     _asset_root_lock.lock();
     defer _asset_root_lock.unlock();
+
+    var folders = (try AssetRootType.readSubObjSet(_db, _db.readObj(_asset_root).?, .Folders, tmp_allocator)).?;
+    defer tmp_allocator.free(folders);
+    for (folders) |folder| {
+        try saveFolderObj(tmp_allocator, folder, root_path);
+    }
 
     var assets = (try AssetRootType.readSubObjSet(_db, _db.readObj(_asset_root).?, .Assets, tmp_allocator)).?;
     defer tmp_allocator.free(assets);
@@ -957,28 +1168,27 @@ pub fn saveAll(tmp_allocator: std.mem.Allocator) !void {
     defer tasks.deinit();
 
     for (assets) |asset| {
-        const export_task = try saveAsset(asset, tmp_allocator);
+        const export_task = try saveAsset(tmp_allocator, root_path, asset);
         if (export_task == .none) continue;
         try tasks.append(export_task);
     }
 
     task.api.wait(try task.api.combine(tasks.items));
 
-    var folders = (try AssetRootType.readSubObjSet(_db, _db.readObj(_asset_root).?, .Folders, tmp_allocator)).?;
-    defer tmp_allocator.free(folders);
-    for (folders) |folder| {
-        try saveFolderObj(folder, tmp_allocator);
-    }
-
     _asset_root_last_version = _db.getVersion(_asset_root);
+}
+
+pub fn saveAll(tmp_allocator: std.mem.Allocator) !void {
+    try saveAllTo(tmp_allocator, _asset_root_path.?);
+    try commitDeleteChanges(_db, tmp_allocator);
 }
 
 pub fn saveAssetAndWait(tmp_allocator: std.mem.Allocator, asset: cetech1.cdb.ObjId) !void {
     if (asset.type_hash.id == cetech1.assetdb.AssetType.type_hash.id) {
-        const export_task = try saveAsset(asset, tmp_allocator);
+        const export_task = try saveAsset(tmp_allocator, _asset_root_path.?, asset);
         task.api.wait(export_task);
     } else if (asset.type_hash.id == cetech1.assetdb.FolderType.type_hash.id) {
-        try saveFolderObj(asset, tmp_allocator);
+        try saveFolderObj(tmp_allocator, asset, _asset_root_path.?);
     }
 }
 
@@ -986,10 +1196,15 @@ pub fn saveAllModifiedAssets(tmp_allocator: std.mem.Allocator) !void {
     _asset_root_lock.lock();
     defer _asset_root_lock.unlock();
 
+    var folders = (try AssetRootType.readSubObjSet(_db, _db.readObj(_asset_root).?, .Folders, tmp_allocator)).?;
+    defer tmp_allocator.free(folders);
+    for (folders) |folder| {
+        if (!isObjModified(folder)) continue;
+        try saveFolderObj(tmp_allocator, folder, _asset_root_path.?);
+    }
+
     var assets = (try AssetRootType.readSubObjSet(_db, _db.readObj(_asset_root).?, .Assets, tmp_allocator)).?;
     defer tmp_allocator.free(assets);
-
-    if (assets.len == 0) return;
 
     var tasks = try std.ArrayList(cetech1.task.TaskID).initCapacity(tmp_allocator, assets.len);
     defer tasks.deinit();
@@ -997,7 +1212,7 @@ pub fn saveAllModifiedAssets(tmp_allocator: std.mem.Allocator) !void {
     for (assets) |asset| {
         if (!isObjModified(asset)) continue;
 
-        if (saveAsset(asset, tmp_allocator)) |export_task| {
+        if (saveAsset(tmp_allocator, _asset_root_path.?, asset)) |export_task| {
             if (export_task == .none) continue;
             try tasks.append(export_task);
         } else |err| {
@@ -1005,14 +1220,9 @@ pub fn saveAllModifiedAssets(tmp_allocator: std.mem.Allocator) !void {
         }
     }
 
-    task.api.wait(try task.api.combine(tasks.items));
+    try commitDeleteChanges(_db, tmp_allocator);
 
-    var folders = (try AssetRootType.readSubObjSet(_db, _db.readObj(_asset_root).?, .Folders, tmp_allocator)).?;
-    defer tmp_allocator.free(folders);
-    for (folders) |folder| {
-        if (!isObjModified(folder)) continue;
-        try saveFolderObj(folder, tmp_allocator);
-    }
+    task.api.wait(try task.api.combine(tasks.items));
 
     _asset_root_last_version = _db.getVersion(_asset_root);
 }
@@ -1021,7 +1231,8 @@ fn getPathForFolder(from_folder: cetech1.cdb.ObjId, tmp_allocator: std.mem.Alloc
     var path = std.ArrayList([:0]const u8).init(tmp_allocator);
     defer path.deinit();
 
-    var root_folder_name = public.FolderType.readStr(_db, _db.readObj(from_folder).?, .Name);
+    var from_folder_r = _db.readObj(from_folder).?;
+    var root_folder_name = public.FolderType.readStr(_db, from_folder_r, .Name);
 
     if (root_folder_name != null) {
         var folder_it: ?cetech1.cdb.ObjId = from_folder;
@@ -1073,12 +1284,13 @@ fn WriteBlobToFile(
     asset: cetech1.cdb.ObjId,
     obj_uuid: cetech1.uuid.Uuid,
     prop_hash: cetech1.strid.StrId32,
+    root_path: []const u8,
     tmp_allocator: std.mem.Allocator,
 ) anyerror!void {
     var blob_dir_path = try getPathForAsset(asset, BLOB_EXTENSION, tmp_allocator);
     defer tmp_allocator.free(blob_dir_path);
 
-    var root_dir = try std.fs.cwd().openDir(_asset_root_path.?, .{});
+    var root_dir = try std.fs.cwd().openDir(root_path, .{});
     defer root_dir.close();
 
     //create blob dir
@@ -1119,8 +1331,8 @@ fn ReadBlobFromFile(
     return blob;
 }
 
-fn saveCdbObj(obj: cetech1.cdb.ObjId, sub_path: []const u8, tmp_allocator: std.mem.Allocator) !void {
-    var root_dir = try std.fs.cwd().openDir(_asset_root_path.?, .{});
+fn saveCdbObj(obj: cetech1.cdb.ObjId, root_path: []const u8, sub_path: []const u8, tmp_allocator: std.mem.Allocator) !void {
+    var root_dir = try std.fs.cwd().openDir(root_path, .{});
     defer root_dir.close();
 
     var dir_path = std.fs.path.dirname(sub_path);
@@ -1140,24 +1352,82 @@ fn saveCdbObj(obj: cetech1.cdb.ObjId, sub_path: []const u8, tmp_allocator: std.m
         obj,
         folder,
         WriteBlobToFile,
+        root_path,
         tmp_allocator,
     );
 }
 
-pub fn saveAsset(asset: cetech1.cdb.ObjId, tmp_allocator: std.mem.Allocator) !cetech1.task.TaskID {
+pub fn saveAsset(tmp_allocator: std.mem.Allocator, root_path: []const u8, asset: cetech1.cdb.ObjId) !cetech1.task.TaskID {
     var sub_path = try getFilePathForAsset(asset, tmp_allocator);
+
+    var root_dir = try std.fs.cwd().openDir(root_path, .{});
+    defer root_dir.close();
+
+    var asset_uuid = getUuid(asset);
+
+    if (asset_uuid) |a_uuid| {
+        if (_asset_uuid2path.get(a_uuid)) |old_path| {
+            var root_full_path = try root_dir.realpathAlloc(tmp_allocator, ".");
+            defer tmp_allocator.free(root_full_path);
+
+            var realtive_old = try std.fs.path.relative(tmp_allocator, root_full_path, old_path);
+            defer tmp_allocator.free(realtive_old);
+
+            // rename or move.
+            if (!std.mem.eql(u8, realtive_old, sub_path)) {
+                // This shit remove blobl dir if needed...
+                var old_dirpath = std.fs.path.dirname(realtive_old) orelse "";
+                var old_base_name = std.fs.path.basename(old_path);
+                var old_name = std.fs.path.stem(old_base_name);
+                var blob_dir_name = try std.fmt.allocPrint(tmp_allocator, "{s}.{s}", .{ old_name, BLOB_EXTENSION });
+                defer tmp_allocator.free(blob_dir_name);
+                var blob_path = try std.fs.path.join(tmp_allocator, &.{ old_dirpath, blob_dir_name });
+                defer tmp_allocator.free(blob_path);
+                try root_dir.deleteTree(blob_path);
+
+                // Rename
+                if (std.fs.path.dirname(sub_path)) |dir| {
+                    try root_dir.makePath(dir);
+                }
+
+                try root_dir.rename(realtive_old, sub_path);
+                try _asset_uuid2path.put(a_uuid, try root_dir.realpathAlloc(_allocator, sub_path));
+                _allocator.free(old_path);
+            }
+        }
+    }
+
     if (findFirstAssetIOForExport(_db, asset, std.fs.path.extension(sub_path))) |asset_io| {
-        return asset_io.exportAsset.?(_db, sub_path, asset);
+        return asset_io.exportAsset.?(_db, root_path, sub_path, asset);
     }
     return .none;
 }
 
-fn saveFolderObj(folder: cetech1.cdb.ObjId, tmp_allocator: std.mem.Allocator) !void {
+fn saveFolderObj(tmp_allocator: std.mem.Allocator, folder: cetech1.cdb.ObjId, root_path: []const u8) !void {
     var sub_path = try getPathForFolder(folder, tmp_allocator);
     defer tmp_allocator.free(sub_path);
 
-    var root_dir = try std.fs.cwd().openDir(_asset_root_path.?, .{});
+    var root_dir = try std.fs.cwd().openDir(root_path, .{});
     defer root_dir.close();
+
+    if (_folder2path.get(folder)) |old_path| {
+        var subdir = std.fs.path.dirname(sub_path).?;
+
+        var root_full_path = try root_dir.realpathAlloc(tmp_allocator, ".");
+        defer tmp_allocator.free(root_full_path);
+
+        var realtive_old = try std.fs.path.relative(tmp_allocator, root_full_path, old_path);
+        defer tmp_allocator.free(realtive_old);
+
+        // rename or move.
+        if (!std.mem.eql(u8, realtive_old, subdir)) {
+            try root_dir.makePath(subdir);
+
+            try root_dir.rename(realtive_old, subdir);
+            try _folder2path.put(folder, try root_dir.realpathAlloc(_allocator, subdir));
+            _allocator.free(old_path);
+        }
+    }
 
     if (std.fs.path.dirname(sub_path)) |dir| {
         try root_dir.makePath(dir);
@@ -1176,6 +1446,7 @@ fn saveFolderObj(folder: cetech1.cdb.ObjId, tmp_allocator: std.mem.Allocator) !v
         folder,
         folder,
         WriteBlobToFile,
+        root_path,
         tmp_allocator,
     );
 
@@ -1216,6 +1487,7 @@ pub fn writeCdbObjJson(
     asset: cetech1.cdb.ObjId,
     folder: cetech1.cdb.ObjId,
     write_blob: WriteBlobFn,
+    root_path: []const u8,
     tmp_allocator: std.mem.Allocator,
 ) !void {
     var ws = std.json.writeStream(writer, .{ .whitespace = .indent_2 });
@@ -1232,6 +1504,18 @@ pub fn writeCdbObjJson(
 
         try ws.objectField(JSON_ASSET_UUID_TOKEN);
         try ws.print("\"{s}\"", .{try getOrCreateUuid(obj)});
+
+        // TAGS
+        var added = public.AssetType.readRefSetAdded(_db, obj_r, .Tags, tmp_allocator);
+        defer tmp_allocator.free(added.?);
+        if (added != null and added.?.len != 0) {
+            try ws.objectField(JSON_TAGS_TOKEN);
+            try ws.beginArray();
+            for (added.?) |item| {
+                try ws.print("\"{s}:{s}\"", .{ _db.getTypeName(item.type_hash).?, try getOrCreateUuid(item) });
+            }
+            try ws.endArray();
+        }
     } else {
         asset_obj = obj;
     }
@@ -1243,6 +1527,7 @@ pub fn writeCdbObjJson(
         asset,
         folder,
         write_blob,
+        root_path,
         tmp_allocator,
     );
 
@@ -1256,6 +1541,7 @@ fn writeCdbObjJsonBody(
     asset: cetech1.cdb.ObjId,
     folder: cetech1.cdb.ObjId,
     write_blob: WriteBlobFn,
+    root_path: []const u8,
     tmp_allocator: std.mem.Allocator,
 ) !void {
     var obj_r = _db.readObj(obj).?;
@@ -1284,7 +1570,13 @@ fn writeCdbObjJsonBody(
             cetech1.cdb.PropType.BOOL => {
                 var value = _db.readValue(bool, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
-                if (!has_prototype and value == false) continue;
+
+                if (_db.getDefaultObject(obj.type_hash)) |default| {
+                    var default_value = _db.readValue(bool, _db.readObj(default).?, prop_idx);
+                    if (value == default_value) continue;
+                } else {
+                    if (!has_prototype and value == false) continue;
+                }
 
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
@@ -1292,42 +1584,84 @@ fn writeCdbObjJsonBody(
             cetech1.cdb.PropType.U64 => {
                 var value = _db.readValue(u64, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
-                if (!has_prototype and value == 0) continue;
+
+                if (_db.getDefaultObject(obj.type_hash)) |default| {
+                    var default_value = _db.readValue(u64, _db.readObj(default).?, prop_idx);
+                    if (value == default_value) continue;
+                } else {
+                    if (!has_prototype and value == 0) continue;
+                }
+
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
             },
             cetech1.cdb.PropType.I64 => {
                 var value = _db.readValue(i64, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
-                if (!has_prototype and value == 0) continue;
+
+                if (_db.getDefaultObject(obj.type_hash)) |default| {
+                    var default_value = _db.readValue(i64, _db.readObj(default).?, prop_idx);
+                    if (value == default_value) continue;
+                } else {
+                    if (!has_prototype and value == 0) continue;
+                }
+
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
             },
             cetech1.cdb.PropType.U32 => {
                 var value = _db.readValue(u32, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
-                if (!has_prototype and value == 0) continue;
+
+                if (_db.getDefaultObject(obj.type_hash)) |default| {
+                    var default_value = _db.readValue(u32, _db.readObj(default).?, prop_idx);
+                    if (value == default_value) continue;
+                } else {
+                    if (!has_prototype and value == 0) continue;
+                }
+
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
             },
             cetech1.cdb.PropType.I32 => {
                 var value = _db.readValue(i32, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
-                if (!has_prototype and value == 0) continue;
+
+                if (_db.getDefaultObject(obj.type_hash)) |default| {
+                    var default_value = _db.readValue(i32, _db.readObj(default).?, prop_idx);
+                    if (value == default_value) continue;
+                } else {
+                    if (!has_prototype and value == 0) continue;
+                }
+
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
             },
             cetech1.cdb.PropType.F64 => {
                 var value = _db.readValue(f64, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
-                if (!has_prototype and value == 0) continue;
+
+                if (_db.getDefaultObject(obj.type_hash)) |default| {
+                    var default_value = _db.readValue(f64, _db.readObj(default).?, prop_idx);
+                    if (value == default_value) continue;
+                } else {
+                    if (!has_prototype and value == 0) continue;
+                }
+
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
             },
             cetech1.cdb.PropType.F32 => {
                 var value = _db.readValue(f32, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
-                if (!has_prototype and value == 0) continue;
+
+                if (_db.getDefaultObject(obj.type_hash)) |default| {
+                    var default_value = _db.readValue(f32, _db.readObj(default).?, prop_idx);
+                    if (value == default_value) continue;
+                } else {
+                    if (!has_prototype and value == 0) continue;
+                }
+
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
             },
@@ -1336,6 +1670,15 @@ fn writeCdbObjJsonBody(
                 if (str == null) continue;
                 if (has_prototype and !property_overided) continue;
                 if (!has_prototype and str.?.len == 0) continue;
+
+                if (_db.getDefaultObject(obj.type_hash)) |default| {
+                    if (_db.readStr(_db.readObj(default).?, prop_idx)) |default_value| {
+                        if (std.mem.eql(u8, str.?, default_value)) continue;
+                    }
+                } else {
+                    if (!has_prototype and str.?.len == 0) continue;
+                }
+
                 try writer.objectField(prop_def.name);
                 try writer.print("\"{s}\"", .{str.?});
             },
@@ -1345,7 +1688,7 @@ fn writeCdbObjJsonBody(
                 if (blob.len == 0) continue;
 
                 var obj_uuid = try getOrCreateUuid(obj);
-                try write_blob(blob, asset, obj_uuid, cetech1.strid.strId32(prop_def.name), tmp_allocator);
+                try write_blob(blob, asset, obj_uuid, cetech1.strid.strId32(prop_def.name), root_path, tmp_allocator);
 
                 try writer.objectField(prop_def.name);
                 try writer.print("\"{x}{x}\"", .{ cetech1.strid.strId32(&obj_uuid.bytes).id, cetech1.strid.strId32(prop_def.name).id });
@@ -1364,6 +1707,7 @@ fn writeCdbObjJsonBody(
                         asset,
                         folder,
                         write_blob,
+                        root_path,
                         tmp_allocator,
                     );
                     try writer.endObject();
@@ -1374,7 +1718,7 @@ fn writeCdbObjJsonBody(
                 if (has_prototype and !property_overided) continue;
                 if (ref_obj != null) {
                     try writer.objectField(prop_def.name);
-                    try writer.print("\"{s}:{s}\"", .{ type_name, try getOrCreateUuid(ref_obj.?) });
+                    try writer.print("\"{s}:{s}\"", .{ _db.getTypeName(ref_obj.?.type_hash).?, try getOrCreateUuid(ref_obj.?) });
                 }
             },
             cetech1.cdb.PropType.SUBOBJECT_SET => {
@@ -1392,7 +1736,7 @@ fn writeCdbObjJsonBody(
                     try writer.beginArray();
                     for (added.?) |item| {
                         try writer.beginObject();
-                        try writeCdbObjJsonBody(Writer, item, writer, asset, folder, write_blob, tmp_allocator);
+                        try writeCdbObjJsonBody(Writer, item, writer, asset, folder, write_blob, root_path, tmp_allocator);
                         try writer.endObject();
                     }
                     try writer.endArray();
@@ -1429,7 +1773,7 @@ fn writeCdbObjJsonBody(
                         try writer.beginArray();
                         for (added_set.keys()) |item| {
                             try writer.beginObject();
-                            try writeCdbObjJsonBody(Writer, item, writer, asset, folder, write_blob, tmp_allocator);
+                            try writeCdbObjJsonBody(Writer, item, writer, asset, folder, write_blob, root_path, tmp_allocator);
                             try writer.endObject();
                         }
                         try writer.endArray();
@@ -1444,7 +1788,7 @@ fn writeCdbObjJsonBody(
                         try writer.beginArray();
                         for (inisiate_set.keys()) |item| {
                             try writer.beginObject();
-                            try writeCdbObjJsonBody(Writer, item, writer, asset, folder, write_blob, tmp_allocator);
+                            try writeCdbObjJsonBody(Writer, item, writer, asset, folder, write_blob, root_path, tmp_allocator);
                             try writer.endObject();
                         }
                         try writer.endArray();
@@ -1472,7 +1816,7 @@ fn writeCdbObjJsonBody(
                     try writer.objectField(prop_def.name);
                     try writer.beginArray();
                     for (added.?) |item| {
-                        try writer.print("\"{s}:{s}\"", .{ type_name, try getOrCreateUuid(item) });
+                        try writer.print("\"{s}:{s}\"", .{ _db.getTypeName(item.type_hash).?, try getOrCreateUuid(item) });
                     }
                     try writer.endArray();
                 } else {
@@ -1504,7 +1848,7 @@ fn writeCdbObjJsonBody(
                         try writer.objectField(prop_def.name);
                         try writer.beginArray();
                         for (added_set.keys()) |item| {
-                            try writer.print("\"{s}:{s}\"", .{ type_name, try getOrCreateUuid(item) });
+                            try writer.print("\"{s}:{s}\"", .{ _db.getTypeName(item.type_hash).?, try getOrCreateUuid(item) });
                         }
                         try writer.endArray();
                     }
@@ -1516,7 +1860,7 @@ fn writeCdbObjJsonBody(
                         try writer.objectField(field_name);
                         try writer.beginArray();
                         for (deleted_set.keys()) |item| {
-                            try writer.print("\"{s}:{s}\"", .{ type_name, try getOrCreateUuid(item) });
+                            try writer.print("\"{s}:{s}\"", .{ _db.getTypeName(item.type_hash).?, try getOrCreateUuid(item) });
                         }
                         try writer.endArray();
                     }
@@ -1558,15 +1902,26 @@ pub fn readAssetFromReader(
     try validateVersion(version.string);
 
     const asset_uuid_str = parsed.value.object.get(JSON_ASSET_UUID_TOKEN).?;
-    const asset_uuid = try uuid.api.fromStr(asset_uuid_str.string);
+    const asset_uuid = uuid.api.fromStr(asset_uuid_str.string).?;
 
     var asset = try getOrCreate(asset_uuid, public.AssetType.type_hash);
 
     try setAssetNameAndFolder(asset, asset_name, asset_folder);
 
+    var asset_w = _db.writeObj(asset).?;
+    if (parsed.value.object.get(JSON_TAGS_TOKEN)) |tags| {
+        for (tags.array.items) |tag| {
+            var ref_link = std.mem.split(u8, tag.string, ":");
+            const ref_type = cetech1.strid.strId32(ref_link.first());
+            const ref_uuid = uuid.api.fromStr(ref_link.next().?).?;
+
+            var ref_obj = try getOrCreate(ref_uuid, ref_type);
+            try public.AssetType.addRefToSet(_db, asset_w, .Tags, &.{ref_obj});
+        }
+    }
+
     var asset_obj = try readCdbObjFromJsonValue(parsed.value, asset, read_blob, tmp_allocator);
 
-    var asset_w = _db.writeObj(asset).?;
     var asset_obj_w = _db.writeObj(asset_obj).?;
     try public.AssetType.setSubObj(_db, asset_w, .Object, asset_obj_w);
     _db.writeCommit(asset_obj_w);
@@ -1610,7 +1965,7 @@ fn createObjectFromPrototypeLocked(prototype_uuid: cetech1.uuid.Uuid, type_hash:
 
 fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cetech1.cdb.ObjId, read_blob: ReadBlobFn, tmp_allocator: std.mem.Allocator) !cetech1.cdb.ObjId {
     const obj_uuid_str = parsed.object.get(JSON_UUID_TOKEN).?;
-    const obj_uuid = try uuid.api.fromStr(obj_uuid_str.string);
+    const obj_uuid = uuid.api.fromStr(obj_uuid_str.string).?;
     const obj_type = parsed.object.get(JSON_TYPE_NAME_TOKEN).?;
     const obj_type_hash = cetech1.strid.strId32(obj_type.string);
 
@@ -1619,7 +1974,7 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cetech1.cdb.ObjId, rea
     if (prototype_uuid == null) {
         obj = try createObject(obj_type_hash);
     } else {
-        obj = try createObjectFromPrototypeLocked(try uuid.fromStr(prototype_uuid.?.string), obj_type_hash);
+        obj = try createObjectFromPrototypeLocked(uuid.fromStr(prototype_uuid.?.string).?, obj_type_hash);
     }
 
     var obj_w = _db.writeObj(obj.?).?;
@@ -1681,7 +2036,7 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cetech1.cdb.ObjId, rea
             cetech1.cdb.PropType.REFERENCE => {
                 var ref_link = std.mem.split(u8, value.string, ":");
                 const ref_type = cetech1.strid.strId32(ref_link.first());
-                const ref_uuid = try uuid.api.fromStr(ref_link.next().?);
+                const ref_uuid = uuid.api.fromStr(ref_link.next().?).?;
 
                 var ref_obj = try getOrCreate(ref_uuid, ref_type);
 
@@ -1692,15 +2047,15 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cetech1.cdb.ObjId, rea
                     var subobj = try readCdbObjFromJsonValue(subobj_item, asset, read_blob, tmp_allocator);
 
                     var subobj_w = _db.writeObj(subobj).?;
+                    defer _db.writeCommit(subobj_w);
                     try _db.addSubObjToSet(obj_w, prop_idx, &.{subobj_w});
-                    _db.writeCommit(subobj_w);
                 }
             },
             cetech1.cdb.PropType.REFERENCE_SET => {
                 for (value.array.items) |ref| {
                     var ref_link = std.mem.split(u8, ref.string, ":");
                     const ref_type = cetech1.strid.strId32(ref_link.first());
-                    const ref_uuid = try uuid.api.fromStr(ref_link.next().?);
+                    const ref_uuid = uuid.api.fromStr(ref_link.next().?).?;
 
                     var ref_obj = try getOrCreate(ref_uuid, ref_type);
                     try _db.addRefToSet(obj_w, prop_idx, &.{ref_obj});
@@ -1715,7 +2070,7 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cetech1.cdb.ObjId, rea
                         for (removed_fiedl.?.array.items) |ref| {
                             var ref_link = std.mem.split(u8, ref.string, ":");
                             const ref_type = cetech1.strid.strId32(ref_link.first());
-                            const ref_uuid = try uuid.api.fromStr(ref_link.next().?);
+                            const ref_uuid = uuid.api.fromStr(ref_link.next().?).?;
 
                             var ref_obj = try getOrCreate(ref_uuid, ref_type);
                             try _db.removeFromRefSet(obj_w, prop_idx, ref_obj);
@@ -1757,7 +2112,7 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cetech1.cdb.ObjId, rea
                         for (removed.?.array.items) |ref| {
                             var ref_link = std.mem.split(u8, ref.string, ":");
                             const ref_type = cetech1.strid.strId32(ref_link.first());
-                            const ref_uuid = try uuid.api.fromStr(ref_link.next().?);
+                            const ref_uuid = uuid.api.fromStr(ref_link.next().?).?;
 
                             var ref_obj = try getOrCreate(ref_uuid, ref_type);
 
@@ -1802,6 +2157,61 @@ fn createNewFolder(db: *cetech1.cdb.CdbDb, parent_folder: cetech1.cdb.ObjId, nam
     db.writeCommit(new_folder_w);
 
     try addFolderToRoot(new_folder);
+}
+
+fn saveAsAllAssets(tmp_allocator: std.mem.Allocator, path: []const u8) !void {
+    try resetAnalyzedFileInfo();
+    try saveAllTo(tmp_allocator, path);
+}
+
+fn filerAsset(tmp_allocator: std.mem.Allocator, filter: [:0]const u8, tags_filter: cetech1.cdb.ObjId) !public.FilteredAssets {
+    var result = std.ArrayList(public.FilteredAsset).init(tmp_allocator);
+    var buff: [256:0]u8 = undefined;
+    var buff2: [256:0]u8 = undefined;
+
+    var filter_set = std.AutoArrayHashMap(cetech1.cdb.ObjId, void).init(tmp_allocator);
+    defer filter_set.deinit();
+
+    if (_db.readObj(tags_filter)) |filter_r| {
+        if (public.AssetTagsType.readRefSet(_db, filter_r, .Tags, tmp_allocator)) |tags| {
+            defer tmp_allocator.free(tags);
+            for (tags) |tag| {
+                try filter_set.put(tag, {});
+            }
+        }
+    }
+
+    var set = try AssetRootType.readSubObjSet(_db, _db.readObj(_asset_root).?, .Assets, tmp_allocator);
+    if (set) |s| {
+        defer tmp_allocator.free(s);
+
+        for (s) |obj| {
+            if (filter_set.count() != 0) {
+                if (_db.readObj(obj)) |asset_r| {
+                    if (public.AssetType.readRefSet(_db, asset_r, .Tags, tmp_allocator)) |asset_tags| {
+                        defer tmp_allocator.free(asset_tags);
+
+                        var pass_n: u32 = 0;
+                        for (asset_tags) |tag| {
+                            if (filter_set.contains(tag)) pass_n += 1;
+                        }
+                        if (pass_n != filter_set.count()) continue;
+                    }
+                }
+            }
+
+            var path = try api.getFilePathForAsset(obj, tmp_allocator);
+            defer tmp_allocator.free(path);
+
+            var f = try std.fmt.bufPrintZ(&buff, "{s}", .{filter});
+            var p = try std.fmt.bufPrintZ(&buff2, "{s}", .{path});
+
+            var score = editorui.api.uiFilterPass(tmp_allocator, f, p, true) orelse continue;
+            try result.append(.{ .score = score, .obj = obj });
+        }
+    }
+
+    return result.toOwnedSlice();
 }
 
 fn onObjidDestroyed(db: *cetech1.cdb.Db, objects: []cetech1.cdb.ObjId) void {

@@ -30,6 +30,7 @@ const DynLibInfo = struct {
 
     pub fn close(self: *@This()) void {
         self.dyn_lib.close();
+        //_allocator.free(self.full_path);
     }
 };
 
@@ -120,7 +121,12 @@ pub fn unloadAll() !void {
     var iter = _dyn_modules_map.iterator();
     while (iter.next()) |entry| {
         entry.value_ptr.close();
+        _allocator.free(entry.value_ptr.full_path);
     }
+
+    // for (_modules_allocator_map.keys()) |k| {
+    //     _allocator.free(k[0 .. k.len + 1]);
+    // }
 }
 
 fn _getModule(name: []const u8) ?*c.ct_module_desc_t {
@@ -239,10 +245,12 @@ pub fn reloadAllIfNeeded() !bool {
 
             var v_ptr = _dyn_modules_map.getPtr(k).?;
             v_ptr.close();
+
+            _allocator.free(new_dyn_lib_info.full_path);
+            new_dyn_lib_info.full_path = v.full_path;
             v_ptr.* = new_dyn_lib_info;
 
             old_module_desc.module_fce = new_dyn_lib_info.symbol;
-            old_module_desc.name = new_dyn_lib_info.full_path;
 
             modules_reloaded = true;
         }

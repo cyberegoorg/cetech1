@@ -47,10 +47,15 @@ static ct_kernel_task_i kernel_task = {
     .shutdown = kernel_task_shutdown,
 };
 
-static ct_kernel_task_update_i update_task = {};
+static ct_kernel_task_update_i update_task = {
+    .name = "BarUpdate",
+    .depends = 0,
+    .depends_n = 0,
+    .update = kernel_task_update1,
+};
 
 CT_DECL_MODULE(bar, "Simple module in C")
-(const ct_apidb_api_t *apidb, const ct_allocator_t *allocator, uint8_t load, uint8_t reload)
+(const ct_apidb_api_t *apidb, const ct_allocator_t *allocator, bool load, bool reload)
 {
     _log = apidb->get_api(CT_APIDB_LANG_C, ct_apidb_api_arg(ct_log_api_t));
     _strid = apidb->get_api(CT_APIDB_LANG_C, ct_apidb_api_arg(ct_strid_api_t));
@@ -58,16 +63,10 @@ CT_DECL_MODULE(bar, "Simple module in C")
 
     _g = (G *)apidb->global_var(MODULE_NAME, "_g", sizeof(G), &(G){});
 
-    update_task = (ct_kernel_task_update_i){
-        .phase = _strid->strid64(CT_KERNEL_PHASE_ONUPDATE),
-        .name = "BarUpdate",
-        .depends = 0,
-        .depends_n = 0,
-        .update = kernel_task_update1,
-    };
+    update_task.phase = _strid->strid64(CT_KERNEL_PHASE_ONUPDATE);
 
-    apidb->impl_or_remove(ct_apidb_name(ct_kernel_task_i), &kernel_task, load);
-    apidb->impl_or_remove(ct_apidb_name(ct_kernel_task_update_i), &update_task, load);
+    // apidb->impl_or_remove(ct_apidb_name(ct_kernel_task_i), &kernel_task, load);
+    // apidb->impl_or_remove(ct_apidb_name(ct_kernel_task_update_i), &update_task, load);
 
     return 1;
 }

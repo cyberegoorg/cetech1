@@ -99,10 +99,10 @@ fn _toBytes(ptr: *anyopaque, ptr_size: usize) []u8 {
 }
 
 fn globalVar(module: []const u8, var_name: []const u8, size: usize, default: []const u8) !*anyopaque {
-    var combine_name = try std.fmt.allocPrint(_allocator, "{s}:{s}", .{ module, var_name });
-    var v = _global_var_map.get(combine_name);
+    const combine_name = try std.fmt.allocPrint(_allocator, "{s}:{s}", .{ module, var_name });
+    const v = _global_var_map.get(combine_name);
     if (v == null) {
-        var data = try _allocator.alloc(u8, size);
+        const data = try _allocator.alloc(u8, size);
         @memcpy(data, default);
         try _global_var_map.put(combine_name, data);
         return data.ptr;
@@ -114,20 +114,20 @@ fn globalVar(module: []const u8, var_name: []const u8, size: usize, default: []c
 
 fn setApiOpaqueue(language: []const u8, api_name: []const u8, api_ptr: *anyopaque, api_size: usize) !void {
     if (!_language_api_map.contains(language)) {
-        var api_map = try _api_map_pool.create();
+        const api_map = try _api_map_pool.create();
         api_map.* = ApiHashMap.init(_allocator);
         try _language_api_map.put(language, api_map);
     }
 
     log.api.debug(MODULE_NAME, "Register {s} api '{s}'", .{ language, api_name });
 
-    var api_ptr_intern = getApiOpaque(language, api_name, api_size);
+    const api_ptr_intern = getApiOpaque(language, api_name, api_size);
 
     if (api_ptr_intern == null) {
         return;
     }
 
-    var api_map = _language_api_map.getPtr(language).?;
+    const api_map = _language_api_map.getPtr(language).?;
     var old_api_ptr = api_map.*.getPtr(api_name).?;
     @memcpy(old_api_ptr.api_ptr, _toBytes(api_ptr, api_size));
 }

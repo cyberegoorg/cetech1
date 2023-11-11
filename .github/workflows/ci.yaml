@@ -73,8 +73,8 @@ jobs:
       - name: Test
         run: sh .ci/x86_64-macos-test.sh Debug
 
-  # TODO: i dont know why but i see files, persmision looks ok
-  #       but cant run because file not found... WTF
+  #  TODO: i dont know why but i see files, persmision looks ok
+  #        but cant run because file not found... WTF
   # test-x86_64-linux:
   #   name: Test x86_64-linux Debug
   #   runs-on: ubuntu-latest

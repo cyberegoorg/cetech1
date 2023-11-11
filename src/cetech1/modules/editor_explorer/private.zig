@@ -18,6 +18,7 @@ var _log: *cetech1.log.LogAPI = undefined;
 var _cdb: *cetech1.cdb.CdbAPI = undefined;
 var _editorui: *cetech1.editorui.EditorUIApi = undefined;
 var _editor: *editor.EditorAPI = undefined;
+var _editortree: *editor.TreeAPI = undefined;
 var _assetdb: *cetech1.assetdb.AssetDBAPI = undefined;
 var _kernel: *cetech1.kernel.KernelApi = undefined;
 var _tempalloc: *cetech1.tempalloc.TempAllocApi = undefined;
@@ -31,8 +32,8 @@ var _g: *G = undefined;
 const ExplorerTab = struct {
     tab_i: editor.EditorTabI,
     db: cetech1.cdb.CdbDb,
-    selected_obj: cetech1.cdb.ObjId = .{},
-    selected_asset: ?cetech1.cdb.ObjId = null,
+    selection: cetech1.cdb.ObjId = .{},
+    inter_selection: cetech1.cdb.ObjId,
 };
 
 // Fill editor tab interface
@@ -51,6 +52,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     .ui = tabUi,
     .menu = tabMenu,
     .obj_selected = tabSelectedObject,
+    .focused = tabFocused,
 });
 
 fn tabMenuItem() [:0]const u8 {
@@ -64,82 +66,122 @@ fn tabTitle(inst: *editor.TabO) [:0]const u8 {
 }
 
 // Create new FooTab instantce
-fn tabCreate(db: *cetech1.cdb.Db) ?*editor.EditorTabI {
+fn tabCreate(dbc: *cetech1.cdb.Db) ?*editor.EditorTabI {
     var tab_inst = _allocator.create(ExplorerTab) catch undefined;
+    var db = cetech1.cdb.CdbDb.fromDbT(dbc, _cdb);
     tab_inst.* = ExplorerTab{
         .tab_i = .{
             .vt = _g.tab_vt,
             .inst = @ptrCast(tab_inst),
         },
-        .db = cetech1.cdb.CdbDb.fromDbT(db, _cdb),
+        .db = db,
+        .inter_selection = editor.ObjSelectionType.createObject(&db) catch return null,
     };
     return &tab_inst.tab_i;
 }
 
 // Destroy FooTab instantce
 fn tabDestroy(tab_inst: *editor.EditorTabI) void {
-    var tab_o: *ExplorerTab = @alignCast(@ptrCast(tab_inst.inst));
+    const tab_o: *ExplorerTab = @alignCast(@ptrCast(tab_inst.inst));
+    tab_o.db.destroyObject(tab_o.inter_selection);
     _allocator.destroy(tab_o);
+}
+
+fn tabFocused(inst: *editor.TabO) void {
+    var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
+    _editor.propagateSelection(&tab_o.db, tab_o.inter_selection);
 }
 
 // Draw tab menu
 fn tabMenu(inst: *editor.TabO) void {
     var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
-    _ = tab_o;
+
+    if (_editorui.beginMenu("Object", !tab_o.selection.isEmpty())) {
+        defer _editorui.endMenu();
+        var tmp_arena = _tempalloc.createTempArena() catch undefined;
+        defer _tempalloc.destroyTempArena(tmp_arena);
+        const allocator = tmp_arena.allocator();
+        _editor.objContextMenu(allocator, &tab_o.db, tab_o.selection, null, null) catch undefined;
+    }
 }
 
 // Draw tab content
 fn tabUi(inst: *editor.TabO) void {
     var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
 
-    if (tab_o.selected_obj.id == 0 and tab_o.selected_obj.type_hash.id == 0) {
+    if (tab_o.selection.id == 0 and tab_o.selection.type_hash.id == 0) {
         return;
     }
 
     var tmp_arena = _tempalloc.createTempArena() catch undefined;
     defer _tempalloc.destroyTempArena(tmp_arena);
+    const allocator = tmp_arena.allocator();
 
-    // Draw only asset content
-    if (tab_o.selected_asset) |selected_asset| {
-        if (cetech1.assetdb.AssetType.readSubObj(&tab_o.db, tab_o.db.readObj(selected_asset).?, .Object)) |asset_obj| {
-            const type_name = tab_o.db.getTypeName(selected_asset.type_hash).?;
-            const asset_name_str = cetech1.assetdb.AssetType.readStr(&tab_o.db, tab_o.db.readObj(selected_asset).?, .Name).?;
-            var asset_name_buf: [128]u8 = undefined;
-            const asset_name = std.fmt.bufPrintZ(&asset_name_buf, "{s}.{s}", .{ asset_name_str, type_name }) catch undefined;
+    if (_editorui.beginChild("Explorer", .{ .border = true })) {
+        defer _editorui.endChild();
 
-            // Draw asset as tree root.
-            const open = _editor.cdbTreeNode(asset_name, true, false, tab_o.selected_obj.eq(selected_asset), .{});
-            if (_editorui.isItemActivated()) {
-                _editor.selectObj(&tab_o.db, selected_asset);
-            }
-            if (open) {
+        _editorui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 15 });
+        defer _editorui.popStyleVar(.{});
 
-                // Draw asset_object
-                if (_editor.cdbTreeView(tmp_arena.allocator(), &tab_o.db, asset_obj, tab_o.selected_obj, .{ .expand_object = true }) catch undefined) |new_selected| {
-                    _editor.selectObj(&tab_o.db, new_selected);
+        // Draw only asset content
+        if (_editor.getSelected(allocator, &tab_o.db, tab_o.selection)) |selected_objs| {
+            for (selected_objs) |obj| {
+                const selected_asset_r = tab_o.db.readObj(obj) orelse return;
+
+                if (!cetech1.assetdb.AssetType.isSameType(obj)) continue;
+
+                if (cetech1.assetdb.AssetType.readSubObj(&tab_o.db, selected_asset_r, .Object)) |asset_obj| {
+                    const type_name = tab_o.db.getTypeName(obj.type_hash).?;
+                    const asset_name_str = cetech1.assetdb.AssetType.readStr(&tab_o.db, selected_asset_r, .Name).?;
+                    var asset_name_buf: [128]u8 = undefined;
+                    const asset_name = std.fmt.bufPrintZ(&asset_name_buf, "{s}.{s}", .{ asset_name_str, type_name }) catch undefined;
+
+                    // Draw asset as tree root.
+
+                    const open = _editortree.cdbTreeNode(asset_name, true, false, false, false, .{ .multiselect = true });
+
+                    const selection_version = tab_o.db.getVersion(tab_o.inter_selection);
+                    if (_editorui.isItemActivated()) {
+                        _editor.handleSelection(allocator, &tab_o.db, tab_o.inter_selection, obj, true) catch undefined;
+                        //_editor.selectObj(&tab_o.db, obj);
+                    }
+                    if (open) {
+                        // Draw asset_object
+                        _editortree.cdbTreeView(tmp_arena.allocator(), &tab_o.db, asset_obj, tab_o.inter_selection, .{ .expand_object = true, .multiselect = true }) catch undefined;
+                        _editortree.cdbTreePop();
+                    }
+
+                    if (selection_version != tab_o.db.getVersion(tab_o.inter_selection)) {
+                        _editor.propagateSelection(&tab_o.db, tab_o.inter_selection);
+                    }
                 }
-
-                _editor.cdbTreePop();
             }
         }
     }
 }
 
 // Selected object
-fn tabSelectedObject(inst: *editor.TabO, cdb: *cetech1.cdb.Db, obj: cetech1.cdb.ObjId) void {
+fn tabSelectedObject(inst: *editor.TabO, cdb: *cetech1.cdb.Db, selection: cetech1.cdb.ObjId) void {
     _ = cdb;
     var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
 
-    if (obj.isEmpty()) {
-        tab_o.selected_asset = null;
-        tab_o.selected_obj = obj;
-    }
+    // if (selection.isEmpty()) {
+    //     tab_o.selected_asset = null;
+    //     tab_o.selection = selection;
+    // }
 
-    if (obj.type_hash.id == cetech1.assetdb.AssetType.type_hash.id) {
-        tab_o.selected_asset = .{ .id = obj.id, .type_hash = .{ .id = obj.type_hash.id } };
-    }
+    // var tmp_arena = _tempalloc.createTempArena() catch undefined;
+    // defer _tempalloc.destroyTempArena(tmp_arena);
+    // //var tmp_alloc = tmp_arena.allocator();
 
-    tab_o.selected_obj = .{ .id = obj.id, .type_hash = .{ .id = obj.type_hash.id } };
+    //const selected = _editor.getFirstSelected(tmp_alloc, &tab_o.db, selection);
+    //if (selected.type_hash.id == cetech1.assetdb.AssetType.type_hash.id) {
+    //tab_o.selected_asset = selection;
+    //}
+
+    if (tab_o.inter_selection.eq(selection)) return;
+
+    tab_o.selection = selection;
 }
 
 fn cdbCreateTypes(db_: ?*cetech1.cdb.Db) !void {
@@ -161,6 +203,7 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     _assetdb = apidb.getZigApi(cetech1.assetdb.AssetDBAPI).?;
     _kernel = apidb.getZigApi(cetech1.kernel.KernelApi).?;
     _tempalloc = apidb.getZigApi(cetech1.tempalloc.TempAllocApi).?;
+    _editortree = apidb.getZigApi(editor.TreeAPI).?;
 
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, MODULE_NAME, "_g", .{});

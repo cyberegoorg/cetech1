@@ -14,6 +14,7 @@ pub const modules = @import("modules.zig");
 pub const kernel = @import("kernel.zig");
 pub const task = @import("task.zig");
 pub const cdb = @import("cdb.zig");
+pub const cdb_types = @import("cdb_types.zig");
 pub const tempalloc = @import("tempalloc.zig");
 
 pub const system = @import("system.zig");

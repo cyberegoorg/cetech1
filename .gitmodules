@@ -10,3 +10,6 @@
 [submodule "externals/shared/lib/nfd-zig"]
 	path = externals/shared/lib/nfd-zig
 	url = https://github.com/fabioarnold/nfd-zig.git
+[submodule "externals/shared/lib/zf"]
+	path = externals/shared/lib/zf
+	url = https://github.com/natecraddock/zf.git

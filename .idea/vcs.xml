@@ -4,6 +4,7 @@
     <mapping directory="" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/bin/zig" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/externals/shared/lib/nfd-zig" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/lib/zf" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/externals/shared/lib/zig-gamedev" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/externals/shared/lib/zig-uuid" vcs="Git" />
   </component>

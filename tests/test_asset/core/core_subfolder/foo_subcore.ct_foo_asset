@@ -1,6 +1,9 @@
 {
   "__version": "0.1.0",
   "__asset_uuid": "018b5c74-06f7-740e-be81-d727adec5fb4",
+  "__tags": [
+    "ct_asset_tag:018bd49b-c554-7ad3-bf20-a5cdf4480667"
+  ],
   "__type_name": "ct_foo_asset",
   "__uuid": "018b5c74-06f7-79fd-a6ad-3678552795a1",
   "__prototype_uuid": "018b5846-c2d5-712f-bb12-9d9d15321ecb",

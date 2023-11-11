@@ -31,13 +31,13 @@ pub const UuidAPI = struct {
     }
 
     /// Create new UUID from str
-    pub fn fromStr(self: Self, str: []const u8) !Uuid {
+    pub fn fromStr(self: Self, str: []const u8) ?Uuid {
         return self.fromStrFn(str);
     }
 
     //#region Pointers to implementation
     newUUID7Fn: *const fn () Uuid,
     fromIntFn: *const fn (int: u128) Uuid,
-    fromStrFn: *const fn (str: []const u8) anyerror!Uuid,
+    fromStrFn: *const fn (str: []const u8) ?Uuid,
     //#endregion
 };

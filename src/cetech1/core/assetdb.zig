@@ -1,5 +1,6 @@
 const std = @import("std");
 const cdb = @import("cdb.zig");
+const cdb_types = @import("cdb_types.zig");
 const task = @import("task.zig");
 const strid = @import("strid.zig");
 const uuid = @import("uuid.zig");
@@ -9,6 +10,8 @@ pub const AssetType = cdb.CdbTypeDecl(
     "ct_asset",
     enum(u32) {
         Name = 0,
+        Description,
+        Tags,
         Object,
         Folder,
     },
@@ -19,7 +22,35 @@ pub const FolderType = cdb.CdbTypeDecl(
     "ct_asset_folder",
     enum(u32) {
         Name = 0,
+        Description,
+        Tags,
         Parent,
+    },
+);
+
+/// CDB type for asset/folder tags
+pub const AssetTagType = cdb.CdbTypeDecl(
+    "ct_asset_tag",
+    enum(u32) {
+        Name = 0,
+        Description,
+        Color,
+    },
+);
+
+/// CDB type for tags filter or similiar stuff
+pub const AssetTagsType = cdb.CdbTypeDecl(
+    "ct_asset_tags",
+    enum(u32) {
+        Tags = 0,
+    },
+);
+
+/// CDB type for asset/folder tags
+pub const AssetTagsProjectSettingsType = cdb.CdbTypeDecl(
+    "ct_asset_tag_project_settings",
+    enum(u32) {
+        Tags = 0,
     },
 );
 
@@ -59,6 +90,7 @@ pub const AssetIOI = struct {
     /// Crete export asset task.
     exportAsset: ?*const fn (
         db: *cdb.CdbDb,
+        root_path: []const u8,
         sub_path: []const u8,
         asset: cdb.ObjId,
     ) anyerror!task.TaskID,
@@ -84,6 +116,18 @@ pub const AssetIOI = struct {
         };
     }
 };
+
+pub const FilteredAsset = extern struct {
+    score: f64,
+    obj: cdb.ObjId,
+
+    pub fn lessThan(context: void, a: FilteredAsset, b: FilteredAsset) bool {
+        _ = context;
+        return a.score < b.score;
+    }
+};
+
+pub const FilteredAssets = []FilteredAsset;
 
 /// AssetDB main API
 /// Asset is CDB object associated with name, folder and is load/save from fs, net etc.
@@ -164,11 +208,26 @@ pub const AssetDBAPI = struct {
         return self.saveAssetFn(tmp_allocator, asset);
     }
 
+    pub fn getProjectSettings(self: *Self, tmp_allocator: std.mem.Allocator, type_hash: strid.StrId32) ?cdb.ObjId {
+        return self.getProjectSettingsFn(tmp_allocator, type_hash);
+    }
+
+    isAssetNameValid: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, folder: cdb.ObjId, type_hash: strid.StrId32, base_name: [:0]const u8) anyerror!bool,
+
     getAssetForObj: *const fn (obj: cdb.ObjId) ?cdb.ObjId,
     isProjectOpened: *const fn () bool,
     getFilePathForAsset: *const fn (asset: cdb.ObjId, tmp_allocator: std.mem.Allocator) anyerror![]u8,
+    getPathForFolder: *const fn (asset: cdb.ObjId, tmp_allocator: std.mem.Allocator) anyerror![]u8,
 
     createNewFolder: *const fn (db: *cdb.CdbDb, parent_folder: cdb.ObjId, name: [:0]const u8) anyerror!void,
+    filerAsset: *const fn (tmp_allocator: std.mem.Allocator, filter: [:0]const u8, tags_filter: cdb.ObjId) anyerror!FilteredAssets,
+    saveAsAllAssets: *const fn (tmp_allocator: std.mem.Allocator, path: []const u8) anyerror!void,
+    deleteAsset: *const fn (db: *cdb.CdbDb, asset: cdb.ObjId) anyerror!void,
+    deleteFolder: *const fn (db: *cdb.CdbDb, folder: cdb.ObjId) anyerror!void,
+    isToDeleted: *const fn (asset_or_folder: cdb.ObjId) bool,
+    reviveDeleted: *const fn (asset_or_folder: cdb.ObjId) void,
+
+    getProjectSettingsFn: *const fn (allocator: std.mem.Allocator, type_hash: strid.StrId32) ?cdb.ObjId,
 
     //#region Pointers to implementation.
     createAssetFn: *const fn (asset_name: []const u8, asset_folder: cdb.ObjId, asset_obj: ?cdb.ObjId) ?cdb.ObjId,
@@ -188,6 +247,6 @@ pub const AssetDBAPI = struct {
 };
 
 // For testing.
-pub const FooAsset = cdb.BigTypeDecl("ct_foo_asset");
-pub const BarAsset = cdb.BigTypeDecl("ct_bar_asset");
-pub const BazAsset = cdb.BigTypeDecl("ct_baz_asset");
+pub const FooAsset = cdb_types.BigTypeDecl("ct_foo_asset");
+pub const BarAsset = cdb_types.BigTypeDecl("ct_bar_asset");
+pub const BazAsset = cdb_types.BigTypeDecl("ct_baz_asset");
