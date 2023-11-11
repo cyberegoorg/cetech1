@@ -15,6 +15,14 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "CeTech1 no asset root",
+            "program": "${workspaceFolder}/zig-out/bin/cetech1",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "CeTech1 max 5 tick",
             "program": "${workspaceFolder}/zig-out/bin/cetech1",
             "args": [

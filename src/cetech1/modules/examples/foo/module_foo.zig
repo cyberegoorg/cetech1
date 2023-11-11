@@ -1,6 +1,4 @@
-pub const c = @cImport({
-    @cInclude("cetech1/modules/examples/foo/foo.h");
-});
+pub const c = @cImport(@cInclude("cetech1/modules/examples/foo/foo.h"));
 
 pub const FooAPI = struct {
     const Self = @This();

@@ -54,7 +54,7 @@ pub const LogAPI = struct {
 
     pub inline fn _log(self: Self, level: Level, scope: []const u8, fmt: []const u8, args: anytype) void {
         var buffer: [MAX_LOG_ENTRY_SIZE]u8 = undefined;
-        var log_line = std.fmt.bufPrint(&buffer, fmt, args) catch return;
+        const log_line = std.fmt.bufPrint(&buffer, fmt, args) catch return;
         self.logFn(level, scope, log_line);
     }
 

@@ -13,13 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **core:api:zig**: ApiDbAPI
 - **core:api:zig**: LogAPI
 - **core:api:zig**: TaskApi
-- **core:api:zig**: BAG (before-after graph)
+- **core:api:zig**: DAG
 - **core:api:zig**: Uuid
 - **core:api:zig**: CDB
 - **core:api:zig**: AssetDB
 
 - **modules:editor_explorer:** Basic CDB object explorer
+- **modules:editor_properties_editor:** Simple properties filter
 - **modules:editor_properties_editor:** Basic propperties editor
+- **modules:editor_asset_browser:** Simple asset filter (by path or uuid)
 - **modules:editor_asset_browser:** Basic asset browser tab
 - **modules:editor:** Initial Editor with tabs support
 - **core:editorui:** Tree widget for cdb

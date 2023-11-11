@@ -4,14 +4,21 @@ const zglfw = @import("zglfw");
 
 const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");
+const log = @import("log.zig");
+
+const gamemode = @import("mach-gamemode");
 
 const public = @import("../system.zig");
+
+const MODULE_NAME = "system";
 
 pub var api = public.SystemApi{
     .createWindow = createWindow,
     .destroyWindow = destroyWindow,
     .windowClosed = windowClosed,
     .poolEvents = poolEvents,
+    .getPrimaryMonitor = getPrimaryMonitor,
+    .getMonitorVideoMode = getMonitorVideoMode,
 };
 
 var _allocator: std.mem.Allocator = undefined;
@@ -19,11 +26,29 @@ var _main_window: ?*public.Window = null;
 
 pub fn init(allocator: std.mem.Allocator) !void {
     _allocator = allocator;
-    try zglfw.init();
+
+    gamemode.start();
+
+    if (gamemode.isActive()) {
+        log.api.info(MODULE_NAME, "Gamemode is active", .{});
+    }
+
+    zglfw.init() catch |err| {
+        log.api.warn("system", "System init error {}", .{err});
+        return;
+    };
+
+    zglfw.windowHintTyped(.client_api, .no_api);
+
+    const success = zglfw.Gamepad.updateMappings(@embedFile("gamepad/gamecontrollerdb.txt"));
+    if (!success) {
+        @panic("failed to update gamepad mappings");
+    }
 }
 
 pub fn deinit() void {
     zglfw.terminate();
+    gamemode.stop();
 }
 
 pub fn registerToApi() !void {
@@ -57,4 +82,14 @@ fn poolEvents() void {
     defer zone_ctx.End();
 
     zglfw.pollEvents();
+}
+
+fn getPrimaryMonitor() ?*public.Monitor {
+    return @ptrCast(zglfw.Monitor.getPrimary() orelse return null);
+}
+
+fn getMonitorVideoMode(monitor: *public.Monitor) !*public.VideoMode {
+    const true_monitor: *zglfw.Monitor = @ptrCast(monitor);
+    const vm = try true_monitor.getVideoMode();
+    return @ptrCast(vm);
 }

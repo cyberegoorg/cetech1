@@ -1,3 +1,3 @@
-command script import <CHANGE_ME_TO_REPODIR>/bin/zig/tools/lldb_pretty_printers.py
+command script import <CHANGE_ME_TO_REPODIR>/zig/tools/lldb_pretty_printers.py
 type category enable zig
 type category enable zig.std

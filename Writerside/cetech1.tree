@@ -13,10 +13,10 @@
     <toc-element topic="manual.md">
         <toc-element topic="repository-structure.md"/>
         <toc-element topic="core.md">
+            <toc-element topic="kernel.md"/>
             <toc-element topic="apidb.md"/>
             <toc-element topic="cdb.md"/>
             <toc-element topic="assetdb.md"/>
-            <toc-element topic="kernel.md"/>
         </toc-element>
     </toc-element>
     <toc-element topic="CHANGELOG.md">

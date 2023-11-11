@@ -43,7 +43,7 @@ pub fn getThreadName(id: std.Thread.Id) []const u8 {
 }
 
 pub fn start() !void {
-    var num_threads = @max(2, (std.Thread.getCpuCount() catch 2) - 1);
+    const num_threads = @max(2, (std.Thread.getCpuCount() catch 2) - 1);
     log.api.info(MODULE_NAME, "NUM_THREADS {}", .{num_threads});
 
     _job_queue.start(.{ .num_threads = @truncate(num_threads) });
@@ -91,7 +91,7 @@ fn wait(prereq: cetech1.task.TaskID) void {
 }
 
 fn combine(prereq: []const cetech1.task.TaskID) !cetech1.task.TaskID {
-    var prereq_j: *[]zjobs.JobId = @ptrFromInt(@intFromPtr(&prereq));
-    var ret = try _job_queue.combine(prereq_j.*);
+    const prereq_j: *[]zjobs.JobId = @ptrFromInt(@intFromPtr(&prereq));
+    const ret = try _job_queue.combine(prereq_j.*);
     return jobToTask(ret);
 }

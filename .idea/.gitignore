@@ -1,4 +1,6 @@
 # Default ignored files
 /shelf/
+/tools/
 /workspace.xml
 /zigbrains.xml
+/customTargets.xml

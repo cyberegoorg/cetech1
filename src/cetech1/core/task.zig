@@ -28,7 +28,7 @@ pub const TaskAPI = struct {
         var t = TaskStub{ .task_fn = true_exec };
 
         @memset(&t.data, 0);
-        std.mem.copy(u8, &t.data, std.mem.asBytes(&task));
+        std.mem.copyForwards(u8, &t.data, std.mem.asBytes(&task));
 
         return try self.scheduleFn(prereq, t);
     }

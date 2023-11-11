@@ -21,7 +21,7 @@ pub const ApiDbAPI = struct {
 
     /// Crete variable that can survive reload.
     pub inline fn globalVar(self: Self, comptime T: type, module_name: []const u8, var_name: []const u8, default: T) !*T {
-        var ptr: *T = @ptrFromInt(@intFromPtr(try self.globalVarFn(module_name, var_name, @sizeOf(T), &std.mem.toBytes(default))));
+        const ptr: *T = @ptrFromInt(@intFromPtr(try self.globalVarFn(module_name, var_name, @sizeOf(T), &std.mem.toBytes(default))));
         return ptr;
     }
 

@@ -1,132 +1,87 @@
 const std = @import("std");
 const cetech1 = @import("cetech1");
 
-pub const c = @cImport({
-    @cInclude("cetech1/modules/editor/editor.h");
-});
+pub const c = @cImport(@cInclude("cetech1/modules/editor/editor.h"));
 
-pub const Icons = struct {
-    pub const Open = cetech1.editorui.Icons.FA_FOLDER_OPEN;
-    pub const OpenProject = cetech1.editorui.Icons.FA_FOLDER_OPEN;
+pub const CreateAssetI = extern struct {
+    pub const c_name = "ct_assetbrowser_create_asset_i";
+    menu_item: ?*const fn () callconv(.C) [*]const u8,
 
-    pub const OpenTab = cetech1.editorui.Icons.FA_WINDOW_MAXIMIZE;
-    pub const CloseTab = cetech1.editorui.Icons.FA_RECTANGLE_XMARK;
-
-    pub const Save = cetech1.editorui.Icons.FA_FLOPPY_DISK;
-    pub const SaveAll = cetech1.editorui.Icons.FA_FLOPPY_DISK;
-
-    pub const Add = cetech1.editorui.Icons.FA_PLUS;
-    pub const Remove = cetech1.editorui.Icons.FA_MINUS;
-    pub const Close = cetech1.editorui.Icons.FA_XMARK;
-
-    pub const CopyToClipboard = cetech1.editorui.Icons.FA_CLIPBOARD;
-
-    pub const Nothing = cetech1.editorui.Icons.FA_FACE_SMILE_WINK;
-    pub const Deleted = cetech1.editorui.Icons.FA_TRASH;
-    pub const Quit = cetech1.editorui.Icons.FA_DOOR_OPEN;
-
-    pub const Debug = cetech1.editorui.Icons.FA_BUG;
-};
-
-pub const hidePropertyAspect = UiPropertyAspect{};
-
-pub const UiPropertyAspect = extern struct {
-    ui_property: ?*const fn (allocator: *const std.mem.Allocator, db: *cetech1.cdb.Db, cetech1.cdb.ObjId, prop_idx: u32, args: cdbPropertiesViewArgs) callconv(.C) void = null,
-
-    pub inline fn implement(
-        ui: *const fn (
-            allocator: std.mem.Allocator,
-            db: *cetech1.cdb.Db,
-            obj: cetech1.cdb.ObjId,
-            prop_idx: u32,
-            args: cdbPropertiesViewArgs,
-        ) anyerror!void,
-    ) UiPropertyAspect {
-        const Wrap = struct {
-            pub fn ui_c(
-                allocator: *const std.mem.Allocator,
-                db: *cetech1.cdb.Db,
-                obj: cetech1.cdb.ObjId,
-                prop_idx: u32,
-                args: cdbPropertiesViewArgs,
-            ) callconv(.C) void {
-                ui(allocator.*, db, obj, prop_idx, args) catch |err| {
-                    std.log.err("UiPropertyAspect {}", .{err});
-                };
-            }
-        };
-
-        return UiPropertyAspect{
-            .ui_property = Wrap.ui_c,
-        };
-    }
-};
-
-pub const UiPropertiesAspect = extern struct {
-    ui_properties: ?*const fn (
+    create: ?*const fn (
         allocator: *const std.mem.Allocator,
         db: *cetech1.cdb.Db,
-        cetech1.cdb.ObjId,
+        folder: cetech1.cdb.ObjId,
     ) callconv(.C) void = null,
 
     pub inline fn implement(
-        ui: *const fn (
-            allocator: std.mem.Allocator,
+        menu_item: *const fn () [*]const u8,
+        create: *const fn (
+            allocator: *const std.mem.Allocator,
             db: *cetech1.cdb.Db,
-            obj: cetech1.cdb.ObjId,
+            folder: cetech1.cdb.ObjId,
         ) anyerror!void,
-    ) UiPropertiesAspect {
+    ) CreateAssetI {
         const Wrap = struct {
-            pub fn ui_c(
+            pub fn menu_item_c() callconv(.C) [*]const u8 {
+                return menu_item();
+            }
+
+            pub fn create_c(
                 allocator: *const std.mem.Allocator,
                 db: *cetech1.cdb.Db,
-                obj: cetech1.cdb.ObjId,
+                folder: cetech1.cdb.ObjId,
             ) callconv(.C) void {
-                ui(allocator.*, db, obj) catch |err| {
-                    std.log.err("UiPropertiesAspect {}", .{err});
-                };
+                create(allocator, db, folder) catch undefined;
             }
         };
 
-        return UiPropertiesAspect{
-            .ui_properties = Wrap.ui_c,
+        return CreateAssetI{
+            .create = Wrap.create_c,
+            .menu_item = Wrap.menu_item_c,
         };
     }
 };
 
-pub const UiTreeAspect = extern struct {
-    ui_tree: ?*const fn (
-        allocator: *const std.mem.Allocator,
-        db: *cetech1.cdb.Db,
-        obj: cetech1.cdb.ObjId,
-        selected_obj: cetech1.cdb.ObjId,
-        args: CdbTreeViewArgs,
-    ) callconv(.C) cetech1.cdb.ObjId = null,
+pub const UiModalI = extern struct {
+    pub const c_name = "ct_editor_modal_i";
+    pub const OnSetFN = *const fn (selected_data: ?*anyopaque, data: Data) callconv(.C) void;
+    pub const Data = extern struct { data: [64]u8 = std.mem.zeroes([64]u8) };
+
+    modal_hash: cetech1.strid.StrId32,
+    ui_modal: ?*const fn (allocator: *const std.mem.Allocator, db: *cetech1.cdb.Db, modal_inst: *anyopaque) callconv(.C) bool = null,
+    create: ?*const fn (allocator: *const std.mem.Allocator, db: *cetech1.cdb.Db, on_set: OnSetFN, data: Data) callconv(.C) ?*anyopaque,
+    destroy: ?*const fn (allocator: *const std.mem.Allocator, db: *cetech1.cdb.Db, modal_inst: *anyopaque) callconv(.C) void,
+
+    pub fn makeData(value: anytype) Data {
+        var data: Data = .{};
+        std.mem.copyForwards(u8, &data.data, std.mem.asBytes(&value));
+        return data;
+    }
 
     pub inline fn implement(
-        ui_tree: *const fn (
-            allocator: std.mem.Allocator,
-            db: *cetech1.cdb.Db,
-            obj: cetech1.cdb.ObjId,
-            selected_obj: cetech1.cdb.ObjId,
-            args: CdbTreeViewArgs,
-        ) anyerror!?cetech1.cdb.ObjId,
-    ) UiTreeAspect {
+        modal_hash: cetech1.strid.StrId32,
+        ui_modal: *const fn (allocator: std.mem.Allocator, db: *cetech1.cdb.Db, modal_inst: *anyopaque) anyerror!bool,
+        create: *const fn (allocator: std.mem.Allocator, *cetech1.cdb.Db, on_set: OnSetFN, data: Data) ?*anyopaque,
+        destroy: *const fn (allocator: std.mem.Allocator, db: *cetech1.cdb.Db, modal_inst: *anyopaque) anyerror!void,
+    ) UiModalI {
         const Wrap = struct {
-            pub fn ui_c(
-                allocator: *const std.mem.Allocator,
-                db: *cetech1.cdb.Db,
-                obj: cetech1.cdb.ObjId,
-                selected_obj: cetech1.cdb.ObjId,
-                args: CdbTreeViewArgs,
-            ) callconv(.C) cetech1.cdb.ObjId {
-                var new_selected = ui_tree(allocator.*, db, obj, selected_obj, args) catch undefined;
-                return new_selected orelse .{};
+            pub fn ui_c(allocator: *const std.mem.Allocator, db: *cetech1.cdb.Db, modal_inst: *anyopaque) callconv(.C) bool {
+                return ui_modal(allocator.*, db, modal_inst) catch undefined;
+            }
+            pub fn create_c(allocator: *const std.mem.Allocator, db: *cetech1.cdb.Db, on_set: OnSetFN, data: Data) callconv(.C) *anyopaque {
+                return create(allocator.*, db, on_set, data).?;
+            }
+
+            pub fn destroy_c(allocator: *const std.mem.Allocator, db: *cetech1.cdb.Db, modal_inst: *anyopaque) callconv(.C) void {
+                destroy(allocator.*, db, modal_inst) catch undefined;
             }
         };
 
-        return UiTreeAspect{
-            .ui_tree = Wrap.ui_c,
+        return UiModalI{
+            .modal_hash = modal_hash,
+            .ui_modal = Wrap.ui_c,
+            .create = Wrap.create_c,
+            .destroy = Wrap.destroy_c,
         };
     }
 };
@@ -137,7 +92,7 @@ pub const EditorTabI = extern struct {
     vt: *EditorTabTypeI,
     inst: *TabO,
     tabid: u32 = 0,
-    pinned_obj: bool = false,
+    pinned_obj: cetech1.cdb.ObjId = .{},
 };
 
 pub const EditorTabTypeIArgs = struct {
@@ -149,6 +104,7 @@ pub const EditorTabTypeIArgs = struct {
 
     menu_name: ?*const fn () [:0]const u8 = null,
     title: ?*const fn (*TabO) [:0]const u8 = null,
+    can_open: ?*const fn (*cetech1.cdb.Db, cetech1.cdb.ObjId) bool = null,
     create: ?*const fn (*cetech1.cdb.Db) ?*EditorTabI = null,
     destroy: ?*const fn (*EditorTabI) void = null,
     menu: ?*const fn (*TabO) void = null,
@@ -168,6 +124,7 @@ pub const EditorTabTypeI = extern struct {
 
     menu_name: ?*const fn () callconv(.C) [*:0]const u8 = null,
     title: ?*const fn (*TabO) callconv(.C) [*:0]const u8 = null,
+    can_open: ?*const fn (*cetech1.cdb.Db, cetech1.cdb.ObjId) callconv(.C) bool = null,
 
     create: ?*const fn (*cetech1.cdb.Db) callconv(.C) ?*EditorTabI = null,
     destroy: ?*const fn (*EditorTabI) callconv(.C) void = null,
@@ -181,6 +138,13 @@ pub const EditorTabTypeI = extern struct {
         const Wrap = struct {
             pub fn menu_name_c() callconv(.C) [*:0]const u8 {
                 return args.menu_name.?();
+            }
+
+            pub fn can_open_c(db: *cetech1.cdb.Db, obj: cetech1.cdb.ObjId) callconv(.C) bool {
+                if (args.can_open) |can_open| {
+                    return can_open(db, obj);
+                }
+                return false;
             }
 
             pub fn title_c(tab: *TabO) callconv(.C) [*:0]const u8 {
@@ -221,6 +185,7 @@ pub const EditorTabTypeI = extern struct {
 
             .menu_name = Wrap.menu_name_c,
             .title = Wrap.title_c,
+            .can_open = Wrap.can_open_c,
             .create = Wrap.create_c,
             .destroy = Wrap.destroy_c,
             .menu = Wrap.menu_c,
@@ -231,35 +196,16 @@ pub const EditorTabTypeI = extern struct {
     }
 };
 
-pub const CdbTreeViewArgs = extern struct {
-    expand_object: bool = true,
-};
-
-pub const cdbPropertiesViewArgs = extern struct {};
-
 pub const EditorAPI = struct {
-    selectObj: *const fn (db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId) void,
+    // Selection
+    propagateSelection: *const fn (db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId) void,
 
     // Tabs
     openTabWithPinnedObj: *const fn (db: *cetech1.cdb.CdbDb, tab_type_hash: cetech1.strid.StrId32, obj: cetech1.cdb.ObjId) void,
+    getAllTabsByType: *const fn (allocator: std.mem.Allocator, tab_type_hash: cetech1.strid.StrId32) anyerror![]*EditorTabI,
+    openSelectionInCtxMenu: *const fn (allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId) void,
+    openObjInCtxMenu: *const fn (allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId) void,
 
-    // UI elements
-    uiAssetInput: *const fn (allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, read_only: bool) anyerror!void,
-    uiPropLabel: *const fn (name: [:0]const u8, color: ?[4]f32) void,
-    uiPropInput: *const fn (db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: u32) anyerror!void,
-    uiPropInputBegin: *const fn (db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: u32) anyerror!void,
-    uiPropInputEnd: *const fn () void,
-
-    // Property utils
-    formatedPropNameToBuff: *const fn (buf: []u8, prop_name: [:0]const u8) anyerror![]u8,
-    getPropertyColor: *const fn (db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: u32) ?[4]f32,
-
-    // Property view
-    cdbPropertiesView: *const fn (allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, args: cdbPropertiesViewArgs) anyerror!void,
-    cdbPropertiesObj: *const fn (allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, args: cdbPropertiesViewArgs) anyerror!void,
-
-    // Tree view
-    cdbTreeView: *const fn (allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, selected_obj: cetech1.cdb.ObjId, args: CdbTreeViewArgs) anyerror!?cetech1.cdb.ObjId,
-    cdbTreeNode: *const fn (label: [:0]const u8, default_open: bool, no_push: bool, selected: bool, args: CdbTreeViewArgs) bool,
-    cdbTreePop: *const fn () void,
+    // Modal
+    openModal: *const fn (modal_hash: cetech1.strid.StrId32, on_set: UiModalI.OnSetFN, data: UiModalI.Data) void,
 };

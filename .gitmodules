@@ -1,12 +1,21 @@
-[submodule "bin/zig"]
-	path = bin/zig
-	url = https://github.com/cyberegoorg/cetech1-zig.git
 [submodule "externals/shared/lib/zig-gamedev"]
 	path = externals/shared/lib/zig-gamedev
 	url = https://github.com/OndraVoves/zig-gamedev.git
 [submodule "externals/shared/lib/zig-uuid"]
 	path = externals/shared/lib/zig-uuid
 	url = https://github.com/tensorush/zig-uuid.git
-[submodule "externals/shared/lib/nfd-zig"]
-	path = externals/shared/lib/nfd-zig
-	url = https://github.com/fabioarnold/nfd-zig.git
+[submodule "externals/shared/lib/zf"]
+	path = externals/shared/lib/zf
+	url = https://github.com/natecraddock/zf.git
+[submodule "externals/shared/tools/zls"]
+	path = externals/shared/tools/zls
+	url = https://github.com/zigtools/zls.git
+[submodule "zig"]
+	path = zig
+	url = https://github.com/cyberegoorg/cetech1-zig.git
+[submodule "externals/shared/lib/mach-gamemode"]
+	path = externals/shared/lib/mach-gamemode
+	url = https://github.com/hexops/mach-gamemode.git
+[submodule "externals/shared/lib/SDL_GameControllerDB"]
+	path = externals/shared/lib/SDL_GameControllerDB
+	url = https://github.com/mdqinc/SDL_GameControllerDB.git

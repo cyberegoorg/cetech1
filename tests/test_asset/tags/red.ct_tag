@@ -1,0 +1,13 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "018e0344-53ff-7d71-baa6-baf98f25d41c",
+  "__type_name": "ct_tag",
+  "__uuid": "018e0348-b358-779f-b40c-7d34d3fca2a7",
+  "name": "Red",
+  "color": {
+    "__type_name": "ct_color_4f",
+    "__uuid": "018e0348-b35d-7e24-80d1-b99a0d1a85c2",
+    "g": 0.0e+00,
+    "b": 0.0e+00
+  }
+}

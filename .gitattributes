@@ -1,4 +1,4 @@
-bin/zig/zig_* filter=lfs diff=lfs merge=lfs -texts
+#bin/zig/zig_* filter=lfs diff=lfs merge=lfs -texts
 
 *.zig text eol=lf
 

@@ -3,8 +3,7 @@ const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
 const editor = @import("editor");
-
-const Icons = cetech1.editorui.Icons;
+const Icons = cetech1.editorui.CoreIcons;
 
 const MODULE_NAME = "editor_foo_tab";
 const FOO_TAB_NAME = "ct_editor_foo_tab";
@@ -64,19 +63,19 @@ fn tabCreate(db: *cetech1.cdb.Db) ?*editor.EditorTabI {
 
 // Destroy FooTab instantce
 fn tabDestroy(tab_inst: *editor.EditorTabI) void {
-    var tab_o: *FooTab = @alignCast(@ptrCast(tab_inst.inst));
+    const tab_o: *FooTab = @alignCast(@ptrCast(tab_inst.inst));
     _allocator.destroy(tab_o);
 }
 
 // Draw tab content
 fn tabUi(inst: *editor.TabO) void {
-    var tab_o: *FooTab = @alignCast(@ptrCast(inst));
+    const tab_o: *FooTab = @alignCast(@ptrCast(inst));
     _ = tab_o;
 }
 
 // Draw tab menu
 fn tabMenu(inst: *editor.TabO) void {
-    var tab_o: *FooTab = @alignCast(@ptrCast(inst));
+    const tab_o: *FooTab = @alignCast(@ptrCast(inst));
     _ = tab_o;
     if (_editorui.beginMenu("foo", true)) {
         defer _editorui.endMenu();

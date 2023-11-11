@@ -30,6 +30,7 @@ const DynLibInfo = struct {
 
     pub fn close(self: *@This()) void {
         self.dyn_lib.close();
+        //_allocator.free(self.full_path);
     }
 };
 
@@ -59,10 +60,10 @@ pub fn init(allocator: Allocator) !void {
 }
 
 pub fn deinit() void {
-    var iter = _dyn_modules_map.iterator();
-    while (iter.next()) |entry| {
-        entry.value_ptr.dyn_lib.close();
-    }
+    // var iter = _dyn_modules_map.iterator();
+    // while (iter.next()) |entry| {
+    //     entry.value_ptr.close();
+    // }
 
     for (_modules_allocator_map.values()) |value| {
         _allocator.destroy(value);
@@ -75,7 +76,7 @@ pub fn deinit() void {
 
 pub fn addModules(modules: []const c.ct_module_desc_t) !void {
     for (modules) |v| {
-        var node = try _modules_node_pool.create();
+        const node = try _modules_node_pool.create();
         node.* = ModulesList.Node{ .data = v };
         _modules.append(node);
     }
@@ -110,7 +111,7 @@ pub fn loadAll() !void {
 pub fn unloadAll() !void {
     var it = _modules.last;
     while (it) |node| : (it = node.prev) {
-        var alloc_item = _modules_allocator_map.getPtr(cetech1.fromCstr(node.data.name)).?;
+        const alloc_item = _modules_allocator_map.getPtr(cetech1.fromCstr(node.data.name)).?;
 
         if (0 == node.data.module_fce.?(&apidb.apidb_global_c, @ptrCast(&alloc_item.*.allocator), 0, 1)) {
             log.api.err(MODULE_NAME, "Problem with unload module {s}\n", .{node.data.name});
@@ -120,7 +121,12 @@ pub fn unloadAll() !void {
     var iter = _dyn_modules_map.iterator();
     while (iter.next()) |entry| {
         entry.value_ptr.close();
+        _allocator.free(entry.value_ptr.full_path);
     }
+
+    // for (_modules_allocator_map.keys()) |k| {
+    //     _allocator.free(k[0 .. k.len + 1]);
+    // }
 }
 
 fn _getModule(name: []const u8) ?*c.ct_module_desc_t {
@@ -151,7 +157,7 @@ fn _loadDynLib(path: []const u8) !DynLibInfo {
     const module_name = getModuleName(path);
     _ = try std.fmt.bufPrintZ(&load_fce_name, "ct_load_module_{s}", .{module_name});
 
-    var symbol = dll.lookup(*c.ct_module_fce_t, &load_fce_name);
+    const symbol = dll.lookup(*c.ct_module_fce_t, &load_fce_name);
     if (symbol == null) {
         log.api.err(MODULE_NAME, "Error find symbol {s} in {s}\n", .{ load_fce_name, path });
         return error.SymbolNotFound;
@@ -174,16 +180,32 @@ fn _loadDynLib(path: []const u8) !DynLibInfo {
 }
 
 pub fn loadDynModules() !void {
-    const module_dir = "./zig-out/lib";
-    var dir = try std.fs.cwd().openIterableDir(module_dir, .{});
-    defer dir.close();
-
-    var iterator = dir.iterate();
-
     var buffer: [256]u8 = undefined;
     var fba = std.heap.FixedBufferAllocator.init(&buffer);
     const tmp_allocator = fba.allocator();
 
+    const tmp_allocator2 = _allocator;
+
+    // TODO remove this fucking long alloc hell
+    const exe_dir = try std.fs.selfExeDirPathAlloc(tmp_allocator2);
+    defer tmp_allocator2.free(exe_dir);
+
+    const module_dir = try std.fs.path.join(tmp_allocator2, &.{ exe_dir, "..", "lib" });
+    defer tmp_allocator2.free(module_dir);
+
+    const cwd_path = try std.fs.cwd().realpathAlloc(tmp_allocator2, ".");
+    defer tmp_allocator2.free(cwd_path);
+
+    const module_dir_relat = try std.fs.path.relative(tmp_allocator2, cwd_path, module_dir);
+    defer tmp_allocator2.free(module_dir_relat);
+
+    var dir = std.fs.cwd().openDir(module_dir, .{ .iterate = true }) catch |err| {
+        log.api.err(MODULE_NAME, "Could not open dynamic modules dir {}", .{err});
+        return err;
+    };
+    defer dir.close();
+
+    var iterator = dir.iterate();
     while (try iterator.next()) |path| {
         fba.reset();
 
@@ -191,11 +213,11 @@ pub fn loadDynModules() !void {
         if (!std.mem.startsWith(u8, basename, "ct_")) continue;
         if (!std.mem.endsWith(u8, basename, getDllExtension())) continue;
 
-        var full_path = try std.fs.path.join(tmp_allocator, &[_][]const u8{ module_dir, path.name });
+        const full_path = try std.fs.path.join(tmp_allocator, &[_][]const u8{ module_dir_relat, path.name });
 
         log.api.debug(MODULE_NAME, "Loading module from {s}", .{full_path});
 
-        var dyn_lib_info = _loadDynLib(full_path) catch continue;
+        const dyn_lib_info = _loadDynLib(full_path) catch continue;
 
         try _dyn_modules_map.put(dyn_lib_info.full_path, dyn_lib_info);
         try addModules(&[_]c.ct_module_desc_t{.{ .name = dyn_lib_info.full_path, .module_fce = dyn_lib_info.symbol }});
@@ -203,15 +225,15 @@ pub fn loadDynModules() !void {
 }
 
 pub fn reloadAllIfNeeded() !bool {
-    var keys = _dyn_modules_map.keys();
-    var value = _dyn_modules_map.values();
+    const keys = _dyn_modules_map.keys();
+    const value = _dyn_modules_map.values();
 
     var modules_reloaded = false;
 
     const dyn_modules_map_n = _dyn_modules_map.count();
     for (0..dyn_modules_map_n) |i| {
-        var k = keys[dyn_modules_map_n - 1 - i];
-        var v = value[dyn_modules_map_n - 1 - i];
+        const k = keys[dyn_modules_map_n - 1 - i];
+        const v = value[dyn_modules_map_n - 1 - i];
 
         const f = try std.fs.cwd().openFile(k, .{ .mode = .read_only });
         defer f.close();
@@ -223,7 +245,7 @@ pub fn reloadAllIfNeeded() !bool {
             //unload old
             var old_module_desc = _getModule(k).?;
 
-            var alloc_item = _modules_allocator_map.getPtr(cetech1.fromCstr(old_module_desc.name)).?;
+            const alloc_item = _modules_allocator_map.getPtr(cetech1.fromCstr(old_module_desc.name)).?;
 
             if (0 == old_module_desc.module_fce.?(&apidb.apidb_global_c, @ptrCast(&alloc_item.*.allocator), 0, 1)) {
                 log.api.err(MODULE_NAME, "Problem with unload old module {s}\n", .{k});
@@ -239,10 +261,12 @@ pub fn reloadAllIfNeeded() !bool {
 
             var v_ptr = _dyn_modules_map.getPtr(k).?;
             v_ptr.close();
+
+            _allocator.free(new_dyn_lib_info.full_path);
+            new_dyn_lib_info.full_path = v.full_path;
             v_ptr.* = new_dyn_lib_info;
 
             old_module_desc.module_fce = new_dyn_lib_info.symbol;
-            old_module_desc.name = new_dyn_lib_info.full_path;
 
             modules_reloaded = true;
         }

@@ -28,7 +28,7 @@ pub fn registerToApi() !void {
 }
 
 fn createContext(window: *cetech1.system.Window) !*public.GpuContext {
-    var gctx = try zgpu.GraphicsContext.create(_allocator, @ptrCast(window), .{});
+    const gctx = try zgpu.GraphicsContext.create(_allocator, @ptrCast(window), .{});
     return @ptrCast(gctx);
 }
 

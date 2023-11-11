@@ -1,0 +1,12 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "018e03bf-6831-7a0f-87a4-00717fef276e",
+  "__type_name": "ct_tag",
+  "__uuid": "018e03bf-fc29-77fd-a910-4b3c2d255e78",
+  "name": "Yellow",
+  "color": {
+    "__type_name": "ct_color_4f",
+    "__uuid": "018e03bf-fc2a-7ea9-af7b-e0e704bc824c",
+    "b": 0.0e+00
+  }
+}

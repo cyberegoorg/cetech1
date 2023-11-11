@@ -9,9 +9,9 @@ test "Can create global var" {
     try apidb.init(std.testing.allocator);
     defer apidb.deinit();
 
-    var v1 = try apidb.api.globalVar(u32, "TestModule", "v1", 1);
+    const v1 = try apidb.api.globalVar(u32, "TestModule", "v1", 1);
 
-    var v1_1 = try apidb.api.globalVar(u32, "TestModule", "v1", 10);
+    const v1_1 = try apidb.api.globalVar(u32, "TestModule", "v1", 10);
 
     try std.testing.expect(v1 == v1_1);
     try std.testing.expect(v1.* == v1_1.*);
@@ -38,7 +38,7 @@ test "Can registr and use zig API" {
     var foo_api2 = apidb.api.getZigApi(FooAPI);
     try std.testing.expect(foo_api2 != null);
 
-    var expect_value: f32 = 3.14;
+    const expect_value: f32 = 3.14;
     try std.testing.expectEqual(expect_value, foo_api2.?.bar());
 }
 
@@ -60,7 +60,7 @@ test "Can registr and use C API" {
     var foo_api2 = apidb.api.getApi(FooAPI, cetech1.apidb.ApiDbAPI.lang_c, "foo");
     try std.testing.expect(foo_api2 != null);
 
-    var expect_value: f32 = 3.14;
+    const expect_value: f32 = 3.14;
     try std.testing.expectEqual(expect_value, foo_api2.?.bar());
 }
 
@@ -76,7 +76,7 @@ test "Unregistred api return zeroed interface" {
         }
     };
 
-    var foo_api2 = apidb.api.getApi(FooAPI, cetech1.apidb.ApiDbAPI.lang_c, "foo");
+    const foo_api2 = apidb.api.getApi(FooAPI, cetech1.apidb.ApiDbAPI.lang_c, "foo");
     try std.testing.expect(foo_api2 != null);
     try std.testing.expect(foo_api2.?.bar == null);
 }
@@ -98,7 +98,7 @@ test "Can remove api" {
 
     apidb.api.removeZigApi(FooAPI);
 
-    var foo_api2 = apidb.api.getZigApi(FooAPI);
+    const foo_api2 = apidb.api.getZigApi(FooAPI);
     try std.testing.expect(foo_api2 != null);
     try std.testing.expect(foo_api2.?.bar == null);
 }
@@ -124,7 +124,7 @@ test "Can implement and use interface" {
 
     try std.testing.expectEqual(@intFromPtr(&foo_impl), @intFromPtr(foo_i_ptr));
 
-    var expect_value: f32 = 3.14;
+    const expect_value: f32 = 3.14;
     try std.testing.expectEqual(expect_value, foo_i_ptr.bar());
 }
 
@@ -162,7 +162,7 @@ test "Interface should have multiple implementation" {
         acc += iface.bar();
     }
 
-    var expect_value: i32 = 3;
+    const expect_value: i32 = 3;
     try std.testing.expectEqual(expect_value, acc);
 }
 
@@ -202,7 +202,7 @@ test "Interface implementation can be removed" {
             acc += iface.bar();
         }
 
-        var expect_value: i32 = 1;
+        const expect_value: i32 = 1;
         try std.testing.expectEqual(expect_value, acc);
     }
 
@@ -215,7 +215,7 @@ test "Interface implementation can be removed" {
             acc += iface.bar();
         }
 
-        var expect_value: i32 = 0;
+        const expect_value: i32 = 0;
         try std.testing.expectEqual(expect_value, acc);
     }
 }

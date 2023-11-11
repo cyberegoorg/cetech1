@@ -3,6 +3,8 @@
 set -x
 set -e
 
+#export GIT_TRACE=1
+
 cd "$(dirname "$0")"
 
 # LFS for zig-gamedev

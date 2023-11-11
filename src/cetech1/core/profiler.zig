@@ -1,7 +1,7 @@
 const std = @import("std");
 const Src = std.builtin.SourceLocation;
 
-/// Priler alocator wraping struct
+/// Profiler alocator wraping struct
 /// Wrap given alocator and trace alloc/free with profiler
 pub const AllocatorProfiler = struct {
     const Self = @This();
@@ -19,7 +19,7 @@ pub const AllocatorProfiler = struct {
 
     fn alloc(ctx: *anyopaque, n: usize, log2_ptr_align: u8, ra: usize) ?[*]u8 {
         const self: *AllocatorProfiler = @ptrCast(@alignCast(ctx));
-        var ptr = self.parent_allocator.rawAlloc(n, log2_ptr_align, ra);
+        const ptr = self.parent_allocator.rawAlloc(n, log2_ptr_align, ra);
         if (self.name != null) {
             self.profiler_api.allocNamed(self.name.?, ptr, n);
         } else {

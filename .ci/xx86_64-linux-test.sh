@@ -11,4 +11,4 @@ chmod -R 777 zig-out/
 ls -Rhan zig-out/
 
 zig-out/bin/cetech1_test 
-zig-out/bin/cetech1 --headless --max-kernel-tick 5
+#zig-out/bin/cetech1 --headless --max-kernel-tick 5

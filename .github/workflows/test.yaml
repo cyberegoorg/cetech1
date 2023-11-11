@@ -1,0 +1,148 @@
+name: "Build & Test"
+
+on:
+  pull_request:
+  push:
+    #branches: ["main"]
+    paths:
+      - "src/**"
+      - "include/**"
+      - "externals/**"
+      - "build.zig"
+
+concurrency:
+  group: ${{ github.head_ref || github.run_id }}-${{ github.actor }}
+  cancel-in-progress: true
+
+jobs:
+  validation:
+    name: Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Prepare
+        run: .ci/init_zig.sh x86_64-linux
+      - name: Lint
+        run: zig/bin/x86_64-linux/zig fmt --check . --exclude externals/
+
+  x86-64-linux:
+    needs: ["validation"]
+    name: x86-64 Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Prepare
+        run: sudo apt-get update && sudo apt-get install libgtk-3-dev kcov
+
+      - name: Build
+        run: .ci/build.sh x86_64-linux Debug
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: x86-64-linux-bin
+          path: zig-out/
+          overwrite: true
+          retention-days: 1
+
+      - name: Run test
+        run: kcov --include-pattern=cetech1/src/ kcov-output zig-out/bin/cetech1_test
+
+      - name: Upload code coverage report to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          directory: kcov-output
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: cyberegoorg/cetech1
+          fail_ci_if_error: true
+          verbose: true
+
+      - name: Test headless standalone
+        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5
+
+      - name: Test headless standalone with asset root
+        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root tests/test_asset/
+
+  x86-64-macos:
+    needs: ["validation"]
+    name: x86-64 Macos
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Prepare
+        run: |
+          brew update
+          brew install kcov
+
+      - name: Build
+        run: .ci/build.sh x86_64-macos Debug
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: x86-64-macos-bin
+          path: zig-out/
+          overwrite: true
+          retention-days: 1
+
+      - name: Run test
+        run: zig-out/bin/cetech1_test
+
+      - name: Test headless standalone
+        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5
+
+      - name: Test headless standalone with asset root
+        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root tests/test_asset/
+
+  x86-64-windows:
+    needs: ["validation"]
+    name: x86-64 Windows
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Build
+        shell: bash
+        run: .ci/build.sh x86_64-windows Debug
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: x86-64-windows-bin
+          path: zig-out/
+          overwrite: true
+          retention-days: 1
+
+      - name: configure Pagefile
+        uses: al-cheb/configure-pagefile-action@v1.4
+        with:
+          minimum-size: 8GB
+          maximum-size: 16GB
+          disk-root: "C:"
+
+      - name: Run test with kcov
+        run: zig-out/bin/cetech1_test.exe
+
+      - name: Test headless standalone
+        run: zig-out/bin/cetech1.exe --headless --max-kernel-tick 5
+
+      - name: Test headless standalone with asset root
+        run: zig-out/bin/cetech1.exe --headless --max-kernel-tick 5 --asset-root tests/test_asset/

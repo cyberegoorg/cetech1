@@ -17,6 +17,11 @@ pub const ObjId = extern struct {
     pub fn eq(a: ObjId, b: ObjId) bool {
         return a.id == b.id and a.type_hash.id == b.type_hash.id;
     }
+
+    pub fn toU64(self: *const ObjId) u64 {
+        const ptr: *u64 = @ptrFromInt(@intFromPtr(self));
+        return ptr.*;
+    }
 };
 
 /// Opaqueue Object used for read/write operation
@@ -129,7 +134,7 @@ pub fn CdbTypeDecl(comptime type_name: [:0]const u8, comptime props_enum: type) 
         pub const PropsEnum = props_enum;
 
         pub fn isSameType(obj: ObjId) bool {
-            return obj.type_hash.id == type_hash;
+            return obj.type_hash.id == type_hash.id;
         }
 
         pub fn propIdx(prop: PropsEnum) u32 {
@@ -157,7 +162,7 @@ pub fn CdbTypeDecl(comptime type_name: [:0]const u8, comptime props_enum: type) 
         }
 
         pub fn readValue(db: *CdbDb, comptime T: type, reader: *Obj, prop: PropsEnum) T {
-            db.readValue(T, reader, Self.propIdx(prop));
+            return db.readValue(T, reader, Self.propIdx(prop));
         }
 
         pub fn setValue(db: *CdbDb, comptime T: type, writer: *Obj, prop: PropsEnum, value: T) void {
@@ -232,6 +237,10 @@ pub fn CdbTypeDecl(comptime type_name: [:0]const u8, comptime props_enum: type) 
         }
         pub fn readBlob(db: *CdbDb, reader: *Obj, prop: PropsEnum) []u8 {
             return db.readBlob(reader, Self.propIdx(prop));
+        }
+
+        pub fn isInSet(db: *CdbDb, reader: *Obj, prop: PropsEnum, item_ibj: ObjId) bool {
+            return db.isInSet(reader, Self.propIdx(prop), item_ibj);
         }
     };
 }
@@ -332,14 +341,14 @@ pub const CdbDb = struct {
 
     /// Read property value for basic types.
     pub fn readValue(self: *Self, comptime T: type, reader: *Obj, prop_idx: u32) T {
-        var value_ptr = self.cdbapi.readGenericFn(self.db, reader, prop_idx, getCDBTypeFromT(T));
-        var typed_ptr: *const T = @alignCast(@ptrCast(value_ptr.ptr));
+        const value_ptr = self.cdbapi.readGenericFn(self.db, reader, prop_idx, getCDBTypeFromT(T));
+        const typed_ptr: *const T = @alignCast(@ptrCast(value_ptr.ptr));
         return typed_ptr.*;
     }
 
     /// Set property value for basic types.
     pub fn setValue(self: *Self, comptime T: type, writer: *Obj, prop_idx: u32, value: T) void {
-        var value_ptr: [*]const u8 = @ptrCast(&value);
+        const value_ptr: [*]const u8 = @ptrCast(&value);
         self.cdbapi.setGenericFn(self.db, writer, prop_idx, value_ptr, getCDBTypeFromT(T));
     }
 
@@ -381,8 +390,8 @@ pub const CdbDb = struct {
 
     /// Read string property
     pub fn readStr(self: *Self, reader: *Obj, prop_idx: u32) ?[:0]const u8 {
-        var value_ptr = self.cdbapi.readGenericFn(self.db, reader, prop_idx, PropType.STR);
-        var typed_ptr: *const [:0]const u8 = @alignCast(@ptrCast(value_ptr.ptr));
+        const value_ptr = self.cdbapi.readGenericFn(self.db, reader, prop_idx, PropType.STR);
+        const typed_ptr: *const [:0]const u8 = @alignCast(@ptrCast(value_ptr.ptr));
         return typed_ptr.*;
     }
 
@@ -404,6 +413,16 @@ pub const CdbDb = struct {
     /// Get reference property
     pub fn readRef(self: *Self, reader: *Obj, prop_idx: u32) ?ObjId {
         return self.cdbapi.readRefFn(self.db, reader, prop_idx);
+    }
+
+    /// Clear reference
+    pub fn clearRef(self: *Self, writer: *Obj, prop_idx: u32) !void {
+        return self.cdbapi.clearRefFn(self.db, writer, prop_idx);
+    }
+
+    /// Clear subobject (This destroy subobject if exist).
+    pub fn clearSubObj(self: *Self, writer: *Obj, prop_idx: u32) !void {
+        return self.cdbapi.clearSubObjFn(self.db, writer, prop_idx);
     }
 
     /// Read reference set.
@@ -520,6 +539,34 @@ pub const CdbDb = struct {
         return self.cdbapi.isIinisiatedFn(self.db, obj, set_prop_idx, inisiated_obj);
     }
 
+    pub fn canIinisiated(self: *Self, obj: *Obj, inisiated_obj: *Obj) bool {
+        return self.cdbapi.canIinisiateFn(self.db, obj, inisiated_obj);
+    }
+
+    pub fn restoreDeletedInSet(self: *Self, obj: *Obj, set_prop_idx: u32, inisiated_obj: *Obj) void {
+        return self.cdbapi.restoreDeletedInSetFn(self.db, obj, set_prop_idx, inisiated_obj);
+    }
+
+    pub fn isInSet(self: *Self, reader: *Obj, prop_idx: u32, item_ibj: ObjId) bool {
+        return self.cdbapi.isInSetFn(self.db, reader, prop_idx, item_ibj);
+    }
+
+    pub fn setPrototype(self: *Self, obj: ObjId, prototype: ObjId) !void {
+        return self.cdbapi.setPrototypeFn(self.db, obj, prototype);
+    }
+
+    pub fn getDefaultObject(self: *Self, type_hash: strid.StrId32) ?ObjId {
+        return self.cdbapi.getDefaultObjectFn(self.db, type_hash);
+    }
+
+    pub fn getFirstObject(self: *Self, type_hash: strid.StrId32) ?ObjId {
+        return self.cdbapi.getFirstObjectFn(self.db, type_hash);
+    }
+
+    pub fn getAllObjectByType(self: *Self, allocator: std.mem.Allocator, type_hash: strid.StrId32) ?[]ObjId {
+        return self.cdbapi.getAllObjectByTypeFn(self.db, allocator, type_hash);
+    }
+
     db: *Db,
     cdbapi: *CdbAPI,
 };
@@ -580,11 +627,17 @@ pub const CdbAPI = struct {
     getParentFn: *const fn (db_: *Db, obj: *Obj) ObjId,
     getVersionFn: *const fn (db_: *Db, obj: ObjId) u64,
     getReferencerSetFn: *const fn (db_: *Db, obj: ObjId, allocator: std.mem.Allocator) anyerror![]ObjId,
+    getDefaultObjectFn: *const fn (db: *Db, type_hash: strid.StrId32) ?ObjId,
+    setPrototypeFn: *const fn (db: *Db, obj: ObjId, prototype: ObjId) anyerror!void,
+    getFirstObjectFn: *const fn (db_: *Db, type_hash: strid.StrId32) ObjId,
+    getAllObjectByTypeFn: *const fn (db_: *Db, tmp_allocator: std.mem.Allocator, type_hash: strid.StrId32) ?[]ObjId,
 
     // Object property operation
     resetPropertyOverideFn: *const fn (db_: *Db, writer: *Obj, prop_idx: u32) void,
     isPropertyOverridedFn: *const fn (db_: *Db, obj: *Obj, prop_idx: u32) bool,
     isIinisiatedFn: *const fn (db_: *Db, obj: *Obj, set_prop_idx: u32, inisiated_obj: *Obj) bool,
+    canIinisiateFn: *const fn (db_: *Db, obj: *Obj, inisiated_obj: *Obj) bool,
+    restoreDeletedInSetFn: *const fn (db_: *Db, obj: *Obj, set_prop_idx: u32, inisiated_obj: *Obj) void,
 
     readGenericFn: *const fn (self: *Db, obj: *Obj, prop_idx: u32, prop_type: PropType) []const u8,
     setGenericFn: *const fn (self: *Db, obj: *Obj, prop_idx: u32, value: [*]const u8, prop_type: PropType) void,
@@ -595,6 +648,7 @@ pub const CdbAPI = struct {
     clearSubObjFn: *const fn (db: *Db, writer: *Obj, prop_idx: u32) anyerror!void,
     instantiateSubObjFn: *const fn (db_: *Db, writer: *Obj, prop_idx: u32) anyerror!void,
     instantiateSubObjFromSetFn: *const fn (db_: *Db, writer: *Obj, prop_idx: u32, obj_set: ObjId) anyerror!ObjId,
+    isInSetFn: *const fn (db_: *Db, reader: *Obj, prop_idx: u32, item_ibj: ObjId) bool,
 
     readRefFn: *const fn (db: *Db, reader: *Obj, prop_idx: u32) ?ObjId,
     setRefFn: *const fn (db: *Db, writer: *Obj, prop_idx: u32, value: ObjId) anyerror!void,
@@ -618,6 +672,7 @@ pub const CdbAPI = struct {
     stressItFn: *const fn (db: *Db, type_hash: strid.StrId32, type_hash2: strid.StrId32, ref_obj1: ObjId) anyerror!void,
 
     gcFn: *const fn (db: *Db, tmp_allocator: std.mem.Allocator) anyerror!void,
+    dump: *const fn (db: *Db) anyerror!void,
     //#endregion
 };
 
@@ -649,49 +704,3 @@ pub fn getCDBTypeFromT(comptime T: type) PropType {
         else => @compileError("Unsupported type: " ++ @typeName(T)),
     };
 }
-
-//#region BigType
-/// Properties enum fro BigType
-pub const BigTypeProps = enum(u32) {
-    BOOL = 0,
-    U64,
-    I64,
-    U32,
-    I32,
-    F32,
-    F64,
-    STR,
-    BLOB,
-    SUBOBJECT,
-    REFERENCE,
-    SUBOBJECT_SET,
-    REFERENCE_SET,
-};
-
-/// BigType Decl
-pub fn BigTypeDecl(comptime type_name: [:0]const u8) type {
-    return CdbTypeDecl(type_name, BigTypeProps);
-}
-
-/// Add BigType db
-pub fn addBigType(db: *CdbDb, name: []const u8) !strid.StrId32 {
-    return db.addType(
-        name,
-        &.{
-            .{ .prop_idx = propIdx(BigTypeProps.BOOL), .name = "BOOL", .type = PropType.BOOL },
-            .{ .prop_idx = propIdx(BigTypeProps.U64), .name = "U64", .type = PropType.U64 },
-            .{ .prop_idx = propIdx(BigTypeProps.I64), .name = "I64", .type = PropType.I64 },
-            .{ .prop_idx = propIdx(BigTypeProps.U32), .name = "U32", .type = PropType.U32 },
-            .{ .prop_idx = propIdx(BigTypeProps.I32), .name = "I32", .type = PropType.I32 },
-            .{ .prop_idx = propIdx(BigTypeProps.F32), .name = "F32", .type = PropType.F32 },
-            .{ .prop_idx = propIdx(BigTypeProps.F64), .name = "F64", .type = PropType.F64 },
-            .{ .prop_idx = propIdx(BigTypeProps.STR), .name = "STR", .type = PropType.STR },
-            .{ .prop_idx = propIdx(BigTypeProps.BLOB), .name = "BLOB", .type = PropType.BLOB },
-            .{ .prop_idx = propIdx(BigTypeProps.SUBOBJECT), .name = "SUBOBJECT", .type = PropType.SUBOBJECT },
-            .{ .prop_idx = propIdx(BigTypeProps.REFERENCE), .name = "REFERENCE", .type = PropType.REFERENCE },
-            .{ .prop_idx = propIdx(BigTypeProps.SUBOBJECT_SET), .name = "SUBOBJECT_SET", .type = PropType.SUBOBJECT_SET },
-            .{ .prop_idx = propIdx(BigTypeProps.REFERENCE_SET), .name = "REFERENCE_SET", .type = PropType.REFERENCE_SET },
-        },
-    );
-}
-//#endregion

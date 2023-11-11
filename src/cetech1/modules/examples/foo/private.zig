@@ -53,8 +53,8 @@ fn cdbCreateTypes(db_: *cetech1.cdb.Db) !void {
         },
     );
 
-    _g.type_hash = cetech1.cdb.addBigType(&db, "stress_foo_1") catch unreachable;
-    _g.type_hash2 = cetech1.cdb.addBigType(&db, "stress_foo_2") catch unreachable;
+    _g.type_hash = cetech1.cdb_types.addBigType(&db, "stress_foo_1") catch unreachable;
+    _g.type_hash2 = cetech1.cdb_types.addBigType(&db, "stress_foo_2") catch unreachable;
 
     _g.ref_obj1 = db.createObject(_g.type_hash2) catch undefined;
 }
@@ -70,7 +70,7 @@ const KernelTask = struct {
         if (spam_log) _log.info(MODULE_NAME, "kernel_tick:{}\tdt:{}\tg_var_1:{}", .{ kernel_tick, dt, _g.var_1 });
 
         // Alocator see in tracy
-        var foo = try frame_allocator.create(public.FooAPI);
+        const foo = try frame_allocator.create(public.FooAPI);
         if (spam_log) _log.info(MODULE_NAME, "alloc {}", .{foo});
 
         defer frame_allocator.destroy(foo);
@@ -79,7 +79,7 @@ const KernelTask = struct {
         if (do_cdb) {
             try _db.stressIt(_g.type_hash, _g.type_hash2, _g.ref_obj1);
 
-            var obj1 = try FooCDBType.createObject(&_db);
+            const obj1 = try FooCDBType.createObject(&_db);
             if (spam_log) _log.debug(MODULE_NAME, "obj1 id {d}", .{obj1.id});
 
             if (_db.writeObj(obj1)) |writer| {
@@ -100,7 +100,7 @@ const KernelTask = struct {
     pub fn init(main_db: *cetech1.cdb.Db) !void {
         _ = main_db;
         _log.info(MODULE_NAME, "TASK INIT", .{});
-        var foo = _allocator.create(public.FooAPI) catch return;
+        const foo = _allocator.create(public.FooAPI) catch return;
         _log.info(MODULE_NAME, "alloc {}", .{foo});
         defer _allocator.destroy(foo);
     }

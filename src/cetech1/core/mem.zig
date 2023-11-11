@@ -1,7 +1,8 @@
 const std = @import("std");
+const aqueue = @import("atomic_queue.zig");
 
-const AtomicInt = std.atomic.Atomic(u32);
-const FreeIdQueue = std.atomic.Queue(u32);
+const AtomicInt = std.atomic.Value(u32);
+const FreeIdQueue = aqueue.Queue(u32);
 
 pub fn PoolWithLock(comptime T: type) type {
     return struct {
@@ -41,14 +42,14 @@ pub fn IdPool(comptime T: type) type {
         const Self = @This();
 
         count: AtomicInt,
-        free_id: std.atomic.Queue(T),
-        free_id_node_pool: PoolWithLock(std.atomic.Queue(T).Node),
+        free_id: aqueue.Queue(T),
+        free_id_node_pool: PoolWithLock(aqueue.Queue(T).Node),
 
         pub fn init(allocator: std.mem.Allocator) Self {
             return .{
                 .count = AtomicInt.init(1), // 0 is always empty
                 .free_id = FreeIdQueue.init(),
-                .free_id_node_pool = PoolWithLock(std.atomic.Queue(T).Node).init(allocator),
+                .free_id_node_pool = PoolWithLock(aqueue.Queue(T).Node).init(allocator),
             };
         }
 
@@ -62,8 +63,8 @@ pub fn IdPool(comptime T: type) type {
                 return self.count.fetchAdd(1, .Release);
             }
 
-            var free_idx_node = self.free_id.get().?;
-            var new_obj_id = free_idx_node.data;
+            const free_idx_node = self.free_id.get().?;
+            const new_obj_id = free_idx_node.data;
             self.free_id_node_pool.destroy(free_idx_node);
 
             if (is_new != null) is_new.?.* = false;
@@ -71,7 +72,7 @@ pub fn IdPool(comptime T: type) type {
         }
 
         pub fn destroy(self: *Self, id: T) !void {
-            var new_node = try self.free_id_node_pool.create();
+            const new_node = try self.free_id_node_pool.create();
             new_node.* = FreeIdQueue.Node{ .data = id };
             self.free_id.put(new_node);
         }
@@ -88,7 +89,7 @@ pub fn VirtualArray(comptime T: type) type {
         items: [*]T,
 
         pub fn init(max_items: usize) !Self {
-            var objs_raw = if (max_items != 0) std.heap.page_allocator.rawAlloc(@sizeOf(T) * max_items, 0, 0).? else undefined;
+            const objs_raw = if (max_items != 0) std.heap.page_allocator.rawAlloc(@sizeOf(T) * max_items, 0, 0).? else undefined;
             return .{
                 .max_items = max_items,
                 .raw = objs_raw,
@@ -106,7 +107,7 @@ pub fn VirtualArray(comptime T: type) type {
 pub fn VirtualPool(comptime T: type) type {
     return struct {
         const Self = @This();
-        const Queue = std.atomic.Queue(u32);
+        const Queue = aqueue.Queue(u32);
 
         max_size: usize,
 
@@ -137,12 +138,12 @@ pub fn VirtualPool(comptime T: type) type {
         pub fn create(self: *Self, is_new: ?*bool) *T {
             if (self.free_id.isEmpty()) {
                 if (is_new != null) is_new.?.* = true;
-                var idx = self.alocated_items.fetchAdd(1, .Release);
+                const idx = self.alocated_items.fetchAdd(1, .Release);
                 return &self.mem.items[idx];
             }
 
-            var free_idx_node = self.free_id.get().?;
-            var new_obj_idx = free_idx_node.data;
+            const free_idx_node = self.free_id.get().?;
+            const new_obj_idx = free_idx_node.data;
             self.free_id_node_pool.destroy(free_idx_node);
 
             if (is_new != null) is_new.?.* = false;
@@ -151,7 +152,7 @@ pub fn VirtualPool(comptime T: type) type {
         }
 
         pub fn destroy(self: *Self, id: *T) !void {
-            var new_node = try self.free_id_node_pool.create();
+            const new_node = try self.free_id_node_pool.create();
             new_node.* = FreeIdQueue.Node{ .data = self.index(id) };
             self.free_id.put(new_node);
         }
@@ -174,7 +175,7 @@ pub const TmpAllocatorPool = struct {
 
     pub fn deinit(self: *Self) void {
         // idx 0 is null element
-        for (self.arena_pool.mem.items[1..self.arena_pool.alocated_items.value]) |*obj| {
+        for (self.arena_pool.mem.items[1..self.arena_pool.alocated_items.raw]) |*obj| {
             obj.deinit();
         }
         self.arena_pool.deinit();
@@ -182,7 +183,7 @@ pub const TmpAllocatorPool = struct {
 
     pub fn create(self: *Self) *TempAllocator {
         var new: bool = false;
-        var tmp_alloc = self.arena_pool.create(&new);
+        const tmp_alloc = self.arena_pool.create(&new);
 
         if (new) {
             tmp_alloc.* = TempAllocator.init(self.allocator);

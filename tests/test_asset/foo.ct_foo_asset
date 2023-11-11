@@ -1,10 +1,13 @@
 {
   "__version": "0.1.0",
   "__asset_uuid": "018b5846-c2d5-7b88-95f9-a7538a00e76b",
+  "__tags": [
+    "ct_tag:018e0348-b35b-7b98-8bc3-046d279d1346"
+  ],
   "__type_name": "ct_foo_asset",
   "__uuid": "018b5846-c2d5-712f-bb12-9d9d15321ecb",
   "BOOL": true,
-  "U64": 10,
+  "U64": 2222,
   "I64": 20,
   "U32": 10,
   "I32": 20,

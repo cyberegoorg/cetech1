@@ -25,8 +25,9 @@ pub fn fromInt(int: u128) public.Uuid {
     return .{ .bytes = Uuid.fromInt(int).bytes };
 }
 
-pub fn fromStr(str: []const u8) !public.Uuid {
-    return .{ .bytes = (try Uuid.fromString(str)).bytes };
+pub fn fromStr(str: []const u8) ?public.Uuid {
+    const u = Uuid.fromString(str) catch return null;
+    return .{ .bytes = u.bytes };
 }
 
 test "uuid: Can create uuid7" {

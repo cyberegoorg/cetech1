@@ -1,0 +1,13 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "018e0346-137d-72eb-bfc8-87ac012a55ee",
+  "__type_name": "ct_tag",
+  "__uuid": "018e0348-b357-707e-8d1d-ab11d00cd35d",
+  "name": "Green",
+  "color": {
+    "__type_name": "ct_color_4f",
+    "__uuid": "018e0348-b35d-7e8a-a087-b04541dc1cac",
+    "r": 0.0e+00,
+    "b": 0.0e+00
+  }
+}

@@ -3,5 +3,9 @@
   "__type_name": "ct_asset_folder",
   "__uuid": "018b616e-e03c-79eb-a032-68d443fc3b2b",
   "name": "core_subfolder",
+  "description": "Folder for melted core",
+  "tags": [
+    "ct_tag:018e0348-b357-707e-8d1d-ab11d00cd35d"
+  ],
   "parent": "ct_asset_folder:018b616e-e03b-7546-80d4-3877ac279534"
 }

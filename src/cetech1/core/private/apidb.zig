@@ -99,10 +99,10 @@ fn _toBytes(ptr: *anyopaque, ptr_size: usize) []u8 {
 }
 
 fn globalVar(module: []const u8, var_name: []const u8, size: usize, default: []const u8) !*anyopaque {
-    var combine_name = try std.fmt.allocPrint(_allocator, "{s}:{s}", .{ module, var_name });
-    var v = _global_var_map.get(combine_name);
+    const combine_name = try std.fmt.allocPrint(_allocator, "{s}:{s}", .{ module, var_name });
+    const v = _global_var_map.get(combine_name);
     if (v == null) {
-        var data = try _allocator.alloc(u8, size);
+        const data = try _allocator.alloc(u8, size);
         @memcpy(data, default);
         try _global_var_map.put(combine_name, data);
         return data.ptr;
@@ -114,37 +114,37 @@ fn globalVar(module: []const u8, var_name: []const u8, size: usize, default: []c
 
 fn setApiOpaqueue(language: []const u8, api_name: []const u8, api_ptr: *anyopaque, api_size: usize) !void {
     if (!_language_api_map.contains(language)) {
-        var api_map = try _api_map_pool.create();
+        const api_map = try _api_map_pool.create();
         api_map.* = ApiHashMap.init(_allocator);
         try _language_api_map.put(language, api_map);
     }
 
     log.api.debug(MODULE_NAME, "Register {s} api '{s}'", .{ language, api_name });
 
-    var api_ptr_intern = getApiOpaque(language, api_name, api_size);
+    const api_ptr_intern = getApiOpaque(language, api_name, api_size);
 
     if (api_ptr_intern == null) {
         return;
     }
 
-    var api_map = _language_api_map.getPtr(language).?;
-    var old_api_ptr = api_map.*.getPtr(api_name).?;
+    const api_map = _language_api_map.getPtr(language).?;
+    const old_api_ptr = api_map.*.getPtr(api_name).?;
     @memcpy(old_api_ptr.api_ptr, _toBytes(api_ptr, api_size));
 }
 
 fn getApiOpaque(language: []const u8, api_name: []const u8, api_size: usize) ?*anyopaque {
     if (!_language_api_map.contains(language)) {
-        var api_map = _api_map_pool.create() catch return null;
+        const api_map = _api_map_pool.create() catch return null;
         api_map.* = ApiHashMap.init(_allocator);
         _language_api_map.put(language, api_map) catch return null;
     }
 
-    var api_map = _language_api_map.getPtr(language).?;
+    const api_map = _language_api_map.getPtr(language).?;
 
-    var api_ptr = api_map.*.get(api_name);
+    const api_ptr = api_map.*.get(api_name);
 
     if (api_ptr == null) {
-        var api_data = _allocator.alloc(u8, api_size) catch return null;
+        const api_data = _allocator.alloc(u8, api_size) catch return null;
         @memset(api_data, 0);
         api_map.*.put(api_name, ApiItem{ .api_ptr = api_data, .api_size = api_size }) catch return null;
         return api_data.ptr;
@@ -159,7 +159,7 @@ fn removeApi(language: []const u8, api_name: []const u8) void {
         return;
     }
 
-    var api_ptr = api_map.?.get(api_name);
+    const api_ptr = api_map.?.get(api_name);
 
     if (api_ptr == null) {
         return;
@@ -169,12 +169,12 @@ fn removeApi(language: []const u8, api_name: []const u8) void {
 }
 
 fn increaseIfaceGen(interface_name: []const u8) void {
-    var iface_gen = _interafce_gen.getPtr(interface_name).?;
+    const iface_gen = _interafce_gen.getPtr(interface_name).?;
     iface_gen.* += 1;
 }
 
 fn getInterafcesVersion(interface_name: []const u8) u64 {
-    var iface_gen = _interafce_gen.getPtr(interface_name);
+    const iface_gen = _interafce_gen.getPtr(interface_name);
     if (iface_gen == null) return 0;
     return iface_gen.?.*;
 }
@@ -203,7 +203,7 @@ fn implInterface(interface_name: []const u8, impl_ptr: *anyopaque) anyerror!void
         prev = &last.?.data;
     }
 
-    var c_iter = c.c.ct_apidb_impl_iter_t{ .interface = impl_ptr, .next = null, .prev = prev };
+    const c_iter = c.c.ct_apidb_impl_iter_t{ .interface = impl_ptr, .next = null, .prev = prev };
 
     var node = try _interface_node_pool.create();
     node.* = InterfaceImplNode{ .data = c_iter };
@@ -220,7 +220,7 @@ fn implInterface(interface_name: []const u8, impl_ptr: *anyopaque) anyerror!void
 }
 
 fn getImpl(comptime T: type, interface_name: []const u8) ?*T {
-    var impl_list = _interafce_map.getPtr(interface_name);
+    const impl_list = _interafce_map.getPtr(interface_name);
 
     if (impl_list == null) {
         return null;
@@ -313,7 +313,7 @@ pub fn dumpInterfaces() void {
 }
 
 pub const apidb_global_c = blk: {
-    var c_api = struct {
+    const c_api = struct {
         const Self = @This();
 
         pub fn set_api(language: [*c]const u8, api_name: [*c]const u8, api_ptr: ?*anyopaque, api_size: u32) callconv(.C) void {

@@ -4,35 +4,37 @@ const std = @import("std");
 const strid = @import("strid.zig");
 const Allocator = std.mem.Allocator;
 
-pub const StrId64BAG = BAG(strid.StrId64);
-pub const StrId32BAG = BAG(strid.StrId32);
+pub const StrId64DAG = DAG(strid.StrId64);
+pub const StrId32DAG = DAG(strid.StrId32);
 
 // Can build nad resolve dependency graph
-pub fn BAG(comptime T: type) type {
-    const BAGArray = std.ArrayList(T);
-    const BAGSet = std.AutoArrayHashMap(T, void);
-    const BAGVisited = std.AutoArrayHashMap(T, void);
-    const BAGGraph = std.AutoArrayHashMap(T, BAGArray);
-    const BAGDepends = std.AutoArrayHashMap(T, BAGArray);
-    const BAGRoot = std.AutoArrayHashMap(T, void);
+pub fn DAG(comptime T: type) type {
+    const DAGArray = std.ArrayList(T);
+    const DAGSet = std.AutoArrayHashMap(T, void);
+    const DAGGraph = std.AutoArrayHashMap(T, DAGArray);
+    const DAGDepends = std.AutoArrayHashMap(T, DAGArray);
+    const DAGRoot = std.AutoArrayHashMap(T, void);
+    const DAGDegrees = std.AutoArrayHashMap(T, usize);
 
     return struct {
         const Self = @This();
         allocator: Allocator,
-        graph: BAGGraph,
-        visited: BAGVisited,
-        depends: BAGDepends,
-        root: BAGRoot,
-        output: BAGSet,
+        graph: DAGGraph,
+        depends_on: DAGDepends,
+        root: DAGRoot,
+        output: DAGSet,
+        build: DAGSet,
+        degrees: DAGDegrees,
 
         pub fn init(allocator: Allocator) Self {
             return .{
                 .allocator = allocator,
-                .graph = BAGGraph.init(allocator),
-                .visited = BAGVisited.init(allocator),
-                .root = BAGRoot.init(allocator),
-                .depends = BAGDepends.init(allocator),
-                .output = BAGSet.init(allocator),
+                .graph = DAGGraph.init(allocator),
+                .root = DAGRoot.init(allocator),
+                .depends_on = DAGDepends.init(allocator),
+                .output = DAGSet.init(allocator),
+                .build = DAGSet.init(allocator),
+                .degrees = DAGDegrees.init(allocator),
             };
         }
 
@@ -41,20 +43,22 @@ pub fn BAG(comptime T: type) type {
                 dep_arr.deinit();
             }
 
-            for (self.depends.values()) |*dep_arr| {
+            for (self.depends_on.values()) |*dep_arr| {
                 dep_arr.deinit();
             }
 
             self.graph.deinit();
             self.output.deinit();
-            self.visited.deinit();
             self.root.deinit();
-            self.depends.deinit();
+            self.depends_on.deinit();
+
+            self.build.deinit();
+            self.degrees.deinit();
         }
 
         // Return all node that depend on given node
         pub fn dependList(self: *Self, name: T) ?[]T {
-            var dep_arr = self.depends.getPtr(name);
+            const dep_arr = self.depends_on.getPtr(name);
             if (dep_arr == null) {
                 return null;
             }
@@ -69,14 +73,14 @@ pub fn BAG(comptime T: type) type {
         // Add node to graph
         pub fn add(self: *Self, name: T, depends: []const T) !void {
             if (!self.graph.contains(name)) {
-                var dep_arr = BAGArray.init(self.allocator);
+                const dep_arr = DAGArray.init(self.allocator);
                 try self.graph.put(name, dep_arr);
             }
 
-            if (!self.depends.contains(name)) {
-                var dep_arr = BAGArray.init(self.allocator);
+            if (!self.depends_on.contains(name)) {
+                var dep_arr = DAGArray.init(self.allocator);
                 try dep_arr.appendSlice(depends);
-                try self.depends.put(name, dep_arr);
+                try self.depends_on.put(name, dep_arr);
             }
 
             if (depends.len == 0) {
@@ -84,7 +88,7 @@ pub fn BAG(comptime T: type) type {
             } else {
                 for (depends) |dep_name| {
                     if (!self.graph.contains(dep_name)) {
-                        var dep_arr = BAGArray.init(self.allocator);
+                        const dep_arr = DAGArray.init(self.allocator);
                         try self.graph.put(dep_name, dep_arr);
                     }
 
@@ -100,47 +104,65 @@ pub fn BAG(comptime T: type) type {
                 dep_arr.deinit();
             }
 
-            for (self.depends.values()) |*dep_arr| {
+            for (self.depends_on.values()) |*dep_arr| {
                 dep_arr.deinit();
             }
 
             self.graph.clearRetainingCapacity();
-            self.depends.clearRetainingCapacity();
-            self.visited.clearRetainingCapacity();
+            self.depends_on.clearRetainingCapacity();
             self.root.clearRetainingCapacity();
             self.output.clearRetainingCapacity();
+
+            self.build.clearRetainingCapacity();
         }
 
         // Build for all root nodes
         pub fn build_all(self: *Self) !void {
-            for (self.root.keys()) |root| {
-                try self.output.put(root, {});
-            }
+            const nodes_n = self.graph.count();
 
-            for (self.root.keys()) |root| {
-                try self._build(root);
-            }
-        }
+            self.build.clearRetainingCapacity();
+            self.degrees.clearRetainingCapacity();
 
-        fn _build(self: *Self, name: T) !void {
-            if (self.visited.contains(name)) return;
-            try self.visited.put(name, {});
-
-            var dep_arr = self.graph.getPtr(name);
-            if (dep_arr != null) {
-                for (dep_arr.?.items) |dep_name| {
-                    try self.output.put(dep_name, {});
-                    try self._build(dep_name);
+            for (self.depends_on.keys()) |root| {
+                const dep_arr = self.depends_on.getPtr(root);
+                if (dep_arr) |arr| {
+                    if (arr.items.len != 0) {
+                        try self.degrees.put(root, @intCast(arr.items.len));
+                    }
                 }
             }
+
+            for (self.root.keys()) |root| {
+                try self.build.put(root, {});
+            }
+
+            var visited_n: usize = 0;
+            while (self.build.count() != 0) {
+                const value = self.build.pop();
+                try self.output.put(value.key, {});
+
+                const dep_arr = self.graph.getPtr(value.key);
+                if (dep_arr) |arr| {
+                    for (arr.items) |dep| {
+                        if (self.degrees.getPtr(dep)) |deg_ptr| {
+                            deg_ptr.* -= 1;
+                            if (deg_ptr.* == 0) {
+                                try self.build.put(dep, {});
+                            }
+                        }
+                    }
+                    visited_n += 1;
+                }
+            }
+            std.debug.assert(visited_n == nodes_n);
         }
     };
 }
 
 //#region Test
 test "Can build and resolve graph" {
-    var allocator = std.testing.allocator;
-    var bag = BAG(u64).init(allocator);
+    const allocator = std.testing.allocator;
+    var bag = DAG(u64).init(allocator);
     defer bag.deinit();
 
     try bag.add(1, &[_]u64{});
@@ -154,8 +176,8 @@ test "Can build and resolve graph" {
 }
 
 test "Can reuse graph" {
-    var allocator = std.testing.allocator;
-    var bag = BAG(u64).init(allocator);
+    const allocator = std.testing.allocator;
+    var bag = DAG(u64).init(allocator);
     defer bag.deinit();
 
     try bag.add(1, &[_]u64{});
@@ -179,8 +201,8 @@ test "Can reuse graph" {
 }
 
 test "Can build and resolve graph2" {
-    var allocator = std.testing.allocator;
-    var bag = BAG(u64).init(allocator);
+    const allocator = std.testing.allocator;
+    var bag = DAG(u64).init(allocator);
     defer bag.deinit();
 
     try bag.add(1, &[_]u64{});
@@ -190,6 +212,6 @@ test "Can build and resolve graph2" {
 
     try bag.build_all();
 
-    try std.testing.expectEqualSlices(u64, &[_]u64{ 1, 4, 2, 3 }, bag.output.keys());
+    try std.testing.expectEqualSlices(u64, &[_]u64{ 4, 1, 2, 3 }, bag.output.keys());
 }
 //#endregion

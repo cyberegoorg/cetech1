@@ -21,7 +21,7 @@ pub fn registerToApi() !void {
 pub fn log(level: public.log.LogAPI.Level, scope: []const u8, msg: []const u8) void {
     if (profiler.profiler_enabled) {
         const LOG_FORMAT_TRACY = "{s}: {s}";
-        var color: u32 = switch (level) {
+        const color: u32 = switch (level) {
             .info => 0x00_ff_ff_ff,
             .debug => 0x00_00_ff_00,
             .warn => 0x00_ff_ef_00,
@@ -59,7 +59,7 @@ extern fn ct_log_err(scope: [*c]const u8, msg: [*c]const u8, ...) callconv(.C) v
 extern fn ct_log_debug(scope: [*c]const u8, msg: [*c]const u8, ...) callconv(.C) void;
 
 var api_c = blk: {
-    var c_api = struct {
+    const c_api = struct {
         pub fn c_log(level: c.ct_log_level_e, scope: [*c]const u8, log_msg: [*c]const u8) callconv(.C) void {
             log(@enumFromInt(level), scope[0..std.mem.len(scope)], log_msg[0..std.mem.len(log_msg)]);
         }

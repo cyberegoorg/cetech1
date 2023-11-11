@@ -1,10 +1,13 @@
 # CETech 1
 
-[![GitHub Actions](https://github.com/cyberegoorg/cetech1/actions/workflows/ci.yaml/badge.svg)](https://github.com/cyberegoorg/cetech1/actions/workflows/ci.yaml)
+[![GitHub Actions](https://github.com/cyberegoorg/cetech1/actions/workflows/test.yaml/badge.svg)](https://github.com/cyberegoorg/cetech1/actions/workflows/test.yaml)
+[![codecov](https://codecov.io/gh/cyberegoorg/cetech1/graph/badge.svg?token=FCES8KRIPA)](https://codecov.io/gh/cyberegoorg/cetech1)
 
 Yet another experimental game engine but now in [zig](https://ziglang.org).
 
 ## [Documentation](https://cyberegoorg.github.io/cetech1)
+
+## [Getting started](https://cyberegoorg.github.io/cetech1/getting-started.html)
 
 ## Supported architectures
 
@@ -23,7 +26,7 @@ Yet another experimental game engine but now in [zig](https://ziglang.org).
 GIT_LFS_SKIP_SMUDGE=1 git clone --recursive https://github.com/cyberegoorg/cetech1.git
 
 # This download zig binary from LFS. Only need for your arch where you develop
-./bin/zig/lfs_pull.sh <ARCH>
+./zig/lfs_pull.sh <ARCH>
 
 # This download lfs files that is needed
 ./lfs_pull.sh
@@ -32,13 +35,13 @@ GIT_LFS_SKIP_SMUDGE=1 git clone --recursive https://github.com/cyberegoorg/cetec
 ## Build
 
 ```sh
-bin/zig/zig_<ARCH> build
+zig/bin/<ARCH>/zig build
 ```
 
 ## Run
 
 ```sh
-zig-out/bin/cetech1_test && zig-out/bin/cetech1
+zig-out/bin/cetech1_test && zig-out/bin/cetech1 --asset-root tests/test_asset/
 ```
 
 ## Credits/Licenses For Fonts Included In Repository

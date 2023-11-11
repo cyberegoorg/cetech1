@@ -2,9 +2,12 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/bin/zig" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/externals/shared/lib/nfd-zig" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/lib/SDL_GameControllerDB" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/lib/mach-gamemode" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/lib/zf" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/externals/shared/lib/zig-gamedev" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/externals/shared/lib/zig-uuid" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/tools/zls" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/zig" vcs="Git" />
   </component>
 </project>
