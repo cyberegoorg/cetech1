@@ -44,7 +44,6 @@ const G = struct {
     tab_vt: *editor.EditorTabTypeI = undefined,
     asset_prop_aspect: *editorui.UiPropertiesAspect = undefined,
     color4f_properties_aspec: *editorui.UiEmbedPropertiesAspect = undefined,
-    folder_name_prop_aspect: *editorui.UiPropertyAspect = undefined,
     folder_property_config_aspect: *editorui.UiPropertiesConfigAspect = undefined,
 };
 var _g: *G = undefined;
@@ -222,19 +221,21 @@ fn uiAssetInputGeneric(
     const value_asset: ?cetech1.cdb.ObjId = _assetdb.getAssetForObj(value_obj);
 
     if (value_asset) |asset| {
-        const path = try _assetdb.getFilePathForAsset(asset, allocator);
-        defer allocator.free(path);
-        asset_name = try std.fmt.bufPrintZ(&buff, "{s}", .{path});
-    } else {
-        if (cetech1.assetdb.FolderType.isSameType(value_obj)) {
-            const path = try _assetdb.getPathForFolder(value_obj, allocator);
+        if (_assetdb.isAssetFolder(asset)) {
+            const path = try _assetdb.getPathForFolder(asset, allocator);
             defer allocator.free(path);
             asset_name = try std.fmt.bufPrintZ(&buff, "{s}", .{if (std.fs.path.dirname(path)) |p| p else "/"});
         } else {
-            asset_name = try std.fmt.bufPrintZ(&buff, "", .{});
+            const path = try _assetdb.getFilePathForAsset(asset, allocator);
+            defer allocator.free(path);
+            asset_name = try std.fmt.bufPrintZ(&buff, "{s}", .{path});
         }
+    } else {
+        asset_name = try std.fmt.bufPrintZ(&buff, "", .{});
     }
 
+    const prop_def = db.getTypePropDef(obj.type_hash).?;
+    const allowed_type = prop_def[prop_idx].type_hash;
     _editorui.pushObjId(obj);
     defer _editorui.popId();
 
@@ -247,13 +248,13 @@ fn uiAssetInputGeneric(
     }
 
     if (_editorui.beginPopup("ui_asset_context_menu", .{})) {
-        if (_asset_browser.selectObjFromBrowserMenu(allocator, db, obj, obj.type_hash)) |selected| {
+        if (_asset_browser.selectObjFromBrowserMenu(allocator, db, obj, allowed_type)) |selected| {
             if (is_proto) {
                 try db.setPrototype(obj, selected);
             } else {
                 const w = db.writeObj(obj).?;
-                defer db.writeCommit(w);
                 try db.setRef(w, prop_idx, selected);
+                try db.writeCommit(w);
             }
         }
 
@@ -268,8 +269,8 @@ fn uiAssetInputGeneric(
                 try db.setPrototype(obj, cetech1.cdb.OBJID_ZERO);
             } else {
                 const w = db.writeObj(obj).?;
-                defer db.writeCommit(w);
                 try db.clearRef(w, prop_idx);
+                try db.writeCommit(w);
             }
         }
 
@@ -305,8 +306,8 @@ fn uiAssetInputGeneric(
                 const allowed_type_hash = db.getTypePropDef(obj.type_hash).?[prop_idx].type_hash;
                 if (allowed_type_hash.id == 0 or allowed_type_hash.id == drag_obj.type_hash.id) {
                     const w = db.writeObj(obj).?;
-                    defer db.writeCommit(w);
                     try db.setRef(w, prop_idx, drag_obj);
+                    try db.writeCommit(w);
                 }
             }
         }
@@ -636,15 +637,14 @@ fn uiInputProtoBtns(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: u3
     if (_editorui.beginPopup("property_protoypes_menu", .{})) {
         if (_editorui.menuItem(Icons.FA_ARROW_ROTATE_LEFT ++ "  " ++ "Reset to prototype value", .{ .enabled = is_overided })) {
             const w = db.writeObj(obj).?;
-            defer db.writeCommit(w);
             db.resetPropertyOveride(w, prop_idx);
+            try db.writeCommit(w);
         }
 
         if (_editorui.menuItem(Icons.FA_ARROW_UP ++ "  " ++ "Propagate to prototype", .{ .enabled = is_overided })) {
             // Set value from parent. This is probably not need.
             {
                 const w = db.writeObj(proto_obj).?;
-                defer db.writeCommit(w);
                 const r = db.readObj(obj).?;
 
                 switch (prop_def.type) {
@@ -685,13 +685,14 @@ fn uiInputProtoBtns(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: u3
                     else => {},
                 }
                 db.resetPropertyOveride(w, prop_idx);
+                try db.writeCommit(w);
             }
 
             // reset value overide
             {
                 const w = db.writeObj(obj).?;
-                defer db.writeCommit(w);
                 db.resetPropertyOveride(w, prop_idx);
+                try db.writeCommit(w);
             }
         }
 
@@ -740,8 +741,8 @@ fn uiInputForProperty(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: 
                 .v = &value,
             })) {
                 const w = db.writeObj(obj).?;
-                defer db.writeCommit(w);
                 db.setValue(bool, w, prop_idx, value);
+                try db.writeCommit(w);
             }
         },
         .F32 => {
@@ -753,8 +754,8 @@ fn uiInputForProperty(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: 
                 },
             })) {
                 const w = db.writeObj(obj).?;
-                defer db.writeCommit(w);
                 db.setValue(f32, w, prop_idx, value);
+                try db.writeCommit(w);
             }
         },
         .F64 => {
@@ -766,8 +767,8 @@ fn uiInputForProperty(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: 
                 },
             })) {
                 const w = db.writeObj(obj).?;
-                defer db.writeCommit(w);
                 db.setValue(f64, w, prop_idx, value);
+                try db.writeCommit(w);
             }
         },
         .I32 => {
@@ -779,8 +780,8 @@ fn uiInputForProperty(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: 
                 },
             })) {
                 const w = db.writeObj(obj).?;
-                defer db.writeCommit(w);
                 db.setValue(i32, w, prop_idx, value);
+                try db.writeCommit(w);
             }
         },
         .U32 => {
@@ -792,8 +793,8 @@ fn uiInputForProperty(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: 
                 },
             })) {
                 const w = db.writeObj(obj).?;
-                defer db.writeCommit(w);
                 db.setValue(u32, w, prop_idx, value);
+                try db.writeCommit(w);
             }
         },
         .I64 => {
@@ -805,8 +806,8 @@ fn uiInputForProperty(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: 
                 },
             })) {
                 const w = db.writeObj(obj).?;
-                defer db.writeCommit(w);
                 db.setValue(i64, w, prop_idx, value);
+                try db.writeCommit(w);
             }
         },
         .U64 => {
@@ -818,8 +819,8 @@ fn uiInputForProperty(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: 
                 },
             })) {
                 const w = db.writeObj(obj).?;
-                defer db.writeCommit(w);
                 db.setValue(u64, w, prop_idx, value);
+                try db.writeCommit(w);
             }
         },
         .STR => {
@@ -834,10 +835,10 @@ fn uiInputForProperty(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: 
                 },
             })) {
                 const w = db.writeObj(obj).?;
-                defer db.writeCommit(w);
                 var new_name_buf: [128:0]u8 = undefined;
                 const new_name = try std.fmt.bufPrintZ(&new_name_buf, "{s}", .{std.mem.sliceTo(&buf, 0)});
                 try db.setStr(w, prop_idx, new_name);
+                try db.writeCommit(w);
             }
         },
         .BLOB => {
@@ -944,56 +945,6 @@ fn assetUiProperiesAspect(
 }
 //
 
-// Folder properties aspect
-var folder_name_prop_aspect = editorui.UiPropertyAspect.implement(folderUiNameProperyAspect);
-fn folderUiNameProperyAspect(
-    allocator: std.mem.Allocator,
-    dbc: *cetech1.cdb.Db,
-    obj: cetech1.cdb.ObjId,
-    prop_idx: u32,
-    args: editorui.cdbPropertiesViewArgs,
-) !void {
-    _ = prop_idx;
-
-    var db = cetech1.cdb.CdbDb.fromDbT(dbc, _cdb);
-
-    var buf: [128:0]u8 = undefined;
-
-    // Folder name
-    if (uiPropLabel(allocator, "Name", null, args)) {
-        try api.uiPropInputBegin(&db, obj, cetech1.assetdb.FolderType.propIdx(.Name));
-        defer api.uiPropInputEnd();
-
-        const parent = cetech1.assetdb.FolderType.readRef(&db, db.readObj(obj).?, .Parent);
-        const is_root_folder = parent == null;
-
-        const name = cetech1.assetdb.FolderType.readStr(&db, db.readObj(obj).?, .Name);
-        if (name) |str| {
-            _ = try std.fmt.bufPrintZ(&buf, "{s}", .{str});
-        } else {
-            _ = try std.fmt.bufPrintZ(&buf, "", .{});
-        }
-
-        if (_editorui.inputText("", .{
-            .buf = &buf,
-            .flags = .{
-                .enter_returns_true = !is_root_folder,
-                .read_only = is_root_folder,
-            },
-        })) {
-            var new_name_buf: [128:0]u8 = undefined;
-            const new_name = try std.fmt.bufPrintZ(&new_name_buf, "{s}", .{std.mem.sliceTo(&buf, 0)});
-
-            if (try _assetdb.isAssetNameValid(allocator, &db, parent.?, cetech1.assetdb.FolderType.type_hash, new_name)) {
-                const w = db.writeObj(obj).?;
-                defer db.writeCommit(w);
-                try cetech1.assetdb.FolderType.setStr(&db, w, .Name, new_name);
-            }
-        }
-    }
-}
-//
-
 // Asset properties aspect
 var color4f_properties_aspec = editorui.UiEmbedPropertiesAspect.implement(color4fUiProperiesAspect);
 fn color4fUiProperiesAspect(
@@ -1014,8 +965,8 @@ fn color4fUiProperiesAspect(
     _editorui.setNextItemWidth(-1);
     if (_editorui.colorEdit4("", .{ .col = &color })) {
         const w = db.writeObj(obj).?;
-        defer db.writeCommit(w);
         cetech1.cdb_types.color4fFromSlice(&db, w, color);
+        try db.writeCommit(w);
     }
 }
 //
@@ -1140,13 +1091,6 @@ var folder_properties_config_aspect = editorui.UiPropertiesConfigAspect{
 fn cdbCreateTypes(db_: *cetech1.cdb.Db) !void {
     var db = cetech1.cdb.CdbDb.fromDbT(db_, _cdb);
 
-    try cetech1.assetdb.FolderType.addPropertyAspect(
-        &db,
-        editorui.UiPropertyAspect,
-        .Name,
-        _g.folder_name_prop_aspect,
-    );
-
     try cetech1.assetdb.FolderType.addAspect(
         &db,
         editorui.UiPropertiesConfigAspect,
@@ -1204,9 +1148,6 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
 
     _g.asset_prop_aspect = try apidb.globalVar(editorui.UiPropertiesAspect, MODULE_NAME, ASSET_PROPERTIES_ASPECT_NAME, .{});
     _g.asset_prop_aspect.* = asset_properties_aspec;
-
-    _g.folder_name_prop_aspect = try apidb.globalVar(editorui.UiPropertyAspect, MODULE_NAME, FOLDER_NAME_PROPERTY_ASPECT_NAME, .{});
-    _g.folder_name_prop_aspect.* = folder_name_prop_aspect;
 
     _g.color4f_properties_aspec = try apidb.globalVar(editorui.UiEmbedPropertiesAspect, MODULE_NAME, COLOR4F_PROPERTY_ASPECT_NAME, .{});
     _g.color4f_properties_aspec.* = color4f_properties_aspec;

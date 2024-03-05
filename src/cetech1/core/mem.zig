@@ -1,5 +1,6 @@
 const std = @import("std");
 const aqueue = @import("atomic_queue.zig");
+const builtin = @import("builtin");
 
 const AtomicInt = std.atomic.Value(u32);
 const FreeIdQueue = aqueue.Queue(u32);
@@ -80,26 +81,77 @@ pub fn IdPool(comptime T: type) type {
 }
 
 pub fn VirtualArray(comptime T: type) type {
-    // TODO better windows virtual alloc
     return struct {
         const Self = @This();
 
+        reservation: []align(std.mem.page_size) u8 = &[_]u8{},
+
         max_items: usize,
-        raw: [*]u8,
         items: [*]T,
 
         pub fn init(max_items: usize) !Self {
-            const objs_raw = if (max_items != 0) std.heap.page_allocator.rawAlloc(@sizeOf(T) * max_items, 0, 0).? else undefined;
-            return .{
+            var new = Self{
                 .max_items = max_items,
-                .raw = objs_raw,
-                .items = @alignCast(@ptrCast(objs_raw)),
+                .items = undefined,
             };
+
+            const max_size = @sizeOf(T) * max_items;
+
+            if (max_items != 0) {
+                switch (builtin.os.tag) {
+                    .windows => {
+                        const w = std.os.windows;
+                        new.reservation.ptr = @alignCast(@ptrCast(try w.VirtualAlloc(
+                            null,
+                            max_size,
+                            w.MEM_RESERVE | w.MEM_COMMIT,
+                            w.PAGE_READWRITE,
+                        )));
+                        new.reservation.len = max_size;
+                    },
+                    else => {
+                        const PROT = std.os.PROT;
+                        const MAP = std.os.MAP;
+                        new.reservation = try std.os.mmap(
+                            null,
+                            max_size,
+                            PROT.READ | PROT.WRITE,
+                            MAP.PRIVATE | MAP.ANONYMOUS | MAP.NORESERVE,
+                            -1,
+                            0,
+                        );
+                    },
+                }
+
+                new.items = @ptrCast(new.reservation.ptr);
+                std.debug.assert(std.mem.isAligned(@intFromPtr(new.items), @alignOf(T)));
+            }
+
+            return new;
         }
 
         pub fn deinit(self: *Self) void {
-            if (self.max_items == 0) return;
-            std.heap.page_allocator.rawFree(self.raw[0 .. @sizeOf(T) * self.max_items], 0, 0);
+            if (self.reservation.len > 0) {
+                switch (builtin.os.tag) {
+                    .windows => {
+                        const w = std.os.windows;
+                        std.os.windows.VirtualFree(self.reservation.ptr, 0, w.MEM_RELEASE);
+                    },
+                    else => {
+                        std.os.munmap(self.reservation);
+                    },
+                }
+            }
+            self.reservation = &[_]u8{};
+        }
+
+        pub fn committed(self: *Self) usize {
+            return self.reservation.len - self.uncommitted;
+        }
+
+        pub fn notifyAlloc(self: *Self, num_items: usize) !void {
+            _ = self;
+            _ = num_items;
         }
     };
 }
@@ -139,6 +191,7 @@ pub fn VirtualPool(comptime T: type) type {
             if (self.free_id.isEmpty()) {
                 if (is_new != null) is_new.?.* = true;
                 const idx = self.alocated_items.fetchAdd(1, .Release);
+                self.mem.notifyAlloc(1) catch undefined;
                 return &self.mem.items[idx];
             }
 

@@ -19,13 +19,8 @@ pub const AssetType = cdb.CdbTypeDecl(
 
 /// CDB type for folder
 pub const FolderType = cdb.CdbTypeDecl(
-    "ct_asset_folder",
-    enum(u32) {
-        Name = 0,
-        Description,
-        Tags,
-        Parent,
-    },
+    "ct_folder",
+    enum(u32) {},
 );
 
 /// CDB type for asset/folder tags
@@ -33,7 +28,6 @@ pub const TagType = cdb.CdbTypeDecl(
     "ct_tag",
     enum(u32) {
         Name = 0,
-        Description,
         Color,
     },
 );
@@ -206,6 +200,8 @@ pub const AssetDBAPI = struct {
     isAssetNameValid: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, folder: cdb.ObjId, type_hash: strid.StrId32, base_name: [:0]const u8) anyerror!bool,
 
     getAssetForObj: *const fn (obj: cdb.ObjId) ?cdb.ObjId,
+    getObjForAsset: *const fn (obj: cdb.ObjId) ?cdb.ObjId,
+    isAssetFolder: *const fn (obj: cdb.ObjId) bool,
     isProjectOpened: *const fn () bool,
     getFilePathForAsset: *const fn (asset: cdb.ObjId, tmp_allocator: std.mem.Allocator) anyerror![]u8,
     getPathForFolder: *const fn (asset: cdb.ObjId, tmp_allocator: std.mem.Allocator) anyerror![]u8,

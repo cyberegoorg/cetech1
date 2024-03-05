@@ -26,6 +26,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      
+      - name: Pull LFS
+        run: git lfs pull --include "Writerside/**/*"
 
       - name: Build Writerside docs using Docker
         uses: JetBrains/writerside-github-action@v4

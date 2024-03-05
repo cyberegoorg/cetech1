@@ -17,4 +17,5 @@ pub const SystemApi = struct {
     getPrimaryMonitor: *const fn () ?*Monitor,
     getMonitorVideoMode: *const fn (monitor: *Monitor) anyerror!*VideoMode,
     poolEvents: *const fn () void,
+    poolEventsWithTimeout: *const fn (timeout: f64) void,
 };

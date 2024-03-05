@@ -5,21 +5,25 @@
 > Currently, not all architectures are tested.
 > For tested platform check [GitHub Actions](https://github.com/cyberegoorg/cetech1/actions/workflows/test.yaml).
 > But you can still try to compile/run it on your arch.
-> Currently develop on `aarch64-macos`, `x86_64-macos` and SteamDeck `x86_64-linux` ;)
+> Currently develop on `aarch64-macos`, `x86_64-macos` and `SteamDeck`.
 > {style="note"}
 
-| \<ARCH\>         | Description |
-|------------------|-------------|
-| `x86_64-macos`   | Apple Intel |
-| `aarch64-macos`  | Apple Arm   |
-| `x86_64-linux`   | Linux       |
-| `aarch64-linux`  | Linux ARM   |
-| `x86_64-windows` | Windows     |
+| \<ARCH\>         | Description      |
+|------------------|------------------|
+| `x86_64-macos`   | Apple Intel      |
+| `aarch64-macos`  | Apple Arm        |
+| `x86_64-linux`   | Linux, SteamDeck |
+| `aarch64-linux`  | Linux ARM        |
+| `x86_64-windows` | Windows          |
+
+## Prerequisite
+ - [Git](https://git-scm.com/downloads)
+ - [Git-lfs](https://git-lfs.com)
 
 ## Clone
 
 <tabs>
-    <tab title="MacOS/Linux">
+    <tab title="MacOS/Linux/SteamDeck/Windows">
         <code-block lang="bash" src="getting-started/clone.sh"></code-block>
     </tab>
 </tabs>
@@ -29,6 +33,12 @@
 <tabs>
     <tab title="MacOS/Linux">
         <code-block lang="bash" src="getting-started/build.sh"></code-block>
+    </tab>
+    <tab title="SteamDeck">
+        <code-block lang="bash" src="getting-started/build_steamdeck.sh"></code-block>
+    </tab>
+    <tab title="Windows">
+        <code-block lang="bash" src="getting-started/build_windows.sh"></code-block>
     </tab>
 </tabs>
 
@@ -44,6 +54,12 @@
 <tabs>
     <tab title="MacOS/Linux">
         <code-block lang="bash" src="getting-started/run.sh"></code-block>
+    </tab>
+    <tab title="SteamDeck">
+        <code-block lang="bash" src="getting-started/run_steamdeck.sh"></code-block>
+    </tab>
+    <tab title="Windows">
+        <code-block lang="bash" src="getting-started/run_windows.sh"></code-block>
     </tab>
 </tabs>
 

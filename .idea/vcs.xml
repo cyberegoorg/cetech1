@@ -8,6 +8,7 @@
     <mapping directory="$PROJECT_DIR$/externals/shared/lib/zig-gamedev" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/externals/shared/lib/zig-uuid" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/externals/shared/tools/zls" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/tools/zls/src/tracy" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/zig" vcs="Git" />
   </component>
 </project>

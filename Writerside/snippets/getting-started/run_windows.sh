@@ -1,0 +1,1 @@
+zig-out/bin/cetech1_test.exe && zig-out/bin/cetech1.exe --asset-root tests/test_asset/

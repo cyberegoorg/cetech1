@@ -139,27 +139,18 @@ fn tabUi(inst: *editor.TabO) void {
             defer allocator.free(selected_objs);
 
             for (selected_objs) |obj| {
-                const selected_asset_r = tab_o.db.readObj(obj) orelse return;
-
                 if (!cetech1.assetdb.AssetType.isSameType(obj)) continue;
 
-                if (cetech1.assetdb.AssetType.readSubObj(&tab_o.db, selected_asset_r, .Object)) |asset_obj| {
-                    // Draw asset as tree root.
-                    const open = _editortree.cdbObjTreeNode(allocator, &tab_o.db, obj, true, false, false, false, .{ .multiselect = true });
+                // Draw asset_object
+                _editortree.cdbTreeView(allocator, &tab_o.db, obj, tab_o.inter_selection, .{
+                    .expand_object = true,
+                    .multiselect = true,
+                    .opened_obj = obj,
+                }) catch undefined;
 
-                    const selection_version = tab_o.db.getVersion(tab_o.inter_selection);
-                    if (_editorui.isItemActivated()) {
-                        _editorui.handleSelection(allocator, &tab_o.db, tab_o.inter_selection, obj, true) catch undefined;
-                    }
-                    if (open) {
-                        // Draw asset_object
-                        _editortree.cdbTreeView(allocator, &tab_o.db, asset_obj, tab_o.inter_selection, .{ .expand_object = true, .multiselect = true }) catch undefined;
-                        _editortree.cdbTreePop();
-                    }
-
-                    if (selection_version != tab_o.db.getVersion(tab_o.inter_selection)) {
-                        _editor.propagateSelection(&tab_o.db, tab_o.inter_selection);
-                    }
+                const selection_version = tab_o.db.getVersion(tab_o.inter_selection);
+                if (selection_version != tab_o.db.getVersion(tab_o.inter_selection)) {
+                    _editor.propagateSelection(&tab_o.db, tab_o.inter_selection);
                 }
             }
         }

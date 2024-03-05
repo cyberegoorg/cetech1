@@ -151,6 +151,7 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech
     const ui_aspect = db.getAspect(public.UiTreeAspect, obj.type_hash);
 
     if (ui_aspect) |aspect| {
+        //_ = aspect;
         aspect.ui_tree.?(&allocator, db.db, obj, selection, args);
         return;
     }
@@ -218,8 +219,8 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech
                 }
 
                 if (open) {
+                    defer api.cdbTreePop();
                     try cdbTreeView(allocator, db, subobj, selection, args);
-                    api.cdbTreePop();
                 }
             },
             //.SUBOBJECT_SET, .REFERENCE_SET => {
@@ -236,11 +237,13 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech
                 }
 
                 if (_editorui.beginPopupContextItem()) {
-                    try _editorui.objContextMenu(allocator, db, obj, prop_idx, null);
                     defer _editorui.endPopup();
+                    try _editorui.objContextMenu(allocator, db, obj, prop_idx, null);
                 }
 
                 if (open) {
+                    defer api.cdbTreePop();
+
                     // added
                     var set: ?[]const cetech1.cdb.ObjId = undefined;
                     if (prop_def.type == .REFERENCE_SET) {
@@ -316,6 +319,8 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech
                             const open_inset = _editorui.treeNodeFlags(label.?, .{ .leaf = true, .selected = _editorui.isSelected(db, selection, subobj) });
                             _editorui.popStyleColor(.{});
                             if (open_inset) {
+                                defer _editorui.treePop();
+
                                 if (_editorui.isItemActivated()) {
                                     try _editorui.handleSelection(allocator, db, selection, subobj, args.multiselect);
                                 }
@@ -326,13 +331,9 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech
                                         db.restoreDeletedInSet(obj_r, prop_idx, db.readObj(subobj).?);
                                     }
                                 }
-
-                                _editorui.treePop();
                             }
                         }
                     }
-
-                    api.cdbTreePop();
                 }
             },
 

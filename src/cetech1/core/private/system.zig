@@ -19,6 +19,7 @@ pub var api = public.SystemApi{
     .poolEvents = poolEvents,
     .getPrimaryMonitor = getPrimaryMonitor,
     .getMonitorVideoMode = getMonitorVideoMode,
+    .poolEventsWithTimeout = poolEventsWithTimeout,
 };
 
 var _allocator: std.mem.Allocator = undefined;
@@ -82,6 +83,13 @@ fn poolEvents() void {
     defer zone_ctx.End();
 
     zglfw.pollEvents();
+}
+
+fn poolEventsWithTimeout(timeout: f64) void {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
+    zglfw.waitEventsTimeout(timeout);
 }
 
 fn getPrimaryMonitor() ?*public.Monitor {

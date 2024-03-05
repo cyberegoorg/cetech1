@@ -330,7 +330,7 @@ pub const CdbDb = struct {
     }
 
     /// Commit writer changes
-    pub fn writeCommit(self: *Self, writer: *Obj) void {
+    pub fn writeCommit(self: *Self, writer: *Obj) !void {
         return self.cdbapi.writeCommitFn(self.db, writer);
     }
 
@@ -510,7 +510,7 @@ pub const CdbDb = struct {
     }
 
     // Get object parent.
-    pub fn getParent(self: *Self, obj: *Obj) ObjId {
+    pub fn getParent(self: *Self, obj: ObjId) ObjId {
         return self.cdbapi.getParentFn(self.db, obj);
     }
 
@@ -567,6 +567,14 @@ pub const CdbDb = struct {
         return self.cdbapi.getAllObjectByTypeFn(self.db, allocator, type_hash);
     }
 
+    pub fn hasTypeSet(self: *Self, type_hash: strid.StrId32) bool {
+        return self.cdbapi.hasTypeSetFn(self.db, type_hash);
+    }
+
+    pub fn hasTypeSubobject(self: *Self, type_hash: strid.StrId32) bool {
+        return self.cdbapi.hasTypeSubobjectFn(self.db, type_hash);
+    }
+
     db: *Db,
     cdbapi: *CdbAPI,
 };
@@ -621,10 +629,10 @@ pub const CdbAPI = struct {
     destroyObjectFn: *const fn (db: *Db, obj: ObjId) void,
     readObjFn: *const fn (db: *Db, obj: ObjId) ?*Obj,
     writeObjFn: *const fn (db: *Db, obj: ObjId) ?*Obj,
-    writeCommitFn: *const fn (db: *Db, writer: *Obj) void,
+    writeCommitFn: *const fn (db: *Db, writer: *Obj) anyerror!void,
     retargetWriteFn: *const fn (db_: *Db, writer: *Obj, obj: ObjId) anyerror!void,
     getPrototypeFn: *const fn (db_: *Db, obj: *Obj) ObjId,
-    getParentFn: *const fn (db_: *Db, obj: *Obj) ObjId,
+    getParentFn: *const fn (db_: *Db, obj: ObjId) ObjId,
     getVersionFn: *const fn (db_: *Db, obj: ObjId) u64,
     getReferencerSetFn: *const fn (db_: *Db, obj: ObjId, allocator: std.mem.Allocator) anyerror![]ObjId,
     getDefaultObjectFn: *const fn (db: *Db, type_hash: strid.StrId32) ?ObjId,
@@ -673,6 +681,9 @@ pub const CdbAPI = struct {
 
     gcFn: *const fn (db: *Db, tmp_allocator: std.mem.Allocator) anyerror!void,
     dump: *const fn (db: *Db) anyerror!void,
+
+    hasTypeSetFn: *const fn (db: *Db, type_hash: strid.StrId32) bool,
+    hasTypeSubobjectFn: *const fn (db: *Db, type_hash: strid.StrId32) bool,
     //#endregion
 };
 

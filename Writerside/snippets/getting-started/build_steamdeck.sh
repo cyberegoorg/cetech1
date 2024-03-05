@@ -1,0 +1,1 @@
+zig/bin/<ARCH>/zig build -Dnfd-zenity=true

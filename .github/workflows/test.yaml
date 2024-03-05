@@ -138,7 +138,7 @@ jobs:
           maximum-size: 16GB
           disk-root: "C:"
 
-      - name: Run test with kcov
+      - name: Run test
         run: zig-out/bin/cetech1_test.exe
 
       - name: Test headless standalone

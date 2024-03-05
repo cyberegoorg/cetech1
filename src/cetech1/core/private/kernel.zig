@@ -378,7 +378,10 @@ pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32) !void
 
         // If asset root is set open it.
         if (asset_root.len != 0 or _next_asset_root != null) {
-            try assetdb.api.openAssetRootFolder(if (_next_asset_root) |root| root else asset_root, _asset_profiler_allocator.allocator());
+            try assetdb.api.openAssetRootFolder(
+                if (_next_asset_root) |root| root else asset_root,
+                _asset_profiler_allocator.allocator(),
+            );
             try cdb.api.dump(_main_db.db);
             _next_asset_root = null;
         }
@@ -386,6 +389,7 @@ pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32) !void
         // Create update graph.
         try generateTaskUpdateChain();
         var kernel_task_update_gen = apidb.api.getInterafcesVersion(public.KernelTaskUpdateI);
+        var kernel_task_gen = apidb.api.getInterafcesVersion(public.KernelTaskI);
 
         // Main window
         if (!headless) {
@@ -436,13 +440,18 @@ pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32) !void
                 }
             }
 
-            system.api.poolEvents();
             if (main_window != null) {
                 editorui.api.newFrame();
             }
 
-            // Do hard work.
-            try updateKernelTasks(kernel_tick, dt);
+            system.api.poolEvents();
+
+            // Any public.KernelTaskI iface changed? (add/remove)?
+            const new_kernel_gen = apidb.api.getInterafcesVersion(public.KernelTaskI);
+            if (new_kernel_gen != kernel_task_gen) {
+                try generateKernelTaskChain();
+                kernel_task_gen = new_kernel_gen;
+            }
 
             // Any public.KernelTaskUpdateI iface changed? (add/remove)?
             const new_kernel_update_gen = apidb.api.getInterafcesVersion(public.KernelTaskUpdateI);
@@ -450,6 +459,9 @@ pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32) !void
                 try generateTaskUpdateChain();
                 kernel_task_update_gen = new_kernel_update_gen;
             }
+
+            // Do hard work.
+            try doKernelUpdateTasks(kernel_tick, dt);
 
             // TODO: Render graph
             if (gpu_context) |ctx| {
@@ -517,7 +529,16 @@ fn sleepIfNeed(last_call: i64, max_rate: u32) !void {
             const t = try task.api.schedule(.none, SleepTask{ .sleep_time = sleep_time });
             try wait_tasks.append(t);
         }
-        std.time.sleep(sleep_time);
+
+        // Sleep but pool events
+        const sleep_begin = std.time.milliTimestamp();
+        while (true) {
+            const sleep_time_s: f32 = @as(f32, @floatFromInt(sleep_time)) / std.time.ns_per_s;
+            const sleep_delta: f32 = @as(f32, @floatFromInt(std.time.milliTimestamp() - sleep_begin)) / std.time.ms_per_s;
+            if (sleep_delta > sleep_time_s) break;
+            system.api.poolEventsWithTimeout(sleep_time_s - sleep_delta);
+        }
+
         task.api.wait(try task.api.combine(wait_tasks.items));
     }
 }
@@ -598,7 +619,7 @@ fn generateTaskUpdateChain() !void {
 
 const UpdateFrameName = "UpdateFrame";
 
-fn updateKernelTasks(kernel_tick: u64, dt: i64) !void {
+fn doKernelUpdateTasks(kernel_tick: u64, dt: i64) !void {
     var fce_zone_ctx = profiler.ztracy.Zone(@src());
     defer fce_zone_ctx.End();
 
@@ -623,8 +644,6 @@ fn updateKernelTasks(kernel_tick: u64, dt: i64) !void {
         // defer phase_zone_ctx.End();
 
         for (phase.update_chain.items) |update_handler| {
-            //update_handler.update.?(_main_db.db, kernel_tick, @floatFromInt(dt));
-
             const KernelTask = struct {
                 update_handler: *public.KernelTaskUpdateI,
                 kernel_tick: u64,
@@ -699,7 +718,6 @@ fn updateKernelTasks(kernel_tick: u64, dt: i64) !void {
 }
 
 fn dumpKernelUpdatePhaseTree() !void {
-    //try dumpKernelUpdatePhaseTreeDOT();
     try dumpKernelUpdatePhaseTreeMD();
 
     log.api.info(MODULE_NAME, "UPDATE PHASE", .{});
@@ -730,7 +748,6 @@ fn dumpKernelUpdatePhaseTree() !void {
             }
 
             const vert_line = if (!is_last) " " else " ";
-            //const vert_line = if (!is_last) "|" else " ";
 
             if (depends_line == null) {
                 log.api.info(MODULE_NAME, " {s}   +- [{s}] TASK: {s}", .{ vert_line, tags, update_fce.name });
@@ -741,59 +758,6 @@ fn dumpKernelUpdatePhaseTree() !void {
         }
     }
 }
-
-// fn dumpKernelUpdatePhaseTreeDOT() !void {
-//     var path_buff: [1024]u8 = undefined;
-//     var file_path_buff: [1024]u8 = undefined;
-//     // only if asset root is set.
-//     var path = try assetdb.api.getTmpPath(&path_buff);
-//     if (path == null) return;
-//     path = try std.fmt.bufPrint(&file_path_buff, "{s}/" ++ "kernel_task_graph.dot", .{path.?});
-
-//     var dot_file = try std.fs.createFileAbsolute(path.?, .{});
-//     defer dot_file.close();
-
-//     // write header
-//     var writer = dot_file.writer();
-//     try writer.print("digraph kernel_task_graph {{\n", .{});
-
-//     // write nodes
-//     try writer.print("    node [shape = box;];\n", .{});
-
-//     var prev_phase: ?*Phase = null;
-
-//     for (_phases_bag.output.keys()) |phase_hash| {
-//         var phase = _phase_map.getPtr(phase_hash).?;
-
-//         try writer.print("    \"{s}\" [shape = diamond];\n", .{phase.name});
-
-//         if (prev_phase != null) {
-//             try writer.print("    \"{s}\" -> \"{s}\";\n", .{ prev_phase.?.name, phase.name });
-//         } else {
-//             try writer.print("    \"{s}\";\n", .{phase.name});
-//         }
-
-//         prev_phase = phase;
-
-//         for (phase.update_chain.items) |update_fce| {
-//             const task_name_strid = cetech1.strid.strId64(cetech1.fromCstr(update_fce.name));
-//             const dep_arr = phase.update_bag.dependList(task_name_strid);
-//             const is_root = dep_arr == null;
-//             var iface = _iface_map.getPtr(task_name_strid).?;
-//             if (!is_root) {
-//                 for (dep_arr.?) |dep_id| {
-//                     var dep_iface = _iface_map.getPtr(dep_id).?;
-//                     try writer.print("    \"{s}\" -> \"{s}\";\n", .{ dep_iface.*.name, iface.*.name });
-//                 }
-//             } else {
-//                 try writer.print("    \"{s}\" -> \"{s}\";\n", .{ phase.name, iface.*.name });
-//             }
-//         }
-//     }
-
-//     // write footer
-//     try writer.print("}}\n", .{});
-// }
 
 fn dumpKernelUpdatePhaseTreeMD() !void {
     var path_buff: [1024]u8 = undefined;

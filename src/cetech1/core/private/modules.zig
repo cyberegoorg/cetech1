@@ -95,7 +95,13 @@ pub fn loadAll() !void {
         var alloc_item = _modules_allocator_map.getPtr(cetech1.fromCstr(module_desc.name));
         if (alloc_item == null) {
             var item_ptr = try _allocator.create(AllocatorItem);
-            item_ptr.* = AllocatorItem{ .tracy = cetech1.profiler.AllocatorProfiler.init(&profiler.api, _allocator, module_desc.name[0..std.mem.len(module_desc.name) :0]) };
+            item_ptr.* = AllocatorItem{
+                .tracy = cetech1.profiler.AllocatorProfiler.init(
+                    &profiler.api,
+                    _allocator,
+                    module_desc.name[0..std.mem.len(module_desc.name) :0],
+                ),
+            };
             item_ptr.*.allocator = item_ptr.tracy.allocator();
 
             try _modules_allocator_map.put(cetech1.fromCstr(module_desc.name), item_ptr);
@@ -252,15 +258,15 @@ pub fn reloadAllIfNeeded() !bool {
                 continue;
             }
 
+            var v_ptr = _dyn_modules_map.getPtr(k).?;
+            v_ptr.close();
+
             //load new
             var new_dyn_lib_info = _loadDynLib(k) catch continue;
             if (0 == new_dyn_lib_info.symbol(&apidb.apidb_global_c, @ptrCast(&alloc_item.*.allocator), 1, 1)) {
                 log.api.err(MODULE_NAME, "Problem with load new module {s}\n", .{k});
                 continue;
             }
-
-            var v_ptr = _dyn_modules_map.getPtr(k).?;
-            v_ptr.close();
 
             _allocator.free(new_dyn_lib_info.full_path);
             new_dyn_lib_info.full_path = v.full_path;

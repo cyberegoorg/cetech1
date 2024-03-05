@@ -1,8 +1,0 @@
-{
-  "__version": "0.1.0",
-  "__type_name": "ct_asset_folder",
-  "__uuid": "018e0348-b359-7407-80e3-2a2d4571c7e1",
-  "name": "tags",
-  "description": "Folder for all tags",
-  "parent": "ct_asset_folder:018b616e-e03b-713c-9f73-af2d826dfe63"
-}

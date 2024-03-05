@@ -30,7 +30,7 @@ pub fn testDeinit() void {
 
 pub fn expectGCStats(db: cetech1.cdb.CdbDb, alocated_objids: u32, free_object: u32) !void {
     const true_db = cdb.toDbFromDbT(db.db);
-    try std.testing.expectEqual(alocated_objids, true_db.obj_alocated);
+    try std.testing.expectEqual(alocated_objids, true_db.objids_alocated);
     try std.testing.expectEqual(@as(u32, free_object), true_db.free_objects);
 }
 
@@ -307,8 +307,8 @@ test "cdb: Should create object from default obj" {
 
     {
         const w = db.writeObj(obj1).?;
-        defer db.writeCommit(w);
         db.setValue(u64, w, 0, 20);
+        try db.writeCommit(w);
     }
 
     db.setDefaultObject(obj1);
@@ -352,16 +352,17 @@ test "cdb: Should clone object" {
         const subobj1_w = db.writeObj(sub_obj1).?;
         const subobj2_w = db.writeObj(sub_obj2).?;
         const subobj3_w = db.writeObj(sub_obj3).?;
-        defer db.writeCommit(w);
-        defer db.writeCommit(subobj1_w);
-        defer db.writeCommit(subobj2_w);
-        defer db.writeCommit(subobj3_w);
 
         db.setValue(u64, w, 0, 10);
         try db.setSubObj(w, 1, subobj1_w);
 
         try db.addSubObjToSet(w, 2, &.{ subobj2_w, subobj3_w });
         try db.addRefToSet(w, 3, &.{ ref_obj1, ref_obj2 });
+
+        try db.writeCommit(w);
+        try db.writeCommit(subobj1_w);
+        try db.writeCommit(subobj2_w);
+        try db.writeCommit(subobj3_w);
     }
 
     const obj2 = try db.cloneObject(obj1);
@@ -377,8 +378,8 @@ test "cdb: Should clone object" {
 
     {
         const w = db.writeObj(obj2).?;
-        defer db.writeCommit(w);
         db.setValue(u64, w, 0, 20);
+        try db.writeCommit(w);
     }
 
     try std.testing.expectEqual(@as(u64, 10), db.readValue(u64, db.readObj(obj1).?, 0));
@@ -432,16 +433,16 @@ test "cdb: Should create retarget write" {
 
     var obj1_w = db.writeObj(obj1).?;
     db.setValue(u64, obj1_w, 0, 11);
-    db.writeCommit(obj1_w);
+    try db.writeCommit(obj1_w);
 
     const obj2_w = db.writeObj(obj2).?;
     db.setValue(u64, obj2_w, 0, 22);
-    db.writeCommit(obj2_w);
+    try db.writeCommit(obj2_w);
 
     obj1_w = db.writeObj(obj1).?;
     db.setValue(u64, obj1_w, 0, 42);
     try db.retargetWrite(obj1_w, obj2);
-    db.writeCommit(obj1_w);
+    try db.writeCommit(obj1_w);
 
     const value = db.readValue(u64, db.readObj(obj2).?, 0);
 
@@ -472,8 +473,8 @@ fn testNumericValues(
 
     {
         const writer = db.writeObj(obj1).?;
-        defer db.writeCommit(writer);
         db.setValue(T, writer, 0, 1);
+        try db.writeCommit(writer);
     }
 
     obj_reader = db.readObj(obj1);
@@ -487,8 +488,8 @@ fn testNumericValues(
 
     {
         const writer = db.writeObj(obj1).?;
-        defer db.writeCommit(writer);
         db.setValue(T, writer, 1, 2);
+        try db.writeCommit(writer);
     }
 
     obj_reader = db.readObj(obj1);
@@ -618,9 +619,9 @@ test "cdb: Should read/write string property " {
 
     {
         const writer = db.writeObj(obj1).?;
-        defer db.writeCommit(writer);
         const str = "FOO";
         try db.setStr(writer, 0, str);
+        try db.writeCommit(writer);
     }
 
     obj_reader = db.readObj(obj1);
@@ -661,8 +662,8 @@ test "cdb: Should read/write bool property " {
 
     {
         const writer = db.writeObj(obj1).?;
-        defer db.writeCommit(writer);
         db.setValue(bool, writer, 0, true);
+        try db.writeCommit(writer);
     }
 
     obj_reader = db.readObj(obj1);
@@ -699,8 +700,8 @@ test "cdb: Should get object version" {
 
     {
         const writer = db.writeObj(obj1).?;
-        defer db.writeCommit(writer);
         db.setValue(bool, writer, 0, true);
+        try db.writeCommit(writer);
     }
 
     try std.testing.expect(init_version != db.getVersion(obj1));
@@ -742,12 +743,13 @@ test "cdb: Should read/write subobject property " {
 
     {
         const writer = db.writeObj(obj1).?;
-        defer db.writeCommit(writer);
 
         const sub_writer = db.writeObj(sub_obj1).?;
-        defer db.writeCommit(sub_writer);
 
         try db.setSubObj(writer, 0, sub_writer);
+
+        try db.writeCommit(sub_writer);
+        try db.writeCommit(writer);
     }
 
     obj_reader = db.readObj(obj1);
@@ -797,12 +799,13 @@ test "cdb: Should delete subobject" {
 
     {
         const writer = db.writeObj(obj1).?;
-        defer db.writeCommit(writer);
 
         const sub_writer = db.writeObj(sub_obj1).?;
-        defer db.writeCommit(sub_writer);
 
         try db.setSubObj(writer, 0, sub_writer);
+
+        try db.writeCommit(sub_writer);
+        try db.writeCommit(writer);
     }
 
     // Test if destroy subobjects set parent property to 0
@@ -843,15 +846,14 @@ test "cdb: Should read/write subobj set property " {
 
     {
         const writer = db.writeObj(obj1).?;
-        defer db.writeCommit(writer);
-
         const sub_obj1_writer = db.writeObj(sub_obj1).?;
-        defer db.writeCommit(sub_obj1_writer);
-
         const sub_obj2_writer = db.writeObj(sub_obj2).?;
-        defer db.writeCommit(sub_obj2_writer);
 
         try db.addSubObjToSet(writer, 0, &[_]*public.Obj{ sub_obj1_writer, sub_obj2_writer });
+
+        try db.writeCommit(sub_obj2_writer);
+        try db.writeCommit(sub_obj1_writer);
+        try db.writeCommit(writer);
     }
 
     obj_reader = db.readObj(obj1);
@@ -875,8 +877,8 @@ test "cdb: Should read/write subobj set property " {
 
         try db.removeFromSubObjSet(writer, 0, sub_obj1_writer);
 
-        db.writeCommit(sub_obj1_writer);
-        db.writeCommit(writer);
+        try db.writeCommit(sub_obj1_writer);
+        try db.writeCommit(writer);
     }
 
     obj_reader = db.readObj(obj1);
@@ -939,8 +941,8 @@ test "cdb: Should read/write reference property" {
 
     {
         const writer = db.writeObj(obj1).?;
-        defer db.writeCommit(writer);
         try db.setRef(writer, 0, ref_obj1);
+        try db.writeCommit(writer);
     }
 
     obj_reader = db.readObj(obj1);
@@ -1013,11 +1015,11 @@ test "cdb: Should read/write reference set property " {
 
     {
         const writer = db.writeObj(obj1).?;
-        defer db.writeCommit(writer);
         try db.addRefToSet(writer, 0, &[_]public.ObjId{ ref_obj1, ref_obj2 });
 
         // try add same items
         try db.addRefToSet(writer, 0, &[_]public.ObjId{ ref_obj1, ref_obj2 });
+        try db.writeCommit(writer);
     }
 
     obj_reader = db.readObj(obj1);
@@ -1051,7 +1053,7 @@ test "cdb: Should read/write reference set property " {
 
     const writer = db.writeObj(obj1).?;
     try db.removeFromRefSet(writer, 0, ref_obj1);
-    db.writeCommit(writer);
+    try db.writeCommit(writer);
 
     obj_reader = db.readObj(obj1);
     try std.testing.expect(obj_reader != null);
@@ -1129,7 +1131,7 @@ test "cdb: Should read/write blob property " {
         blob.?[idx] = 1;
     }
 
-    db.writeCommit(writer);
+    try db.writeCommit(writer);
 
     const blob1 = db.readBlob(db.readObj(obj1).?, 0);
     try std.testing.expectEqualSlices(u8, &[_]u8{ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 }, blob1);
@@ -1152,7 +1154,7 @@ test "cdb: Should use prototype" {
     const obj1 = try db.createObject(type_hash);
     var obj1_w = db.writeObj(obj1).?;
     db.setValue(f64, obj1_w, 0, 1);
-    db.writeCommit(obj1_w);
+    try db.writeCommit(obj1_w);
 
     try std.testing.expectEqual(public.OBJID_ZERO, db.getPrototype(db.readObj(obj1).?));
 
@@ -1162,7 +1164,7 @@ test "cdb: Should use prototype" {
 
     obj1_w = db.writeObj(obj1).?;
     db.setValue(f64, obj1_w, 0, 2);
-    db.writeCommit(obj1_w);
+    try db.writeCommit(obj1_w);
 
     try std.testing.expect(!db.isPropertyOverrided(db.readObj(obj2).?, 0));
 
@@ -1174,7 +1176,7 @@ test "cdb: Should use prototype" {
     // if change property on instance we read from this not prototypes
     var obj2_w = db.writeObj(obj2).?;
     db.setValue(f64, obj2_w, 0, 3);
-    db.writeCommit(obj2_w);
+    try db.writeCommit(obj2_w);
 
     try std.testing.expect(db.isPropertyOverrided(db.readObj(obj2).?, 0));
 
@@ -1186,7 +1188,7 @@ test "cdb: Should use prototype" {
     // is possible to reset override flag.
     obj2_w = db.writeObj(obj2).?;
     db.resetPropertyOveride(obj2_w, 0);
-    db.writeCommit(obj2_w);
+    try db.writeCommit(obj2_w);
 
     try std.testing.expectEqual(
         @as(f64, 2),
@@ -1220,7 +1222,7 @@ test "cdb: Should use prototype on sets" {
 
     const obj1_w = db.writeObj(obj1).?;
     try db.addRefToSet(obj1_w, 0, &[_]public.ObjId{ obj2, obj3 });
-    db.writeCommit(obj1_w);
+    try db.writeCommit(obj1_w);
 
     const new_obj = try db.createObjectFromPrototype(obj1);
 
@@ -1237,7 +1239,7 @@ test "cdb: Should use prototype on sets" {
     // Remove one object fro new set
     var new_obj1_w = db.writeObj(new_obj).?;
     try db.removeFromRefSet(new_obj1_w, 0, obj2);
-    db.writeCommit(new_obj1_w);
+    try db.writeCommit(new_obj1_w);
 
     set = db.readRefSet(db.readObj(new_obj).?, 0, std.testing.allocator);
     try std.testing.expect(set != null);
@@ -1251,7 +1253,7 @@ test "cdb: Should use prototype on sets" {
     // Remove one object fro new set
     new_obj1_w = db.writeObj(new_obj).?;
     try db.removeFromRefSet(new_obj1_w, 0, obj3);
-    db.writeCommit(new_obj1_w);
+    try db.writeCommit(new_obj1_w);
 
     set = db.readRefSet(db.readObj(new_obj).?, 0, std.testing.allocator);
     try std.testing.expect(set != null);
@@ -1266,7 +1268,7 @@ test "cdb: Should use prototype on sets" {
     const obj4 = try db.createObject(type_hash);
     new_obj1_w = db.writeObj(new_obj).?;
     try db.addRefToSet(new_obj1_w, 0, &[_]public.ObjId{obj4});
-    db.writeCommit(new_obj1_w);
+    try db.writeCommit(new_obj1_w);
 
     // Instance see only obj4
     set = db.readRefSet(db.readObj(new_obj).?, 0, std.testing.allocator);
@@ -1326,8 +1328,8 @@ test "cdb: Should instantiate subobject" {
     const sub_obj1_w = db.writeObj(sub_obj1).?;
     db.setValue(u64, sub_obj1_w, 0, 10);
     try db.setSubObj(obj1_w, 0, sub_obj1_w);
-    db.writeCommit(sub_obj1_w);
-    db.writeCommit(obj1_w);
+    try db.writeCommit(sub_obj1_w);
+    try db.writeCommit(obj1_w);
 
     const obj2 = try db.createObjectFromPrototype(obj1);
     var obj2_sub = db.readSubObj(db.readObj(obj2).?, 0).?;
@@ -1339,14 +1341,14 @@ test "cdb: Should instantiate subobject" {
 
     const obj2_w = db.writeObj(obj2).?;
     try db.instantiateSubObj(obj2_w, 0);
-    db.writeCommit(obj2_w);
+    try db.writeCommit(obj2_w);
 
     try std.testing.expect(db.isPropertyOverrided(db.readObj(obj2).?, 0));
 
     obj2_sub = db.readSubObj(db.readObj(obj2).?, 0).?;
     const sub_obj2_w = db.writeObj(obj2_sub).?;
     db.setValue(u64, sub_obj2_w, 0, 20);
-    db.writeCommit(sub_obj2_w);
+    try db.writeCommit(sub_obj2_w);
 
     try std.testing.expectEqual(
         @as(u64, 10),
@@ -1421,8 +1423,8 @@ test "cdb: Should specify type_hash for ref/subobj base properties" {
     try std.testing.expect(set.?.len == 0);
     std.testing.allocator.free(set.?);
 
-    db.writeCommit(sub_obj2_w);
-    db.writeCommit(obj1_w);
+    try db.writeCommit(sub_obj2_w);
+    try db.writeCommit(obj1_w);
 
     db.destroyObject(obj1);
     db.destroyObject(sub_obj1);
@@ -1485,7 +1487,7 @@ fn stressTest(comptime task_count: u32, task_based: bool) !void {
     var true_db = cdb.toDbFromDbT(db.db);
     const storage = true_db.getTypeStorage(type_hash).?;
     try std.testing.expectEqual(@as(u32, task_count + 1), storage.objid_pool.count.raw);
-    try std.testing.expectEqual(@as(u32, task_count * 3), true_db.writers_count.raw);
+    try std.testing.expectEqual(@as(u32, task_count * 3), true_db.writers_created_count.raw);
     try std.testing.expectEqual(@as(u32, task_count * 3), true_db.write_commit_count.raw);
 
     db.destroyObject(ref_obj1);

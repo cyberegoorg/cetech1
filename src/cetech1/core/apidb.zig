@@ -123,7 +123,7 @@ pub const ApiDbAPI = struct {
     // Get version for given interface.
     // Version is number that is increment every time is interface implementation added or removed
     pub inline fn getInterafcesVersion(self: Self, comptime T: type) u64 {
-        return self.getInterafcesVersionFn(_sanitizeApiName(T));
+        return self.getInterafcesVersionFn(T.c_name);
     }
 
     //#region Pointers to implementation.

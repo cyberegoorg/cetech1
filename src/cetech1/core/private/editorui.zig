@@ -149,7 +149,6 @@ fn clearSelection(
     const r = db.readObj(selection).?;
 
     const w = db.writeObj(selection).?;
-    defer db.writeCommit(w);
 
     // TODO: clear to cdb
     if (public.ObjSelectionType.readRefSet(db, r, .Selection, allocator)) |set| {
@@ -158,6 +157,8 @@ fn clearSelection(
             try public.ObjSelectionType.removeFromRefSet(db, w, .Selection, ref);
         }
     }
+
+    try db.writeCommit(w);
 }
 
 fn objContextMenu(
@@ -181,8 +182,8 @@ fn objContextMenu(
             if (can_inisiate) {
                 if (api.menuItem(public.Icons.Add ++ "  " ++ "Inisiated", .{})) {
                     const w = db.writeObj(obj).?;
-                    defer db.writeCommit(w);
                     _ = try db.instantiateSubObjFromSet(w, pidx, set_obj);
+                    try db.writeCommit(w);
                 }
 
                 api.separator();
@@ -193,14 +194,15 @@ fn objContextMenu(
                 defer api.popStyleColor(.{});
                 if (api.menuItem(public.Icons.Remove ++ "  " ++ "Remove", .{})) {
                     const w = db.writeObj(obj).?;
-                    defer db.writeCommit(w);
                     if (prop_def.type == .REFERENCE_SET) {
                         try db.removeFromRefSet(w, pidx, set_obj);
                     } else {
                         const subobj_w = db.writeObj(set_obj).?;
-                        defer db.writeCommit(subobj_w);
                         try db.removeFromSubObjSet(w, pidx, subobj_w);
+                        try db.writeCommit(subobj_w);
                     }
+
+                    try db.writeCommit(w);
                 }
             }
         } else {
@@ -222,13 +224,14 @@ fn objContextMenu(
                             if (prop_def.type_hash.id != 0) {
                                 if (api.menuItem(public.Icons.Add ++ "  " ++ "Add new", .{})) {
                                     const w = db.writeObj(obj).?;
-                                    defer db.writeCommit(w);
 
                                     const new_obj = try db.createObject(prop_def.type_hash);
                                     const new_obj_w = db.writeObj(new_obj).?;
-                                    defer db.writeCommit(new_obj_w);
 
                                     try db.addSubObjToSet(w, pidx, &.{new_obj_w});
+
+                                    try db.writeCommit(new_obj_w);
+                                    try db.writeCommit(w);
                                 }
                             }
                         }
@@ -242,13 +245,14 @@ fn objContextMenu(
                     if (prop_def.type_hash.id != 0) {
                         if (api.menuItem(public.Icons.Add ++ "  " ++ "Add new", .{})) {
                             const w = db.writeObj(obj).?;
-                            defer db.writeCommit(w);
 
                             const new_obj = try db.createObject(prop_def.type_hash);
                             const new_obj_w = db.writeObj(new_obj).?;
-                            defer db.writeCommit(new_obj_w);
 
                             try db.setSubObj(w, pidx, new_obj_w);
+
+                            try db.writeCommit(new_obj_w);
+                            try db.writeCommit(w);
                         }
                     }
                 }
@@ -298,16 +302,28 @@ fn buffFormatObjLabel(allocator: std.mem.Allocator, buff: [:0]u8, db: *cetech1.c
         } else {
             const asset_obj = assetdb.api.getAssetForObj(obj).?;
             const obj_r = db.readObj(asset_obj).?;
-            const asset_name = cetech1.assetdb.AssetType.readStr(db, obj_r, .Name) orelse "No NAME =()";
-            const type_name = db.getTypeName(asset_obj.type_hash).?;
-            name = std.fmt.allocPrintZ(
-                allocator,
-                "{s}.{s}",
-                .{
-                    asset_name,
-                    type_name,
-                },
-            ) catch "";
+
+            if (assetdb.api.isAssetFolder(obj)) {
+                const asset_name = cetech1.assetdb.AssetType.readStr(db, obj_r, .Name) orelse "ROOT";
+                name = std.fmt.allocPrintZ(
+                    allocator,
+                    "{s}",
+                    .{
+                        asset_name,
+                    },
+                ) catch "";
+            } else {
+                const asset_name = cetech1.assetdb.AssetType.readStr(db, obj_r, .Name) orelse "No NAME =()";
+                const type_name = db.getTypeName(asset_obj.type_hash).?;
+                name = std.fmt.allocPrintZ(
+                    allocator,
+                    "{s}.{s}",
+                    .{
+                        asset_name,
+                        type_name,
+                    },
+                ) catch "";
+            }
         }
 
         if (aspect.ui_icons) |icons| {
@@ -621,8 +637,8 @@ fn inputU64(label: [:0]const u8, args: public.InputScalarGen(u64)) bool {
 
 fn removeFromSelection(db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) !void {
     const w = db.writeObj(selection).?;
-    defer db.writeCommit(w);
     try public.ObjSelectionType.removeFromRefSet(db, w, .Selection, obj);
+    try db.writeCommit(w);
 }
 
 fn handleSelection(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId, multiselect_enabled: bool) !void {
@@ -648,16 +664,15 @@ fn isSelected(db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId, obj: cetech1
 
 fn addToSelection(db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) !void {
     const w = db.writeObj(selection).?;
-    defer db.writeCommit(w);
 
     try public.ObjSelectionType.addRefToSet(db, w, .Selection, &.{obj});
+    try db.writeCommit(w);
 }
 
 fn setSelection(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) !void {
     const r = db.readObj(selection).?;
 
     const w = db.writeObj(selection).?;
-    defer db.writeCommit(w);
 
     // TODO: clear to cdb
     if (public.ObjSelectionType.readRefSet(db, r, .Selection, allocator)) |set| {
@@ -667,6 +682,8 @@ fn setSelection(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection:
         }
     }
     try public.ObjSelectionType.addRefToSet(db, w, .Selection, &.{obj});
+
+    try db.writeCommit(w);
 }
 
 fn selectedCount(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId) u32 {

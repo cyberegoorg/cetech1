@@ -59,6 +59,7 @@ var folder_visual_aspect = cetech1.editorui.UiVisualAspect.implement(
     null,
     folderIconUIVisalAspect,
     null,
+    null,
 );
 fn folderIconUIVisalAspect(
     allocator: std.mem.Allocator,

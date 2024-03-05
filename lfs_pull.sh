@@ -6,6 +6,7 @@ set -e
 #export GIT_TRACE=1
 
 cd "$(dirname "$0")"
+git lfs pull --include "Writerside/images/**/*"
 
 # LFS for zig-gamedev
 cd externals/shared/lib/zig-gamedev

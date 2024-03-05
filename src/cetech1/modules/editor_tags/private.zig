@@ -104,8 +104,8 @@ fn tagsInput(
             any_tag_set = true;
             if (tagButton(db, tag, true)) {
                 const obj_w = db.writeObj(obj).?;
-                defer db.writeCommit(obj_w);
                 try db.removeFromRefSet(obj_w, prop_idx, tag);
+                try db.writeCommit(obj_w);
             }
         }
     }
@@ -118,9 +118,9 @@ fn tagsInput(
                 if (db.isInSet(obj_r, prop_idx, tag)) continue;
                 if (tagButton(db, tag, true)) {
                     const obj_w = db.writeObj(obj).?;
-                    defer db.writeCommit(obj_w);
                     try db.addRefToSet(obj_w, prop_idx, &.{tag});
                     _editorui.closeCurrentPopup();
+                    try db.writeCommit(obj_w);
                 }
             }
         }
@@ -153,6 +153,11 @@ fn createFooAssetMenuItemCreate(
         "NewTag",
     );
     const new_obj = try cetech1.assetdb.TagType.createObject(&db);
+    {
+        const w = db.writeObj(new_obj).?;
+        try cetech1.assetdb.TagType.setStr(&db, w, .Name, name);
+        try db.writeCommit(w);
+    }
 
     _ = _assetdb.createAsset(name, folder, new_obj);
 }
@@ -189,7 +194,9 @@ var tag_visual_aspect = editorui.UiVisualAspect.implement(
     tagNameUIVisalAspect,
     tagIconUIVisalAspect,
     tagColorUIVisalAspect,
+    null,
 );
+
 fn tagNameUIVisalAspect(
     allocator: std.mem.Allocator,
     dbc: *cetech1.cdb.Db,
@@ -266,13 +273,6 @@ fn cdbCreateTypes(db_: *cetech1.cdb.Db) !void {
         &db,
         editorui.UiVisualAspect,
         _g.tag_visual_aspect,
-    );
-
-    try cetech1.assetdb.FolderType.addPropertyAspect(
-        &db,
-        editorui.UiEmbedPropertyAspect,
-        .Tags,
-        _g.tag_prop_aspect,
     );
 
     try cetech1.assetdb.AssetType.addPropertyAspect(

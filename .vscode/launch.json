@@ -13,6 +13,17 @@
             "cwd": "${workspaceFolder}"
         },
         {
+            "type": "cppvsdbg",
+            "request": "launch",
+            "name": "CeTech1.exe",
+            "program": "${workspaceFolder}/zig-out/bin/cetech1",
+            "args": [
+                "--asset-root",
+                "tests/test_asset/"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
             "type": "lldb",
             "request": "launch",
             "name": "CeTech1 no asset root",
@@ -52,6 +63,14 @@
             "request": "launch",
             "name": "CeTech1 Tests",
             "program": "${workspaceFolder}/zig-out/bin/cetech1_test",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "cppvsdbg",
+            "request": "launch",
+            "name": "CeTech1.exe Tests ",
+            "program": "${workspaceFolder}/zig-out/bin/cetech1_test.exe",
             "args": [],
             "cwd": "${workspaceFolder}"
         },

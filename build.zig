@@ -32,7 +32,11 @@ pub fn build(b: *std.Build) !void {
         .options = .{ .enable_nfd = enable_nfd, .with_zenity = nfd_zenity },
     });
 
-    const mach_gamemode_module = b.dependency("mach_gamemode", .{ .target = target, .optimize = optimize }).module("mach-gamemode");
+    // Mach gamemode
+    const mach_gamemode_module = b.dependency(
+        "mach_gamemode",
+        .{ .target = target, .optimize = optimize },
+    ).module("mach-gamemode");
 
     // Tracy
     const ztracy_pkg = ztracy.package(b, target, optimize, .{
@@ -129,10 +133,11 @@ pub fn build(b: *std.Build) !void {
     // cetech1 core modules
 
     // Foo module is Zig based module and is used as sample and test
-    const module_foo = try addCetechModule(
+    const module_foo = try createCetechModule(
         b,
         "foo",
         "src/cetech1/modules/examples/foo/private.zig",
+        .{ .major = 0, .minor = 1, .patch = 0 },
         target,
         optimize,
         cetech1_module,
@@ -140,14 +145,16 @@ pub fn build(b: *std.Build) !void {
     _ = module_foo;
 
     // Bar module is C based module and is used as sample and test
-    const module_bar = try addCetechCModule(
+    const module_bar = try createCetechModule(
         b,
         "bar",
-        "src/cetech1/modules/examples/bar/module_bar.c",
+        null,
+        .{ .major = 0, .minor = 1, .patch = 0 },
         target,
         optimize,
+        cetech1_module,
     );
-    _ = module_bar;
+    module_bar.addCSourceFile(.{ .file = .{ .path = "src/cetech1/modules/examples/bar/module_bar.c" }, .flags = &.{} });
 
     // Main editor
     const module_editor_public = b.createModule(.{
@@ -157,10 +164,11 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
-    const module_editor = try addCetechModule(
+    const module_editor = try createCetechModule(
         b,
         "editor",
         "src/cetech1/modules/editor/private.zig",
+        .{ .major = 0, .minor = 1, .patch = 0 },
         target,
         optimize,
         cetech1_module,
@@ -176,10 +184,11 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
-    const module_editor_tree = try addCetechModule(
+    const module_editor_tree = try createCetechModule(
         b,
         "editor_tree",
         "src/cetech1/modules/editor_tree/private.zig",
+        .{ .major = 0, .minor = 1, .patch = 0 },
         target,
         optimize,
         cetech1_module,
@@ -194,10 +203,11 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "editor", .module = module_editor_public },
         },
     });
-    var module_editor_obj_buffer = try addCetechModule(
+    var module_editor_obj_buffer = try createCetechModule(
         b,
         "editor_obj_buffer",
         "src/cetech1/modules/editor_obj_buffer/private.zig",
+        .{ .major = 0, .minor = 1, .patch = 0 },
         target,
         optimize,
         cetech1_module,
@@ -213,10 +223,11 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "editor", .module = module_editor_public },
         },
     });
-    var module_editor_tags = try addCetechModule(
+    var module_editor_tags = try createCetechModule(
         b,
         "editor_tags",
         "src/cetech1/modules/editor_tags/private.zig",
+        .{ .major = 0, .minor = 1, .patch = 0 },
         target,
         optimize,
         cetech1_module,
@@ -230,10 +241,11 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "cetech1", .module = cetech1_module },
         },
     });
-    var module_editor_asset_browser = try addCetechModule(
+    var module_editor_asset_browser = try createCetechModule(
         b,
         "editor_asset_browser",
         "src/cetech1/modules/editor_asset_browser/private.zig",
+        .{ .major = 0, .minor = 1, .patch = 0 },
         target,
         optimize,
         cetech1_module,
@@ -252,10 +264,11 @@ pub fn build(b: *std.Build) !void {
         },
     });
     _ = module_editor_propeties_public;
-    var module_editor_inspector = try addCetechModule(
+    var module_editor_inspector = try createCetechModule(
         b,
         "editor_inspector",
         "src/cetech1/modules/editor_inspector/private.zig",
+        .{ .major = 0, .minor = 1, .patch = 0 },
         target,
         optimize,
         cetech1_module,
@@ -264,10 +277,11 @@ pub fn build(b: *std.Build) !void {
     module_editor_inspector.root_module.addImport("editor_asset_browser", module_editor_asset_browser_public);
 
     // Editor explorer
-    var module_editor_explorer = try addCetechModule(
+    var module_editor_explorer = try createCetechModule(
         b,
         "editor_explorer",
         "src/cetech1/modules/editor_explorer/private.zig",
+        .{ .major = 0, .minor = 1, .patch = 0 },
         target,
         optimize,
         cetech1_module,
@@ -284,10 +298,11 @@ pub fn build(b: *std.Build) !void {
         },
     });
     _ = module_editor_fixtures_public;
-    var module_editor_fixtures = try addCetechModule(
+    var module_editor_fixtures = try createCetechModule(
         b,
         "editor_fixtures",
         "src/cetech1/modules/editor_fixtures/private.zig",
+        .{ .major = 0, .minor = 1, .patch = 0 },
         target,
         optimize,
         cetech1_module,
@@ -296,10 +311,11 @@ pub fn build(b: *std.Build) !void {
     module_editor_fixtures.root_module.addImport("editor_asset_browser", module_editor_asset_browser_public);
 
     // Foo editor tab
-    var module_editor_foo_tab = try addCetechModule(
+    var module_editor_foo_tab = try createCetechModule(
         b,
         "editor_foo_tab",
         "src/cetech1/modules/examples/editor_foo_tab/private.zig",
+        .{ .major = 0, .minor = 1, .patch = 0 },
         target,
         optimize,
         cetech1_module,
@@ -321,10 +337,11 @@ fn getDynamicModuleExtensionForTargetOS(tag: std.Target.Os.Tag) []const u8 {
     };
 }
 
-fn addCetechModule(
+fn createCetechModule(
     b: *std.Build,
     name: []const u8,
-    root_source_file: []const u8,
+    root_source_file: ?[]const u8,
+    version: ?std.SemanticVersion,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     cetech_core_module: *std.Build.Module,
@@ -339,58 +356,22 @@ fn addCetechModule(
         &[_][]const u8{ CETECH1_MODULE_PREFIX, name, getDynamicModuleExtensionForTargetOS(target.result.os.tag) },
     );
 
-    const lib = b.addSharedLibrary(.{
+    const module = b.addSharedLibrary(.{
         .name = name,
-        .version = .{ .major = 1, .minor = 0, .patch = 0 },
-        .root_source_file = .{ .path = root_source_file },
+        .version = version,
+        .root_source_file = if (root_source_file) |path| .{ .path = path } else null,
         .target = target,
         .optimize = optimize,
     });
 
-    lib.root_module.addImport("cetech1", cetech_core_module);
-    lib.addIncludePath(.{ .path = "includes" });
-    lib.linkLibC();
+    module.root_module.addImport("cetech1", cetech_core_module);
+    module.addIncludePath(.{ .path = "includes" });
 
-    const plugin_install = b.addInstallFileWithDir(lib.getEmittedBin(), .lib, module_name);
-    plugin_install.step.dependOn(&lib.step);
+    const plugin_install = b.addInstallFileWithDir(module.getEmittedBin(), .lib, module_name);
+    plugin_install.step.dependOn(&module.step);
     b.getInstallStep().dependOn(&plugin_install.step);
 
-    return lib;
-}
-
-fn addCetechCModule(
-    b: *std.Build,
-    name: []const u8,
-    root_source_file: []const u8,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-) !*std.Build.Step.Compile {
-    var buffer: [CETECH1_MAX_MODULE_NAME]u8 = undefined;
-    var fba = std.heap.FixedBufferAllocator.init(&buffer);
-    const tmp_allocator = fba.allocator();
-
-    const module_name = try std.mem.join(
-        tmp_allocator,
-        "",
-        &[_][]const u8{ CETECH1_MODULE_PREFIX, name, getDynamicModuleExtensionForTargetOS(target.result.os.tag) },
-    );
-
-    const lib = b.addSharedLibrary(.{
-        .name = name,
-        .version = .{ .major = 1, .minor = 0, .patch = 0 },
-        .target = target,
-        .optimize = optimize,
-    });
-
-    lib.addCSourceFile(.{ .file = .{ .path = root_source_file }, .flags = &.{} });
-    lib.addIncludePath(.{ .path = "includes" });
-    lib.linkLibC();
-
-    const plugin_install = b.addInstallFileWithDir(lib.getEmittedBin(), .lib, module_name);
-    plugin_install.step.dependOn(&lib.step);
-    b.getInstallStep().dependOn(&plugin_install.step);
-
-    return lib;
+    return module;
 }
 
 inline fn thisDir() []const u8 {

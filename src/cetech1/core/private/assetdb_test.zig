@@ -91,9 +91,9 @@ test "asset: Should save asset to json" {
         &.{ proto_sub_obj1_w, proto_sub_obj2_w },
     );
 
-    db.writeCommit(proto_sub_obj2_w);
-    db.writeCommit(proto_sub_obj1_w);
-    db.writeCommit(proto_w);
+    try db.writeCommit(proto_sub_obj2_w);
+    try db.writeCommit(proto_sub_obj1_w);
+    try db.writeCommit(proto_w);
 
     const asset_obj = try db.createObjectFromPrototype(prototype_obj);
     const asset = private.api.createAsset("foo", private.api.getRootFolder(), asset_obj).?;
@@ -131,11 +131,11 @@ test "asset: Should save asset to json" {
     const blob = (try FooAsset.createBlob(&db, asset_obj_w, .BLOB, "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    db.writeCommit(sub_obj1_w);
-    db.writeCommit(sub_obj2_w);
-    db.writeCommit(asset_obj_w);
-    db.writeCommit(prototype_obj_w);
-    db.writeCommit(asset_w);
+    try db.writeCommit(sub_obj1_w);
+    try db.writeCommit(sub_obj2_w);
+    try db.writeCommit(asset_obj_w);
+    try db.writeCommit(prototype_obj_w);
+    try db.writeCommit(asset_w);
 
     var expect_buffer: [2048]u8 = undefined;
     const expected_fmt =
@@ -188,7 +188,6 @@ test "asset: Should save asset to json" {
         asset,
         out_stream,
         asset,
-        .{},
         WriteBlobToNull,
         "",
         std.testing.allocator,
@@ -244,18 +243,23 @@ test "asset: Should read asset from json reader" {
     try FooAsset.addRefToSet(&db, proto_w, .REFERENCE_SET, &.{ proto_ref_obj1, proto_ref_obj2 });
     try FooAsset.addSubObjToSet(&db, proto_w, .SUBOBJECT_SET, &.{ proto_sub_obj1_w, proto_sub_obj2_w });
 
-    db.writeCommit(proto_sub_obj2_w);
-    db.writeCommit(proto_sub_obj1_w);
-    db.writeCommit(proto_w);
+    try db.writeCommit(proto_sub_obj2_w);
+    try db.writeCommit(proto_sub_obj1_w);
+    try db.writeCommit(proto_w);
 
+    const folder1_asset = try public.AssetType.createObject(&db);
     const folder1 = try public.FolderType.createObject(&db);
-    const folder2 = try public.FolderType.createObject(&db);
+    const folder1_w = db.writeObj(folder1).?;
+    const folder1_asset_w = db.writeObj(folder1_asset).?;
+    try public.AssetType.setSubObj(&db, folder1_asset_w, .Object, folder1_w);
+    try db.writeCommit(folder1_w);
+    try db.writeCommit(folder1_asset_w);
 
     const prototype_obj_w = db.writeObj(prototype_obj).?;
     // Prototype value
     db.setValue(u64, prototype_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.U64), 10);
     db.setValue(i64, prototype_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.I64), 20);
-    db.writeCommit(prototype_obj_w);
+    try db.writeCommit(prototype_obj_w);
 
     const ref_obj1 = try private.createObjectWithUuid(FooAsset.type_hash, uuid.fromStr("018b5846-c2d5-7921-823a-60d80f9285de").?);
     const ref_obj2 = try private.createObjectWithUuid(FooAsset.type_hash, uuid.fromStr("018b5846-c2d5-74f2-a050-c9375ad9a1f6").?);
@@ -307,7 +311,7 @@ test "asset: Should read asset from json reader" {
         @TypeOf(in_stream),
         in_stream,
         "foo",
-        folder1,
+        folder1_asset,
         ReadBlobFromNull,
         std.testing.allocator,
     );
@@ -326,7 +330,6 @@ test "asset: Should read asset from json reader" {
         asset,
         out_stream,
         asset,
-        folder2,
         WriteBlobToNull,
         "",
         std.testing.allocator,
@@ -339,7 +342,6 @@ test "asset: Should read asset from json reader" {
     db.destroyObject(ref_obj2);
     db.destroyObject(prototype_obj);
     db.destroyObject(folder1);
-    db.destroyObject(folder2);
 }
 
 test "asset: Should create asset" {
@@ -356,7 +358,7 @@ test "asset: Should create asset" {
 
     private.deinit();
     try db.gc(std.testing.allocator);
-    try cdb_test.expectGCStats(db, 4, 9);
+    try cdb_test.expectGCStats(db, 5, 12);
 }
 
 test "asset: Should open asset dir" {
@@ -402,7 +404,7 @@ test "asset: Should open asset dir" {
             const foo_obj = private.api.getObjId(uuid.fromStr("018b5846-c2d5-712f-bb12-9d9d15321ecb").?);
             try std.testing.expect(foo_obj != null);
 
-            var foo_obj_asset = db.getParent(db.readObj(foo_obj.?).?);
+            var foo_obj_asset = db.getParent(foo_obj.?);
             try std.testing.expect(!foo_obj_asset.isEmpty());
 
             const expect_name = "foo";
@@ -416,9 +418,9 @@ test "asset: Should open asset dir" {
 
             root_folder = public.AssetType.readRef(&db, db.readObj(foo_obj_asset).?, .Folder);
             try std.testing.expect(root_folder != null);
-            try std.testing.expect(null == public.FolderType.readStr(&db, db.readObj(root_folder.?).?, .Name));
+            try std.testing.expect(null == public.AssetType.readStr(&db, db.readObj(private.api.getAssetForObj(root_folder.?).?).?, .Name));
 
-            try std.testing.expectEqual(root_folder, private.api.getRootFolder());
+            try std.testing.expectEqual(private.api.getAssetForObj(root_folder.?).?, private.api.getRootFolder());
             const set = try db.getReferencerSet(root_folder.?, std.testing.allocator);
             defer std.testing.allocator.free(set);
             // TODO: try std.testing.expectEqual(@as(usize, 3), set.len);
@@ -441,7 +443,7 @@ test "asset: Should open asset dir" {
         {
             try std.testing.expect(foo_core_obj != null);
 
-            var foo_core_obj_asset = db.getParent(db.readObj(foo_core_obj.?).?);
+            var foo_core_obj_asset = db.getParent(foo_core_obj.?);
             try std.testing.expect(!foo_core_obj_asset.isEmpty());
 
             const expect_name = "foo_core";
@@ -459,7 +461,7 @@ test "asset: Should open asset dir" {
             const expect_folder_name = "core";
             try std.testing.expectEqualStrings(
                 expect_folder_name,
-                public.FolderType.readStr(&db, db.readObj(core_folder.?).?, .Name).?,
+                public.AssetType.readStr(&db, db.readObj(private.api.getAssetForObj(core_folder.?).?).?, .Name).?,
             );
 
             const sub_path = try private.getFilePathForAsset(foo_core_obj_asset, std.testing.allocator);
@@ -477,7 +479,7 @@ test "asset: Should open asset dir" {
             const foo_subcore_obj = private.api.getObjId(uuid.fromStr("018b5c74-06f7-79fd-a6ad-3678552795a1").?);
             try std.testing.expect(foo_subcore_obj != null);
 
-            var foo_subcore_obj_asset = db.getParent(db.readObj(foo_subcore_obj.?).?);
+            var foo_subcore_obj_asset = db.getParent(foo_subcore_obj.?);
             try std.testing.expect(!foo_subcore_obj_asset.isEmpty());
 
             const expect_name = "foo_subcore";
@@ -515,7 +517,7 @@ test "asset: Should open asset dir" {
             const expect_folder_name = "core_subfolder";
             try std.testing.expectEqualStrings(
                 expect_folder_name,
-                public.FolderType.readStr(&db, db.readObj(core_subfolder_folder.?).?, .Name).?,
+                public.AssetType.readStr(&db, db.readObj(private.api.getAssetForObj(core_subfolder_folder.?).?).?, .Name).?,
             );
 
             const sub_path = try private.getFilePathForAsset(foo_subcore_obj_asset, std.testing.allocator);
@@ -568,8 +570,8 @@ test "asset: Should save asset dir" {
     const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.BLOB), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    db.writeCommit(asset_w);
-    db.writeCommit(asset_obj_w);
+    try db.writeCommit(asset_w);
+    try db.writeCommit(asset_obj_w);
 
     try std.testing.expect(private.api.isAssetModified(asset));
     try private.api.saveAllAssets(tmpalloc.allocator());
@@ -618,8 +620,8 @@ test "asset: Should save modified asset" {
     const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.BLOB), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    db.writeCommit(asset_w);
-    db.writeCommit(asset_obj_w);
+    try db.writeCommit(asset_w);
+    try db.writeCommit(asset_obj_w);
 
     try std.testing.expect(private.api.isAssetModified(asset));
     try private.api.saveAllModifiedAssets(tmpalloc.allocator());

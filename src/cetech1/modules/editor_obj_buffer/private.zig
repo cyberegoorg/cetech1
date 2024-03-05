@@ -42,10 +42,10 @@ fn addToFirst(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech1
         const tab_o: *ObjBufferTab = @alignCast(@ptrCast(tab.inst));
         {
             const w = db.writeObj(tab_o.obj_buffer).?;
-            defer db.writeCommit(w);
             try editorui.ObjSelectionType.addRefToSet(db, w, .Selection, &.{obj});
             try _editorui.setSelection(allocator, db, tab_o.inter_selection, obj);
             _editor.propagateSelection(&tab_o.db, tab_o.inter_selection);
+            try db.writeCommit(w);
         }
 
         break;
@@ -66,7 +66,6 @@ fn openInBufferMenu(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, select
 
                 const tab_o: *ObjBufferTab = @alignCast(@ptrCast(tab.inst));
                 const w = db.writeObj(tab_o.obj_buffer).?;
-                defer db.writeCommit(w);
 
                 for (selected_objs, 0..) |obj, idx| {
                     try editorui.ObjSelectionType.addRefToSet(db, w, .Selection, &.{obj});
@@ -76,6 +75,7 @@ fn openInBufferMenu(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, select
                         try _editorui.addToSelection(db, tab_o.inter_selection, obj);
                     }
                 }
+                try db.writeCommit(w);
 
                 _editor.propagateSelection(&tab_o.db, tab_o.inter_selection);
             }

@@ -109,6 +109,12 @@ pub const UiVisualAspect = extern struct {
         obj: cdb.ObjId,
     ) callconv(.C) color4f = null,
 
+    ui_tooltip: ?*const fn (
+        allocator: *const std.mem.Allocator,
+        db: *cdb.Db,
+        obj: cdb.ObjId,
+    ) callconv(.C) void = null,
+
     pub inline fn implement(
         ui_name: ?*const fn (
             allocator: std.mem.Allocator,
@@ -124,6 +130,11 @@ pub const UiVisualAspect = extern struct {
             db: *cdb.Db,
             obj: cdb.ObjId,
         ) anyerror![4]f32,
+        ui_tooltip: ?*const fn (
+            allocator: std.mem.Allocator,
+            db: *cdb.Db,
+            obj: cdb.ObjId,
+        ) void,
     ) UiVisualAspect {
         const Wrap = struct {
             pub fn ui_name_c(
@@ -162,12 +173,20 @@ pub const UiVisualAspect = extern struct {
                 };
                 return .{ .c = .{ color[0], color[1], color[2], color[3] } };
             }
+
+            pub fn ui_tooltip_c(allocator: std.mem.Allocator, db: *cdb.Db, obj: cdb.ObjId) callconv(.C) void {
+                ui_icons.?(allocator.*, db, obj) catch |err| {
+                    std.log.err("UiVisualAspect {}", .{err});
+                    @breakpoint();
+                };
+            }
         };
 
         return UiVisualAspect{
             .ui_name = if (ui_name) |_| Wrap.ui_name_c else null,
             .ui_icons = if (ui_icons) |_| Wrap.ui_icons_c else null,
             .ui_color = if (ui_color) |_| Wrap.ui_color_c else null,
+            .ui_tooltip = if (ui_tooltip) |_| Wrap.ui_tooltip_c else null,
         };
     }
 };
