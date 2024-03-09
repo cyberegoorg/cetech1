@@ -112,7 +112,7 @@ fn tabMenu(inst: *editor.TabO) void {
         var tmp_arena = _tempalloc.createTempArena() catch undefined;
         defer _tempalloc.destroyTempArena(tmp_arena);
         const allocator = tmp_arena.allocator();
-        _editorui.objContextMenu(allocator, &tab_o.db, tab_o.selection, null, null) catch undefined;
+        _editor.objContextMenu(allocator, &tab_o.db, tab_o, &.{}, tab_o.selection, null, null) catch undefined;
     }
 }
 
@@ -142,11 +142,19 @@ fn tabUi(inst: *editor.TabO) void {
                 if (!cetech1.assetdb.AssetType.isSameType(obj)) continue;
 
                 // Draw asset_object
-                _editortree.cdbTreeView(allocator, &tab_o.db, obj, tab_o.inter_selection, .{
-                    .expand_object = true,
-                    .multiselect = true,
-                    .opened_obj = obj,
-                }) catch undefined;
+                _editortree.cdbTreeView(
+                    allocator,
+                    &tab_o.db,
+                    tab_o,
+                    &.{},
+                    obj,
+                    tab_o.inter_selection,
+                    .{
+                        .expand_object = true,
+                        .multiselect = true,
+                        .opened_obj = obj,
+                    },
+                ) catch undefined;
 
                 const selection_version = tab_o.db.getVersion(tab_o.inter_selection);
                 if (selection_version != tab_o.db.getVersion(tab_o.inter_selection)) {

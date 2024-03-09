@@ -3,6 +3,7 @@ const std = @import("std");
 const c = @import("c.zig").c;
 const cdb = @import("cdb.zig");
 const modules = @import("modules.zig");
+const strid = @import("strid.zig");
 
 const system = @import("system.zig");
 const gpu = @import("gpu.zig");
@@ -174,11 +175,8 @@ pub const UiVisualAspect = extern struct {
                 return .{ .c = .{ color[0], color[1], color[2], color[3] } };
             }
 
-            pub fn ui_tooltip_c(allocator: std.mem.Allocator, db: *cdb.Db, obj: cdb.ObjId) callconv(.C) void {
-                ui_icons.?(allocator.*, db, obj) catch |err| {
-                    std.log.err("UiVisualAspect {}", .{err});
-                    @breakpoint();
-                };
+            pub fn ui_tooltip_c(allocator: *const std.mem.Allocator, db: *cdb.Db, obj: cdb.ObjId) callconv(.C) void {
+                ui_tooltip.?(allocator.*, db, obj);
             }
         };
 
@@ -266,42 +264,6 @@ pub const UiPropertyAspect = extern struct {
 
         return UiPropertyAspect{
             .ui_property = Wrap.ui_c,
-        };
-    }
-};
-
-pub const UiPropertiesAspect = extern struct {
-    ui_properties: ?*const fn (
-        allocator: *const std.mem.Allocator,
-        db: *cdb.Db,
-        obj: cdb.ObjId,
-        args: cdbPropertiesViewArgs,
-    ) callconv(.C) void = null,
-
-    pub inline fn implement(
-        ui: *const fn (
-            allocator: std.mem.Allocator,
-            db: *cdb.Db,
-            obj: cdb.ObjId,
-            args: cdbPropertiesViewArgs,
-        ) anyerror!void,
-    ) UiPropertiesAspect {
-        const Wrap = struct {
-            pub fn ui_c(
-                allocator: *const std.mem.Allocator,
-                db: *cdb.Db,
-                obj: cdb.ObjId,
-                args: cdbPropertiesViewArgs,
-            ) callconv(.C) void {
-                ui(allocator.*, db, obj, args) catch |err| {
-                    std.log.err("UiPropertiesAspect {}", .{err});
-                    @breakpoint();
-                };
-            }
-        };
-
-        return UiPropertiesAspect{
-            .ui_properties = Wrap.ui_c,
         };
     }
 };
@@ -534,7 +496,6 @@ pub const EditorUIApi = struct {
 
     buffFormatObjLabel: *const fn (allocator: std.mem.Allocator, buff: [:0]u8, db: *cdb.CdbDb, obj: cdb.ObjId) ?[:0]u8,
     getObjColor: *const fn (db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cdb.ObjId) [4]f32,
-    objContextMenu: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cdb.ObjId) anyerror!void,
 
     // Selection OBJ
     isSelected: *const fn (db: *cdb.CdbDb, selection: cdb.ObjId, obj: cdb.ObjId) bool,

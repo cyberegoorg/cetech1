@@ -42,7 +42,7 @@ var _asset_browser: *editor_asset_browser.AssetBrowserAPI = undefined;
 const G = struct {
     main_db: cetech1.cdb.CdbDb = undefined,
     tab_vt: *editor.EditorTabTypeI = undefined,
-    asset_prop_aspect: *editorui.UiPropertiesAspect = undefined,
+    asset_prop_aspect: *editor.UiPropertiesAspect = undefined,
     color4f_properties_aspec: *editorui.UiEmbedPropertiesAspect = undefined,
     folder_property_config_aspect: *editorui.UiPropertiesConfigAspect = undefined,
 };
@@ -235,7 +235,8 @@ fn uiAssetInputGeneric(
     }
 
     const prop_def = db.getTypePropDef(obj.type_hash).?;
-    const allowed_type = prop_def[prop_idx].type_hash;
+    const allowed_type = if (is_proto) obj.type_hash else prop_def[prop_idx].type_hash;
+
     _editorui.pushObjId(obj);
     defer _editorui.popId();
 
@@ -350,16 +351,16 @@ fn endSection(open: bool) void {
     if (open) _editorui.treePop();
 }
 
-fn cdbPropertiesView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, args: editorui.cdbPropertiesViewArgs) !void {
+fn cdbPropertiesView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, tab: *editor.TabO, obj: cetech1.cdb.ObjId, args: editorui.cdbPropertiesViewArgs) !void {
     _editorui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 10 });
     defer _editorui.popStyleVar(.{});
-    try cdbPropertiesObj(allocator, db, obj, args);
+    try cdbPropertiesObj(allocator, db, tab, obj, args);
 }
 const REMOVED_COLOR = .{ 0.7, 0.0, 0.0, 1.0 };
 
-fn objContextMenuBtn(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cetech1.cdb.ObjId) !void {
+fn objContextMenuBtn(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, tab: *editor.TabO, obj: cetech1.cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cetech1.cdb.ObjId) !void {
     if (_editorui.beginPopup("property_obj_menu", .{})) {
-        try _editorui.objContextMenu(allocator, db, obj, prop_idx, in_set_obj);
+        try _editor.objContextMenu(allocator, db, tab, &.{}, obj, prop_idx, in_set_obj);
         _editorui.endPopup();
     }
 
@@ -371,13 +372,14 @@ fn objContextMenuBtn(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: 
 fn cdbPropertiesObj(
     allocator: std.mem.Allocator,
     db: *cetech1.cdb.CdbDb,
+    tab: *editor.TabO,
     obj: cetech1.cdb.ObjId,
     args: editorui.cdbPropertiesViewArgs,
 ) !void {
     // Find properties asspect for obj type.
-    const ui_aspect = db.getAspect(editorui.UiPropertiesAspect, obj.type_hash);
+    const ui_aspect = db.getAspect(editor.UiPropertiesAspect, obj.type_hash);
     if (ui_aspect) |aspect| {
-        aspect.ui_properties.?(&allocator, db.db, obj, args);
+        aspect.ui_properties.?(&allocator, db.db, tab, obj, args);
         return;
     }
 
@@ -458,7 +460,7 @@ fn cdbPropertiesObj(
                         if (uiPropLabel(allocator, lbl, prop_color, args)) {
                             _editorui.tableNextColumn();
                             if (subobj == null) {
-                                try objContextMenuBtn(allocator, db, obj, prop_idx, null);
+                                try objContextMenuBtn(allocator, db, tab, obj, prop_idx, null);
                             } else {
                                 aspect.ui_properties.?(&allocator, db.db, subobj.?, args);
                             }
@@ -550,7 +552,7 @@ fn cdbPropertiesObj(
 
                 const label = try std.fmt.bufPrintZ(&buff, "{s}{s}", .{ prop_name, if (prop_def.type == .REFERENCE) " " ++ Icons.FA_LINK else "" });
 
-                try objContextMenuBtn(allocator, db, obj, prop_idx, null);
+                try objContextMenuBtn(allocator, db, tab, obj, prop_idx, null);
                 _editorui.sameLine(.{});
 
                 if (prop_color) |color| {
@@ -565,7 +567,7 @@ fn cdbPropertiesObj(
 
                 if (open) {
                     if (subobj != null) {
-                        try cdbPropertiesObj(allocator, db, subobj.?, args);
+                        try cdbPropertiesObj(allocator, db, tab, subobj.?, args);
                     }
                 }
             },
@@ -577,7 +579,7 @@ fn cdbPropertiesObj(
 
                 const prop_label = try std.fmt.bufPrintZ(&buff, "{s}{s}", .{ prop_name, if (prop_def.type == .REFERENCE_SET) " " ++ Icons.FA_LINK else "" });
 
-                try objContextMenuBtn(allocator, db, obj, prop_idx, null);
+                try objContextMenuBtn(allocator, db, tab, obj, prop_idx, null);
                 _editorui.sameLine(.{});
 
                 const open = beginSection(prop_label, false, true);
@@ -600,7 +602,7 @@ fn cdbPropertiesObj(
                             _editorui.pushIntId(@truncate(set_idx));
                             defer _editorui.popId();
 
-                            try objContextMenuBtn(allocator, db, obj, prop_idx, subobj);
+                            try objContextMenuBtn(allocator, db, tab, obj, prop_idx, subobj);
                             _editorui.sameLine(.{});
 
                             _editorui.pushStyleColor4f(.{ .idx = .text, .c = _editorui.getObjColor(db, obj, prop_idx, subobj) });
@@ -611,7 +613,7 @@ fn cdbPropertiesObj(
                             _editorui.popStyleColor(.{});
 
                             if (open_inset) {
-                                try cdbPropertiesObj(allocator, db, subobj, args);
+                                try cdbPropertiesObj(allocator, db, tab, subobj, args);
                             }
                         }
                     }
@@ -876,10 +878,11 @@ fn uiPropLabel(allocator: std.mem.Allocator, name: [:0]const u8, color: ?[4]f32,
 }
 
 // Asset properties aspect
-var asset_properties_aspec = editorui.UiPropertiesAspect.implement(assetUiProperiesAspect);
+var asset_properties_aspec = editor.UiPropertiesAspect.implement(assetUiProperiesAspect);
 fn assetUiProperiesAspect(
     allocator: std.mem.Allocator,
     dbc: *cetech1.cdb.Db,
+    tab: *editor.TabO,
     obj: cetech1.cdb.ObjId,
     args: editorui.cdbPropertiesViewArgs,
 ) !void {
@@ -941,7 +944,7 @@ fn assetUiProperiesAspect(
 
     // Asset object
     _editorui.separatorText("Asset object");
-    try api.cdbPropertiesObj(allocator, &db, cetech1.assetdb.AssetType.readSubObj(&db, obj_r, .Object).?, args);
+    try api.cdbPropertiesObj(allocator, &db, tab, cetech1.assetdb.AssetType.readSubObj(&db, obj_r, .Object).?, args);
 }
 //
 
@@ -1071,7 +1074,7 @@ fn tabUi(inst: *editor.TabO) void {
             obj = _editorui.getFirstSelected(allocator, &tab_o.db, tab_o.selected_obj);
         }
 
-        api.cdbPropertiesView(tmp_arena.allocator(), &tab_o.db, obj, .{ .filter = if (tab_o.filter) |f| f.ptr else null }) catch |err| {
+        api.cdbPropertiesView(tmp_arena.allocator(), &tab_o.db, tab_o, obj, .{ .filter = if (tab_o.filter) |f| f.ptr else null }) catch |err| {
             _log.err(MODULE_NAME, "Problem in cdbProperties {}", .{err});
         };
     }
@@ -1099,7 +1102,7 @@ fn cdbCreateTypes(db_: *cetech1.cdb.Db) !void {
 
     try cetech1.assetdb.AssetType.addAspect(
         &db,
-        editorui.UiPropertiesAspect,
+        editor.UiPropertiesAspect,
         _g.asset_prop_aspect,
     );
 
@@ -1146,7 +1149,7 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     _g.tab_vt = try apidb.globalVar(editor.EditorTabTypeI, MODULE_NAME, INSPECTOR_TAB_NAME, .{});
     _g.tab_vt.* = inspector_tab;
 
-    _g.asset_prop_aspect = try apidb.globalVar(editorui.UiPropertiesAspect, MODULE_NAME, ASSET_PROPERTIES_ASPECT_NAME, .{});
+    _g.asset_prop_aspect = try apidb.globalVar(editor.UiPropertiesAspect, MODULE_NAME, ASSET_PROPERTIES_ASPECT_NAME, .{});
     _g.asset_prop_aspect.* = asset_properties_aspec;
 
     _g.color4f_properties_aspec = try apidb.globalVar(editorui.UiEmbedPropertiesAspect, MODULE_NAME, COLOR4F_PROPERTY_ASPECT_NAME, .{});
@@ -1170,7 +1173,7 @@ pub export fn ct_load_module_editor_inspector(__apidb: ?*const cetech1.apidb.ct_
 
 // Assert C api == C api in zig.
 comptime {
-    std.debug.assert(@sizeOf(c.ct_editorui_ui_properties_aspect) == @sizeOf(editorui.UiPropertiesAspect));
+    std.debug.assert(@sizeOf(c.ct_editorui_ui_properties_aspect) == @sizeOf(editor.UiPropertiesAspect));
     std.debug.assert(@sizeOf(c.ct_editorui_ui_property_aspect) == @sizeOf(editorui.UiPropertyAspect));
     std.debug.assert(@sizeOf(c.ct_editor_cdb_proprties_args) == @sizeOf(editorui.cdbPropertiesViewArgs));
 }

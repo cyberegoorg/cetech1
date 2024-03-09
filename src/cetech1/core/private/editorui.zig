@@ -127,7 +127,6 @@ pub var api = public.EditorUIApi{
     .isMouseDown = @ptrCast(&zgui.isMouseDown),
     .isMouseClicked = @ptrCast(&zgui.isMouseClicked),
     .buffFormatObjLabel = buffFormatObjLabel,
-    .objContextMenu = objContextMenu,
     .getObjColor = getObjColor,
 
     .isSelected = isSelected,
@@ -159,108 +158,6 @@ fn clearSelection(
     }
 
     try db.writeCommit(w);
-}
-
-fn objContextMenu(
-    allocator: std.mem.Allocator,
-    db: *cetech1.cdb.CdbDb,
-    obj: cetech1.cdb.ObjId,
-    prop_idx: ?u32,
-    in_set_obj: ?cetech1.cdb.ObjId,
-) !void {
-    const prop_defs = db.getTypePropDef(obj.type_hash).?;
-
-    // Property based context
-    if (prop_idx) |pidx| {
-        const prop_def = prop_defs[pidx];
-
-        if (in_set_obj) |set_obj| {
-            const obj_r = db.readObj(obj) orelse return;
-
-            const can_inisiate = db.canIinisiated(obj_r, db.readObj(set_obj).?);
-
-            if (can_inisiate) {
-                if (api.menuItem(public.Icons.Add ++ "  " ++ "Inisiated", .{})) {
-                    const w = db.writeObj(obj).?;
-                    _ = try db.instantiateSubObjFromSet(w, pidx, set_obj);
-                    try db.writeCommit(w);
-                }
-
-                api.separator();
-            }
-
-            {
-                api.pushStyleColor4f(.{ .idx = .text, .c = cetech1.editorui.Colors.Remove });
-                defer api.popStyleColor(.{});
-                if (api.menuItem(public.Icons.Remove ++ "  " ++ "Remove", .{})) {
-                    const w = db.writeObj(obj).?;
-                    if (prop_def.type == .REFERENCE_SET) {
-                        try db.removeFromRefSet(w, pidx, set_obj);
-                    } else {
-                        const subobj_w = db.writeObj(set_obj).?;
-                        try db.removeFromSubObjSet(w, pidx, subobj_w);
-                        try db.writeCommit(subobj_w);
-                    }
-
-                    try db.writeCommit(w);
-                }
-            }
-        } else {
-            if (prop_def.type == .SUBOBJECT_SET or prop_def.type == .REFERENCE_SET) {
-                if (api.beginMenu(public.Icons.Add ++ "  " ++ "Add to set", true)) {
-                    defer api.endMenu();
-
-                    const set_menus_aspect = db.getPropertyAspect(public.UiSetMenus, obj.type_hash, pidx);
-                    if (set_menus_aspect) |aspect| {
-                        if (aspect.add_menu) |add_menu| {
-                            add_menu(&allocator, db.db, obj, pidx);
-                        }
-                    } else {
-                        if (prop_def.type == .REFERENCE_SET) {
-                            if (api.menuItem(public.Icons.Add ++ "  " ++ "Add Reference", .{})) {
-                                //TODO
-                            }
-                        } else {
-                            if (prop_def.type_hash.id != 0) {
-                                if (api.menuItem(public.Icons.Add ++ "  " ++ "Add new", .{})) {
-                                    const w = db.writeObj(obj).?;
-
-                                    const new_obj = try db.createObject(prop_def.type_hash);
-                                    const new_obj_w = db.writeObj(new_obj).?;
-
-                                    try db.addSubObjToSet(w, pidx, &.{new_obj_w});
-
-                                    try db.writeCommit(new_obj_w);
-                                    try db.writeCommit(w);
-                                }
-                            }
-                        }
-                    }
-                }
-            } else if (prop_def.type == .SUBOBJECT) {
-                const obj_r = db.readObj(obj) orelse return;
-
-                const subobj = db.readSubObj(obj_r, pidx);
-                if (subobj == null) {
-                    if (prop_def.type_hash.id != 0) {
-                        if (api.menuItem(public.Icons.Add ++ "  " ++ "Add new", .{})) {
-                            const w = db.writeObj(obj).?;
-
-                            const new_obj = try db.createObject(prop_def.type_hash);
-                            const new_obj_w = db.writeObj(new_obj).?;
-
-                            try db.setSubObj(w, pidx, new_obj_w);
-
-                            try db.writeCommit(new_obj_w);
-                            try db.writeCommit(w);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Obj based context
-    } else {}
 }
 
 const INSIATED_COLOR = .{ 1.0, 0.6, 0.0, 1.0 };

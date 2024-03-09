@@ -9,6 +9,7 @@ const cdb_types = @import("../cdb_types.zig");
 const log = @import("log.zig");
 const uuid = @import("uuid.zig");
 const tempalloc = @import("tempalloc.zig");
+const profiler = @import("profiler.zig");
 
 const public = @import("../assetdb.zig");
 const cetech1 = @import("../cetech1.zig");
@@ -131,7 +132,7 @@ var _folder2path: Folder2Path = undefined;
 var _uuid2asset_uuid: Uuid2AssetUuid = undefined;
 var _asset_uuid2path: AssetUuid2Path = undefined;
 var _asset_uuid2depend: AssetUuid2Depend = undefined;
-var _asset_bag: cetech1.dagraph.DAG(cetech1.uuid.Uuid) = undefined;
+var _asset_dag: cetech1.dagraph.DAG(cetech1.uuid.Uuid) = undefined;
 
 var _tmp_depend_array: std.ArrayList(cetech1.task.TaskID) = undefined;
 var _tmp_taskid_map: std.AutoArrayHashMap(cetech1.uuid.Uuid, cetech1.task.TaskID) = undefined;
@@ -179,6 +180,9 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
             folder: cetech1.cdb.ObjId,
             filename: []const u8,
             pub fn exec(self: *@This()) void {
+                var zone_ctx = profiler.ztracy.Zone(@src());
+                defer zone_ctx.End();
+
                 var tmp_alloc = tempalloc.api.createTempArena() catch undefined;
                 defer tempalloc.api.destroyTempArena(tmp_alloc);
                 const allocator = tmp_alloc.allocator();
@@ -242,6 +246,9 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
             sub_path: []const u8,
             root_path: []const u8,
             pub fn exec(self: *@This()) void {
+                var zone_ctx = profiler.ztracy.Zone(@src());
+                defer zone_ctx.End();
+
                 var tmp_alloc = tempalloc.api.createTempArena() catch undefined;
                 defer tempalloc.api.destroyTempArena(tmp_alloc);
                 const allocator = tmp_alloc.allocator();
@@ -327,13 +334,37 @@ fn isAssetNameValid(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, folder
 
     return !name_set.contains(base_name);
 }
+
 // Asset visual aspect
 var asset_visual_aspect = cetech1.editorui.UiVisualAspect.implement(
     assetNameUIVisalAspect,
     assetIconUIVisalAspect,
     assetColorUIVisalAspect,
-    null,
+    assetTooltipUIVisalAspect,
 );
+
+fn assetTooltipUIVisalAspect(
+    allocator: std.mem.Allocator,
+    dbc: *cetech1.cdb.Db,
+    obj: cetech1.cdb.ObjId,
+) void {
+    var db = cetech1.cdb.CdbDb.fromDbT(dbc, &cdb.api);
+
+    if (getUuid(obj)) |uuuid| {
+        var buff: [256:0]u8 = undefined;
+        const uuid_str = std.fmt.bufPrintZ(&buff, "Asset UUID: {s}", .{uuuid}) catch undefined;
+        editorui.api.textUnformatted(uuid_str);
+    }
+
+    const asset_obj = getObjForAsset(obj).?;
+
+    if (db.getAspect(cetech1.editorui.UiVisualAspect, asset_obj.type_hash)) |aspect| {
+        if (aspect.ui_tooltip) |tooltip| {
+            editorui.api.separator();
+            tooltip(&allocator, db.db, asset_obj);
+        }
+    }
+}
 
 fn assetNameUIVisalAspect(
     allocator: std.mem.Allocator,
@@ -522,7 +553,7 @@ pub fn init(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb) !void {
     _asset_uuid2path = AssetUuid2Path.init(allocator);
     _asset_uuid2depend = AssetUuid2Depend.init(allocator);
     _asset_objid2version = AssetObjIdVersion.init(allocator);
-    _asset_bag = cetech1.dagraph.DAG(cetech1.uuid.Uuid).init(allocator);
+    _asset_dag = cetech1.dagraph.DAG(cetech1.uuid.Uuid).init(allocator);
     _path2folder = Path2Folder.init(allocator);
     _folder2path = Folder2Path.init(allocator);
 
@@ -576,7 +607,7 @@ pub fn deinit() void {
     _asset_uuid2path.deinit();
     _asset_uuid2depend.deinit();
     _uuid2asset_uuid.deinit();
-    _asset_bag.deinit();
+    _asset_dag.deinit();
     _path2folder.deinit();
     _folder2path.deinit();
     _tmp_depend_array.deinit();
@@ -846,6 +877,9 @@ fn validateVersion(version: []const u8) !void {
 }
 
 fn analyzeFile(tmp_allocator: std.mem.Allocator, path: []const u8) !void {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     log.api.debug(MODULE_NAME, "Analyze file {s}", .{path});
 
     var file = try std.fs.openFileAbsolute(path, .{ .mode = .read_only });
@@ -874,6 +908,9 @@ fn analyzeFile(tmp_allocator: std.mem.Allocator, path: []const u8) !void {
 }
 
 fn analyzeFolder(root_dir: std.fs.Dir, parent_folder: cetech1.cdb.ObjId, tasks: *std.ArrayList(cetech1.task.TaskID), tmp_allocator: std.mem.Allocator) !void {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     var iterator = root_dir.iterate();
     while (try iterator.next()) |entry| {
         // Skip . files
@@ -952,6 +989,9 @@ fn reviveDeleted(asset_or_folder: cetech1.cdb.ObjId) void {
 }
 
 fn commitDeleteChanges(db: *cetech1.cdb.CdbDb, tmp_allocator: std.mem.Allocator) !void {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     var root_dir = try std.fs.cwd().openDir(_asset_root_path.?, .{});
     defer root_dir.close();
     for (_folders_to_remove.keys()) |folder| {
@@ -1046,6 +1086,9 @@ fn writeAssetGraphMD() !void {
 }
 
 fn loadProject(tmp_allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, asset_root_path: []const u8, asset_root_folder: cetech1.cdb.ObjId) !void {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     var dir = try std.fs.cwd().openDir(asset_root_path, .{});
 
     var asset_file = dir.openFile("project.ct_project", .{ .mode = .read_only }) catch |err| {
@@ -1131,6 +1174,9 @@ fn getOrCreateFolder(
 }
 
 fn openAssetRootFolder(asset_root_path: []const u8, tmp_allocator: std.mem.Allocator) !void {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     _asset_root_path = asset_root_path;
     var root_dir = try std.fs.cwd().openDir(asset_root_path, .{ .iterate = true });
     defer root_dir.close();
@@ -1170,7 +1216,7 @@ fn openAssetRootFolder(asset_root_path: []const u8, tmp_allocator: std.mem.Alloc
     task.api.wait(try task.api.combine(tasks.items));
     //tasks.clearRetainingCapacity();
 
-    try _asset_bag.reset();
+    try _asset_dag.reset();
     for (_asset_uuid2depend.keys(), _asset_uuid2depend.values()) |asset_uuid, depends| {
         var depend_asset = UuidSet.init(tmp_allocator);
         defer depend_asset.deinit();
@@ -1179,16 +1225,16 @@ fn openAssetRootFolder(asset_root_path: []const u8, tmp_allocator: std.mem.Alloc
             try depend_asset.put(_uuid2asset_uuid.get(depend_uuid).?, {});
         }
 
-        try _asset_bag.add(asset_uuid, depend_asset.keys());
+        try _asset_dag.add(asset_uuid, depend_asset.keys());
     }
 
-    try _asset_bag.build_all();
+    try _asset_dag.build_all();
 
     try writeAssetGraphMD();
 
-    for (_asset_bag.output.keys()) |output| {
+    for (_asset_dag.output.keys()) |output| {
         log.api.debug(MODULE_NAME, "Loader plan {s}", .{_asset_uuid2path.get(output).?});
-        const depeds = _asset_bag.dependList(output);
+        const depeds = _asset_dag.dependList(output);
         if (depeds != null) {
             for (depeds.?) |value| {
                 log.api.debug(MODULE_NAME, "  | {s}", .{_asset_uuid2path.get(value).?});
@@ -1196,7 +1242,7 @@ fn openAssetRootFolder(asset_root_path: []const u8, tmp_allocator: std.mem.Alloc
         }
     }
 
-    for (_asset_bag.output.keys()) |asset_uuid| {
+    for (_asset_dag.output.keys()) |asset_uuid| {
         const asset_path = _asset_uuid2path.getPtr(asset_uuid).?;
         const filename = std.fs.path.basename(asset_path.*);
         const extension = std.fs.path.extension(asset_path.*);
@@ -1209,7 +1255,7 @@ fn openAssetRootFolder(asset_root_path: []const u8, tmp_allocator: std.mem.Alloc
         const asset_io = findFirstAssetIOForImport(extension) orelse continue;
 
         var prereq = cetech1.task.TaskID.none;
-        const depeds = _asset_bag.dependList(asset_uuid);
+        const depeds = _asset_dag.dependList(asset_uuid);
         if (depeds != null) {
             _tmp_depend_array.clearRetainingCapacity();
             for (depeds.?) |d| {
@@ -1320,6 +1366,9 @@ fn createAsset(asset_name: []const u8, asset_folder: cetech1.cdb.ObjId, asset_ob
 }
 
 pub fn saveAllTo(tmp_allocator: std.mem.Allocator, root_path: []const u8) !void {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     _asset_root_lock.lock();
     defer _asset_root_lock.unlock();
 
@@ -1343,6 +1392,9 @@ pub fn saveAllTo(tmp_allocator: std.mem.Allocator, root_path: []const u8) !void 
 }
 
 pub fn saveAll(tmp_allocator: std.mem.Allocator) !void {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     try saveAllTo(tmp_allocator, _asset_root_path.?);
     try commitDeleteChanges(_db, tmp_allocator);
 }
@@ -1357,6 +1409,9 @@ pub fn saveAssetAndWait(tmp_allocator: std.mem.Allocator, asset: cetech1.cdb.Obj
 }
 
 pub fn saveAllModifiedAssets(tmp_allocator: std.mem.Allocator) !void {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     _asset_root_lock.lock();
     defer _asset_root_lock.unlock();
 
@@ -1448,6 +1503,9 @@ fn WriteBlobToFile(
     root_path: []const u8,
     tmp_allocator: std.mem.Allocator,
 ) anyerror!void {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     const blob_dir_path = try getPathForAsset(asset, BLOB_EXTENSION, tmp_allocator);
     defer tmp_allocator.free(blob_dir_path);
 
@@ -1471,6 +1529,9 @@ fn ReadBlobFromFile(
     prop_hash: cetech1.strid.StrId32,
     tmp_allocator: std.mem.Allocator,
 ) anyerror![]u8 {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     const blob_dir_path = try getPathForAsset(asset, BLOB_EXTENSION, tmp_allocator);
     defer tmp_allocator.free(blob_dir_path);
 
@@ -1493,6 +1554,9 @@ fn ReadBlobFromFile(
 }
 
 fn saveCdbObj(obj: cetech1.cdb.ObjId, root_path: []const u8, sub_path: []const u8, tmp_allocator: std.mem.Allocator) !void {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     var root_dir = try std.fs.cwd().openDir(root_path, .{});
     defer root_dir.close();
 
@@ -1518,6 +1582,9 @@ fn saveCdbObj(obj: cetech1.cdb.ObjId, root_path: []const u8, sub_path: []const u
 }
 
 pub fn saveAsset(tmp_allocator: std.mem.Allocator, root_path: []const u8, asset: cetech1.cdb.ObjId) !cetech1.task.TaskID {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     const sub_path = try getFilePathForAsset(asset, tmp_allocator);
 
     var root_dir = try std.fs.cwd().openDir(root_path, .{});
@@ -1569,6 +1636,9 @@ pub fn saveAsset(tmp_allocator: std.mem.Allocator, root_path: []const u8, asset:
 }
 
 fn saveFolderObj(tmp_allocator: std.mem.Allocator, folder_asset: cetech1.cdb.ObjId, root_path: []const u8) !void {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     const sub_path = try getPathForFolder(folder_asset, tmp_allocator);
     defer tmp_allocator.free(sub_path);
 
@@ -1653,6 +1723,9 @@ pub fn writeCdbObjJson(
     root_path: []const u8,
     tmp_allocator: std.mem.Allocator,
 ) !void {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     var ws = std.json.writeStream(writer, .{ .whitespace = .indent_2 });
     try ws.beginObject();
 
@@ -1710,6 +1783,9 @@ fn writeCdbObjJsonBody(
     root_path: []const u8,
     tmp_allocator: std.mem.Allocator,
 ) !void {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     const obj_r = _db.readObj(obj).?;
     const type_name = _db.getTypeName(obj.type_hash).?;
 
@@ -2058,6 +2134,9 @@ pub fn readAssetFromReader(
     read_blob: ReadBlobFn,
     tmp_allocator: std.mem.Allocator,
 ) !cetech1.cdb.ObjId {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     var json_reader = std.json.reader(tmp_allocator, reader);
     defer json_reader.deinit();
     var parsed = try std.json.parseFromTokenSource(std.json.Value, tmp_allocator, &json_reader, .{});
@@ -2107,6 +2186,9 @@ fn readObjFromJson(
     read_blob: ReadBlobFn,
     tmp_allocator: std.mem.Allocator,
 ) !cetech1.cdb.ObjId {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     var json_reader = std.json.reader(tmp_allocator, reader);
     defer json_reader.deinit();
     var parsed = try std.json.parseFromTokenSource(std.json.Value, tmp_allocator, &json_reader, .{});
@@ -2135,6 +2217,9 @@ fn createObjectFromPrototypeLocked(prototype_uuid: cetech1.uuid.Uuid, type_hash:
 }
 
 fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cetech1.cdb.ObjId, read_blob: ReadBlobFn, tmp_allocator: std.mem.Allocator) !cetech1.cdb.ObjId {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     const obj_uuid_str = parsed.object.get(JSON_UUID_TOKEN).?;
     const obj_uuid = uuid.api.fromStr(obj_uuid_str.string).?;
     const obj_type = parsed.object.get(JSON_TYPE_NAME_TOKEN).?;
@@ -2338,6 +2423,9 @@ fn createNewFolder(db: *cetech1.cdb.CdbDb, parent_folder: cetech1.cdb.ObjId, nam
 }
 
 fn saveAsAllAssets(tmp_allocator: std.mem.Allocator, path: []const u8) !void {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+
     try resetAnalyzedFileInfo();
     try saveAllTo(tmp_allocator, path);
 }

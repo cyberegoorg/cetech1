@@ -154,14 +154,13 @@ fn tabFocused(inst: *editor.TabO) void {
 fn tabMenu(inst: *editor.TabO) void {
     var tab_o: *ObjBufferTab = @alignCast(@ptrCast(inst));
 
-    if (_editorui.beginMenu("Object", !tab_o.inter_selection.isEmpty())) {
+    if (_editorui.beginMenu("Buffer", !tab_o.inter_selection.isEmpty())) {
         defer _editorui.endMenu();
         var tmp_arena = _tempalloc.createTempArena() catch undefined;
         defer _tempalloc.destroyTempArena(tmp_arena);
         const allocator = tmp_arena.allocator();
 
-        objContextMenu(allocator, &tab_o.db, tab_o.obj_buffer, tab_o.inter_selection) catch undefined;
-        _editorui.objContextMenu(allocator, &tab_o.db, tab_o.inter_selection, null, null) catch undefined;
+        _editor.objContextMenu(allocator, &tab_o.db, tab_o, &.{public.objectBufferContext}, tab_o.inter_selection, null, null) catch undefined;
     }
 }
 
@@ -184,29 +183,40 @@ fn tabUi(inst: *editor.TabO) void {
         if (_editorui.getSelected(allocator, &tab_o.db, obj_buffer)) |selected_objs| {
             defer allocator.free(selected_objs);
             for (selected_objs) |obj| {
-                const open = _editortree.cdbObjTreeNode(
+                _editortree.cdbTreeView(
                     allocator,
                     &tab_o.db,
+                    tab_o,
+                    &.{public.objectBufferContext},
                     obj,
-                    false,
-                    false,
-                    _editorui.isSelected(&tab_o.db, tab_o.inter_selection, obj),
-                    true,
-                    .{},
-                );
-                if (open) {
-                    defer _editorui.treePop();
+                    tab_o.inter_selection,
+                    .{
+                        .expand_object = false,
+                    },
+                ) catch undefined;
+                // const open = _editortree.cdbObjTreeNode(
+                //     allocator,
+                //     &tab_o.db,
+                //     obj,
+                //     false,
+                //     false,
+                //     _editorui.isSelected(&tab_o.db, tab_o.inter_selection, obj),
+                //     true,
+                //     .{},
+                // );
+                // if (open) {
+                //     defer _editorui.treePop();
 
-                    if (_editorui.beginPopupContextItem()) {
-                        defer _editorui.endPopup();
-                        objContextMenu(allocator, &tab_o.db, obj_buffer, tab_o.inter_selection) catch undefined;
-                    }
+                //     if (_editorui.beginPopupContextItem()) {
+                //         defer _editorui.endPopup();
+                //         objContextMenu(allocator, &tab_o.db, obj_buffer, tab_o.inter_selection) catch undefined;
+                //     }
 
-                    if (_editorui.isItemActivated() or (_editorui.isItemHovered(.{}) and _editorui.isMouseClicked(.right) and _editorui.selectedCount(allocator, &tab_o.db, tab_o.inter_selection) == 1)) {
-                        _editorui.handleSelection(allocator, &tab_o.db, tab_o.inter_selection, obj, true) catch undefined;
-                        _editor.propagateSelection(&tab_o.db, tab_o.inter_selection);
-                    }
-                }
+                //     if (_editorui.isItemActivated() or (_editorui.isItemHovered(.{}) and _editorui.isMouseClicked(.right) and _editorui.selectedCount(allocator, &tab_o.db, tab_o.inter_selection) == 1)) {
+                //         _editorui.handleSelection(allocator, &tab_o.db, tab_o.inter_selection, obj, true) catch undefined;
+                //         _editor.propagateSelection(&tab_o.db, tab_o.inter_selection);
+                //     }
+                // }
             }
         }
     }
@@ -223,7 +233,7 @@ fn objContextMenu(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj_buff
             }
         }
     }
-    if (_editorui.menuItem(editorui.Icons.Remove ++ "  " ++ "Remove All", .{ .enabled = _editorui.selectedCount(allocator, db, selection) != 0 })) {
+    if (_editorui.menuItem(editorui.Icons.Remove ++ "  " ++ "Clear buffer", .{ .enabled = _editorui.selectedCount(allocator, db, selection) != 0 })) {
         try _editorui.clearSelection(allocator, db, selection);
         try _editorui.clearSelection(allocator, db, obj_buffer);
     }
@@ -242,6 +252,53 @@ fn tabSelectedObject(inst: *editor.TabO, cdb: *cetech1.cdb.Db, selection: cetech
     _ = selection;
 }
 
+// Asset cntx menu
+var buffer_context_menu_i = editor.ObjContextMenuI.implement(
+    bufferContextMenuIsValid,
+    bufferContextMenu,
+);
+
+fn bufferContextMenuIsValid(
+    allocator: std.mem.Allocator,
+    dbc: *cetech1.cdb.Db,
+    contexts: []const cetech1.strid.StrId64,
+    selection: cetech1.cdb.ObjId,
+) f32 {
+    _ = dbc; // autofix
+    _ = allocator; // autofix
+    _ = selection; // autofix
+
+    //var db = cetech1.cdb.CdbDb.fromDbT(dbc, _cdb);
+
+    for (contexts) |context| {
+        if (context.id == public.objectBufferContext.id) return 1000;
+    }
+
+    return 0;
+}
+
+fn bufferContextMenu(
+    allocator: std.mem.Allocator,
+    dbc: *cetech1.cdb.Db,
+    tab: *editor.TabO,
+    context: []const cetech1.strid.StrId64,
+    selection: cetech1.cdb.ObjId,
+    prop_idx: ?u32,
+    in_set_obj: ?cetech1.cdb.ObjId,
+) void {
+    _ = context; // autofix
+    _ = prop_idx; // autofix
+    _ = in_set_obj; // autofix
+
+    var db = cetech1.cdb.CdbDb.fromDbT(dbc, _cdb);
+    const tab_o: *ObjBufferTab = @alignCast(@ptrCast(tab));
+
+    objContextMenu(allocator, &db, tab_o.obj_buffer, selection) catch undefined;
+
+    return;
+}
+
+//
 fn cdbCreateTypes(db_: ?*cetech1.cdb.Db) !void {
     _ = db_;
 }
@@ -270,6 +327,7 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     _g.tab_vt.* = explorer_tab;
 
     try apidb.implOrRemove(editor.EditorTabTypeI, &explorer_tab, load);
+    try apidb.implOrRemove(editor.ObjContextMenuI, &buffer_context_menu_i, load);
 
     try apidb.setOrRemoveZigApi(public.EditorObjBufferAPI, &api, load);
 

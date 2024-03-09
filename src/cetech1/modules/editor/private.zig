@@ -45,7 +45,155 @@ pub var api = public.EditorAPI{
     .openSelectionInCtxMenu = openInCtxMenu,
     .openObjInCtxMenu = openObjInCtxMenu,
     .getAllTabsByType = getAllTabsByType,
+    .objContextMenu = objContextMenu,
 };
+
+fn objContextMenu(
+    allocator: std.mem.Allocator,
+    db: *cetech1.cdb.CdbDb,
+    tab: *public.TabO,
+    contexts: []const cetech1.strid.StrId64,
+    obj: cetech1.cdb.ObjId,
+    prop_idx: ?u32,
+    in_set_obj: ?cetech1.cdb.ObjId,
+) !void {
+    const prop_defs = db.getTypePropDef(obj.type_hash).?;
+
+    // Property based context
+    if (prop_idx) |pidx| {
+        const prop_def = prop_defs[pidx];
+
+        if (in_set_obj) |set_obj| {
+            const obj_r = db.readObj(obj) orelse return;
+
+            const can_inisiate = db.canIinisiated(obj_r, db.readObj(set_obj).?);
+
+            if (can_inisiate) {
+                if (_editorui.menuItem(cetech1.editorui.Icons.Add ++ "  " ++ "Inisiated", .{})) {
+                    const w = db.writeObj(obj).?;
+                    _ = try db.instantiateSubObjFromSet(w, pidx, set_obj);
+                    try db.writeCommit(w);
+                }
+
+                _editorui.separator();
+            }
+
+            {
+                _editorui.pushStyleColor4f(.{ .idx = .text, .c = cetech1.editorui.Colors.Remove });
+                defer _editorui.popStyleColor(.{});
+                if (_editorui.menuItem(cetech1.editorui.Icons.Remove ++ "  " ++ "Remove", .{})) {
+                    const w = db.writeObj(obj).?;
+                    if (prop_def.type == .REFERENCE_SET) {
+                        try db.removeFromRefSet(w, pidx, set_obj);
+                    } else {
+                        const subobj_w = db.writeObj(set_obj).?;
+                        try db.removeFromSubObjSet(w, pidx, subobj_w);
+                        try db.writeCommit(subobj_w);
+                    }
+
+                    try db.writeCommit(w);
+                }
+            }
+        } else {
+            if (prop_def.type == .SUBOBJECT_SET or prop_def.type == .REFERENCE_SET) {
+                if (_editorui.beginMenu(cetech1.editorui.Icons.Add ++ "  " ++ "Add to set", true)) {
+                    defer _editorui.endMenu();
+
+                    const set_menus_aspect = db.getPropertyAspect(cetech1.editorui.UiSetMenus, obj.type_hash, pidx);
+                    if (set_menus_aspect) |aspect| {
+                        if (aspect.add_menu) |add_menu| {
+                            add_menu(&allocator, db.db, obj, pidx);
+                        }
+                    } else {
+                        if (prop_def.type == .REFERENCE_SET) {
+                            if (_editorui.menuItem(cetech1.editorui.Icons.Add ++ "  " ++ "Add Reference", .{})) {
+                                //TODO
+                            }
+                        } else {
+                            if (prop_def.type_hash.id != 0) {
+                                if (_editorui.menuItem(cetech1.editorui.Icons.Add ++ "  " ++ "Add new", .{})) {
+                                    const w = db.writeObj(obj).?;
+
+                                    const new_obj = try db.createObject(prop_def.type_hash);
+                                    const new_obj_w = db.writeObj(new_obj).?;
+
+                                    try db.addSubObjToSet(w, pidx, &.{new_obj_w});
+
+                                    try db.writeCommit(new_obj_w);
+                                    try db.writeCommit(w);
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (prop_def.type == .SUBOBJECT) {
+                const obj_r = db.readObj(obj) orelse return;
+
+                const subobj = db.readSubObj(obj_r, pidx);
+                if (subobj == null) {
+                    if (prop_def.type_hash.id != 0) {
+                        if (_editorui.menuItem(cetech1.editorui.Icons.Add ++ "  " ++ "Add new", .{})) {
+                            const w = db.writeObj(obj).?;
+
+                            const new_obj = try db.createObject(prop_def.type_hash);
+                            const new_obj_w = db.writeObj(new_obj).?;
+
+                            try db.setSubObj(w, pidx, new_obj_w);
+
+                            try db.writeCommit(new_obj_w);
+                            try db.writeCommit(w);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Obj based context
+    } else {
+        const Item = struct {
+            score: f32,
+            iface: *public.ObjContextMenuI,
+
+            pub fn sort(context: void, a: @This(), b: @This()) bool {
+                _ = context;
+                return a.score > b.score;
+            }
+        };
+        var menus = std.ArrayList(Item).init(allocator);
+        defer menus.deinit();
+
+        var it = _apidb.getFirstImpl(public.ObjContextMenuI);
+        while (it) |node| : (it = node.next) {
+            const iface = cetech1.apidb.ApiDbAPI.toInterface(public.ObjContextMenuI, node);
+            if (iface.*.is_valid) |is_valid| {
+                const score = is_valid(&allocator, db.db, contexts.ptr, contexts.len, obj);
+                if (score == 0) continue;
+                try menus.append(.{ .score = score, .iface = iface });
+            }
+        }
+
+        std.sort.insertion(Item, menus.items, {}, Item.sort);
+
+        for (menus.items) |item| {
+            if (item.iface.*.menu) |menu| {
+                menu(
+                    &allocator,
+                    db.db,
+                    tab,
+                    contexts.ptr,
+                    contexts.len,
+                    obj,
+                    if (prop_idx != null) &prop_idx.? else null,
+                    if (in_set_obj != null) &in_set_obj.? else null,
+                );
+            }
+
+            if (menus.items.len > 1) {
+                _editorui.separator();
+            }
+        }
+    }
+}
 
 fn openObjInCtxMenu(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId) void {
     if (_editorui.beginMenu(editorui.Icons.Open ++ "  " ++ "Open", true)) {
@@ -323,7 +471,10 @@ fn doMainMenu(alocator: std.mem.Allocator) !void {
 
 fn doTabMainMenu(alocator: std.mem.Allocator) !void {
     if (_editorui.beginMenu("Tabs", true)) {
+        defer _editorui.endMenu();
         if (_editorui.beginMenu(editorui.Icons.OpenTab ++ "  " ++ "Create", true)) {
+            defer _editorui.endMenu();
+
             // Create tabs
             var it = _apidb.getFirstImpl(public.EditorTabTypeI);
             while (it) |node| : (it = node.next) {
@@ -336,10 +487,11 @@ fn doTabMainMenu(alocator: std.mem.Allocator) !void {
                     _ = tab_inst;
                 }
             }
-            _editorui.endMenu();
         }
 
         if (_editorui.beginMenu(editorui.Icons.CloseTab ++ "  " ++ "Close", _g.tabs.count() != 0)) {
+            defer _editorui.endMenu();
+
             var tabs = std.ArrayList(*public.EditorTabI).init(alocator);
             defer tabs.deinit();
             try tabs.appendSlice(_g.tabs.values());
@@ -351,10 +503,7 @@ fn doTabMainMenu(alocator: std.mem.Allocator) !void {
                     destroyTab(tab);
                 }
             }
-            _editorui.endMenu();
         }
-
-        _editorui.endMenu();
     }
 }
 

@@ -20,7 +20,6 @@ const ASSET_BROWSER_NAME = "ct_editor_asset_browser_tab";
 
 const ASSET_TREE_ASPECT_NAME = "ct_asset_tree_aspect";
 const FOLDER_TREE_ASPECT_NAME = "ct_folder_tree_aspect";
-const FOLDER_CREATE_ASSET_I = "ct_assetbrowser_create_asset_folder_i";
 
 const ASSET_BROWSER_ICON = Icons.FA_FOLDER_TREE;
 const FOLDER_ICON = Icons.FA_FOLDER_CLOSED;
@@ -43,7 +42,7 @@ var _editor_obj_buffer: *editor_obj_buffer.EditorObjBufferAPI = undefined;
 const G = struct {
     tab_vt: *editor.EditorTabTypeI = undefined,
     asset_tree_aspect: *editor_tree.UiTreeAspect = undefined,
-    folder_create_asset_i: *editor.CreateAssetI = undefined,
+    asset_context_menu_i: *editor.ObjContextMenuI = undefined,
 };
 var _g: *G = undefined;
 
@@ -72,17 +71,21 @@ fn selectObjFromBrowserMenu(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb
 
                 const path = _assetdb.getFilePathForAsset(selected_obj, allocator) catch undefined;
                 defer allocator.free(path);
-                label = std.fmt.bufPrintZ(&label_buff, "Select from browser {d} - {s}", .{ tab.tabid, path }) catch return null;
+                label = std.fmt.bufPrintZ(&label_buff, "browser {d} - {s}", .{ tab.tabid, path }) catch return null;
             } else {
-                label = std.fmt.bufPrintZ(&label_buff, "Select from browser {d}", .{tab.tabid}) catch return null;
+                label = std.fmt.bufPrintZ(&label_buff, "browser {d}", .{tab.tabid}) catch return null;
             }
         } else {
-            label = std.fmt.bufPrintZ(&label_buff, "Select from browser {d}", .{tab.tabid}) catch return null;
+            label = std.fmt.bufPrintZ(&label_buff, "browser {d}", .{tab.tabid}) catch return null;
         }
-        valid = selected_n == 1 and !real_obj.eq(ignored_obj) and real_obj.type_hash.id == allowed_type.id;
+        valid = selected_n == 1 and !real_obj.eq(ignored_obj) and (allowed_type.id == 0 or real_obj.type_hash.id == allowed_type.id);
 
-        if (_editorui.menuItem(label, .{ .enabled = valid })) {
-            return real_obj;
+        if (_editorui.beginMenu("From", true)) {
+            defer _editorui.endMenu();
+
+            if (_editorui.menuItem(label, .{ .enabled = valid })) {
+                return real_obj;
+            }
         }
     }
 
@@ -171,6 +174,8 @@ fn getTagColor(db: *cdb.CdbDb, tag_r: *cdb.Obj) [4]f32 {
 fn uiAssetBrowser(
     allocator: std.mem.Allocator,
     db: *cdb.CdbDb,
+    tab: *editor.TabO,
+    context: []const cetech1.strid.StrId64,
     root_folder: cdb.ObjId,
     selectection: cdb.ObjId,
     filter_buff: [:0]u8,
@@ -207,6 +212,8 @@ fn uiAssetBrowser(
                         assetUiTree(
                             allocator,
                             db,
+                            tab,
+                            context,
                             asset,
                             selectection,
                             true,
@@ -224,6 +231,8 @@ fn uiAssetBrowser(
                     assetUiTree(
                         allocator,
                         db,
+                        tab,
+                        context,
                         asset.obj,
                         selectection,
                         true,
@@ -238,7 +247,7 @@ fn uiAssetBrowser(
             _editorui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 15 });
             defer _editorui.popStyleVar(.{});
             //assetUiTreeAsspect(allocator: std.mem.Allocator, dbc: *cdb.Db, obj: cdb.ObjId, selectection: cdb.ObjId, args: editor_tree.CdbTreeViewArgs)
-            assetUiTreeAsspect(allocator, db.db, root_folder, selectection, new_args) catch undefined;
+            assetUiTreeAsspect(allocator, db.db, tab, context, root_folder, selectection, new_args) catch undefined;
         }
     }
     return result;
@@ -262,6 +271,8 @@ fn tabUi(inst: *editor.TabO) void {
     const r = uiAssetBrowser(
         allocator,
         &tab_o.db,
+        tab_o,
+        &.{},
         root_folder,
         tab_o.selection_obj,
         &tab_o.filter_buff,
@@ -338,17 +349,21 @@ var asset_ui_tree_aspect = editor_tree.UiTreeAspect.implement(assetUiTreeAsspect
 fn assetUiTreeAsspect(
     allocator: std.mem.Allocator,
     dbc: *cdb.Db,
+    tab: *editor.TabO,
+    contexts: []const cetech1.strid.StrId64,
     obj: cdb.ObjId,
     selectection: cdb.ObjId,
     args: editor_tree.CdbTreeViewArgs,
 ) !void {
     var db = cdb.CdbDb.fromDbT(dbc, _cdb);
-    try assetUiTree(allocator, &db, obj, selectection, false, args, null);
+    try assetUiTree(allocator, &db, tab, contexts, obj, selectection, false, args, null);
 }
 
 fn assetUiTree(
     allocator: std.mem.Allocator,
     db: *cdb.CdbDb,
+    tab: *editor.TabO,
+    contexts: []const cetech1.strid.StrId64,
     obj: cdb.ObjId,
     selection: cdb.ObjId,
     path_label: bool,
@@ -357,8 +372,6 @@ fn assetUiTree(
 ) !void {
     _ = score;
     _ = path_label;
-
-    var buff: [256:0]u8 = undefined;
 
     const obj_r = db.readObj(obj) orelse return;
     const asset_obj = assetdb.AssetType.readSubObj(db, obj_r, .Object).?;
@@ -381,7 +394,7 @@ fn assetUiTree(
     //     _editorui.pushStyleColor4f(.{ .idx = .text, .c = .{ color, color, color, 1.0 } });
     // }
 
-    const expand = is_folder or (args.expand_object and db.hasTypeSet(obj.type_hash));
+    const expand = is_folder or (args.expand_object and db.hasTypeSet(asset_obj.type_hash));
 
     const open = _editortree.cdbObjTreeNode(
         allocator,
@@ -445,17 +458,7 @@ fn assetUiTree(
 
     if (_editorui.beginPopupContextItem()) {
         defer _editorui.endPopup();
-        try selectionContextMenu(allocator, db, selection, obj);
-    }
-
-    if (_editorui.isItemHovered(.{})) {
-        _editorui.beginTooltip();
-        defer _editorui.endTooltip();
-
-        if (_assetdb.getUuid(obj)) |uuid| {
-            const uuid_str = try std.fmt.bufPrintZ(&buff, "Asset UUID: {s}", .{uuid});
-            _editorui.textUnformatted(uuid_str);
-        }
+        try _editor.objContextMenu(allocator, db, tab, contexts, selection, null, null);
     }
 
     try formatTagsToLabel(allocator, db, obj, assetdb.AssetType.propIdx(.Tags));
@@ -491,14 +494,14 @@ fn assetUiTree(
             std.sort.insertion(cdb.ObjId, assets.items, db, lessThanAsset);
 
             for (folders.items) |folder| {
-                try _editortree.cdbTreeView(allocator, db, folder, selection, args);
+                try _editortree.cdbTreeView(allocator, db, tab, contexts, folder, selection, args);
             }
             for (assets.items) |asset| {
-                try _editortree.cdbTreeView(allocator, db, asset, selection, args);
+                try _editortree.cdbTreeView(allocator, db, tab, contexts, asset, selection, args);
             }
         } else {
             if (args.expand_object) {
-                try _editortree.cdbTreeView(allocator, db, asset_obj, selection, args);
+                try _editortree.cdbTreeView(allocator, db, tab, contexts, asset_obj, selection, args);
             }
         }
     }
@@ -516,14 +519,19 @@ fn getFolderForSelectedObj(db: *cdb.CdbDb, selected_obj: cdb.ObjId) cdb.ObjId {
     return _assetdb.getAssetForObj(parent_folder).?;
 }
 
-fn moveToFolderMenuInner(allocator: std.mem.Allocator, db: *cdb.CdbDb, selection: cdb.ObjId, folder: cdb.ObjId) !void {
+fn moveToFolderMenuInner(allocator: std.mem.Allocator, db: *cdb.CdbDb, selection: cdb.ObjId, folder: cdb.ObjId, is_root: bool) !void {
     const name = assetdb.AssetType.readStr(db, db.readObj(folder).?, .Name);
     const folder_obj = _assetdb.getObjForAsset(folder).?;
     var buff: [256:0]u8 = undefined;
     const label = try std.fmt.bufPrintZ(&buff, editorui.Icons.Folder ++ "  " ++ "{s}", .{name orelse "ROOT"});
 
-    if (_editorui.beginMenu(label, true)) {
-        defer _editorui.endMenu();
+    var open = true;
+    if (!is_root) {
+        open = _editorui.beginMenu(label, true);
+    }
+
+    if (open) {
+        defer if (!is_root) _editorui.endMenu();
 
         const set = try db.getReferencerSet(folder_obj, allocator);
         defer allocator.free(set);
@@ -532,7 +540,7 @@ fn moveToFolderMenuInner(allocator: std.mem.Allocator, db: *cdb.CdbDb, selection
         for (set) |ref_obj| {
             if (!_assetdb.isAssetFolder(ref_obj)) continue;
             any_folder = true;
-            try moveToFolderMenuInner(allocator, db, selection, ref_obj);
+            try moveToFolderMenuInner(allocator, db, selection, ref_obj, false);
         }
 
         if (any_folder) {
@@ -558,17 +566,41 @@ fn moveToFolderMenuInner(allocator: std.mem.Allocator, db: *cdb.CdbDb, selection
 fn moveToFolderMenu(allocator: std.mem.Allocator, db: *cdb.CdbDb, selection: cdb.ObjId) !void {
     if (_editorui.beginMenu(editorui.Icons.Folder ++ "  " ++ "Move to", true)) {
         defer _editorui.endMenu();
-        try moveToFolderMenuInner(allocator, db, selection, _assetdb.getRootFolder());
+        try moveToFolderMenuInner(allocator, db, selection, _assetdb.getRootFolder(), true);
     }
 }
 
-fn selectionContextMenu(allocator: std.mem.Allocator, db: *cdb.CdbDb, selection: cdb.ObjId, clicked_obj: cdb.ObjId) !void {
-    _ = clicked_obj;
+fn createNewMenu(allocator: std.mem.Allocator, db: *cdb.CdbDb, selection: cdb.ObjId) !void {
+    var it = _apidb.getFirstImpl(editor.CreateAssetI);
+    while (it) |node| : (it = node.next) {
+        const iface = cetech1.apidb.ApiDbAPI.toInterface(editor.CreateAssetI, node);
+        const menu_name = iface.menu_item.?();
+        var buff: [256:0]u8 = undefined;
+        const label = try std.fmt.bufPrintZ(&buff, "{s}", .{cetech1.fromCstrZ(menu_name)});
 
-    //Add to buffer
-    try _editor_obj_buffer.openInBufferMenu(allocator, db, selection);
+        if (_editorui.menuItem(label, .{})) {
+            var parent_folder = getFolderForSelectedObj(db, _editorui.getFirstSelected(allocator, db, selection));
+            if (!parent_folder.isEmpty()) {
+                iface.create.?(&allocator, db.db, parent_folder);
+            }
+        }
+    }
+}
 
-    _editorui.separator();
+fn selectionContextMenu(allocator: std.mem.Allocator, db: *cdb.CdbDb, context: []const cetech1.strid.StrId64, selection: cdb.ObjId) !void {
+    var is_obj_buffer_context = false;
+    for (context) |ctx| {
+        if (ctx.id == editor_obj_buffer.objectBufferContext.id) {
+            is_obj_buffer_context = true;
+            break;
+        }
+    }
+
+    if (!is_obj_buffer_context) {
+        //Add to buffer
+        try _editor_obj_buffer.openInBufferMenu(allocator, db, selection);
+        _editorui.separator();
+    }
 
     // Open
     _editor.openSelectionInCtxMenu(allocator, db, selection);
@@ -578,21 +610,7 @@ fn selectionContextMenu(allocator: std.mem.Allocator, db: *cdb.CdbDb, selection:
     // Create new asset
     if (_editorui.beginMenu(editorui.Icons.AddFile ++ "  " ++ "New", true)) {
         defer _editorui.endMenu();
-
-        var it = _apidb.getFirstImpl(editor.CreateAssetI);
-        while (it) |node| : (it = node.next) {
-            const iface = cetech1.apidb.ApiDbAPI.toInterface(editor.CreateAssetI, node);
-            const menu_name = iface.menu_item.?();
-            var buff: [256:0]u8 = undefined;
-            const label = try std.fmt.bufPrintZ(&buff, "{s}", .{cetech1.fromCstrZ(menu_name)});
-
-            if (_editorui.menuItem(label, .{})) {
-                var parent_folder = getFolderForSelectedObj(db, _editorui.getFirstSelected(allocator, db, selection));
-                if (!parent_folder.isEmpty()) {
-                    iface.create.?(&allocator, db.db, parent_folder);
-                }
-            }
-        }
+        try createNewMenu(allocator, db, selection);
     }
 
     try moveToFolderMenu(allocator, db, selection);
@@ -668,9 +686,57 @@ fn tabMenu(inst: *editor.TabO) void {
     const selected_count = _editorui.selectedCount(allocator, &tab_o.db, tab_o.selection_obj);
 
     if (_editorui.beginMenu("Asset", selected_count != 0)) {
-        selectionContextMenu(allocator, &tab_o.db, tab_o.selection_obj, cdb.OBJID_ZERO) catch undefined;
         defer _editorui.endMenu();
+        _editor.objContextMenu(allocator, &tab_o.db, tab_o, &.{}, tab_o.selection_obj, null, null) catch undefined;
     }
+
+    if (_editorui.beginMenu("New", selected_count != 0)) {
+        defer _editorui.endMenu();
+        createNewMenu(allocator, &tab_o.db, tab_o.selection_obj) catch undefined;
+    }
+}
+
+// Asset cntx menu
+var asset_context_menu_i = editor.ObjContextMenuI.implement(
+    assetContextMenuIsValid,
+    assetContextMenu,
+);
+
+fn assetContextMenuIsValid(
+    allocator: std.mem.Allocator,
+    dbc: *cdb.Db,
+    context: []const cetech1.strid.StrId64,
+    selection: cdb.ObjId,
+) f32 {
+    _ = context; // autofix
+    var db = cdb.CdbDb.fromDbT(dbc, _cdb);
+
+    if (_editorui.getSelected(allocator, &db, selection)) |selected_objs| {
+        defer allocator.free(selected_objs);
+        for (selected_objs) |obj| {
+            if (!assetdb.AssetType.isSameType(obj)) return 0;
+        }
+    }
+
+    return 1;
+}
+
+fn assetContextMenu(
+    allocator: std.mem.Allocator,
+    dbc: *cdb.Db,
+    tab: *editor.TabO,
+    context: []const cetech1.strid.StrId64,
+    selection: cdb.ObjId,
+    prop_idx: ?u32,
+    in_set_obj: ?cdb.ObjId,
+) void {
+    _ = tab; // autofix
+    _ = prop_idx; // autofix
+    _ = in_set_obj; // autofix
+
+    var db = cdb.CdbDb.fromDbT(dbc, _cdb);
+    selectionContextMenu(allocator, &db, context, selection) catch undefined;
+    return;
 }
 
 // Create folder
@@ -754,6 +820,8 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     try apidb.implOrRemove(cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(editor.EditorTabTypeI, &foo_tab, load);
     try apidb.implOrRemove(editor.CreateAssetI, &create_folder_i, load);
+
+    try apidb.implOrRemove(editor.ObjContextMenuI, &asset_context_menu_i, load);
 
     try apidb.setOrRemoveZigApi(public.AssetBrowserAPI, &api, load);
 

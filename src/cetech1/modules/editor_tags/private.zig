@@ -33,7 +33,7 @@ const G = struct {
     tag_prop_aspect: *editorui.UiEmbedPropertyAspect = undefined,
     tag_visual_aspect: *editorui.UiVisualAspect = undefined,
     noproto_config_aspect: *editorui.UiPropertiesConfigAspect = undefined,
-    tags_settings_prop_aspect: *editorui.UiPropertiesAspect = undefined,
+    tags_settings_prop_aspect: *editor.UiPropertiesAspect = undefined,
 };
 var _g: *G = undefined;
 

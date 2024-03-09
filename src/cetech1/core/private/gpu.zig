@@ -2,6 +2,7 @@ const std = @import("std");
 
 const zgpu = @import("zgpu");
 const zgui = @import("zgui");
+const zglfw = @import("zglfw");
 
 const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");
@@ -28,7 +29,20 @@ pub fn registerToApi() !void {
 }
 
 fn createContext(window: *cetech1.system.Window) !*public.GpuContext {
-    const gctx = try zgpu.GraphicsContext.create(_allocator, @ptrCast(window), .{});
+    const gctx = try zgpu.GraphicsContext.create(
+        _allocator,
+        .{
+            .window = window,
+            .fn_getTime = @ptrCast(&zglfw.getTime),
+            .fn_getFramebufferSize = @ptrCast(&zglfw.Window.getFramebufferSize),
+
+            .fn_getWin32Window = @ptrCast(&zglfw.getWin32Window),
+            .fn_getX11Display = @ptrCast(&zglfw.getX11Display),
+            .fn_getX11Window = @ptrCast(&zglfw.getX11Window),
+            .fn_getCocoaWindow = @ptrCast(&zglfw.getCocoaWindow),
+        },
+        .{},
+    );
     return @ptrCast(gctx);
 }
 

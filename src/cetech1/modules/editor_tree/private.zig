@@ -83,6 +83,16 @@ fn cdbObjTreeNode(
     });
     _editorui.popStyleColor(.{});
 
+    if (db.getAspect(editorui.UiVisualAspect, obj.type_hash)) |aspect| {
+        if (aspect.ui_tooltip) |tooltip| {
+            if (_editorui.isItemHovered(.{})) {
+                _editorui.beginTooltip();
+                defer _editorui.endTooltip();
+                tooltip(&allocator, db.db, obj);
+            }
+        }
+    }
+
     return open;
 }
 
@@ -146,13 +156,13 @@ fn isLeaf(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId) bool {
     return true;
 }
 
-fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, selection: cetech1.cdb.ObjId, args: public.CdbTreeViewArgs) !void {
+fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, tab: *editor.TabO, context: []const cetech1.strid.StrId64, obj: cetech1.cdb.ObjId, selection: cetech1.cdb.ObjId, args: public.CdbTreeViewArgs) !void {
     // if exist aspect use it
     const ui_aspect = db.getAspect(public.UiTreeAspect, obj.type_hash);
 
     if (ui_aspect) |aspect| {
         //_ = aspect;
-        aspect.ui_tree.?(&allocator, db.db, obj, selection, args);
+        aspect.ui_tree.?(&allocator, db.db, tab, context.ptr, context.len, obj, selection, args);
         return;
     }
 
@@ -220,7 +230,7 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech
 
                 if (open) {
                     defer api.cdbTreePop();
-                    try cdbTreeView(allocator, db, subobj, selection, args);
+                    try cdbTreeView(allocator, db, tab, context, subobj, selection, args);
                 }
             },
             //.SUBOBJECT_SET, .REFERENCE_SET => {
@@ -238,7 +248,7 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech
 
                 if (_editorui.beginPopupContextItem()) {
                     defer _editorui.endPopup();
-                    try _editorui.objContextMenu(allocator, db, obj, prop_idx, null);
+                    try _editor.objContextMenu(allocator, db, tab, &.{}, obj, prop_idx, null);
                 }
 
                 if (open) {
@@ -283,11 +293,11 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech
 
                             if (_editorui.beginPopupContextItem()) {
                                 defer _editorui.endPopup();
-                                try _editorui.objContextMenu(allocator, db, obj, prop_idx, subobj);
+                                try _editor.objContextMenu(allocator, db, tab, &.{}, obj, prop_idx, subobj);
                             }
 
                             if (open_inset) {
-                                try cdbTreeView(allocator, db, subobj, selection, args);
+                                try cdbTreeView(allocator, db, tab, context, subobj, selection, args);
                                 api.cdbTreePop();
                             }
                         }

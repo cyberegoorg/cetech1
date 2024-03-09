@@ -62,7 +62,7 @@ pub fn build(b: *std.Build) !void {
     const zglfw_pkg = zglfw.package(b, target, optimize, .{});
     const zpool_pkg = zpool.package(b, target, optimize, .{});
     const zgpu_pkg = zgpu.package(b, target, optimize, .{
-        .deps = .{ .zpool = zpool_pkg, .zglfw = zglfw_pkg },
+        .deps = .{ .zpool = zpool_pkg },
     });
 
     // cetech1 static lib

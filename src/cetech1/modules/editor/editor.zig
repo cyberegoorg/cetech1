@@ -1,7 +1,127 @@
 const std = @import("std");
 const cetech1 = @import("cetech1");
 
+const cdb = cetech1.cdb;
+const editorui = cetech1.editorui;
+
 pub const c = @cImport(@cInclude("cetech1/modules/editor/editor.h"));
+
+pub const UiPropertiesAspect = extern struct {
+    ui_properties: ?*const fn (
+        allocator: *const std.mem.Allocator,
+        db: *cdb.Db,
+        tab: *TabO,
+        obj: cdb.ObjId,
+        args: editorui.cdbPropertiesViewArgs,
+    ) callconv(.C) void = null,
+
+    pub inline fn implement(
+        ui: *const fn (
+            allocator: std.mem.Allocator,
+            db: *cdb.Db,
+            tab: *TabO,
+            obj: cdb.ObjId,
+            args: editorui.cdbPropertiesViewArgs,
+        ) anyerror!void,
+    ) UiPropertiesAspect {
+        const Wrap = struct {
+            pub fn ui_c(
+                allocator: *const std.mem.Allocator,
+                db: *cdb.Db,
+                tab: *TabO,
+                obj: cdb.ObjId,
+                args: editorui.cdbPropertiesViewArgs,
+            ) callconv(.C) void {
+                ui(allocator.*, db, tab, obj, args) catch |err| {
+                    std.log.err("UiPropertiesAspect {}", .{err});
+                    @breakpoint();
+                };
+            }
+        };
+
+        return UiPropertiesAspect{
+            .ui_properties = Wrap.ui_c,
+        };
+    }
+};
+
+pub const ObjContextMenuI = extern struct {
+    pub const c_name = "ct_editor_obj_context_menu_i";
+
+    is_valid: ?*const fn (
+        allocator: *const std.mem.Allocator,
+        db: *cetech1.cdb.Db,
+        context: [*]const cetech1.strid.StrId64,
+        context_n: usize,
+        obj: cetech1.cdb.ObjId,
+    ) callconv(.C) f32,
+
+    menu: ?*const fn (
+        allocator: *const std.mem.Allocator,
+        db: *cetech1.cdb.Db,
+        tab: *TabO,
+        context: [*]const cetech1.strid.StrId64,
+        context_n: usize,
+        obj: cetech1.cdb.ObjId,
+        prop_idx: ?*const u32,
+        in_set_obj: ?*const cetech1.cdb.ObjId,
+    ) callconv(.C) void,
+
+    pub inline fn implement(
+        is_valid: *const fn (
+            allocator: std.mem.Allocator,
+            db: *cetech1.cdb.Db,
+            context: []const cetech1.strid.StrId64,
+            obj: cetech1.cdb.ObjId,
+        ) f32,
+        menu: *const fn (
+            allocator: std.mem.Allocator,
+            db: *cetech1.cdb.Db,
+            tab: *TabO,
+            context: []const cetech1.strid.StrId64,
+            obj: cetech1.cdb.ObjId,
+            prop_idx: ?u32,
+            in_set_obj: ?cetech1.cdb.ObjId,
+        ) void,
+    ) ObjContextMenuI {
+        const Wrap = struct {
+            pub fn is_valid_c(
+                allocator: *const std.mem.Allocator,
+                db: *cetech1.cdb.Db,
+                context: [*]const cetech1.strid.StrId64,
+                context_n: usize,
+                obj: cetech1.cdb.ObjId,
+            ) callconv(.C) f32 {
+                return is_valid(allocator.*, db, context[0..context_n], obj);
+            }
+            pub fn menu_c(
+                allocator: *const std.mem.Allocator,
+                db: *cetech1.cdb.Db,
+                tab: *TabO,
+                context: [*]const cetech1.strid.StrId64,
+                context_n: usize,
+                obj: cetech1.cdb.ObjId,
+                prop_idx: ?*const u32,
+                in_set_obj: ?*const cetech1.cdb.ObjId,
+            ) callconv(.C) void {
+                return menu(
+                    allocator.*,
+                    db,
+                    tab,
+                    context[0..context_n],
+                    obj,
+                    if (prop_idx) |pi| pi.* else null,
+                    if (in_set_obj) |pi| pi.* else null,
+                );
+            }
+        };
+
+        return ObjContextMenuI{
+            .is_valid = Wrap.is_valid_c,
+            .menu = Wrap.menu_c,
+        };
+    }
+};
 
 pub const CreateAssetI = extern struct {
     pub const c_name = "ct_assetbrowser_create_asset_i";
@@ -208,4 +328,6 @@ pub const EditorAPI = struct {
 
     // Modal
     openModal: *const fn (modal_hash: cetech1.strid.StrId32, on_set: UiModalI.OnSetFN, data: UiModalI.Data) void,
+
+    objContextMenu: *const fn (allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, tab: *TabO, contexts: []const cetech1.strid.StrId64, obj: cetech1.cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cetech1.cdb.ObjId) anyerror!void,
 };
