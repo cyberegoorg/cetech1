@@ -175,6 +175,14 @@ pub fn build(b: *std.Build) !void {
     );
     _ = module_editor;
 
+    const module_editor_inspector_public = b.createModule(.{
+        .root_source_file = .{ .path = "src/cetech1/modules/editor_inspector/editor_inspector.zig" },
+        .imports = &.{
+            .{ .name = "cetech1", .module = cetech1_module },
+            .{ .name = "editor", .module = module_editor_public },
+        },
+    });
+
     // Editor tree
     const module_editor_tree_public = b.createModule(.{
         .root_source_file = .{ .path = "src/cetech1/modules/editor_tree/editor_tree.zig" },
@@ -194,6 +202,7 @@ pub fn build(b: *std.Build) !void {
         cetech1_module,
     );
     module_editor_tree.root_module.addImport("editor", module_editor_public);
+    module_editor_tree.root_module.addImport("editor_inspector", module_editor_inspector_public);
 
     // Obj buffer
     const module_editor_obj_buffer_public = b.createModule(.{
@@ -233,6 +242,7 @@ pub fn build(b: *std.Build) !void {
         cetech1_module,
     );
     module_editor_tags.root_module.addImport("editor", module_editor_public);
+    module_editor_tags.root_module.addImport("editor_inspector", module_editor_inspector_public);
 
     // Editor asset browser
     const module_editor_asset_browser_public = b.createModule(.{
@@ -251,19 +261,10 @@ pub fn build(b: *std.Build) !void {
         cetech1_module,
     );
     module_editor_asset_browser.root_module.addImport("editor", module_editor_public);
-    module_editor_asset_browser.root_module.addImport("editor_obj_buffer", module_editor_obj_buffer_public);
     module_editor_asset_browser.root_module.addImport("editor_tree", module_editor_tree_public);
     module_editor_asset_browser.root_module.addImport("editor_tags", module_editor_tags_public);
 
     // Editor properties
-    const module_editor_propeties_public = b.createModule(.{
-        .root_source_file = .{ .path = "src/cetech1/modules/editor_properties/editor_properties.zig" },
-        .imports = &.{
-            .{ .name = "cetech1", .module = cetech1_module },
-            .{ .name = "editor", .module = module_editor_public },
-        },
-    });
-    _ = module_editor_propeties_public;
     var module_editor_inspector = try createCetechModule(
         b,
         "editor_inspector",
@@ -288,6 +289,21 @@ pub fn build(b: *std.Build) !void {
     );
     module_editor_explorer.root_module.addImport("editor", module_editor_public);
     module_editor_explorer.root_module.addImport("editor_tree", module_editor_tree_public);
+
+    // Editor asset
+    var module_editor_asset = try createCetechModule(
+        b,
+        "editor_asset",
+        "src/cetech1/modules/editor_asset/private.zig",
+        .{ .major = 0, .minor = 1, .patch = 0 },
+        target,
+        optimize,
+        cetech1_module,
+    );
+    module_editor_asset.root_module.addImport("editor", module_editor_public);
+    module_editor_asset.root_module.addImport("editor_inspector", module_editor_inspector_public);
+    module_editor_asset.root_module.addImport("editor_tree", module_editor_tree_public);
+    module_editor_asset.root_module.addImport("editor_obj_buffer", module_editor_obj_buffer_public);
 
     // Editor fixtures
     const module_editor_fixtures_public = b.createModule(.{

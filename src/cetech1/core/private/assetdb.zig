@@ -4,31 +4,35 @@
 const std = @import("std");
 const apidb = @import("apidb.zig");
 const task = @import("task.zig");
-const cdb = @import("cdb.zig");
+const cdb_private = @import("cdb.zig");
 const cdb_types = @import("../cdb_types.zig");
 const log = @import("log.zig");
-const uuid = @import("uuid.zig");
+const uuid_private = @import("uuid.zig");
 const tempalloc = @import("tempalloc.zig");
 const profiler = @import("profiler.zig");
 
 const public = @import("../assetdb.zig");
 const cetech1 = @import("../cetech1.zig");
-const editorui = @import("editorui.zig");
-const propIdx = cetech1.cdb.propIdx;
+const cdb = cetech1.cdb;
+const uuid = cetech1.uuid;
+const strid = cetech1.strid;
 
-const Uuid2ObjId = std.AutoArrayHashMap(cetech1.uuid.Uuid, cetech1.cdb.ObjId);
-const ObjId2Uuid = std.AutoArrayHashMap(cetech1.cdb.ObjId, cetech1.uuid.Uuid);
+const editorui = @import("editorui.zig");
+const propIdx = cdb.propIdx;
+
+const Uuid2ObjId = std.AutoArrayHashMap(uuid.Uuid, cdb.ObjId);
+const ObjId2Uuid = std.AutoArrayHashMap(cdb.ObjId, uuid.Uuid);
 
 // File info
 // TODO: to struct
-const Path2Folder = std.StringArrayHashMap(cetech1.cdb.ObjId);
-const Folder2Path = std.AutoArrayHashMap(cetech1.cdb.ObjId, []u8);
-const Uuid2AssetUuid = std.AutoArrayHashMap(cetech1.uuid.Uuid, cetech1.uuid.Uuid);
-const AssetUuid2Path = std.AutoArrayHashMap(cetech1.uuid.Uuid, []u8);
-const AssetUuid2Depend = std.AutoArrayHashMap(cetech1.uuid.Uuid, UuidSet);
-const AssetObjIdVersion = std.AutoArrayHashMap(cetech1.cdb.ObjId, u64);
+const Path2Folder = std.StringArrayHashMap(cdb.ObjId);
+const Folder2Path = std.AutoArrayHashMap(cdb.ObjId, []u8);
+const Uuid2AssetUuid = std.AutoArrayHashMap(uuid.Uuid, uuid.Uuid);
+const AssetUuid2Path = std.AutoArrayHashMap(uuid.Uuid, []u8);
+const AssetUuid2Depend = std.AutoArrayHashMap(uuid.Uuid, UuidSet);
+const AssetObjIdVersion = std.AutoArrayHashMap(cdb.ObjId, u64);
 
-const ToDeleteList = std.AutoArrayHashMap(cetech1.cdb.ObjId, void);
+const ToDeleteList = std.AutoArrayHashMap(cdb.ObjId, void);
 
 const AssetIOSet = std.AutoArrayHashMap(*public.AssetIOI, void);
 
@@ -53,7 +57,7 @@ const ASSET_CURRENT_VERSION_STR = "0.1.0";
 const ASSET_CURRENT_VERSION = std.SemanticVersion.parse(ASSET_CURRENT_VERSION_STR) catch undefined;
 
 // Type for root of all assets
-pub const AssetRootType = cetech1.cdb.CdbTypeDecl(
+pub const AssetRootType = cdb.CdbTypeDecl(
     "ct_asset_root",
     enum(u32) {
         Assets = 0,
@@ -62,17 +66,17 @@ pub const AssetRootType = cetech1.cdb.CdbTypeDecl(
 
 const WriteBlobFn = *const fn (
     blob: []const u8,
-    asset: cetech1.cdb.ObjId,
-    obj_uuid: cetech1.uuid.Uuid,
-    prop_hash: cetech1.strid.StrId32,
+    asset: cdb.ObjId,
+    obj_uuid: uuid.Uuid,
+    prop_hash: strid.StrId32,
     root_path: []const u8,
     tmp_allocator: std.mem.Allocator,
 ) anyerror!void;
 
 const ReadBlobFn = *const fn (
-    asset: cetech1.cdb.ObjId,
-    obj_uuid: cetech1.uuid.Uuid,
-    prop_hash: cetech1.strid.StrId32,
+    asset: cdb.ObjId,
+    obj_uuid: uuid.Uuid,
+    prop_hash: strid.StrId32,
     tmp_allocator: std.mem.Allocator,
 ) anyerror![]u8;
 
@@ -105,18 +109,17 @@ pub var api = public.AssetDBAPI{
     .isToDeleted = isToDeleted,
     .reviveDeleted = reviveDeleted,
     .buffGetValidName = buffGetValidName,
-    .getAssetColor = getAssetColor,
 };
 
-var asset_root_type: cetech1.strid.StrId32 = undefined;
+var asset_root_type: strid.StrId32 = undefined;
 
 var _allocator: std.mem.Allocator = undefined;
-var _db: *cetech1.cdb.CdbDb = undefined;
+var _db: *cdb.CdbDb = undefined;
 
-var _asset_root: cetech1.cdb.ObjId = undefined;
+var _asset_root: cdb.ObjId = undefined;
 var _asset_root_lock: std.Thread.Mutex = undefined;
 var _asset_root_last_version: u64 = undefined;
-var _asset_root_folder: cetech1.cdb.ObjId = undefined;
+var _asset_root_folder: cdb.ObjId = undefined;
 var _asset_root_path: ?[]const u8 = null;
 
 var _uuid2objid: Uuid2ObjId = undefined;
@@ -132,10 +135,10 @@ var _folder2path: Folder2Path = undefined;
 var _uuid2asset_uuid: Uuid2AssetUuid = undefined;
 var _asset_uuid2path: AssetUuid2Path = undefined;
 var _asset_uuid2depend: AssetUuid2Depend = undefined;
-var _asset_dag: cetech1.dagraph.DAG(cetech1.uuid.Uuid) = undefined;
+var _asset_dag: cetech1.dag.DAG(uuid.Uuid) = undefined;
 
 var _tmp_depend_array: std.ArrayList(cetech1.task.TaskID) = undefined;
-var _tmp_taskid_map: std.AutoArrayHashMap(cetech1.uuid.Uuid, cetech1.task.TaskID) = undefined;
+var _tmp_taskid_map: std.AutoArrayHashMap(uuid.Uuid, cetech1.task.TaskID) = undefined;
 
 // Version check
 var _asset_objid2version: AssetObjIdVersion = undefined;
@@ -153,31 +156,31 @@ var _folders_to_remove: ToDeleteList = undefined;
 var _cdb_asset_io_i = public.AssetIOI.implement(struct {
     pub fn canImport(extension: []const u8) bool {
         const type_name = extension[1..];
-        const type_hash = cetech1.strid.strId32(type_name);
+        const type_hash = strid.strId32(type_name);
         return _db.getTypePropDef(type_hash) != null;
     }
 
-    pub fn canExport(db: *cetech1.cdb.CdbDb, asset: cetech1.cdb.ObjId, extension: []const u8) bool {
+    pub fn canExport(db: *cdb.CdbDb, asset: cdb.ObjId, extension: []const u8) bool {
         const type_name = extension[1..];
-        const type_hash = cetech1.strid.strId32(type_name);
+        const type_hash = strid.strId32(type_name);
 
         const asset_obj = public.AssetType.readSubObj(db, db.readObj(asset).?, .Object) orelse return false;
         return asset_obj.type_hash.id == type_hash.id;
     }
 
     pub fn importAsset(
-        db: *cetech1.cdb.CdbDb,
+        db: *cdb.CdbDb,
         prereq: cetech1.task.TaskID,
         dir: std.fs.Dir,
-        folder: cetech1.cdb.ObjId,
+        folder: cdb.ObjId,
         filename: []const u8,
-        reimport_to: ?cetech1.cdb.ObjId,
+        reimport_to: ?cdb.ObjId,
     ) !cetech1.task.TaskID {
         _ = reimport_to;
         const Task = struct {
-            db: *cetech1.cdb.CdbDb,
+            db: *cdb.CdbDb,
             dir: std.fs.Dir,
-            folder: cetech1.cdb.ObjId,
+            folder: cdb.ObjId,
             filename: []const u8,
             pub fn exec(self: *@This()) void {
                 var zone_ctx = profiler.ztracy.Zone(@src());
@@ -235,14 +238,14 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
     }
 
     pub fn exportAsset(
-        db: *cetech1.cdb.CdbDb,
+        db: *cdb.CdbDb,
         root_path: []const u8,
         sub_path: []const u8,
-        asset: cetech1.cdb.ObjId,
+        asset: cdb.ObjId,
     ) !cetech1.task.TaskID {
         const Task = struct {
-            db: *cetech1.cdb.CdbDb,
-            asset: cetech1.cdb.ObjId,
+            db: *cdb.CdbDb,
+            asset: cdb.ObjId,
             sub_path: []const u8,
             root_path: []const u8,
             pub fn exec(self: *@This()) void {
@@ -284,27 +287,7 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
     }
 });
 
-fn getAssetColor(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId) [4]f32 {
-    if (public.AssetType.isSameType(obj)) {
-        const is_modified = isObjModified(obj);
-        const is_deleted = isToDeleted(obj);
-
-        if (is_modified) {
-            return cetech1.editorui.Colors.Modified;
-        } else if (is_deleted) {
-            return cetech1.editorui.Colors.Deleted;
-        }
-        const r = db.readObj(obj).?;
-
-        if (public.AssetType.readSubObj(db, r, .Object)) |asset_obj| {
-            return editorui.api.getObjColor(db, asset_obj, null, null);
-        }
-    }
-
-    return .{ 1.0, 1.0, 1.0, 1.0 };
-}
-
-fn isAssetNameValid(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, folder: cetech1.cdb.ObjId, type_hash: cetech1.strid.StrId32, base_name: [:0]const u8) !bool {
+fn isAssetNameValid(allocator: std.mem.Allocator, db: *cdb.CdbDb, folder: cdb.ObjId, type_hash: strid.StrId32, base_name: [:0]const u8) !bool {
     const set = try db.getReferencerSet(folder, allocator);
     defer allocator.free(set);
 
@@ -335,210 +318,81 @@ fn isAssetNameValid(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, folder
     return !name_set.contains(base_name);
 }
 
-// Asset visual aspect
-var asset_visual_aspect = cetech1.editorui.UiVisualAspect.implement(
-    assetNameUIVisalAspect,
-    assetIconUIVisalAspect,
-    assetColorUIVisalAspect,
-    assetTooltipUIVisalAspect,
-);
+var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
+    pub fn createTypes(db_: *cdb.Db) !void {
+        var db = cdb.CdbDb.fromDbT(db_, &cdb_private.api);
 
-fn assetTooltipUIVisalAspect(
-    allocator: std.mem.Allocator,
-    dbc: *cetech1.cdb.Db,
-    obj: cetech1.cdb.ObjId,
-) void {
-    var db = cetech1.cdb.CdbDb.fromDbT(dbc, &cdb.api);
-
-    if (getUuid(obj)) |uuuid| {
-        var buff: [256:0]u8 = undefined;
-        const uuid_str = std.fmt.bufPrintZ(&buff, "Asset UUID: {s}", .{uuuid}) catch undefined;
-        editorui.api.textUnformatted(uuid_str);
-    }
-
-    const asset_obj = getObjForAsset(obj).?;
-
-    if (db.getAspect(cetech1.editorui.UiVisualAspect, asset_obj.type_hash)) |aspect| {
-        if (aspect.ui_tooltip) |tooltip| {
-            editorui.api.separator();
-            tooltip(&allocator, db.db, asset_obj);
-        }
-    }
-}
-
-fn assetNameUIVisalAspect(
-    allocator: std.mem.Allocator,
-    dbc: *cetech1.cdb.Db,
-    obj: cetech1.cdb.ObjId,
-) ![:0]const u8 {
-    var db = cetech1.cdb.CdbDb.fromDbT(dbc, &cdb.api);
-    const obj_r = db.readObj(obj).?;
-    const asset_obj = public.AssetType.readSubObj(&db, obj_r, .Object).?;
-
-    if (cetech1.assetdb.FolderType.isSameType(asset_obj)) {
-        const asset_name = cetech1.assetdb.AssetType.readStr(&db, obj_r, .Name) orelse "ROOT";
-        return std.fmt.allocPrintZ(
-            allocator,
-            "{s}",
-            .{
-                asset_name,
+        // Asset type is wrapper for asset object
+        const asset_type_hash = db.addType(
+            public.AssetType.name,
+            &.{
+                .{ .prop_idx = public.AssetType.propIdx(.Name), .name = "name", .type = cdb.PropType.STR },
+                .{ .prop_idx = public.AssetType.propIdx(.Description), .name = "description", .type = cdb.PropType.STR },
+                .{ .prop_idx = public.AssetType.propIdx(.Folder), .name = "folder", .type = cdb.PropType.REFERENCE, .type_hash = public.FolderType.type_hash },
+                .{ .prop_idx = public.AssetType.propIdx(.Tags), .name = "tags", .type = cdb.PropType.REFERENCE_SET, .type_hash = public.TagType.type_hash },
+                .{ .prop_idx = public.AssetType.propIdx(.Object), .name = "object", .type = cdb.PropType.SUBOBJECT },
             },
-        ) catch "";
-    } else {
-        const asset_name = cetech1.assetdb.AssetType.readStr(&db, obj_r, .Name) orelse "No NAME =()";
-        const type_name = db.getTypeName(asset_obj.type_hash).?;
-        return std.fmt.allocPrintZ(
-            allocator,
-            "{s}.{s}",
-            .{
-                asset_name,
-                type_name,
+        ) catch unreachable;
+        std.debug.assert(asset_type_hash.id == public.AssetType.type_hash.id);
+
+        // Asset folder
+        // TODO as regular asset
+        const asset_folder_type = db.addType(
+            public.FolderType.name,
+            &.{
+                .{ .prop_idx = public.FolderType.propIdx(.Color), .name = "color", .type = cdb.PropType.SUBOBJECT, .type_hash = cdb_types.Color4fType.type_hash },
             },
-        ) catch "";
+        ) catch unreachable;
+        std.debug.assert(asset_folder_type.id == public.FolderType.type_hash.id);
+
+        // All assets is parent of this
+        asset_root_type = db.addType(
+            AssetRootType.name,
+            &.{
+                .{ .prop_idx = AssetRootType.propIdx(.Assets), .name = "assets", .type = cdb.PropType.SUBOBJECT_SET },
+            },
+        ) catch unreachable;
+
+        // Project
+        const project_type = db.addType(
+            public.ProjectType.name,
+            &.{
+                .{ .prop_idx = public.ProjectType.propIdx(.Name), .name = "name", .type = cdb.PropType.STR },
+                .{ .prop_idx = public.ProjectType.propIdx(.Description), .name = "description", .type = cdb.PropType.STR },
+                .{ .prop_idx = public.ProjectType.propIdx(.Organization), .name = "organization", .type = cdb.PropType.STR },
+            },
+        ) catch unreachable;
+        std.debug.assert(project_type.id == public.ProjectType.type_hash.id);
+
+        const ct_asset_tag_type = db.addType(
+            public.TagType.name,
+            &.{
+                .{ .prop_idx = public.TagType.propIdx(.Name), .name = "name", .type = cdb.PropType.STR },
+                .{ .prop_idx = public.TagType.propIdx(.Color), .name = "color", .type = cdb.PropType.SUBOBJECT, .type_hash = cdb_types.Color4fType.type_hash },
+            },
+        ) catch unreachable;
+        _ = ct_asset_tag_type;
+
+        const ct_tags = db.addType(
+            public.TagsType.name,
+            &.{
+                .{ .prop_idx = public.TagsType.propIdx(.Tags), .name = "tags", .type = cdb.PropType.REFERENCE_SET, .type_hash = public.TagType.type_hash },
+            },
+        ) catch unreachable;
+        _ = ct_tags;
+
+        _ = cetech1.cdb_types.addBigType(&db, public.FooAsset.name) catch unreachable;
+        _ = cetech1.cdb_types.addBigType(&db, public.BarAsset.name) catch unreachable;
+        _ = cetech1.cdb_types.addBigType(&db, public.BazAsset.name) catch unreachable;
     }
-}
-
-fn assetIconUIVisalAspect(
-    allocator: std.mem.Allocator,
-    dbc: *cetech1.cdb.Db,
-    obj: cetech1.cdb.ObjId,
-) ![:0]const u8 {
-    var db = cetech1.cdb.CdbDb.fromDbT(dbc, &cdb.api);
-    const obj_r = db.readObj(obj).?;
-    const asset_obj = public.AssetType.readSubObj(&db, obj_r, .Object).?;
-    const ui_visual_aspect = db.getAspect(cetech1.editorui.UiVisualAspect, asset_obj.type_hash);
-    var ui_icon: ?[:0]const u8 = null;
-    if (ui_visual_aspect) |aspect| {
-        if (aspect.ui_icons) |icons| {
-            ui_icon = std.mem.span(icons(&allocator, &db, asset_obj));
-        }
-    }
-    defer {
-        if (ui_icon) |i| {
-            allocator.free(i);
-        }
-    }
-
-    const is_modified = isObjModified(obj);
-    const is_deleted = isToDeleted(obj);
-
-    return try std.fmt.allocPrintZ(
-        allocator,
-        "{s} {s}{s}",
-        .{
-            if (ui_icon) |i| i else cetech1.editorui.Icons.Asset,
-            if (is_modified) cetech1.editorui.CoreIcons.FA_STAR_OF_LIFE else "",
-            if (is_deleted) " " ++ cetech1.editorui.Icons.Deleted else "",
-        },
-    );
-}
-
-fn assetColorUIVisalAspect(
-    dbc: *cetech1.cdb.Db,
-    obj: cetech1.cdb.ObjId,
-) ![4]f32 {
-    var db = cetech1.cdb.CdbDb.fromDbT(dbc, &cdb.api);
-    return getAssetColor(&db, obj);
-}
-
-// Folder visual aspect
-var folder_visual_aspect = cetech1.editorui.UiVisualAspect.implement(
-    null,
-    struct {
-        fn ui_icons(
-            allocator: std.mem.Allocator,
-            dbc: *cetech1.cdb.Db,
-            obj: cetech1.cdb.ObjId,
-        ) ![:0]const u8 {
-            _ = dbc;
-            _ = obj;
-
-            return try std.fmt.allocPrintZ(
-                allocator,
-                "{s}",
-                .{cetech1.editorui.Icons.Folder},
-            );
-        }
-    }.ui_icons,
-    null,
-    null,
-);
-
-pub fn createCdbTypes(db_: *cetech1.cdb.Db) !void {
-    var db = cetech1.cdb.CdbDb.fromDbT(db_, &cdb.api);
-
-    // Asset type is wrapper for asset object
-    const asset_type_hash = db.addType(
-        public.AssetType.name,
-        &.{
-            .{ .prop_idx = public.AssetType.propIdx(.Name), .name = "name", .type = cetech1.cdb.PropType.STR },
-            .{ .prop_idx = public.AssetType.propIdx(.Description), .name = "description", .type = cetech1.cdb.PropType.STR },
-            .{ .prop_idx = public.AssetType.propIdx(.Tags), .name = "tags", .type = cetech1.cdb.PropType.REFERENCE_SET, .type_hash = public.TagType.type_hash },
-            .{ .prop_idx = public.AssetType.propIdx(.Object), .name = "object", .type = cetech1.cdb.PropType.SUBOBJECT },
-            .{ .prop_idx = public.AssetType.propIdx(.Folder), .name = "folder", .type = cetech1.cdb.PropType.REFERENCE, .type_hash = public.FolderType.type_hash },
-        },
-    ) catch unreachable;
-    std.debug.assert(asset_type_hash.id == public.AssetType.type_hash.id);
-    try cetech1.assetdb.AssetType.addAspect(&db, cetech1.editorui.UiVisualAspect, &asset_visual_aspect);
-
-    // Asset folder
-    // TODO as regular asset
-    const asset_folder_type = db.addType(
-        public.FolderType.name,
-        &.{},
-    ) catch unreachable;
-    std.debug.assert(asset_folder_type.id == public.FolderType.type_hash.id);
-    try cetech1.assetdb.FolderType.addAspect(&db, cetech1.editorui.UiVisualAspect, &folder_visual_aspect);
-
-    // All assets is parent of this
-    asset_root_type = db.addType(
-        AssetRootType.name,
-        &.{
-            .{ .prop_idx = AssetRootType.propIdx(.Assets), .name = "assets", .type = cetech1.cdb.PropType.SUBOBJECT_SET },
-        },
-    ) catch unreachable;
-
-    // Project
-    const project_type = db.addType(
-        public.ProjectType.name,
-        &.{
-            .{ .prop_idx = public.ProjectType.propIdx(.Name), .name = "name", .type = cetech1.cdb.PropType.STR },
-            .{ .prop_idx = public.ProjectType.propIdx(.Description), .name = "description", .type = cetech1.cdb.PropType.STR },
-            .{ .prop_idx = public.ProjectType.propIdx(.Organization), .name = "organization", .type = cetech1.cdb.PropType.STR },
-        },
-    ) catch unreachable;
-    std.debug.assert(project_type.id == public.ProjectType.type_hash.id);
-
-    const ct_asset_tag_type = db.addType(
-        public.TagType.name,
-        &.{
-            .{ .prop_idx = public.TagType.propIdx(.Name), .name = "name", .type = cetech1.cdb.PropType.STR },
-            .{ .prop_idx = public.TagType.propIdx(.Color), .name = "color", .type = cetech1.cdb.PropType.SUBOBJECT, .type_hash = cdb_types.Color4fType.type_hash },
-        },
-    ) catch unreachable;
-    _ = ct_asset_tag_type;
-
-    const ct_tags = db.addType(
-        public.TagsType.name,
-        &.{
-            .{ .prop_idx = public.TagsType.propIdx(.Tags), .name = "tags", .type = cetech1.cdb.PropType.REFERENCE_SET, .type_hash = public.TagType.type_hash },
-        },
-    ) catch unreachable;
-    _ = ct_tags;
-
-    _ = cetech1.cdb_types.addBigType(&db, public.FooAsset.name) catch unreachable;
-    _ = cetech1.cdb_types.addBigType(&db, public.BarAsset.name) catch unreachable;
-    _ = cetech1.cdb_types.addBigType(&db, public.BazAsset.name) catch unreachable;
-}
-
-var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(createCdbTypes);
+});
 
 pub fn registerToApi() !void {
     try apidb.api.setZigApi(public.AssetDBAPI, &api);
-    try apidb.api.implOrRemove(cetech1.cdb.CreateTypesI, &create_cdb_types_i, true);
+    try apidb.api.implOrRemove(cdb.CreateTypesI, &create_cdb_types_i, true);
 }
 
-pub fn init(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb) !void {
+pub fn init(allocator: std.mem.Allocator, db: *cdb.CdbDb) !void {
     _allocator = allocator;
     _db = db;
     _asset_root = try db.createObject(asset_root_type);
@@ -553,12 +407,12 @@ pub fn init(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb) !void {
     _asset_uuid2path = AssetUuid2Path.init(allocator);
     _asset_uuid2depend = AssetUuid2Depend.init(allocator);
     _asset_objid2version = AssetObjIdVersion.init(allocator);
-    _asset_dag = cetech1.dagraph.DAG(cetech1.uuid.Uuid).init(allocator);
+    _asset_dag = cetech1.dag.DAG(uuid.Uuid).init(allocator);
     _path2folder = Path2Folder.init(allocator);
     _folder2path = Folder2Path.init(allocator);
 
     _tmp_depend_array = std.ArrayList(cetech1.task.TaskID).init(allocator);
-    _tmp_taskid_map = std.AutoArrayHashMap(cetech1.uuid.Uuid, cetech1.task.TaskID).init(allocator);
+    _tmp_taskid_map = std.AutoArrayHashMap(uuid.Uuid, cetech1.task.TaskID).init(allocator);
 
     _assets_to_remove = ToDeleteList.init(allocator);
     _folders_to_remove = ToDeleteList.init(allocator);
@@ -620,10 +474,10 @@ pub fn deinit() void {
     _db.removeOnObjIdDestroyed(onObjidDestroyed);
 }
 
-fn getAssetForObj(obj: cetech1.cdb.ObjId) ?cetech1.cdb.ObjId {
-    var it: cetech1.cdb.ObjId = obj;
+fn getAssetForObj(obj: cdb.ObjId) ?cdb.ObjId {
+    var it: cdb.ObjId = obj;
 
-    var last_asset: ?cetech1.cdb.ObjId = null;
+    var last_asset: ?cdb.ObjId = null;
 
     while (!it.isEmpty()) {
         if (it.type_hash.id == public.AssetType.type_hash.id) {
@@ -634,7 +488,7 @@ fn getAssetForObj(obj: cetech1.cdb.ObjId) ?cetech1.cdb.ObjId {
     return last_asset;
 }
 
-fn isAssetFolder(asset: cetech1.cdb.ObjId) bool {
+fn isAssetFolder(asset: cdb.ObjId) bool {
     if (!public.AssetType.isSameType(asset)) return false;
 
     if (getObjForAsset(asset)) |obj| {
@@ -643,7 +497,7 @@ fn isAssetFolder(asset: cetech1.cdb.ObjId) bool {
     return false;
 }
 
-fn getObjForAsset(obj: cetech1.cdb.ObjId) ?cetech1.cdb.ObjId {
+fn getObjForAsset(obj: cdb.ObjId) ?cdb.ObjId {
     std.debug.assert(public.AssetType.isSameType(obj));
 
     return public.AssetType.readSubObj(_db, _db.readObj(obj).?, .Object).?;
@@ -653,13 +507,13 @@ fn isProjectOpened() bool {
     return _asset_root_path != null;
 }
 
-pub fn markObjSaved(objdi: cetech1.cdb.ObjId, version: u64) void {
+pub fn markObjSaved(objdi: cdb.ObjId, version: u64) void {
     _asset_objid2version_lck.lock();
     defer _asset_objid2version_lck.unlock();
     _asset_objid2version.put(objdi, version) catch undefined;
 }
 
-pub fn isObjModified(asset: cetech1.cdb.ObjId) bool {
+pub fn isObjModified(asset: cdb.ObjId) bool {
     const cur_version = _db.getVersion(asset);
 
     // _asset_objid2version_lck.lock();
@@ -698,37 +552,37 @@ pub fn findFirstAssetIOForImport(extension: []const u8) ?*public.AssetIOI {
     return null;
 }
 
-pub fn findFirstAssetIOForExport(db: *cetech1.cdb.CdbDb, asset: cetech1.cdb.ObjId, extension: []const u8) ?*public.AssetIOI {
+pub fn findFirstAssetIOForExport(db: *cdb.CdbDb, asset: cdb.ObjId, extension: []const u8) ?*public.AssetIOI {
     for (_assetio_set.keys()) |asset_io| {
         if (asset_io.canExport != null and asset_io.canExport.?(db, asset, extension)) return asset_io;
     }
     return null;
 }
 
-fn getRootFolder() cetech1.cdb.ObjId {
+fn getRootFolder() cdb.ObjId {
     return _asset_root_folder;
 }
 
-fn getObjId(obj_uuid: cetech1.uuid.Uuid) ?cetech1.cdb.ObjId {
+fn getObjId(obj_uuid: uuid.Uuid) ?cdb.ObjId {
     _uuid2objid_lock.lock();
     defer _uuid2objid_lock.unlock();
     return _uuid2objid.get(obj_uuid);
 }
 
-fn getUuid(obj: cetech1.cdb.ObjId) ?cetech1.uuid.Uuid {
+fn getUuid(obj: cdb.ObjId) ?uuid.Uuid {
     _uuid2objid_lock.lock();
     defer _uuid2objid_lock.unlock();
     return _objid2uuid.get(obj);
 }
 
-pub fn createObjectWithUuid(type_hash: cetech1.strid.StrId32, with_uuid: cetech1.uuid.Uuid) !cetech1.cdb.ObjId {
+pub fn createObjectWithUuid(type_hash: strid.StrId32, with_uuid: uuid.Uuid) !cdb.ObjId {
     log.api.debug(MODULE_NAME, "Creating new obj with UUID {}", .{with_uuid});
     const obj = try _db.createObject(type_hash);
     try mapUuidObjid(with_uuid, obj);
     return obj;
 }
 
-fn getOrCreateUuid(obj: cetech1.cdb.ObjId) !cetech1.uuid.Uuid {
+fn getOrCreateUuid(obj: cdb.ObjId) !uuid.Uuid {
     // _get_or_create_lock.lock();
     // defer _get_or_create_lock.unlock();
 
@@ -736,12 +590,12 @@ fn getOrCreateUuid(obj: cetech1.cdb.ObjId) !cetech1.uuid.Uuid {
     if (obj_uuid != null) {
         return obj_uuid.?;
     }
-    obj_uuid = uuid.newUUID7();
+    obj_uuid = uuid_private.newUUID7();
     try mapUuidObjid(obj_uuid.?, obj);
     return obj_uuid.?;
 }
 
-fn createObject(type_hash: cetech1.strid.StrId32) !cetech1.cdb.ObjId {
+fn createObject(type_hash: strid.StrId32) !cdb.ObjId {
     const obj = try _db.createObject(type_hash);
     _ = try getOrCreateUuid(obj);
     return obj;
@@ -749,23 +603,23 @@ fn createObject(type_hash: cetech1.strid.StrId32) !cetech1.cdb.ObjId {
 
 fn analyzFromJsonValue(parsed: std.json.Value, tmp_allocator: std.mem.Allocator, depend_on: *UuidSet, provide_uuids: *UuidSet) !void {
     const obj_uuid_str = parsed.object.get(JSON_UUID_TOKEN).?;
-    const obj_uuid = uuid.api.fromStr(obj_uuid_str.string).?;
+    const obj_uuid = uuid_private.api.fromStr(obj_uuid_str.string).?;
     const obj_type = parsed.object.get(JSON_TYPE_NAME_TOKEN).?;
-    const obj_type_hash = cetech1.strid.strId32(obj_type.string);
+    const obj_type_hash = strid.strId32(obj_type.string);
 
     try provide_uuids.put(obj_uuid, {});
 
     const prototype_uuid = parsed.object.get(JSON_PROTOTYPE_UUID);
     if (prototype_uuid) |proto_uuid| {
-        try depend_on.put(uuid.fromStr(proto_uuid.string).?, {});
+        try depend_on.put(uuid_private.fromStr(proto_uuid.string).?, {});
     }
 
     const tags = parsed.object.get(JSON_TAGS_TOKEN);
     if (tags) |tags_array| {
         for (tags_array.array.items) |value| {
             var ref_link = std.mem.split(u8, value.string, ":");
-            const ref_type = cetech1.strid.strId32(ref_link.first());
-            const ref_uuid = uuid.api.fromStr(ref_link.next().?).?;
+            const ref_type = strid.strId32(ref_link.first());
+            const ref_uuid = uuid_private.api.fromStr(ref_link.next().?).?;
             _ = ref_type;
             try depend_on.put(ref_uuid, {});
         }
@@ -786,26 +640,26 @@ fn analyzFromJsonValue(parsed: std.json.Value, tmp_allocator: std.mem.Allocator,
         const prop_def = prop_defs[prop_idx];
 
         switch (prop_def.type) {
-            cetech1.cdb.PropType.SUBOBJECT => {
+            cdb.PropType.SUBOBJECT => {
                 try analyzFromJsonValue(value, tmp_allocator, depend_on, provide_uuids);
             },
-            cetech1.cdb.PropType.REFERENCE => {
+            cdb.PropType.REFERENCE => {
                 var ref_link = std.mem.split(u8, value.string, ":");
-                const ref_type = cetech1.strid.strId32(ref_link.first());
-                const ref_uuid = uuid.api.fromStr(ref_link.next().?).?;
+                const ref_type = strid.strId32(ref_link.first());
+                const ref_uuid = uuid_private.api.fromStr(ref_link.next().?).?;
                 _ = ref_type;
                 try depend_on.put(ref_uuid, {});
             },
-            cetech1.cdb.PropType.SUBOBJECT_SET => {
+            cdb.PropType.SUBOBJECT_SET => {
                 for (value.array.items) |subobj_item| {
                     try analyzFromJsonValue(subobj_item, tmp_allocator, depend_on, provide_uuids);
                 }
             },
-            cetech1.cdb.PropType.REFERENCE_SET => {
+            cdb.PropType.REFERENCE_SET => {
                 for (value.array.items) |ref| {
                     var ref_link = std.mem.split(u8, ref.string, ":");
-                    const ref_type = cetech1.strid.strId32(ref_link.first());
-                    const ref_uuid = uuid.api.fromStr(ref_link.next().?).?;
+                    const ref_type = strid.strId32(ref_link.first());
+                    const ref_uuid = uuid_private.api.fromStr(ref_link.next().?).?;
                     _ = ref_type;
                     try depend_on.put(ref_uuid, {});
                 }
@@ -815,9 +669,9 @@ fn analyzFromJsonValue(parsed: std.json.Value, tmp_allocator: std.mem.Allocator,
     }
 }
 
-const UuidSet = std.AutoArrayHashMap(cetech1.uuid.Uuid, void);
+const UuidSet = std.AutoArrayHashMap(uuid.Uuid, void);
 
-fn addAnalyzedFileInfo(path: []const u8, asset_uuid: cetech1.uuid.Uuid, depend_on: *UuidSet, provide_uuids: *UuidSet) !void {
+fn addAnalyzedFileInfo(path: []const u8, asset_uuid: uuid.Uuid, depend_on: *UuidSet, provide_uuids: *UuidSet) !void {
     // TODO
     _file_info_lck.lock();
     defer _file_info_lck.unlock();
@@ -895,7 +749,7 @@ fn analyzeFile(tmp_allocator: std.mem.Allocator, path: []const u8) !void {
     try validateVersion(version_str.string);
 
     const asset_uuid_str = parsed.value.object.get(JSON_ASSET_UUID_TOKEN).?;
-    const asset_uuid = uuid.api.fromStr(asset_uuid_str.string).?;
+    const asset_uuid = uuid_private.api.fromStr(asset_uuid_str.string).?;
 
     var depend_on = UuidSet.init(tmp_allocator);
     defer depend_on.deinit();
@@ -907,7 +761,7 @@ fn analyzeFile(tmp_allocator: std.mem.Allocator, path: []const u8) !void {
     try addAnalyzedFileInfo(path, asset_uuid, &depend_on, &provide_uuids);
 }
 
-fn analyzeFolder(root_dir: std.fs.Dir, parent_folder: cetech1.cdb.ObjId, tasks: *std.ArrayList(cetech1.task.TaskID), tmp_allocator: std.mem.Allocator) !void {
+fn analyzeFolder(root_dir: std.fs.Dir, parent_folder: cdb.ObjId, tasks: *std.ArrayList(cetech1.task.TaskID), tmp_allocator: std.mem.Allocator) !void {
     var zone_ctx = profiler.ztracy.Zone(@src());
     defer zone_ctx.End();
 
@@ -962,17 +816,17 @@ fn analyzeFolder(root_dir: std.fs.Dir, parent_folder: cetech1.cdb.ObjId, tasks: 
     }
 }
 
-fn deleteAsset(db: *cetech1.cdb.CdbDb, asset: cetech1.cdb.ObjId) anyerror!void {
+fn deleteAsset(db: *cdb.CdbDb, asset: cdb.ObjId) anyerror!void {
     _ = db;
     try _assets_to_remove.put(asset, {});
 }
 
-fn deleteFolder(db: *cetech1.cdb.CdbDb, folder: cetech1.cdb.ObjId) anyerror!void {
+fn deleteFolder(db: *cdb.CdbDb, folder: cdb.ObjId) anyerror!void {
     _ = db;
     try _folders_to_remove.put(folder, {});
 }
 
-fn isToDeleted(asset_or_folder: cetech1.cdb.ObjId) bool {
+fn isToDeleted(asset_or_folder: cdb.ObjId) bool {
     if (isAssetFolder(asset_or_folder)) {
         return _folders_to_remove.contains(asset_or_folder);
     } else {
@@ -980,7 +834,7 @@ fn isToDeleted(asset_or_folder: cetech1.cdb.ObjId) bool {
     }
 }
 
-fn reviveDeleted(asset_or_folder: cetech1.cdb.ObjId) void {
+fn reviveDeleted(asset_or_folder: cdb.ObjId) void {
     if (isAssetFolder(asset_or_folder)) {
         _ = _folders_to_remove.swapRemove(asset_or_folder);
     } else {
@@ -988,7 +842,7 @@ fn reviveDeleted(asset_or_folder: cetech1.cdb.ObjId) void {
     }
 }
 
-fn commitDeleteChanges(db: *cetech1.cdb.CdbDb, tmp_allocator: std.mem.Allocator) !void {
+fn commitDeleteChanges(db: *cdb.CdbDb, tmp_allocator: std.mem.Allocator) !void {
     var zone_ctx = profiler.ztracy.Zone(@src());
     defer zone_ctx.End();
 
@@ -1085,7 +939,7 @@ fn writeAssetGraphMD() !void {
     try writer.print("```\n", .{});
 }
 
-fn loadProject(tmp_allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, asset_root_path: []const u8, asset_root_folder: cetech1.cdb.ObjId) !void {
+fn loadProject(tmp_allocator: std.mem.Allocator, db: *cdb.CdbDb, asset_root_path: []const u8, asset_root_folder: cdb.ObjId) !void {
     var zone_ctx = profiler.ztracy.Zone(@src());
     defer zone_ctx.End();
 
@@ -1125,9 +979,9 @@ fn getOrCreateFolder(
     root_dir: std.fs.Dir,
     dir: std.fs.Dir,
     name: ?[]const u8,
-    parent_folder: ?cetech1.cdb.ObjId,
-) !cetech1.cdb.ObjId {
-    var folder_asset: cetech1.cdb.ObjId = undefined;
+    parent_folder: ?cdb.ObjId,
+) !cdb.ObjId {
+    var folder_asset: cdb.ObjId = undefined;
     const root_folder = parent_folder == null;
     const exist_marker = if (root_folder) existRootFolderMarker(dir) else existFolderMarker(root_dir, name.?);
 
@@ -1139,7 +993,7 @@ fn getOrCreateFolder(
             @TypeOf(asset_reader),
             asset_reader,
             name orelse "",
-            parent_folder orelse cetech1.cdb.OBJID_ZERO,
+            parent_folder orelse cdb.OBJID_ZERO,
             ReadBlobFromFile,
             tmp_allocator,
         );
@@ -1282,7 +1136,7 @@ fn openAssetRootFolder(asset_root_path: []const u8, tmp_allocator: std.mem.Alloc
     task.api.wait(sync_job);
 
     // Resave obj version
-    const all_asset_copy = try tmp_allocator.dupe(cetech1.cdb.ObjId, _asset_objid2version.keys());
+    const all_asset_copy = try tmp_allocator.dupe(cdb.ObjId, _asset_objid2version.keys());
     defer tmp_allocator.free(all_asset_copy);
     for (all_asset_copy) |obj| {
         try _asset_objid2version.put(obj, _db.getVersion(obj));
@@ -1291,14 +1145,14 @@ fn openAssetRootFolder(asset_root_path: []const u8, tmp_allocator: std.mem.Alloc
     _asset_root_last_version = _db.getVersion(_asset_root);
 }
 
-fn mapUuidObjid(obj_uuid: cetech1.uuid.Uuid, objid: cetech1.cdb.ObjId) !void {
+fn mapUuidObjid(obj_uuid: uuid.Uuid, objid: cdb.ObjId) !void {
     _uuid2objid_lock.lock();
     defer _uuid2objid_lock.unlock();
     try _uuid2objid.put(obj_uuid, objid);
     try _objid2uuid.put(objid, obj_uuid);
 }
 
-fn unmapByUuid(obj_uuid: cetech1.uuid.Uuid) !void {
+fn unmapByUuid(obj_uuid: uuid.Uuid) !void {
     _uuid2objid_lock.lock();
     defer _uuid2objid_lock.unlock();
     const objid = _uuid2objid.get(obj_uuid).?;
@@ -1306,7 +1160,7 @@ fn unmapByUuid(obj_uuid: cetech1.uuid.Uuid) !void {
     _ = _objid2uuid.swapRemove(objid);
 }
 
-fn unmapByObjId(obj: cetech1.cdb.ObjId) !void {
+fn unmapByObjId(obj: cdb.ObjId) !void {
     _uuid2objid_lock.lock();
     defer _uuid2objid_lock.unlock();
     const obj_uuid = _objid2uuid.get(obj).?;
@@ -1314,7 +1168,7 @@ fn unmapByObjId(obj: cetech1.cdb.ObjId) !void {
     _ = _objid2uuid.swapRemove(obj);
 }
 
-fn setAssetNameAndFolder(asset: cetech1.cdb.ObjId, name: []const u8, description: ?[]const u8, asset_folder: cetech1.cdb.ObjId) !void {
+fn setAssetNameAndFolder(asset: cdb.ObjId, name: []const u8, description: ?[]const u8, asset_folder: cdb.ObjId) !void {
     const asset_w = _db.writeObj(asset).?;
 
     var buffer: [128]u8 = undefined;
@@ -1336,7 +1190,7 @@ fn setAssetNameAndFolder(asset: cetech1.cdb.ObjId, name: []const u8, description
     try _db.writeCommit(asset_w);
 }
 
-fn addAssetToRoot(asset: cetech1.cdb.ObjId) !void {
+fn addAssetToRoot(asset: cdb.ObjId) !void {
     // TODO: make posible CAS write to CDB and remove lock.
     _asset_root_lock.lock();
     defer _asset_root_lock.unlock();
@@ -1348,7 +1202,7 @@ fn addAssetToRoot(asset: cetech1.cdb.ObjId) !void {
     try _db.writeCommit(asset_root_w);
 }
 
-fn createAsset(asset_name: []const u8, asset_folder: cetech1.cdb.ObjId, asset_obj: ?cetech1.cdb.ObjId) ?cetech1.cdb.ObjId {
+fn createAsset(asset_name: []const u8, asset_folder: cdb.ObjId, asset_obj: ?cdb.ObjId) ?cdb.ObjId {
     const asset = createObject(public.AssetType.type_hash) catch return null;
 
     if (asset_obj != null) {
@@ -1399,7 +1253,7 @@ pub fn saveAll(tmp_allocator: std.mem.Allocator) !void {
     try commitDeleteChanges(_db, tmp_allocator);
 }
 
-pub fn saveAssetAndWait(tmp_allocator: std.mem.Allocator, asset: cetech1.cdb.ObjId) !void {
+pub fn saveAssetAndWait(tmp_allocator: std.mem.Allocator, asset: cdb.ObjId) !void {
     if (asset.type_hash.id == cetech1.assetdb.AssetType.type_hash.id) {
         const export_task = try saveAsset(tmp_allocator, _asset_root_path.?, asset);
         task.api.wait(export_task);
@@ -1439,14 +1293,14 @@ pub fn saveAllModifiedAssets(tmp_allocator: std.mem.Allocator) !void {
     _asset_root_last_version = _db.getVersion(_asset_root);
 }
 
-fn getPathForFolder(from_folder: cetech1.cdb.ObjId, tmp_allocator: std.mem.Allocator) ![]u8 {
+fn getPathForFolder(from_folder: cdb.ObjId, tmp_allocator: std.mem.Allocator) ![]u8 {
     var path = std.ArrayList([:0]const u8).init(tmp_allocator);
     defer path.deinit();
 
     const root_folder_name = public.AssetType.readStr(_db, _db.readObj(getAssetForObj(from_folder).?).?, .Name);
 
     if (root_folder_name != null) {
-        var folder_it: ?cetech1.cdb.ObjId = from_folder;
+        var folder_it: ?cdb.ObjId = from_folder;
         while (folder_it) |folder| {
             folder_it = public.AssetType.readRef(_db, _db.readObj(getAssetForObj(folder).?).?, .Folder) orelse break;
 
@@ -1463,7 +1317,7 @@ fn getPathForFolder(from_folder: cetech1.cdb.ObjId, tmp_allocator: std.mem.Alloc
     }
 }
 
-pub fn getFilePathForAsset(asset: cetech1.cdb.ObjId, tmp_allocator: std.mem.Allocator) ![]u8 {
+pub fn getFilePathForAsset(asset: cdb.ObjId, tmp_allocator: std.mem.Allocator) ![]u8 {
     const asset_r = _db.readObj(asset);
     const asset_obj = public.AssetType.readSubObj(_db, asset_r.?, .Object).?;
 
@@ -1471,7 +1325,7 @@ pub fn getFilePathForAsset(asset: cetech1.cdb.ObjId, tmp_allocator: std.mem.Allo
     return getPathForAsset(asset, _db.getTypeName(asset_obj.type_hash).?, tmp_allocator);
 }
 
-fn getPathForAsset(asset: cetech1.cdb.ObjId, extension: []const u8, tmp_allocator: std.mem.Allocator) ![]u8 {
+fn getPathForAsset(asset: cdb.ObjId, extension: []const u8, tmp_allocator: std.mem.Allocator) ![]u8 {
     const asset_r = _db.readObj(asset);
     var path = std.ArrayList([:0]const u8).init(tmp_allocator);
     defer path.deinit();
@@ -1497,9 +1351,9 @@ fn getPathForAsset(asset: cetech1.cdb.ObjId, extension: []const u8, tmp_allocato
 
 fn WriteBlobToFile(
     blob: []const u8,
-    asset: cetech1.cdb.ObjId,
-    obj_uuid: cetech1.uuid.Uuid,
-    prop_hash: cetech1.strid.StrId32,
+    asset: cdb.ObjId,
+    obj_uuid: uuid.Uuid,
+    prop_hash: strid.StrId32,
     root_path: []const u8,
     tmp_allocator: std.mem.Allocator,
 ) anyerror!void {
@@ -1516,7 +1370,7 @@ fn WriteBlobToFile(
     try root_dir.makePath(blob_dir_path);
 
     var blob_file_name_buf: [1024]u8 = undefined;
-    const blob_file_name = try std.fmt.bufPrint(&blob_file_name_buf, "{x}{x}", .{ cetech1.strid.strId32(&obj_uuid.bytes).id, prop_hash.id });
+    const blob_file_name = try std.fmt.bufPrint(&blob_file_name_buf, "{x}{x}", .{ strid.strId32(&obj_uuid.bytes).id, prop_hash.id });
 
     var blob_dir = try root_dir.openDir(blob_dir_path, .{});
     defer blob_dir.close();
@@ -1524,9 +1378,9 @@ fn WriteBlobToFile(
 }
 
 fn ReadBlobFromFile(
-    asset: cetech1.cdb.ObjId,
-    obj_uuid: cetech1.uuid.Uuid,
-    prop_hash: cetech1.strid.StrId32,
+    asset: cdb.ObjId,
+    obj_uuid: uuid.Uuid,
+    prop_hash: strid.StrId32,
     tmp_allocator: std.mem.Allocator,
 ) anyerror![]u8 {
     var zone_ctx = profiler.ztracy.Zone(@src());
@@ -1539,7 +1393,7 @@ fn ReadBlobFromFile(
     defer root_dir.close();
 
     var blob_file_name_buf: [1024]u8 = undefined;
-    const blob_file_name = try std.fmt.bufPrint(&blob_file_name_buf, "{x}{x}", .{ cetech1.strid.strId32(&obj_uuid.bytes).id, prop_hash.id });
+    const blob_file_name = try std.fmt.bufPrint(&blob_file_name_buf, "{x}{x}", .{ strid.strId32(&obj_uuid.bytes).id, prop_hash.id });
 
     var blob_dir = try root_dir.openDir(blob_dir_path, .{});
     defer blob_dir.close();
@@ -1553,7 +1407,7 @@ fn ReadBlobFromFile(
     return blob;
 }
 
-fn saveCdbObj(obj: cetech1.cdb.ObjId, root_path: []const u8, sub_path: []const u8, tmp_allocator: std.mem.Allocator) !void {
+fn saveCdbObj(obj: cdb.ObjId, root_path: []const u8, sub_path: []const u8, tmp_allocator: std.mem.Allocator) !void {
     var zone_ctx = profiler.ztracy.Zone(@src());
     defer zone_ctx.End();
 
@@ -1581,7 +1435,7 @@ fn saveCdbObj(obj: cetech1.cdb.ObjId, root_path: []const u8, sub_path: []const u
     );
 }
 
-pub fn saveAsset(tmp_allocator: std.mem.Allocator, root_path: []const u8, asset: cetech1.cdb.ObjId) !cetech1.task.TaskID {
+pub fn saveAsset(tmp_allocator: std.mem.Allocator, root_path: []const u8, asset: cdb.ObjId) !cetech1.task.TaskID {
     var zone_ctx = profiler.ztracy.Zone(@src());
     defer zone_ctx.End();
 
@@ -1635,7 +1489,7 @@ pub fn saveAsset(tmp_allocator: std.mem.Allocator, root_path: []const u8, asset:
     return .none;
 }
 
-fn saveFolderObj(tmp_allocator: std.mem.Allocator, folder_asset: cetech1.cdb.ObjId, root_path: []const u8) !void {
+fn saveFolderObj(tmp_allocator: std.mem.Allocator, folder_asset: cdb.ObjId, root_path: []const u8) !void {
     var zone_ctx = profiler.ztracy.Zone(@src());
     defer zone_ctx.End();
 
@@ -1716,9 +1570,9 @@ fn existFolderMarker(root_folder: std.fs.Dir, dir_name: []const u8) bool {
 
 pub fn writeCdbObjJson(
     comptime Writer: type,
-    obj: cetech1.cdb.ObjId,
+    obj: cdb.ObjId,
     writer: Writer,
-    asset: cetech1.cdb.ObjId,
+    asset: cdb.ObjId,
     write_blob: WriteBlobFn,
     root_path: []const u8,
     tmp_allocator: std.mem.Allocator,
@@ -1730,7 +1584,7 @@ pub fn writeCdbObjJson(
     try ws.beginObject();
 
     const obj_r = _db.readObj(obj).?;
-    var asset_obj: ?cetech1.cdb.ObjId = null;
+    var asset_obj: ?cdb.ObjId = null;
 
     try ws.objectField(JSON_ASSET_VERSION);
     try ws.print("\"{s}\"", .{ASSET_CURRENT_VERSION_STR});
@@ -1776,9 +1630,9 @@ pub fn writeCdbObjJson(
 
 fn writeCdbObjJsonBody(
     comptime Writer: type,
-    obj: cetech1.cdb.ObjId,
+    obj: cdb.ObjId,
     writer: *Writer,
-    asset: cetech1.cdb.ObjId,
+    asset: cdb.ObjId,
     write_blob: WriteBlobFn,
     root_path: []const u8,
     tmp_allocator: std.mem.Allocator,
@@ -1809,7 +1663,7 @@ fn writeCdbObjJsonBody(
         const has_prototype = !_db.getPrototype(obj_r).isEmpty();
         const property_overided = _db.isPropertyOverrided(obj_r, prop_idx);
         switch (prop_def.type) {
-            cetech1.cdb.PropType.BOOL => {
+            cdb.PropType.BOOL => {
                 const value = _db.readValue(bool, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
 
@@ -1823,7 +1677,7 @@ fn writeCdbObjJsonBody(
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
             },
-            cetech1.cdb.PropType.U64 => {
+            cdb.PropType.U64 => {
                 const value = _db.readValue(u64, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
 
@@ -1837,7 +1691,7 @@ fn writeCdbObjJsonBody(
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
             },
-            cetech1.cdb.PropType.I64 => {
+            cdb.PropType.I64 => {
                 const value = _db.readValue(i64, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
 
@@ -1851,7 +1705,7 @@ fn writeCdbObjJsonBody(
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
             },
-            cetech1.cdb.PropType.U32 => {
+            cdb.PropType.U32 => {
                 const value = _db.readValue(u32, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
 
@@ -1865,7 +1719,7 @@ fn writeCdbObjJsonBody(
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
             },
-            cetech1.cdb.PropType.I32 => {
+            cdb.PropType.I32 => {
                 const value = _db.readValue(i32, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
 
@@ -1879,7 +1733,7 @@ fn writeCdbObjJsonBody(
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
             },
-            cetech1.cdb.PropType.F64 => {
+            cdb.PropType.F64 => {
                 const value = _db.readValue(f64, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
 
@@ -1893,7 +1747,7 @@ fn writeCdbObjJsonBody(
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
             },
-            cetech1.cdb.PropType.F32 => {
+            cdb.PropType.F32 => {
                 const value = _db.readValue(f32, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
 
@@ -1907,7 +1761,7 @@ fn writeCdbObjJsonBody(
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
             },
-            cetech1.cdb.PropType.STR => {
+            cdb.PropType.STR => {
                 const str = _db.readStr(obj_r, prop_idx);
                 if (str == null) continue;
                 if (has_prototype and !property_overided) continue;
@@ -1924,18 +1778,18 @@ fn writeCdbObjJsonBody(
                 try writer.objectField(prop_def.name);
                 try writer.print("\"{s}\"", .{str.?});
             },
-            cetech1.cdb.PropType.BLOB => {
+            cdb.PropType.BLOB => {
                 const blob = _db.readBlob(obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
                 if (blob.len == 0) continue;
 
                 var obj_uuid = try getOrCreateUuid(obj);
-                try write_blob(blob, asset, obj_uuid, cetech1.strid.strId32(prop_def.name), root_path, tmp_allocator);
+                try write_blob(blob, asset, obj_uuid, strid.strId32(prop_def.name), root_path, tmp_allocator);
 
                 try writer.objectField(prop_def.name);
-                try writer.print("\"{x}{x}\"", .{ cetech1.strid.strId32(&obj_uuid.bytes).id, cetech1.strid.strId32(prop_def.name).id });
+                try writer.print("\"{x}{x}\"", .{ strid.strId32(&obj_uuid.bytes).id, strid.strId32(prop_def.name).id });
             },
-            cetech1.cdb.PropType.SUBOBJECT => {
+            cdb.PropType.SUBOBJECT => {
                 const subobj = _db.readSubObj(obj_r, prop_idx);
                 if (has_prototype and !_db.isPropertyOverrided(obj_r, prop_idx)) continue;
                 if (subobj != null) {
@@ -1954,7 +1808,7 @@ fn writeCdbObjJsonBody(
                     try writer.endObject();
                 }
             },
-            cetech1.cdb.PropType.REFERENCE => {
+            cdb.PropType.REFERENCE => {
                 const ref_obj = _db.readRef(obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
                 if (ref_obj != null) {
@@ -1962,7 +1816,7 @@ fn writeCdbObjJsonBody(
                     try writer.print("\"{s}:{s}\"", .{ _db.getTypeName(ref_obj.?.type_hash).?, try getOrCreateUuid(ref_obj.?) });
                 }
             },
-            cetech1.cdb.PropType.SUBOBJECT_SET => {
+            cdb.PropType.SUBOBJECT_SET => {
                 const added = try _db.readSubObjSetAdded(
                     obj_r,
                     @truncate(prop_idx),
@@ -1985,15 +1839,15 @@ fn writeCdbObjJsonBody(
                     const deleted_items = _db.readSubObjSetRemoved(obj_r, prop_idx, tmp_allocator);
                     defer tmp_allocator.free(deleted_items.?);
 
-                    var deleted_set = std.AutoArrayHashMap(cetech1.cdb.ObjId, void).init(tmp_allocator);
+                    var deleted_set = std.AutoArrayHashMap(cdb.ObjId, void).init(tmp_allocator);
                     defer deleted_set.deinit();
 
                     for (deleted_items.?) |item| {
                         try deleted_set.put(item, {});
                     }
 
-                    var added_set = std.AutoArrayHashMap(cetech1.cdb.ObjId, void).init(tmp_allocator);
-                    var inisiate_set = std.AutoArrayHashMap(cetech1.cdb.ObjId, void).init(tmp_allocator);
+                    var added_set = std.AutoArrayHashMap(cdb.ObjId, void).init(tmp_allocator);
+                    var inisiate_set = std.AutoArrayHashMap(cdb.ObjId, void).init(tmp_allocator);
                     defer added_set.deinit();
                     defer inisiate_set.deinit();
 
@@ -2048,7 +1902,7 @@ fn writeCdbObjJsonBody(
                     }
                 }
             },
-            cetech1.cdb.PropType.REFERENCE_SET => {
+            cdb.PropType.REFERENCE_SET => {
                 const added = _db.readRefSetAdded(obj_r, @truncate(prop_idx), tmp_allocator);
                 defer tmp_allocator.free(added.?);
                 if (prototype_id.isEmpty()) {
@@ -2064,14 +1918,14 @@ fn writeCdbObjJsonBody(
                     const deleted_items = _db.readSubObjSetRemoved(obj_r, prop_idx, tmp_allocator);
                     defer tmp_allocator.free(deleted_items.?);
 
-                    var deleted_set = std.AutoArrayHashMap(cetech1.cdb.ObjId, void).init(tmp_allocator);
+                    var deleted_set = std.AutoArrayHashMap(cdb.ObjId, void).init(tmp_allocator);
                     defer deleted_set.deinit();
 
                     for (deleted_items.?) |item| {
                         try deleted_set.put(item, {});
                     }
 
-                    var added_set = std.AutoArrayHashMap(cetech1.cdb.ObjId, void).init(tmp_allocator);
+                    var added_set = std.AutoArrayHashMap(cdb.ObjId, void).init(tmp_allocator);
                     defer added_set.deinit();
 
                     for (added.?) |item| {
@@ -2130,10 +1984,10 @@ pub fn readAssetFromReader(
     comptime Reader: type,
     reader: Reader,
     asset_name: []const u8,
-    asset_folder: cetech1.cdb.ObjId,
+    asset_folder: cdb.ObjId,
     read_blob: ReadBlobFn,
     tmp_allocator: std.mem.Allocator,
-) !cetech1.cdb.ObjId {
+) !cdb.ObjId {
     var zone_ctx = profiler.ztracy.Zone(@src());
     defer zone_ctx.End();
 
@@ -2146,7 +2000,7 @@ pub fn readAssetFromReader(
     try validateVersion(version.string);
 
     const asset_uuid_str = parsed.value.object.get(JSON_ASSET_UUID_TOKEN).?;
-    const asset_uuid = uuid.api.fromStr(asset_uuid_str.string).?;
+    const asset_uuid = uuid_private.api.fromStr(asset_uuid_str.string).?;
 
     const asset = try getOrCreate(asset_uuid, public.AssetType.type_hash);
 
@@ -2162,8 +2016,8 @@ pub fn readAssetFromReader(
     if (parsed.value.object.get(JSON_TAGS_TOKEN)) |tags| {
         for (tags.array.items) |tag| {
             var ref_link = std.mem.split(u8, tag.string, ":");
-            const ref_type = cetech1.strid.strId32(ref_link.first());
-            const ref_uuid = uuid.api.fromStr(ref_link.next().?).?;
+            const ref_type = strid.strId32(ref_link.first());
+            const ref_uuid = uuid_private.api.fromStr(ref_link.next().?).?;
 
             const ref_obj = try getOrCreate(ref_uuid, ref_type);
             try public.AssetType.addRefToSet(_db, asset_w, .Tags, &.{ref_obj});
@@ -2185,7 +2039,7 @@ fn readObjFromJson(
     reader: Reader,
     read_blob: ReadBlobFn,
     tmp_allocator: std.mem.Allocator,
-) !cetech1.cdb.ObjId {
+) !cdb.ObjId {
     var zone_ctx = profiler.ztracy.Zone(@src());
     defer zone_ctx.End();
 
@@ -2197,7 +2051,7 @@ fn readObjFromJson(
     return obj;
 }
 
-fn getOrCreate(obj_uuid: cetech1.uuid.Uuid, type_hash: cetech1.strid.StrId32) !cetech1.cdb.ObjId {
+fn getOrCreate(obj_uuid: uuid.Uuid, type_hash: strid.StrId32) !cdb.ObjId {
     // _get_or_create_lock.lock();
     // defer _get_or_create_lock.unlock();
 
@@ -2208,7 +2062,7 @@ fn getOrCreate(obj_uuid: cetech1.uuid.Uuid, type_hash: cetech1.strid.StrId32) !c
     return obj.?;
 }
 
-fn createObjectFromPrototypeLocked(prototype_uuid: cetech1.uuid.Uuid, type_hash: cetech1.strid.StrId32) !cetech1.cdb.ObjId {
+fn createObjectFromPrototypeLocked(prototype_uuid: uuid.Uuid, type_hash: strid.StrId32) !cdb.ObjId {
     const prototype_obj = try getOrCreate(prototype_uuid, type_hash);
 
     // _get_or_create_lock.lock();
@@ -2216,21 +2070,21 @@ fn createObjectFromPrototypeLocked(prototype_uuid: cetech1.uuid.Uuid, type_hash:
     return try _db.createObjectFromPrototype(prototype_obj);
 }
 
-fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cetech1.cdb.ObjId, read_blob: ReadBlobFn, tmp_allocator: std.mem.Allocator) !cetech1.cdb.ObjId {
+fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cdb.ObjId, read_blob: ReadBlobFn, tmp_allocator: std.mem.Allocator) !cdb.ObjId {
     var zone_ctx = profiler.ztracy.Zone(@src());
     defer zone_ctx.End();
 
     const obj_uuid_str = parsed.object.get(JSON_UUID_TOKEN).?;
-    const obj_uuid = uuid.api.fromStr(obj_uuid_str.string).?;
+    const obj_uuid = uuid_private.api.fromStr(obj_uuid_str.string).?;
     const obj_type = parsed.object.get(JSON_TYPE_NAME_TOKEN).?;
-    const obj_type_hash = cetech1.strid.strId32(obj_type.string);
+    const obj_type_hash = strid.strId32(obj_type.string);
 
     const prototype_uuid = parsed.object.get(JSON_PROTOTYPE_UUID);
-    var obj: ?cetech1.cdb.ObjId = null;
+    var obj: ?cdb.ObjId = null;
     if (prototype_uuid == null) {
         obj = try createObject(obj_type_hash);
     } else {
-        obj = try createObjectFromPrototypeLocked(uuid.fromStr(prototype_uuid.?.string).?, obj_type_hash);
+        obj = try createObjectFromPrototypeLocked(uuid_private.fromStr(prototype_uuid.?.string).?, obj_type_hash);
     }
 
     const obj_w = _db.writeObj(obj.?).?;
@@ -2250,55 +2104,55 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cetech1.cdb.ObjId, rea
         const prop_def = prop_defs[prop_idx];
 
         switch (prop_def.type) {
-            cetech1.cdb.PropType.BOOL => {
+            cdb.PropType.BOOL => {
                 _db.setValue(bool, obj_w, prop_idx, value.bool);
             },
-            cetech1.cdb.PropType.U64 => {
+            cdb.PropType.U64 => {
                 _db.setValue(u64, obj_w, prop_idx, @intCast(value.integer));
             },
-            cetech1.cdb.PropType.I64 => {
+            cdb.PropType.I64 => {
                 _db.setValue(i64, obj_w, prop_idx, @intCast(value.integer));
             },
-            cetech1.cdb.PropType.U32 => {
+            cdb.PropType.U32 => {
                 _db.setValue(u32, obj_w, prop_idx, @intCast(value.integer));
             },
-            cetech1.cdb.PropType.I32 => {
+            cdb.PropType.I32 => {
                 _db.setValue(i32, obj_w, prop_idx, @intCast(value.integer));
             },
-            cetech1.cdb.PropType.F64 => {
+            cdb.PropType.F64 => {
                 _db.setValue(f64, obj_w, prop_idx, @floatCast(value.float));
             },
-            cetech1.cdb.PropType.F32 => {
+            cdb.PropType.F32 => {
                 _db.setValue(f32, obj_w, prop_idx, @floatCast(value.float));
             },
-            cetech1.cdb.PropType.STR => {
+            cdb.PropType.STR => {
                 var buffer: [128]u8 = undefined;
                 const str = try std.fmt.bufPrintZ(&buffer, "{s}", .{value.string});
                 try _db.setStr(obj_w, prop_idx, str);
             },
-            cetech1.cdb.PropType.BLOB => {
-                const blob = try read_blob(asset, obj_uuid, cetech1.strid.strId32(prop_def.name), tmp_allocator);
+            cdb.PropType.BLOB => {
+                const blob = try read_blob(asset, obj_uuid, strid.strId32(prop_def.name), tmp_allocator);
                 defer tmp_allocator.free(blob);
                 const true_blob = try _db.createBlob(obj_w, prop_idx, blob.len);
                 @memcpy(true_blob.?, blob);
             },
-            cetech1.cdb.PropType.SUBOBJECT => {
+            cdb.PropType.SUBOBJECT => {
                 const subobj = try readCdbObjFromJsonValue(value, asset, read_blob, tmp_allocator);
 
                 const subobj_w = _db.writeObj(subobj).?;
                 try _db.setSubObj(obj_w, prop_idx, subobj_w);
                 try _db.writeCommit(subobj_w);
             },
-            cetech1.cdb.PropType.REFERENCE => {
+            cdb.PropType.REFERENCE => {
                 var ref_link = std.mem.split(u8, value.string, ":");
-                const ref_type = cetech1.strid.strId32(ref_link.first());
-                const ref_uuid = uuid.api.fromStr(ref_link.next().?).?;
+                const ref_type = strid.strId32(ref_link.first());
+                const ref_uuid = uuid_private.api.fromStr(ref_link.next().?).?;
 
                 const ref_obj = try getOrCreate(ref_uuid, ref_type);
 
                 try _db.setRef(obj_w, prop_idx, ref_obj);
             },
-            cetech1.cdb.PropType.SUBOBJECT_SET => {
+            cdb.PropType.SUBOBJECT_SET => {
                 for (value.array.items) |subobj_item| {
                     const subobj = try readCdbObjFromJsonValue(subobj_item, asset, read_blob, tmp_allocator);
 
@@ -2307,11 +2161,11 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cetech1.cdb.ObjId, rea
                     try _db.writeCommit(subobj_w);
                 }
             },
-            cetech1.cdb.PropType.REFERENCE_SET => {
+            cdb.PropType.REFERENCE_SET => {
                 for (value.array.items) |ref| {
                     var ref_link = std.mem.split(u8, ref.string, ":");
-                    const ref_type = cetech1.strid.strId32(ref_link.first());
-                    const ref_uuid = uuid.api.fromStr(ref_link.next().?).?;
+                    const ref_type = strid.strId32(ref_link.first());
+                    const ref_uuid = uuid_private.api.fromStr(ref_link.next().?).?;
 
                     const ref_obj = try getOrCreate(ref_uuid, ref_type);
                     try _db.addRefToSet(obj_w, prop_idx, &.{ref_obj});
@@ -2325,8 +2179,8 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cetech1.cdb.ObjId, rea
                     if (removed_fiedl != null) {
                         for (removed_fiedl.?.array.items) |ref| {
                             var ref_link = std.mem.split(u8, ref.string, ":");
-                            const ref_type = cetech1.strid.strId32(ref_link.first());
-                            const ref_uuid = uuid.api.fromStr(ref_link.next().?).?;
+                            const ref_type = strid.strId32(ref_link.first());
+                            const ref_uuid = uuid_private.api.fromStr(ref_link.next().?).?;
 
                             const ref_obj = try getOrCreate(ref_uuid, ref_type);
                             try _db.removeFromRefSet(obj_w, prop_idx, ref_obj);
@@ -2340,7 +2194,7 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cetech1.cdb.ObjId, rea
 
     for (prop_defs, 0..) |prop_def, prop_idx| {
         switch (prop_def.type) {
-            cetech1.cdb.PropType.REFERENCE_SET, cetech1.cdb.PropType.SUBOBJECT_SET => {
+            cdb.PropType.REFERENCE_SET, cdb.PropType.SUBOBJECT_SET => {
                 if (prototype_uuid != null) {
                     var buff: [128]u8 = undefined;
                     var field_name = try std.fmt.bufPrint(&buff, "{s}" ++ JSON_INSTANTIATE_POSTFIX, .{prop_def.name});
@@ -2367,8 +2221,8 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cetech1.cdb.ObjId, rea
                     if (removed != null) {
                         for (removed.?.array.items) |ref| {
                             var ref_link = std.mem.split(u8, ref.string, ":");
-                            const ref_type = cetech1.strid.strId32(ref_link.first());
-                            const ref_uuid = uuid.api.fromStr(ref_link.next().?).?;
+                            const ref_type = strid.strId32(ref_link.first());
+                            const ref_uuid = uuid_private.api.fromStr(ref_link.next().?).?;
 
                             const ref_obj = try getOrCreate(ref_uuid, ref_type);
 
@@ -2403,7 +2257,7 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cetech1.cdb.ObjId, rea
     return existed_object orelse obj.?;
 }
 
-fn createNewFolder(db: *cetech1.cdb.CdbDb, parent_folder: cetech1.cdb.ObjId, name: [:0]const u8) !void {
+fn createNewFolder(db: *cdb.CdbDb, parent_folder: cdb.ObjId, name: [:0]const u8) !void {
     std.debug.assert(cetech1.assetdb.AssetType.isSameType(parent_folder));
 
     const new_folder_asset = try cetech1.assetdb.AssetType.createObject(db);
@@ -2430,12 +2284,12 @@ fn saveAsAllAssets(tmp_allocator: std.mem.Allocator, path: []const u8) !void {
     try saveAllTo(tmp_allocator, path);
 }
 
-fn filerAsset(tmp_allocator: std.mem.Allocator, filter: [:0]const u8, tags_filter: cetech1.cdb.ObjId) !public.FilteredAssets {
+fn filerAsset(tmp_allocator: std.mem.Allocator, filter: [:0]const u8, tags_filter: cdb.ObjId) !public.FilteredAssets {
     var result = std.ArrayList(public.FilteredAsset).init(tmp_allocator);
     var buff: [256:0]u8 = undefined;
     var buff2: [256:0]u8 = undefined;
 
-    var filter_set = std.AutoArrayHashMap(cetech1.cdb.ObjId, void).init(tmp_allocator);
+    var filter_set = std.AutoArrayHashMap(cdb.ObjId, void).init(tmp_allocator);
     defer filter_set.deinit();
 
     if (_db.readObj(tags_filter)) |filter_r| {
@@ -2480,7 +2334,7 @@ fn filerAsset(tmp_allocator: std.mem.Allocator, filter: [:0]const u8, tags_filte
     return result.toOwnedSlice();
 }
 
-fn onObjidDestroyed(db: *cetech1.cdb.Db, objects: []cetech1.cdb.ObjId) void {
+fn onObjidDestroyed(db: *cdb.Db, objects: []cdb.ObjId) void {
     _uuid2objid_lock.lock();
     defer _uuid2objid_lock.unlock();
 
@@ -2494,7 +2348,7 @@ fn onObjidDestroyed(db: *cetech1.cdb.Db, objects: []cetech1.cdb.ObjId) void {
     }
 }
 
-fn buffGetValidName(allocator: std.mem.Allocator, buf: [:0]u8, db: *cetech1.cdb.CdbDb, folder_: cetech1.cdb.ObjId, type_hash: cetech1.strid.StrId32, base_name: [:0]const u8) ![:0]const u8 {
+fn buffGetValidName(allocator: std.mem.Allocator, buf: [:0]u8, db: *cdb.CdbDb, folder_: cdb.ObjId, type_hash: strid.StrId32, base_name: [:0]const u8) ![:0]const u8 {
     const folder = getObjForAsset(folder_).?;
 
     const set = try db.getReferencerSet(folder, allocator);

@@ -1,6 +1,8 @@
 const std = @import("std");
 const c = @import("private/c.zig").c;
 
+const strid = @import("strid.zig");
+
 pub const ct_apidb_api_t = c.ct_apidb_api_t;
 pub const ct_allocator_t = c.ct_allocator_t;
 
@@ -97,7 +99,7 @@ pub const ApiDbAPI = struct {
 
     // Implement interface
     pub inline fn implInterface(self: Self, comptime T: type, impl_ptr: *anyopaque) !void {
-        return self.implInterfaceFn(T.c_name, impl_ptr);
+        return self.implInterfaceFn(T.name_hash, impl_ptr);
     }
 
     // Cast generic interface to true type
@@ -107,23 +109,23 @@ pub const ApiDbAPI = struct {
 
     // Get first interface that implement given interface
     pub inline fn getFirstImpl(self: Self, comptime T: type) ?*const c.ct_apidb_impl_iter_t {
-        return self.getFirstImplFn(T.c_name);
+        return self.getFirstImplFn(T.name_hash);
     }
 
     // Get last interface that implement given interface
     pub inline fn getLastImpl(self: Self, comptime T: type) ?*const c.ct_apidb_impl_iter_t {
-        return self.getLastImplFn(T.c_name);
+        return self.getLastImplFn(T.name_hash);
     }
 
     // Remove interface
     pub inline fn removeImpl(self: Self, comptime T: type, impl_ptr: *anyopaque) void {
-        self.removeImplFn(T.c_name, impl_ptr);
+        self.removeImplFn(T.name_hash, impl_ptr);
     }
 
     // Get version for given interface.
     // Version is number that is increment every time is interface implementation added or removed
     pub inline fn getInterafcesVersion(self: Self, comptime T: type) u64 {
-        return self.getInterafcesVersionFn(T.c_name);
+        return self.getInterafcesVersionFn(T.name_hash);
     }
 
     //#region Pointers to implementation.
@@ -131,11 +133,11 @@ pub const ApiDbAPI = struct {
     setApiOpaqueueFn: *const fn (language: []const u8, api_name: []const u8, api_ptr: *anyopaque, api_size: usize) anyerror!void,
     getApiOpaaqueFn: *const fn (language: []const u8, api_name: []const u8, api_size: usize) ?*anyopaque,
     removeApiFn: *const fn (language: []const u8, api_name: []const u8) void,
-    implInterfaceFn: *const fn (interface_name: []const u8, impl_ptr: *anyopaque) anyerror!void,
-    getFirstImplFn: *const fn (interface_name: []const u8) ?*const c.ct_apidb_impl_iter_t,
-    getLastImplFn: *const fn (interface_name: []const u8) ?*const c.ct_apidb_impl_iter_t,
-    removeImplFn: *const fn (interface_name: []const u8, impl_ptr: *anyopaque) void,
-    getInterafcesVersionFn: *const fn (interface_name: []const u8) u64,
+    implInterfaceFn: *const fn (interface_name: strid.StrId64, impl_ptr: *anyopaque) anyerror!void,
+    getFirstImplFn: *const fn (interface_name: strid.StrId64) ?*const c.ct_apidb_impl_iter_t,
+    getLastImplFn: *const fn (interface_name: strid.StrId64) ?*const c.ct_apidb_impl_iter_t,
+    removeImplFn: *const fn (interface_name: strid.StrId64, impl_ptr: *anyopaque) void,
+    getInterafcesVersionFn: *const fn (interface_name: strid.StrId64) u64,
     //#endregion
 };
 

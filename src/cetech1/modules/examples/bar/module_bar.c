@@ -65,8 +65,8 @@ CT_DECL_MODULE(bar, "Simple module in C")
 
     update_task.phase = _strid->strid64(CT_KERNEL_PHASE_ONUPDATE);
 
-    apidb->impl_or_remove(ct_apidb_name(ct_kernel_task_i), &kernel_task, load);
-    apidb->impl_or_remove(ct_apidb_name(ct_kernel_task_update_i), &update_task, load);
+    apidb->impl_or_remove(ct_apidb_iname(_strid, ct_kernel_task_i), &kernel_task, load);
+    apidb->impl_or_remove(ct_apidb_iname(_strid, ct_kernel_task_update_i), &update_task, load);
 
     return 1;
 }

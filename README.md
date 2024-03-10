@@ -5,10 +5,9 @@
 
 Yet another experimental game engine but now in [zig](https://ziglang.org).
 
-## [Documentation](https://cyberegoorg.github.io/cetech1)
-
 ## [Getting started](https://cyberegoorg.github.io/cetech1/getting-started.html)
 
+## [Documentation](https://cyberegoorg.github.io/cetech1)
 
 ## Credits/Licenses For Fonts Included In Repository
 

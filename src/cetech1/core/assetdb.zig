@@ -11,16 +11,18 @@ pub const AssetType = cdb.CdbTypeDecl(
     enum(u32) {
         Name = 0,
         Description,
+        Folder,
         Tags,
         Object,
-        Folder,
     },
 );
 
 /// CDB type for folder
 pub const FolderType = cdb.CdbTypeDecl(
     "ct_folder",
-    enum(u32) {},
+    enum(u32) {
+        Color,
+    },
 );
 
 /// CDB type for asset/folder tags
@@ -222,8 +224,6 @@ pub const AssetDBAPI = struct {
         type_hash: strid.StrId32,
         base_name: [:0]const u8,
     ) anyerror![:0]const u8,
-
-    getAssetColor: *const fn (db: *cdb.CdbDb, obj: cdb.ObjId) [4]f32,
 
     //#region Pointers to implementation.
     createAssetFn: *const fn (asset_name: []const u8, asset_folder: cdb.ObjId, asset_obj: ?cdb.ObjId) ?cdb.ObjId,

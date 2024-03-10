@@ -1,9 +1,9 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const profiler = @import("profiler.zig");
+const profiler_private = @import("profiler.zig");
 
-const strid = @import("strid.zig");
+const strid_private = @import("strid.zig");
 const log = @import("log.zig");
 const apidb = @import("apidb.zig");
 const modules = @import("modules.zig");
@@ -21,10 +21,12 @@ const public = @import("../kernel.zig");
 
 const c = @import("c.zig").c;
 const cetech1 = @import("../cetech1.zig");
+const profiler = cetech1.profiler;
+const strid = cetech1.strid;
 
 const UpdateArray = std.ArrayList(*public.KernelTaskUpdateI);
 const KernelTaskArray = std.ArrayList(*public.KernelTaskI);
-const PhaseMap = std.AutoArrayHashMap(cetech1.strid.StrId64, Phase);
+const PhaseMap = std.AutoArrayHashMap(strid.StrId64, Phase);
 
 const MODULE_NAME = "kernel";
 
@@ -32,13 +34,13 @@ const Phase = struct {
     const Self = @This();
 
     name: [:0]const u8,
-    update_dag: cetech1.dagraph.StrId64DAG,
+    update_dag: cetech1.dag.StrId64DAG,
     update_chain: UpdateArray,
 
     pub fn init(allocator: std.mem.Allocator, name: [:0]const u8) Self {
         return .{
             .name = name,
-            .update_dag = cetech1.dagraph.StrId64DAG.init(allocator),
+            .update_dag = cetech1.dag.StrId64DAG.init(allocator),
             .update_chain = UpdateArray.init(allocator),
         };
     }
@@ -57,33 +59,33 @@ const Phase = struct {
 var _root_allocator: std.mem.Allocator = undefined;
 var _kernel_allocator: std.mem.Allocator = undefined;
 
-var _main_profiler_allocator: cetech1.profiler.AllocatorProfiler = undefined;
-var _apidb_allocator: cetech1.profiler.AllocatorProfiler = undefined;
-var _modules_allocator: cetech1.profiler.AllocatorProfiler = undefined;
-var _task_allocator: cetech1.profiler.AllocatorProfiler = undefined;
-var _profiler_profiler_allocator: cetech1.profiler.AllocatorProfiler = undefined;
-var _cdb_allocator: cetech1.profiler.AllocatorProfiler = undefined;
-var _assetdb_allocator: cetech1.profiler.AllocatorProfiler = undefined;
-var _system_allocator: cetech1.profiler.AllocatorProfiler = undefined;
-var _gpu_allocator: cetech1.profiler.AllocatorProfiler = undefined;
-var _editorui_allocator: cetech1.profiler.AllocatorProfiler = undefined;
-var _tmp_alocator_pool_allocator: cetech1.profiler.AllocatorProfiler = undefined;
+var _main_profiler_allocator: profiler.AllocatorProfiler = undefined;
+var _apidb_allocator: profiler.AllocatorProfiler = undefined;
+var _modules_allocator: profiler.AllocatorProfiler = undefined;
+var _task_allocator: profiler.AllocatorProfiler = undefined;
+var _profiler_profiler_allocator: profiler.AllocatorProfiler = undefined;
+var _cdb_allocator: profiler.AllocatorProfiler = undefined;
+var _assetdb_allocator: profiler.AllocatorProfiler = undefined;
+var _system_allocator: profiler.AllocatorProfiler = undefined;
+var _gpu_allocator: profiler.AllocatorProfiler = undefined;
+var _editorui_allocator: profiler.AllocatorProfiler = undefined;
+var _tmp_alocator_pool_allocator: profiler.AllocatorProfiler = undefined;
 
-var _update_dag: cetech1.dagraph.StrId64DAG = undefined;
+var _update_dag: cetech1.dag.StrId64DAG = undefined;
 
-var _task_dag: cetech1.dagraph.StrId64DAG = undefined;
+var _task_dag: cetech1.dag.StrId64DAG = undefined;
 var _task_chain: KernelTaskArray = undefined;
 
 var _phase_map: PhaseMap = undefined;
-var _phases_dag: cetech1.dagraph.StrId64DAG = undefined;
+var _phases_dag: cetech1.dag.StrId64DAG = undefined;
 
 var _args: [][:0]u8 = undefined;
 var _args_map: std.StringArrayHashMap([]const u8) = undefined;
 
 var _tmp_depend_array: std.ArrayList(cetech1.task.TaskID) = undefined;
-var _tmp_taskid_map: std.AutoArrayHashMap(cetech1.strid.StrId64, cetech1.task.TaskID) = undefined;
+var _tmp_taskid_map: std.AutoArrayHashMap(strid.StrId64, cetech1.task.TaskID) = undefined;
 
-var _iface_map: std.AutoArrayHashMap(cetech1.strid.StrId64, *public.KernelTaskUpdateI) = undefined;
+var _iface_map: std.AutoArrayHashMap(strid.StrId64, *public.KernelTaskUpdateI) = undefined;
 
 var _running: bool = false;
 var _quit: bool = false;
@@ -127,36 +129,36 @@ fn setCanQuit(can_quit: *const fn () bool) void {
 
 pub fn init(allocator: std.mem.Allocator) !void {
     _root_allocator = allocator;
-    _main_profiler_allocator = cetech1.profiler.AllocatorProfiler.init(&profiler.api, allocator, null);
+    _main_profiler_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, allocator, null);
     _kernel_allocator = _main_profiler_allocator.allocator();
 
-    _profiler_profiler_allocator = cetech1.profiler.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "profiler");
-    profiler.init(_profiler_profiler_allocator.allocator());
+    _profiler_profiler_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "profiler");
+    profiler_private.init(_profiler_profiler_allocator.allocator());
 
-    _apidb_allocator = cetech1.profiler.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "apidb");
-    _modules_allocator = cetech1.profiler.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "modules");
-    _task_allocator = cetech1.profiler.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "task");
-    _cdb_allocator = cetech1.profiler.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "cdb");
-    _assetdb_allocator = cetech1.profiler.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "assetdb");
-    _system_allocator = cetech1.profiler.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "system");
-    _gpu_allocator = cetech1.profiler.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "gpu");
-    _editorui_allocator = cetech1.profiler.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "editorui");
-    _tmp_alocator_pool_allocator = cetech1.profiler.AllocatorProfiler.init(&profiler.api, _kernel_allocator, "tmp_allocators");
+    _apidb_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "apidb");
+    _modules_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "modules");
+    _task_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "task");
+    _cdb_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "cdb");
+    _assetdb_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "assetdb");
+    _system_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "system");
+    _gpu_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "gpu");
+    _editorui_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "editorui");
+    _tmp_alocator_pool_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "tmp_allocators");
 
-    _update_dag = cetech1.dagraph.StrId64DAG.init(_kernel_allocator);
+    _update_dag = cetech1.dag.StrId64DAG.init(_kernel_allocator);
 
-    _phases_dag = cetech1.dagraph.StrId64DAG.init(_kernel_allocator);
+    _phases_dag = cetech1.dag.StrId64DAG.init(_kernel_allocator);
     _phase_map = PhaseMap.init(_kernel_allocator);
 
-    _task_dag = cetech1.dagraph.StrId64DAG.init(_kernel_allocator);
+    _task_dag = cetech1.dag.StrId64DAG.init(_kernel_allocator);
     _task_chain = KernelTaskArray.init(_kernel_allocator);
 
     _args_map = std.StringArrayHashMap([]const u8).init(_kernel_allocator);
 
     _tmp_depend_array = std.ArrayList(cetech1.task.TaskID).init(_kernel_allocator);
-    _tmp_taskid_map = std.AutoArrayHashMap(cetech1.strid.StrId64, cetech1.task.TaskID).init(_kernel_allocator);
+    _tmp_taskid_map = std.AutoArrayHashMap(strid.StrId64, cetech1.task.TaskID).init(_kernel_allocator);
 
-    _iface_map = std.AutoArrayHashMap(cetech1.strid.StrId64, *public.KernelTaskUpdateI).init(_kernel_allocator);
+    _iface_map = std.AutoArrayHashMap(strid.StrId64, *public.KernelTaskUpdateI).init(_kernel_allocator);
 
     try tempalloc.init(_tmp_alocator_pool_allocator.allocator(), 256);
     try apidb.init(_apidb_allocator.allocator());
@@ -171,7 +173,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
 
     try log.registerToApi();
     try tempalloc.registerToApi();
-    try strid.registerToApi();
+    try strid_private.registerToApi();
     try task.registerToApi();
     try uuid.registerToApi();
     try cdb.registerToApi();
@@ -183,14 +185,14 @@ pub fn init(allocator: std.mem.Allocator) !void {
 
     try initProgramArgs();
 
-    try addPhase(c.CT_KERNEL_PHASE_ONLOAD, &[_]cetech1.strid.StrId64{});
-    try addPhase(c.CT_KERNEL_PHASE_POSTLOAD, &[_]cetech1.strid.StrId64{cetech1.kernel.OnLoad});
-    try addPhase(c.CT_KERNEL_PHASE_PREUPDATE, &[_]cetech1.strid.StrId64{cetech1.kernel.PostLoad});
-    try addPhase(c.CT_KERNEL_PHASE_ONUPDATE, &[_]cetech1.strid.StrId64{cetech1.kernel.PreUpdate});
-    try addPhase(c.CT_KERNEL_PHASE_ONVALIDATE, &[_]cetech1.strid.StrId64{cetech1.kernel.OnUpdate});
-    try addPhase(c.CT_KERNEL_PHASE_POSTUPDATE, &[_]cetech1.strid.StrId64{cetech1.kernel.OnValidate});
-    try addPhase(c.CT_KERNEL_PHASE_PRESTORE, &[_]cetech1.strid.StrId64{cetech1.kernel.PostUpdate});
-    try addPhase(c.CT_KERNEL_PHASE_ONSTORE, &[_]cetech1.strid.StrId64{cetech1.kernel.PreStore});
+    try addPhase(c.CT_KERNEL_PHASE_ONLOAD, &[_]strid.StrId64{});
+    try addPhase(c.CT_KERNEL_PHASE_POSTLOAD, &[_]strid.StrId64{cetech1.kernel.OnLoad});
+    try addPhase(c.CT_KERNEL_PHASE_PREUPDATE, &[_]strid.StrId64{cetech1.kernel.PostLoad});
+    try addPhase(c.CT_KERNEL_PHASE_ONUPDATE, &[_]strid.StrId64{cetech1.kernel.PreUpdate});
+    try addPhase(c.CT_KERNEL_PHASE_ONVALIDATE, &[_]strid.StrId64{cetech1.kernel.OnUpdate});
+    try addPhase(c.CT_KERNEL_PHASE_POSTUPDATE, &[_]strid.StrId64{cetech1.kernel.OnValidate});
+    try addPhase(c.CT_KERNEL_PHASE_PRESTORE, &[_]strid.StrId64{cetech1.kernel.PostUpdate});
+    try addPhase(c.CT_KERNEL_PHASE_ONSTORE, &[_]strid.StrId64{cetech1.kernel.PreStore});
 }
 
 pub fn deinit() void {
@@ -231,7 +233,7 @@ pub fn deinit() void {
     _args_map.deinit();
 
     deinitArgs();
-    profiler.deinit();
+    profiler_private.deinit();
 }
 
 fn initProgramArgs() !void {
@@ -306,7 +308,7 @@ pub fn bigInit(static_modules: ?[]const c.ct_module_desc_t, load_dynamic: bool) 
 }
 
 pub fn bigDeinit() !void {
-    profiler.api.frameMark();
+    profiler_private.api.frameMark();
 }
 
 pub fn quit() void {
@@ -415,9 +417,9 @@ pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32) !void
         var checkfs_timer: i64 = 0;
 
         while (_running and !_quit and !_restart) : (kernel_tick += 1) {
-            profiler.api.frameMark();
+            profiler_private.api.frameMark();
 
-            var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "kernelUpdate");
+            var update_zone_ctx = profiler_private.ztracy.ZoneN(@src(), "kernelUpdate");
             defer update_zone_ctx.End();
 
             const now = std.time.milliTimestamp();
@@ -494,8 +496,8 @@ pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32) !void
             if (max_kernel_tick > 0) _quit = kernel_tick >= max_kernel_tick;
         }
 
-        profiler.api.frameMark();
-        profiler.api.frameMark();
+        profiler_private.api.frameMark();
+        profiler_private.api.frameMark();
 
         if (!_restart) {
             log.api.info(MODULE_NAME, "QUIT", .{});
@@ -506,11 +508,12 @@ pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32) !void
 }
 
 fn sleepIfNeed(last_call: i64, max_rate: u32, kernel_tick: u64) !void {
+    _ = kernel_tick; // autofix
     const frame_limit_time: f32 = (1.0 / @as(f32, @floatFromInt(max_rate)) * std.time.ms_per_s);
 
     const dt: f32 = @floatFromInt(std.time.milliTimestamp() - last_call);
     if (dt < frame_limit_time) {
-        var zone_ctx = profiler.ztracy.ZoneN(@src(), "ShityFrameLimitSleeper");
+        var zone_ctx = profiler_private.ztracy.ZoneN(@src(), "ShityFrameLimitSleeper");
         defer zone_ctx.End();
         const sleep_time: u64 = @intFromFloat((frame_limit_time - dt) * 0.65 * std.time.ns_per_ms);
 
@@ -524,7 +527,7 @@ fn sleepIfNeed(last_call: i64, max_rate: u32, kernel_tick: u64) !void {
             const SleepTask = struct {
                 sleep_time: u64,
                 pub fn exec(self: *@This()) void {
-                    var task_zone_ctx = profiler.ztracy.ZoneN(@src(), "ShityFrameLimitSleeper");
+                    var task_zone_ctx = profiler_private.ztracy.ZoneN(@src(), "ShityFrameLimitSleeper");
                     defer task_zone_ctx.End();
                     std.time.sleep(self.sleep_time);
                 }
@@ -541,9 +544,10 @@ fn sleepIfNeed(last_call: i64, max_rate: u32, kernel_tick: u64) !void {
             if (sleep_delta > sleep_time_s) break;
             system.api.poolEventsWithTimeout(std.math.clamp(sleep_time_s - sleep_delta, 0.0, sleep_time_s));
 
-            if (main_window != null) {
-                editorui.api.newFrame();
-            }
+            // if (main_window != null) {
+            //     editorui.api.newFrame();
+            // }
+
             if (main_window) |window| {
                 if (system.api.windowClosed(window)) {
                     if (can_quit_handler) |can_quit| {
@@ -553,18 +557,19 @@ fn sleepIfNeed(last_call: i64, max_rate: u32, kernel_tick: u64) !void {
                     }
                 }
             }
-            if (gpu_context) |ctx| {
-                try editorui.editorUI(tmp.allocator(), @ptrCast(_main_db.db), kernel_tick, dt);
-                gpu.api.shitTempRender(ctx);
-            }
+
+            // if (gpu_context) |ctx| {s
+            //     try editorui.editorUI(tmp.allocator(), @ptrCast(_main_db.db), kernel_tick, dt);
+            //     gpu.api.shitTempRender(ctx);
+            // }
         }
 
         task.api.wait(try task.api.combine(wait_tasks.items));
     }
 }
 
-fn addPhase(name: [:0]const u8, depend: []const cetech1.strid.StrId64) !void {
-    const name_hash = cetech1.strid.strId64(name);
+fn addPhase(name: [:0]const u8, depend: []const strid.StrId64) !void {
+    const name_hash = strid.strId64(name);
     const phase = Phase.init(_kernel_allocator, name);
     try _phase_map.put(name_hash, phase);
     try _phases_dag.add(name_hash, depend);
@@ -574,16 +579,16 @@ fn generateKernelTaskChain() !void {
     try _task_dag.reset();
     _task_chain.clearRetainingCapacity();
 
-    var iface_map = std.AutoArrayHashMap(cetech1.strid.StrId64, *public.KernelTaskI).init(_kernel_allocator);
+    var iface_map = std.AutoArrayHashMap(strid.StrId64, *public.KernelTaskI).init(_kernel_allocator);
     defer iface_map.deinit();
 
     var it = apidb.api.getFirstImpl(public.KernelTaskI);
     while (it) |node| : (it = node.next) {
         var iface = cetech1.apidb.ApiDbAPI.toInterface(public.KernelTaskI, node);
 
-        const depends = if (iface.depends_n != 0) iface.depends[0..iface.depends_n] else &[_]cetech1.strid.StrId64{};
+        const depends = if (iface.depends_n != 0) iface.depends[0..iface.depends_n] else &[_]strid.StrId64{};
 
-        const name_hash = cetech1.strid.strId64(iface.name[0..std.mem.len(iface.name)]);
+        const name_hash = strid.strId64(iface.name[0..std.mem.len(iface.name)]);
 
         try _task_dag.add(name_hash, depends);
         try iface_map.put(name_hash, iface);
@@ -598,7 +603,7 @@ fn generateKernelTaskChain() !void {
 }
 
 fn generateTaskUpdateChain() !void {
-    var zone_ctx = profiler.ztracy.Zone(@src());
+    var zone_ctx = profiler_private.ztracy.Zone(@src());
     defer zone_ctx.End();
 
     try _update_dag.reset();
@@ -614,9 +619,9 @@ fn generateTaskUpdateChain() !void {
     while (it) |node| : (it = node.next) {
         var iface = cetech1.apidb.ApiDbAPI.toInterface(public.KernelTaskUpdateI, node);
 
-        const depends = if (iface.depends_n != 0) iface.depends[0..iface.depends_n] else &[_]cetech1.strid.StrId64{};
+        const depends = if (iface.depends_n != 0) iface.depends[0..iface.depends_n] else &[_]strid.StrId64{};
 
-        const name_hash = cetech1.strid.strId64(iface.name[0..std.mem.len(iface.name)]);
+        const name_hash = strid.strId64(iface.name[0..std.mem.len(iface.name)]);
 
         var phase = _phase_map.getPtr(iface.phase).?;
         try phase.update_dag.add(name_hash, depends);
@@ -640,7 +645,7 @@ fn generateTaskUpdateChain() !void {
 const UpdateFrameName = "UpdateFrame";
 
 fn doKernelUpdateTasks(kernel_tick: u64, dt: i64) !void {
-    var fce_zone_ctx = profiler.ztracy.Zone(@src());
+    var fce_zone_ctx = profiler_private.ztracy.Zone(@src());
     defer fce_zone_ctx.End();
 
     var all_phase_update_task_id = cetech1.task.TaskID.none;
@@ -670,7 +675,7 @@ fn doKernelUpdateTasks(kernel_tick: u64, dt: i64) !void {
                 frame_allocator: std.mem.Allocator,
                 dt: i64,
                 pub fn exec(self: *@This()) void {
-                    var zone_ctx = profiler.ztracy.Zone(@src());
+                    var zone_ctx = profiler_private.ztracy.Zone(@src());
                     zone_ctx.Name(self.update_handler.name[0..std.mem.len(self.update_handler.name)]);
                     defer zone_ctx.End();
 
@@ -680,7 +685,7 @@ fn doKernelUpdateTasks(kernel_tick: u64, dt: i64) !void {
                 }
             };
 
-            const task_strid = cetech1.strid.strId64(cetech1.fromCstr(update_handler.name));
+            const task_strid = strid.strId64(cetech1.fromCstr(update_handler.name));
 
             var prereq = cetech1.task.TaskID.none;
 
@@ -748,7 +753,7 @@ fn dumpKernelUpdatePhaseTree() !void {
         const last_idx = if (_phases_dag.output.keys().len != 0) _phases_dag.output.keys().len else 0;
         const is_last = (last_idx - 1) == idx;
         for (phase.update_chain.items) |update_fce| {
-            const task_name_strid = cetech1.strid.strId64(cetech1.fromCstr(update_fce.name));
+            const task_name_strid = strid.strId64(cetech1.fromCstr(update_fce.name));
             const dep_arr = phase.update_dag.dependList(task_name_strid);
             const is_root = dep_arr == null;
             const tags = if (is_root) "R" else " ";
@@ -811,7 +816,7 @@ fn dumpKernelUpdatePhaseTreeMD() !void {
         prev_phase = phase;
 
         for (phase.update_chain.items) |update_fce| {
-            const task_name_strid = cetech1.strid.strId64(cetech1.fromCstr(update_fce.name));
+            const task_name_strid = strid.strId64(cetech1.fromCstr(update_fce.name));
             const dep_arr = phase.update_dag.dependList(task_name_strid);
             const is_root = dep_arr == null;
             const iface = _iface_map.getPtr(task_name_strid).?;
@@ -849,7 +854,7 @@ fn shutdownKernelTasks() void {
         if (iface.shutdown) |shutdown| {
             shutdown();
         } else {
-            log.api.err(MODULE_NAME, "Kernel task {s} has empty shutdown.", .{iface.name});
+            //log.api.err(MODULE_NAME, "Kernel task {s} has empty shutdown.", .{iface.name});
         }
     }
 }

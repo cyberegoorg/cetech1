@@ -22,6 +22,7 @@ pub const OnStore = strid.strId64(c.CT_KERNEL_PHASE_ONSTORE);
 // You can implement init andor shutdown that is call only on main init/shutdown
 pub const KernelTaskI = extern struct {
     pub const c_name = "ct_kernel_task_i";
+    pub const name_hash = strid.strId64(@This().c_name);
 
     name: [*:0]const u8,
     depends: [*]const strid.StrId64,
@@ -32,25 +33,27 @@ pub const KernelTaskI = extern struct {
     pub inline fn implement(
         name: [*c]const u8,
         depends: []const strid.StrId64,
-        init: ?*const fn (main_db: *cdb.Db) anyerror!void,
-        shutdown: ?*const fn () anyerror!void,
+        comptime T: type,
     ) KernelTaskI {
-        const Wrap = struct {
-            pub fn init_fn(main_db: *cdb.Db) callconv(.C) void {
-                init.?(main_db) catch undefined;
-            }
-
-            pub fn shutdown_fn() callconv(.C) void {
-                shutdown.?() catch undefined;
-            }
-        };
+        if (!std.meta.hasFn(T, "init")) @compileError("implement me");
+        if (!std.meta.hasFn(T, "shutdown")) @compileError("implement me");
 
         return KernelTaskI{
             .name = name,
             .depends = depends.ptr,
             .depends_n = depends.len,
-            .init = if (init != null) Wrap.init_fn else null,
-            .shutdown = if (shutdown != null) Wrap.shutdown_fn else null,
+
+            .init = struct {
+                pub fn f(main_db: *cdb.Db) callconv(.C) void {
+                    T.init(main_db) catch undefined;
+                }
+            }.f,
+
+            .shutdown = struct {
+                pub fn f() callconv(.C) void {
+                    T.shutdown() catch undefined;
+                }
+            }.f,
         };
     }
 };
@@ -59,6 +62,7 @@ pub const KernelTaskI = extern struct {
 // You must implement update that is call every kernel main loop.
 pub const KernelTaskUpdateI = extern struct {
     pub const c_name = "ct_kernel_task_update_i";
+    pub const name_hash = strid.strId64(@This().c_name);
 
     phase: strid.StrId64,
     name: [*:0]const u8,
@@ -72,18 +76,16 @@ pub const KernelTaskUpdateI = extern struct {
         depends: []const strid.StrId64,
         update: *const fn (frame_allocator: std.mem.Allocator, main_db: *cdb.Db, kernel_tick: u64, dt: f32) anyerror!void,
     ) KernelTaskUpdateI {
-        const Wrap = struct {
-            pub fn update_fn(frame_allocator: *const std.mem.Allocator, main_db: *cdb.Db, kernel_tick: u64, dt: f32) callconv(.C) void {
-                update(frame_allocator.*, main_db, kernel_tick, dt) catch undefined;
-            }
-        };
-
         return KernelTaskUpdateI{
             .phase = phase,
             .name = name,
             .depends = depends.ptr,
             .depends_n = depends.len,
-            .update = Wrap.update_fn,
+            .update = struct {
+                pub fn f(frame_allocator: *const std.mem.Allocator, main_db: *cdb.Db, kernel_tick: u64, dt: f32) callconv(.C) void {
+                    update(frame_allocator.*, main_db, kernel_tick, dt) catch undefined;
+                }
+            }.f,
         };
     }
 };

@@ -42,10 +42,10 @@ pub var api = public.EditorUIApi{
     .endMainMenuBar = @ptrCast(&zgui.endMainMenuBar),
     .beginMenuBar = @ptrCast(&zgui.beginMenuBar),
     .endMenuBar = @ptrCast(&zgui.endMenuBar),
-    .beginMenu = @ptrCast(&zgui.beginMenu),
+    .beginMenu = beginMenu,
     .endMenu = @ptrCast(&zgui.endMenu),
-    .menuItem = @ptrCast(&zgui.menuItem),
-    .menuItemPtr = @ptrCast(&zgui.menuItemPtr),
+    .menuItem = menuItem,
+    .menuItemPtr = menuItemPtr,
     .beginChild = @ptrCast(&zgui.beginChild),
     .endChild = @ptrCast(&zgui.endChild),
     .separator = @ptrCast(&zgui.separator),
@@ -95,6 +95,7 @@ pub var api = public.EditorUIApi{
     .button = @ptrCast(&zgui.button),
     .smallButton = @ptrCast(&zgui.smallButton),
     .invisibleButton = @ptrCast(&zgui.invisibleButton),
+
     .inputText = @ptrCast(&zgui.inputText),
     .inputFloat = @ptrCast(&zgui.inputFloat),
     .inputDouble = @ptrCast(&zgui.inputDouble),
@@ -102,6 +103,14 @@ pub var api = public.EditorUIApi{
     .inputU32 = inputU32,
     .inputI64 = inputI64,
     .inputU64 = inputU64,
+
+    .dragFloat = @ptrCast(&zgui.dragFloat),
+    .dragDouble = dragDouble,
+    .dragI32 = dragI32,
+    .dragU32 = dragU32,
+    .dragU64 = dragU64,
+    .dragI64 = dragI64,
+
     .checkbox = @ptrCast(&zgui.checkbox),
     .alignTextToFramePadding = @ptrCast(&zgui.alignTextToFramePadding),
     .isItemToggledOpen = @ptrCast(&zgui.isItemToggledOpen),
@@ -126,8 +135,6 @@ pub var api = public.EditorUIApi{
     .isMouseDoubleClicked = @ptrCast(&zgui.isMouseDoubleClicked),
     .isMouseDown = @ptrCast(&zgui.isMouseDown),
     .isMouseClicked = @ptrCast(&zgui.isMouseClicked),
-    .buffFormatObjLabel = buffFormatObjLabel,
-    .getObjColor = getObjColor,
 
     .isSelected = isSelected,
     .addToSelection = addToSelection,
@@ -139,6 +146,37 @@ pub var api = public.EditorUIApi{
     .removeFromSelection = removeFromSelection,
     .clearSelection = clearSelection,
 };
+
+fn beginMenu(allocator: std.mem.Allocator, label: [:0]const u8, enabled: bool, filter: ?[:0]const u8) bool {
+    if (filter) |f| {
+        if (null == uiFilterPass(allocator, f, label, false)) return false;
+    }
+
+    return zgui.beginMenu(label, enabled);
+}
+
+fn menuItem(allocator: std.mem.Allocator, label: [:0]const u8, args: public.MenuItem, filter: ?[:0]const u8) bool {
+    if (filter) |f| {
+        if (null == uiFilterPass(allocator, f, label, false)) return false;
+    }
+
+    return zgui.menuItem(label, .{
+        .shortcut = args.shortcut,
+        .selected = args.selected,
+        .enabled = args.enabled,
+    });
+}
+
+fn menuItemPtr(allocator: std.mem.Allocator, label: [:0]const u8, args: public.MenuItemPtr, filter: ?[:0]const u8) bool {
+    if (filter) |f| {
+        if (null == uiFilterPass(allocator, f, label, false)) return false;
+    }
+    return zgui.menuItemPtr(label, .{
+        .shortcut = args.shortcut,
+        .selected = args.selected,
+        .enabled = args.enabled,
+    });
+}
 
 fn clearSelection(
     allocator: std.mem.Allocator,
@@ -158,83 +196,6 @@ fn clearSelection(
     }
 
     try db.writeCommit(w);
-}
-
-const INSIATED_COLOR = .{ 1.0, 0.6, 0.0, 1.0 };
-
-fn getObjColor(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cetech1.cdb.ObjId) [4]f32 {
-    if (prop_idx != null and in_set_obj != null) {
-        const obj_r = db.readObj(obj).?;
-        const is_inisiated = db.isIinisiated(obj_r, prop_idx.?, db.readObj(in_set_obj.?).?);
-        if (is_inisiated) return INSIATED_COLOR;
-    }
-
-    if (in_set_obj) |s_obj| {
-        const ui_visual_aspect = db.getAspect(cetech1.editorui.UiVisualAspect, s_obj.type_hash);
-        if (ui_visual_aspect) |aspect| {
-            if (aspect.ui_color) |color| {
-                return color(db.db, s_obj).c;
-            }
-        }
-    } else {
-        const ui_visual_aspect = db.getAspect(cetech1.editorui.UiVisualAspect, obj.type_hash);
-        if (ui_visual_aspect) |aspect| {
-            if (aspect.ui_color) |color| {
-                return color(db.db, obj).c;
-            }
-        }
-    }
-    return .{ 1.0, 1.0, 1.0, 1.0 };
-}
-
-fn buffFormatObjLabel(allocator: std.mem.Allocator, buff: [:0]u8, db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId) ?[:0]u8 {
-    var label: [:0]u8 = undefined;
-    const ui_visual_aspect = db.getAspect(public.UiVisualAspect, obj.type_hash);
-    if (ui_visual_aspect) |aspect| {
-        var name: []const u8 = undefined;
-        defer allocator.free(name);
-
-        if (aspect.ui_name) |ui_name| {
-            name = std.mem.span(ui_name(&allocator, db.db, obj));
-        } else {
-            const asset_obj = assetdb.api.getAssetForObj(obj).?;
-            const obj_r = db.readObj(asset_obj).?;
-
-            if (assetdb.api.isAssetFolder(obj)) {
-                const asset_name = cetech1.assetdb.AssetType.readStr(db, obj_r, .Name) orelse "ROOT";
-                name = std.fmt.allocPrintZ(
-                    allocator,
-                    "{s}",
-                    .{
-                        asset_name,
-                    },
-                ) catch "";
-            } else {
-                const asset_name = cetech1.assetdb.AssetType.readStr(db, obj_r, .Name) orelse "No NAME =()";
-                const type_name = db.getTypeName(asset_obj.type_hash).?;
-                name = std.fmt.allocPrintZ(
-                    allocator,
-                    "{s}.{s}",
-                    .{
-                        asset_name,
-                        type_name,
-                    },
-                ) catch "";
-            }
-        }
-
-        if (aspect.ui_icons) |icons| {
-            const icon = std.mem.span(icons(&allocator, db.db, obj));
-            defer allocator.free(icon);
-            label = std.fmt.bufPrintZ(buff, "{s}" ++ "  " ++ "{s}", .{ icon, name }) catch return null;
-        } else {
-            label = std.fmt.bufPrintZ(buff, "{s}", .{name}) catch return null;
-        }
-    } else {
-        return null;
-    }
-
-    return label;
 }
 
 fn freePath(path: []const u8) void {
@@ -370,6 +331,7 @@ pub fn useWithWindow(window: *cetech1.system.Window, gpuctx: *cetech1.gpu.GpuCon
     );
 
     zgui.getStyle().scaleAllSizes(scale_factor);
+    zgui.getStyle().frame_rounding = 8;
 
     _backed_initialised = true;
 }
@@ -391,21 +353,107 @@ fn isEditorUIActive() bool {
     return _true_gpuctx != null;
 }
 
-fn getPropertyColor(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: u32) ?[4]f32 {
-    const prototype_obj = db.getPrototype(db.readObj(obj).?);
-    const has_prototype = !prototype_obj.isEmpty();
+// next shit
 
-    var color: ?[4]f32 = null;
-    if (has_prototype) {
-        color = .{ 0.5, 0.5, 0.5, 1.0 };
-        if (db.isPropertyOverrided(db.readObj(obj).?, prop_idx)) {
-            color = .{ 0.0, 0.8, 1.0, 1.0 };
-        }
-    }
-    return color;
+fn dragDouble(label: [:0]const u8, args: public.DragScalarGen(f64)) bool {
+    return zgui.dragScalar(
+        label,
+        f64,
+        .{
+            .v = args.v,
+            .speed = args.speed,
+            .min = args.min,
+            .max = args.max,
+            .cfmt = args.cfmt,
+            .flags = .{
+                .always_clamp = args.flags.always_clamp,
+                .logarithmic = args.flags.logarithmic,
+                .no_round_to_format = args.flags.no_round_to_format,
+                .no_input = args.flags.no_input,
+            },
+        },
+    );
 }
 
-// next shit
+fn dragI32(label: [:0]const u8, args: public.DragScalarGen(i32)) bool {
+    return zgui.dragScalar(
+        label,
+        i32,
+        .{
+            .v = args.v,
+            .speed = args.speed,
+            .min = args.min,
+            .max = args.max,
+            .cfmt = "%d",
+            .flags = .{
+                .always_clamp = args.flags.always_clamp,
+                .logarithmic = args.flags.logarithmic,
+                .no_round_to_format = args.flags.no_round_to_format,
+                .no_input = args.flags.no_input,
+            },
+        },
+    );
+}
+
+fn dragU32(label: [:0]const u8, args: public.DragScalarGen(u32)) bool {
+    return zgui.dragScalar(
+        label,
+        u32,
+        .{
+            .v = args.v,
+            .speed = args.speed,
+            .min = args.min,
+            .max = args.max,
+            .cfmt = "%d",
+            .flags = .{
+                .always_clamp = args.flags.always_clamp,
+                .logarithmic = args.flags.logarithmic,
+                .no_round_to_format = args.flags.no_round_to_format,
+                .no_input = args.flags.no_input,
+            },
+        },
+    );
+}
+
+fn dragI64(label: [:0]const u8, args: public.DragScalarGen(i64)) bool {
+    return zgui.dragScalar(
+        label,
+        i64,
+        .{
+            .v = args.v,
+            .speed = args.speed,
+            .min = args.min,
+            .max = args.max,
+            .cfmt = "%d",
+            .flags = .{
+                .always_clamp = args.flags.always_clamp,
+                .logarithmic = args.flags.logarithmic,
+                .no_round_to_format = args.flags.no_round_to_format,
+                .no_input = args.flags.no_input,
+            },
+        },
+    );
+}
+
+fn dragU64(label: [:0]const u8, args: public.DragScalarGen(u64)) bool {
+    return zgui.dragScalar(
+        label,
+        u64,
+        .{
+            .v = args.v,
+            .speed = args.speed,
+            .min = args.min,
+            .max = args.max,
+            .cfmt = "%d",
+            .flags = .{
+                .always_clamp = args.flags.always_clamp,
+                .logarithmic = args.flags.logarithmic,
+                .no_round_to_format = args.flags.no_round_to_format,
+                .no_input = args.flags.no_input,
+            },
+        },
+    );
+}
 
 fn inputI32(label: [:0]const u8, args: public.InputScalarGen(i32)) bool {
     const flags = zgui.InputTextFlags{
@@ -595,7 +643,7 @@ fn selectedCount(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection
 }
 
 fn getFirstSelected(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId) cetech1.cdb.ObjId {
-    const r = db.readObj(selection).?;
+    const r = db.readObj(selection) orelse return .{};
 
     // TODO: count to cdb
     if (public.ObjSelectionType.readRefSet(db, r, .Selection, allocator)) |set| {

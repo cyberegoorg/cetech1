@@ -3,7 +3,7 @@ pub const fromCstrZ = @import("c.zig").fromCstrZ;
 
 pub const mem = @import("mem.zig");
 pub const strid = @import("strid.zig");
-pub const dagraph = @import("dagraph.zig");
+pub const dag = @import("dag.zig");
 pub const uuid = @import("uuid.zig");
 
 pub const profiler = @import("profiler.zig");

@@ -9,32 +9,32 @@ pub const StrId32DAG = DAG(strid.StrId32);
 
 // Can build nad resolve dependency graph
 pub fn DAG(comptime T: type) type {
-    const DAGArray = std.ArrayList(T);
-    const DAGSet = std.AutoArrayHashMap(T, void);
-    const DAGGraph = std.AutoArrayHashMap(T, DAGArray);
-    const DAGDepends = std.AutoArrayHashMap(T, DAGArray);
-    const DAGRoot = std.AutoArrayHashMap(T, void);
-    const DAGDegrees = std.AutoArrayHashMap(T, usize);
+    const Array = std.ArrayList(T);
+    const Set = std.AutoArrayHashMap(T, void);
+    const Graph = std.AutoArrayHashMap(T, Array);
+    const Depends = std.AutoArrayHashMap(T, Array);
+    const Root = std.AutoArrayHashMap(T, void);
+    const Degrees = std.AutoArrayHashMap(T, usize);
 
     return struct {
         const Self = @This();
         allocator: Allocator,
-        graph: DAGGraph,
-        depends_on: DAGDepends,
-        root: DAGRoot,
-        output: DAGSet,
-        build: DAGSet,
-        degrees: DAGDegrees,
+        graph: Graph,
+        depends_on: Depends,
+        root: Root,
+        output: Set,
+        build: Set,
+        degrees: Degrees,
 
         pub fn init(allocator: Allocator) Self {
             return .{
                 .allocator = allocator,
-                .graph = DAGGraph.init(allocator),
-                .root = DAGRoot.init(allocator),
-                .depends_on = DAGDepends.init(allocator),
-                .output = DAGSet.init(allocator),
-                .build = DAGSet.init(allocator),
-                .degrees = DAGDegrees.init(allocator),
+                .graph = Graph.init(allocator),
+                .root = Root.init(allocator),
+                .depends_on = Depends.init(allocator),
+                .output = Set.init(allocator),
+                .build = Set.init(allocator),
+                .degrees = Degrees.init(allocator),
             };
         }
 
@@ -73,12 +73,12 @@ pub fn DAG(comptime T: type) type {
         // Add node to graph
         pub fn add(self: *Self, name: T, depends: []const T) !void {
             if (!self.graph.contains(name)) {
-                const dep_arr = DAGArray.init(self.allocator);
+                const dep_arr = Array.init(self.allocator);
                 try self.graph.put(name, dep_arr);
             }
 
             if (!self.depends_on.contains(name)) {
-                var dep_arr = DAGArray.init(self.allocator);
+                var dep_arr = Array.init(self.allocator);
                 try dep_arr.appendSlice(depends);
                 try self.depends_on.put(name, dep_arr);
             }
@@ -88,7 +88,7 @@ pub fn DAG(comptime T: type) type {
             } else {
                 for (depends) |dep_name| {
                     if (!self.graph.contains(dep_name)) {
-                        const dep_arr = DAGArray.init(self.allocator);
+                        const dep_arr = Array.init(self.allocator);
                         try self.graph.put(dep_name, dep_arr);
                     }
 

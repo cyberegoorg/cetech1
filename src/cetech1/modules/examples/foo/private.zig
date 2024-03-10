@@ -2,6 +2,9 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
+const strid = cetech1.strid;
+const cdb = cetech1.cdb;
+
 const public = @import("module_foo.zig");
 
 const MODULE_NAME = "foo";
@@ -9,10 +12,10 @@ const MODULE_NAME = "foo";
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
 var _log: *cetech1.log.LogAPI = undefined;
-var _cdb: *cetech1.cdb.CdbAPI = undefined;
+var _cdb: *cdb.CdbAPI = undefined;
 var _editorui: *cetech1.editorui.EditorUIApi = undefined;
 
-var _db: cetech1.cdb.CdbDb = undefined;
+var _db: cdb.CdbDb = undefined;
 
 const spam_log = false;
 const do_cdb = false;
@@ -24,14 +27,14 @@ var c_api = public.c.ct_foo_api_t{ .foo = &public.FooAPI.foo1_c };
 // Global state that can surive hot-reload
 const G = struct {
     var_1: u32 = 0,
-    type_hash: cetech1.strid.StrId32 = undefined,
-    type_hash2: cetech1.strid.StrId32 = undefined,
-    ref_obj1: cetech1.cdb.ObjId = undefined,
+    type_hash: strid.StrId32 = undefined,
+    type_hash2: strid.StrId32 = undefined,
+    ref_obj1: cdb.ObjId = undefined,
 };
 var _g: *G = undefined;
 
 // Foo cdb type decl
-const FooCDBType = cetech1.cdb.CdbTypeDecl(
+const FooCDBType = cdb.CdbTypeDecl(
     "ct_foo_cdb",
     enum(u32) {
         PROP1 = 0,
@@ -41,30 +44,31 @@ const FooCDBType = cetech1.cdb.CdbTypeDecl(
 );
 
 // Register all cdb stuff in this method
-fn cdbCreateTypes(db_: *cetech1.cdb.Db) !void {
-    var db = cetech1.cdb.CdbDb.fromDbT(db_, _cdb);
 
-    _ = try db.addType(
-        FooCDBType.name,
-        &[_]cetech1.cdb.PropDef{
-            .{ .prop_idx = FooCDBType.propIdx(.PROP1), .name = "prop1", .type = cetech1.cdb.PropType.F32 },
-            .{ .prop_idx = FooCDBType.propIdx(.KERNEL_TICK), .name = "kernel_tick", .type = cetech1.cdb.PropType.U64 },
-            .{ .prop_idx = FooCDBType.propIdx(.PROP2), .name = "prop2", .type = cetech1.cdb.PropType.REFERENCE_SET },
-        },
-    );
+var create_types_i = cdb.CreateTypesI.implement(struct {
+    pub fn createTypes(db_: *cdb.Db) !void {
+        var db = cdb.CdbDb.fromDbT(db_, _cdb);
 
-    _g.type_hash = cetech1.cdb_types.addBigType(&db, "stress_foo_1") catch unreachable;
-    _g.type_hash2 = cetech1.cdb_types.addBigType(&db, "stress_foo_2") catch unreachable;
+        _ = try db.addType(
+            FooCDBType.name,
+            &[_]cdb.PropDef{
+                .{ .prop_idx = FooCDBType.propIdx(.PROP1), .name = "prop1", .type = cdb.PropType.F32 },
+                .{ .prop_idx = FooCDBType.propIdx(.KERNEL_TICK), .name = "kernel_tick", .type = cdb.PropType.U64 },
+                .{ .prop_idx = FooCDBType.propIdx(.PROP2), .name = "prop2", .type = cdb.PropType.REFERENCE_SET },
+            },
+        );
 
-    _g.ref_obj1 = db.createObject(_g.type_hash2) catch undefined;
-}
+        _g.type_hash = cetech1.cdb_types.addBigType(&db, "stress_foo_1") catch unreachable;
+        _g.type_hash2 = cetech1.cdb_types.addBigType(&db, "stress_foo_2") catch unreachable;
 
-var create_types_i = cetech1.cdb.CreateTypesI.implement(cdbCreateTypes);
+        _g.ref_obj1 = db.createObject(_g.type_hash2) catch undefined;
+    }
+});
 
 // Create simple update kernel task
 const KernelTask = struct {
-    pub fn update(frame_allocator: std.mem.Allocator, main_db: *cetech1.cdb.Db, kernel_tick: u64, dt: f32) !void {
-        _db = cetech1.cdb.CdbDb.fromDbT(main_db, _cdb);
+    pub fn update(frame_allocator: std.mem.Allocator, main_db: *cdb.Db, kernel_tick: u64, dt: f32) !void {
+        _db = cdb.CdbDb.fromDbT(main_db, _cdb);
         _g.var_1 += 1;
 
         if (spam_log) _log.info(MODULE_NAME, "kernel_tick:{}\tdt:{}\tg_var_1:{}", .{ kernel_tick, dt, _g.var_1 });
@@ -96,54 +100,53 @@ const KernelTask = struct {
 
         std.time.sleep(1 * std.time.ns_per_ms);
     }
-
-    pub fn init(main_db: *cetech1.cdb.Db) !void {
-        _ = main_db;
-        _log.info(MODULE_NAME, "TASK INIT", .{});
-        const foo = _allocator.create(public.FooAPI) catch return;
-        _log.info(MODULE_NAME, "alloc {}", .{foo});
-        defer _allocator.destroy(foo);
-    }
-
-    pub fn shutdown() !void {
-        _log.info(MODULE_NAME, "TASK SHUTDOWN", .{});
-    }
 };
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
     "FooKernelTask",
-    &[_]cetech1.strid.StrId64{},
-    KernelTask.init,
-    KernelTask.shutdown,
+    &[_]strid.StrId64{},
+    struct {
+        pub fn init(main_db: *cdb.Db) !void {
+            _ = main_db;
+            _log.info(MODULE_NAME, "TASK INIT", .{});
+            const foo = _allocator.create(public.FooAPI) catch return;
+            _log.info(MODULE_NAME, "alloc {}", .{foo});
+            defer _allocator.destroy(foo);
+        }
+
+        pub fn shutdown() !void {
+            _log.info(MODULE_NAME, "TASK SHUTDOWN", .{});
+        }
+    },
 );
 
 var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "FooUpdate",
-    &[_]cetech1.strid.StrId64{},
+    &[_]strid.StrId64{},
     KernelTask.update,
 );
 
 var update_task2 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "FooUpdate2",
-    &[_]cetech1.strid.StrId64{cetech1.strid.strId64("FooUpdate")},
+    &[_]strid.StrId64{strid.strId64("FooUpdate")},
     KernelTask.update,
 );
 
 var update_task3 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "FooUpdate3",
-    &[_]cetech1.strid.StrId64{cetech1.strid.strId64("FooUpdate2")},
+    &[_]strid.StrId64{strid.strId64("FooUpdate2")},
     KernelTask.update,
 );
 
 var update_task4 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "FooUpdate4",
-    &[_]cetech1.strid.StrId64{
-        cetech1.strid.strId64("FooUpdate2"),
-        cetech1.strid.strId64("FooUpdate"),
+    &[_]strid.StrId64{
+        strid.strId64("FooUpdate2"),
+        strid.strId64("FooUpdate"),
     },
     KernelTask.update,
 );
@@ -151,32 +154,32 @@ var update_task4 = cetech1.kernel.KernelTaskUpdateI.implment(
 var update_task5 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnStore,
     "FooUpdate5",
-    &[_]cetech1.strid.StrId64{
-        //cetech1.strid.strId64("FooUpdate4"),
+    &[_]strid.StrId64{
+        //strid.strId64("FooUpdate4"),
     },
     KernelTask.update,
 );
 var update_task6 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnStore,
     "FooUpdate6",
-    &[_]cetech1.strid.StrId64{
-        //cetech1.strid.strId64("FooUpdate5"),
+    &[_]strid.StrId64{
+        //strid.strId64("FooUpdate5"),
     },
     KernelTask.update,
 );
 var update_task7 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnStore,
     "FooUpdate7",
-    &[_]cetech1.strid.StrId64{
-        //cetech1.strid.strId64("FooUpdate5"),
+    &[_]strid.StrId64{
+        //strid.strId64("FooUpdate5"),
     },
     KernelTask.update,
 );
 var update_task8 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnStore,
     "FooUpdate8",
-    &[_]cetech1.strid.StrId64{
-        //cetech1.strid.strId64("FooUpdate7"),
+    &[_]strid.StrId64{
+        //strid.strId64("FooUpdate7"),
     },
     KernelTask.update,
 );
@@ -186,7 +189,7 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     // basic
     _allocator = allocator;
     _log = log;
-    _cdb = apidb.getZigApi(cetech1.cdb.CdbAPI).?;
+    _cdb = apidb.getZigApi(cdb.CdbAPI).?;
     _editorui = apidb.getZigApi(cetech1.editorui.EditorUIApi).?;
 
     // set module api
@@ -194,7 +197,7 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     try apidb.setOrRemoveCApi(public.c.ct_foo_api_t, &c_api, load);
 
     // impl interface
-    try apidb.implOrRemove(cetech1.cdb.CreateTypesI, &create_types_i, load);
+    try apidb.implOrRemove(cdb.CreateTypesI, &create_types_i, load);
     try apidb.implOrRemove(cetech1.kernel.KernelTaskI, &kernel_task, load);
 
     try apidb.implOrRemove(cetech1.kernel.KernelTaskUpdateI, &update_task, load);

@@ -80,6 +80,8 @@ pub fn IdPool(comptime T: type) type {
     };
 }
 
+const windows = std.os.windows;
+
 pub fn VirtualArray(comptime T: type) type {
     return struct {
         const Self = @This();
@@ -100,12 +102,11 @@ pub fn VirtualArray(comptime T: type) type {
             if (max_items != 0) {
                 switch (builtin.os.tag) {
                     .windows => {
-                        const w = std.os.windows;
-                        new.reservation.ptr = @alignCast(@ptrCast(try w.VirtualAlloc(
+                        new.reservation.ptr = @alignCast(@ptrCast(try windows.VirtualAlloc(
                             null,
                             max_size,
-                            w.MEM_RESERVE | w.MEM_COMMIT,
-                            w.PAGE_READWRITE,
+                            windows.MEM_RESERVE | windows.MEM_COMMIT,
+                            windows.PAGE_READWRITE,
                         )));
                         new.reservation.len = max_size;
                     },
@@ -134,8 +135,7 @@ pub fn VirtualArray(comptime T: type) type {
             if (self.reservation.len > 0) {
                 switch (builtin.os.tag) {
                     .windows => {
-                        const w = std.os.windows;
-                        std.os.windows.VirtualFree(self.reservation.ptr, 0, w.MEM_RELEASE);
+                        std.os.windows.VirtualFree(self.reservation.ptr, 0, windows.MEM_RELEASE);
                     },
                     else => {
                         std.os.munmap(self.reservation);

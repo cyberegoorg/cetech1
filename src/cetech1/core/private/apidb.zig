@@ -6,6 +6,7 @@ const StringHashMap = std.StringHashMap;
 const StringArrayHashMap = std.StringArrayHashMap;
 
 const cetech1 = @import("../cetech1.zig");
+const strid = cetech1.strid;
 
 const log = @import("log.zig");
 const public = @import("../apidb.zig");
@@ -25,8 +26,9 @@ const LanguagesApiHashMap = StringHashMap(*ApiHashMap);
 const InterfaceImplList = std.DoublyLinkedList(c.c.ct_apidb_impl_iter_t);
 const InterfaceImplNode = InterfaceImplList.Node;
 const IterfaceImplNodePool = std.heap.MemoryPool(InterfaceImplList.Node);
-const InterfaceHashMap = StringArrayHashMap(InterfaceImplList);
-const InterfaceGen = StringArrayHashMap(u64);
+const InterfaceHashMap = std.AutoArrayHashMap(strid.StrId64, InterfaceImplList);
+const InterfaceGen = std.AutoArrayHashMap(strid.StrId64, u64);
+
 const GlobalVarMap = StringArrayHashMap([]u8);
 
 pub var api = public.ApiDbAPI{
@@ -168,12 +170,12 @@ fn removeApi(language: []const u8, api_name: []const u8) void {
     @memset(api_ptr.?.api_ptr, 0);
 }
 
-fn increaseIfaceGen(interface_name: []const u8) void {
+fn increaseIfaceGen(interface_name: strid.StrId64) void {
     const iface_gen = _interafce_gen.getPtr(interface_name).?;
     iface_gen.* += 1;
 }
 
-fn getInterafcesVersion(interface_name: []const u8) u64 {
+fn getInterafcesVersion(interface_name: strid.StrId64) u64 {
     const iface_gen = _interafce_gen.getPtr(interface_name);
     if (iface_gen == null) return 0;
     return iface_gen.?.*;
@@ -189,7 +191,7 @@ pub fn dumpGlobalVar() void {
 }
 
 /// !!! must be C compatible fce
-fn implInterface(interface_name: []const u8, impl_ptr: *anyopaque) anyerror!void {
+fn implInterface(interface_name: strid.StrId64, impl_ptr: *anyopaque) anyerror!void {
     if (!_interafce_map.contains(interface_name)) {
         try _interafce_map.put(interface_name, InterfaceImplList{});
         try _interafce_gen.put(interface_name, 0);
@@ -233,7 +235,7 @@ fn getImpl(comptime T: type, interface_name: []const u8) ?*T {
     return @ptrFromInt(@intFromPtr(first.?.data.interface));
 }
 
-fn getFirstImpl(interface_name: []const u8) ?*const c.c.ct_apidb_impl_iter_t {
+fn getFirstImpl(interface_name: strid.StrId64) ?*const c.c.ct_apidb_impl_iter_t {
     var impl_list = _interafce_map.getPtr(interface_name);
 
     if (impl_list == null) {
@@ -247,7 +249,7 @@ fn getFirstImpl(interface_name: []const u8) ?*const c.c.ct_apidb_impl_iter_t {
     return &impl_list.?.first.?.data;
 }
 
-fn getLastImpl(interface_name: []const u8) ?*const c.c.ct_apidb_impl_iter_t {
+fn getLastImpl(interface_name: strid.StrId64) ?*const c.c.ct_apidb_impl_iter_t {
     var impl_list = _interafce_map.getPtr(interface_name);
 
     if (impl_list == null) {
@@ -261,7 +263,7 @@ fn getLastImpl(interface_name: []const u8) ?*const c.c.ct_apidb_impl_iter_t {
     return &impl_list.?.last.?.data;
 }
 
-fn removeImpl(interface_name: []const u8, impl_ptr: *anyopaque) void {
+fn removeImpl(interface_name: strid.StrId64, impl_ptr: *anyopaque) void {
     var impl_list = _interafce_map.getPtr(interface_name);
 
     if (impl_list == null) {
@@ -304,12 +306,13 @@ pub fn dumpApi() void {
 }
 
 pub fn dumpInterfaces() void {
-    log.api.debug(MODULE_NAME, "IMPLEMENTED INTERAFCES", .{});
+    // TODO
+    // log.api.debug(MODULE_NAME, "IMPLEMENTED INTERAFCES", .{});
 
-    var iter = _interafce_map.iterator();
-    while (iter.next()) |entry| {
-        log.api.debug(MODULE_NAME, " +- {s}", .{entry.key_ptr.*});
-    }
+    // var iter = _interafce_map.iterator();
+    // while (iter.next()) |entry| {
+    //     log.api.debug(MODULE_NAME, " +- {s}", .{entry.key_ptr.*});
+    // }
 }
 
 pub const apidb_global_c = blk: {
@@ -334,7 +337,7 @@ pub const apidb_global_c = blk: {
             }
         }
 
-        pub fn impl_or_remove(interface_name: [*c]const u8, api_ptr: ?*anyopaque, load: bool) callconv(.C) void {
+        pub fn impl_or_remove(interface_name: c.c.ct_strid64_t, api_ptr: ?*anyopaque, load: bool) callconv(.C) void {
             if (load) {
                 Self.impl(interface_name, api_ptr);
             } else {
@@ -349,14 +352,14 @@ pub const apidb_global_c = blk: {
             return globalVar(cetech1.fromCstr(module), cetech1.fromCstr(var_name), size, def) catch return null;
         }
 
-        pub fn impl(interface_name: [*c]const u8, api_ptr: ?*anyopaque) callconv(.C) void {
-            return implInterface(cetech1.fromCstr(interface_name), api_ptr.?) catch return;
+        pub fn impl(interface_name: c.c.ct_strid64_t, api_ptr: ?*anyopaque) callconv(.C) void {
+            return implInterface(strid.StrId64.from(c.c.ct_strid64_t, interface_name), api_ptr.?) catch return;
         }
-        pub fn remove_impl(interface_name: [*c]const u8, api_ptr: ?*anyopaque) callconv(.C) void {
-            return removeImpl(cetech1.fromCstr(interface_name), api_ptr.?);
+        pub fn remove_impl(interface_name: c.c.ct_strid64_t, api_ptr: ?*anyopaque) callconv(.C) void {
+            return removeImpl(strid.StrId64.from(c.c.ct_strid64_t, interface_name), api_ptr.?);
         }
-        pub fn get_first_impl(interface_name: [*c]const u8) callconv(.C) ?*const c.c.ct_apidb_impl_iter_t {
-            return getFirstImpl(cetech1.fromCstr(interface_name));
+        pub fn get_first_impl(interface_name: c.c.ct_strid64_t) callconv(.C) ?*const c.c.ct_apidb_impl_iter_t {
+            return getFirstImpl(strid.StrId64.from(c.c.ct_strid64_t, interface_name));
         }
     };
     break :blk c.c.ct_apidb_api_t{

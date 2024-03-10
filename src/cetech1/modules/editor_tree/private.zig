@@ -1,12 +1,17 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const cetech1 = @import("cetech1");
-const editorui = cetech1.editorui;
-const editor = @import("editor");
 const public = @import("editor_tree.zig");
 
-const Icons = cetech1.editorui.CoreIcons;
+const cetech1 = @import("cetech1");
+const editorui = cetech1.editorui;
+const strid = cetech1.strid;
+const cdb = cetech1.cdb;
+
+const editor = @import("editor");
+const editor_inspector = @import("editor_inspector");
+
+const Icons = editorui.CoreIcons;
 
 pub const c = @cImport(@cInclude("cetech1/modules/editor_tree/editor_tree.h"));
 
@@ -20,7 +25,7 @@ const REMOVED_COLOR = .{ 0.7, 0.0, 0.0, 1.0 };
 var _allocator: Allocator = undefined;
 var _apidb: *cetech1.apidb.ApiDbAPI = undefined;
 var _log: *cetech1.log.LogAPI = undefined;
-var _cdb: *cetech1.cdb.CdbAPI = undefined;
+var _cdb: *cdb.CdbAPI = undefined;
 var _editorui: *cetech1.editorui.EditorUIApi = undefined;
 var _editor: *editor.EditorAPI = undefined;
 var _assetdb: *cetech1.assetdb.AssetDBAPI = undefined;
@@ -59,18 +64,19 @@ fn cdbTreeNode(
 
 fn cdbObjTreeNode(
     allocator: std.mem.Allocator,
-    db: *cetech1.cdb.CdbDb,
-    obj: cetech1.cdb.ObjId,
+    db: *cdb.CdbDb,
+    tab: *editor.TabO,
+    contexts: []const strid.StrId64,
+    selection: cdb.ObjId,
+    obj: cdb.ObjId,
     default_open: bool,
     no_push: bool,
-    selected: bool,
     leaf: bool,
     args: public.CdbTreeViewArgs,
 ) bool {
-    _ = args;
     var buff: [128:0]u8 = undefined;
-    const asset_label = _editorui.buffFormatObjLabel(allocator, &buff, db, obj) orelse "Not implemented";
-    const asset_color = _assetdb.getAssetColor(db, obj);
+    const asset_label = _editor.buffFormatObjLabel(allocator, &buff, db, obj) orelse "Not implemented";
+    const asset_color = _editor.getAssetColor(db, obj);
     _editorui.pushStyleColor4f(.{ .idx = .text, .c = asset_color });
 
     const open = _editorui.treeNodeFlags(asset_label, .{
@@ -78,17 +84,61 @@ fn cdbObjTreeNode(
         .open_on_double_click = false,
         .default_open = default_open,
         .no_tree_push_on_open = no_push,
-        .selected = selected,
+        .selected = _editorui.isSelected(db, selection, obj),
         .leaf = leaf,
     });
     _editorui.popStyleColor(.{});
 
-    if (db.getAspect(editorui.UiVisualAspect, obj.type_hash)) |aspect| {
+    if (db.getAspect(editor.UiVisualAspect, obj.type_hash)) |aspect| {
         if (aspect.ui_tooltip) |tooltip| {
             if (_editorui.isItemHovered(.{})) {
                 _editorui.beginTooltip();
                 defer _editorui.endTooltip();
                 tooltip(&allocator, db.db, obj);
+            }
+        }
+    }
+
+    if (_editorui.beginPopupContextItem()) {
+        defer _editorui.endPopup();
+        _editor.showObjContextMenu(allocator, db, tab, contexts, selection, null, null) catch undefined;
+    }
+
+    if (_editorui.beginDragDropSource(.{})) {
+        defer _editorui.endDragDropSource();
+
+        const drop_open = cdbObjTreeNode(
+            allocator,
+            db,
+            tab,
+            contexts,
+            selection,
+            obj,
+            false,
+            false,
+            !args.expand_object,
+            args,
+        );
+
+        if (_editorui.selectedCount(allocator, db, selection) == 1) {
+            _ = _editorui.setDragDropPayload("obj", &std.mem.toBytes(obj), .once);
+        } else {
+            _ = _editorui.setDragDropPayload("objs", &std.mem.toBytes(selection), .once);
+        }
+        if (drop_open) {
+            cdbTreePop();
+        }
+    }
+
+    if (_editorui.beginDragDropTarget()) {
+        defer _editorui.endDragDropTarget();
+        if (_editorui.acceptDragDropPayload("obj", .{ .source_allow_null_id = true })) |payload| {
+            const drag_obj: cdb.ObjId = std.mem.bytesToValue(cdb.ObjId, payload.data);
+
+            if (db.getAspect(public.UiTreeAspect, obj.type_hash)) |aspect| {
+                if (aspect.ui_drop_obj) |ui_drop_obj| {
+                    ui_drop_obj(&allocator, db.db, tab, obj, drag_obj);
+                }
             }
         }
     }
@@ -124,21 +174,7 @@ fn formatedPropNameToBuff(buf: []u8, prop_name: [:0]const u8) ![]u8 {
     return writen[0 .. writen.len - 1];
 }
 
-fn getPropertyColor(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: u32) ?[4]f32 {
-    const prototype_obj = db.getPrototype(db.readObj(obj).?);
-    const has_prototype = !prototype_obj.isEmpty();
-
-    var color: ?[4]f32 = null;
-    if (has_prototype) {
-        color = PROTOTYPE_PROPERTY_COLOR;
-        if (db.isPropertyOverrided(db.readObj(obj).?, prop_idx)) {
-            color = PROTOTYPE_PROPERTY_OVERIDED_COLOR;
-        }
-    }
-    return color;
-}
-
-fn isLeaf(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId) bool {
+fn isLeaf(db: *cdb.CdbDb, obj: cdb.ObjId) bool {
     if (db.getTypePropDef(obj.type_hash)) |prop_defs| {
         for (prop_defs) |prop| {
             switch (prop.type) {
@@ -156,7 +192,7 @@ fn isLeaf(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId) bool {
     return true;
 }
 
-fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, tab: *editor.TabO, context: []const cetech1.strid.StrId64, obj: cetech1.cdb.ObjId, selection: cetech1.cdb.ObjId, args: public.CdbTreeViewArgs) !void {
+fn cdbTreeView(allocator: std.mem.Allocator, db: *cdb.CdbDb, tab: *editor.TabO, context: []const strid.StrId64, obj: cdb.ObjId, selection: cdb.ObjId, args: public.CdbTreeViewArgs) !void {
     // if exist aspect use it
     const ui_aspect = db.getAspect(public.UiTreeAspect, obj.type_hash);
 
@@ -195,7 +231,7 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, tab: *edito
         switch (prop_def.type) {
             //.SUBOBJECT, .REFERENCE => {
             .SUBOBJECT => {
-                var subobj: cetech1.cdb.ObjId = undefined;
+                var subobj: cdb.ObjId = undefined;
 
                 if (prop_def.type == .REFERENCE) {
                     subobj = db.readRef(db.readObj(obj).?, prop_idx) orelse continue;
@@ -203,7 +239,7 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, tab: *edito
                     subobj = db.readSubObj(db.readObj(obj).?, prop_idx) orelse continue;
                 }
 
-                if (db.getAspect(editorui.UiEmbedPropertiesAspect, subobj.type_hash) != null) {
+                if (db.getAspect(editor_inspector.UiEmbedPropertiesAspect, subobj.type_hash) != null) {
                     continue;
                 }
 
@@ -213,7 +249,7 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, tab: *edito
                     .{ prop_name, if (prop_def.type == .REFERENCE) " " ++ Icons.FA_LINK else "" },
                 );
 
-                const color = getPropertyColor(db, obj, prop_idx);
+                const color = _editor.getPropertyColor(db, obj, prop_idx);
                 if (color) |colorr| {
                     _editorui.pushStyleColor4f(.{ .idx = .text, .c = colorr });
                 }
@@ -248,21 +284,21 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, tab: *edito
 
                 if (_editorui.beginPopupContextItem()) {
                     defer _editorui.endPopup();
-                    try _editor.objContextMenu(allocator, db, tab, &.{}, obj, prop_idx, null);
+                    try _editor.showObjContextMenu(allocator, db, tab, &.{}, obj, prop_idx, null);
                 }
 
                 if (open) {
                     defer api.cdbTreePop();
 
                     // added
-                    var set: ?[]const cetech1.cdb.ObjId = undefined;
+                    var set: ?[]const cdb.ObjId = undefined;
                     if (prop_def.type == .REFERENCE_SET) {
                         set = db.readRefSet(obj_r, prop_idx, allocator);
                     } else {
                         set = try db.readSubObjSet(obj_r, prop_idx, allocator);
                     }
 
-                    var inisiated_prototypes = std.AutoHashMap(cetech1.cdb.ObjId, void).init(allocator);
+                    var inisiated_prototypes = std.AutoHashMap(cdb.ObjId, void).init(allocator);
                     defer inisiated_prototypes.deinit();
 
                     if (set) |s| {
@@ -281,7 +317,7 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, tab: *edito
                                 try inisiated_prototypes.put(db.getPrototype(db.readObj(subobj).?), {});
                             }
 
-                            _editorui.pushStyleColor4f(.{ .idx = .text, .c = _editorui.getObjColor(db, obj, prop_idx, subobj) });
+                            _editorui.pushStyleColor4f(.{ .idx = .text, .c = _editor.getObjColor(db, obj, prop_idx, subobj) });
 
                             const open_inset = api.cdbTreeNode(label, true, false, _editorui.isSelected(db, selection, subobj), isLeaf(db, subobj), args);
 
@@ -293,7 +329,7 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, tab: *edito
 
                             if (_editorui.beginPopupContextItem()) {
                                 defer _editorui.endPopup();
-                                try _editor.objContextMenu(allocator, db, tab, &.{}, obj, prop_idx, subobj);
+                                try _editor.showObjContextMenu(allocator, db, tab, &.{}, obj, prop_idx, subobj);
                             }
 
                             if (open_inset) {
@@ -325,9 +361,10 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, tab: *edito
                                 label = try std.fmt.bufPrintZ(&buff, editorui.Icons.Deleted ++ " " ++ "{d}:{d}###{d}{d}", .{ subobj.id, subobj.type_hash.id, subobj.id, subobj.type_hash.id });
                             }
 
-                            _editorui.pushStyleColor4f(.{ .idx = .text, .c = REMOVED_COLOR });
+                            if (_editor.isColorsEnabled()) _editorui.pushStyleColor4f(.{ .idx = .text, .c = REMOVED_COLOR });
                             const open_inset = _editorui.treeNodeFlags(label.?, .{ .leaf = true, .selected = _editorui.isSelected(db, selection, subobj) });
-                            _editorui.popStyleColor(.{});
+                            if (_editor.isColorsEnabled()) _editorui.popStyleColor(.{});
+
                             if (open_inset) {
                                 defer _editorui.treePop();
 
@@ -337,7 +374,7 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, tab: *edito
 
                                 if (_editorui.beginPopupContextItem()) {
                                     defer _editorui.endPopup();
-                                    if (_editorui.menuItem(editorui.Icons.Revive ++ "  " ++ "Restore deleted", .{})) {
+                                    if (_editorui.menuItem(allocator, editorui.Icons.Revive ++ "  " ++ "Restore deleted", .{}, null)) {
                                         db.restoreDeletedInSet(obj_r, prop_idx, db.readObj(subobj).?);
                                     }
                                 }
@@ -352,11 +389,11 @@ fn cdbTreeView(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, tab: *edito
     }
 }
 
-fn cdbCreateTypes(db_: ?*cetech1.cdb.Db) !void {
-    _ = db_;
-}
-
-var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(cdbCreateTypes);
+var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
+    pub fn createTypes(db_: ?*cdb.Db) !void {
+        _ = db_;
+    }
+});
 
 // Create types, register api, interfaces etc...
 pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log: *cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
@@ -365,7 +402,7 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     _allocator = allocator;
     _log = log;
     _apidb = apidb;
-    _cdb = apidb.getZigApi(cetech1.cdb.CdbAPI).?;
+    _cdb = apidb.getZigApi(cdb.CdbAPI).?;
     _editorui = apidb.getZigApi(cetech1.editorui.EditorUIApi).?;
     _editor = apidb.getZigApi(editor.EditorAPI).?;
     _assetdb = apidb.getZigApi(cetech1.assetdb.AssetDBAPI).?;
@@ -375,7 +412,7 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, MODULE_NAME, "_g", .{});
 
-    try apidb.implOrRemove(cetech1.cdb.CreateTypesI, &create_cdb_types_i, load);
+    try apidb.implOrRemove(cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.setOrRemoveZigApi(public.TreeAPI, &api, load);
 
     return true;

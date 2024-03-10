@@ -6,21 +6,21 @@
   ],
   "__type_name": "ct_foo_asset",
   "__uuid": "018b5846-c2d5-712f-bb12-9d9d15321ecb",
-  "BOOL": true,
-  "U64": 2222,
-  "I64": 20,
-  "U32": 10,
-  "I32": 20,
-  "F32": 3.0e+01,
-  "F64": 2.0e+01,
-  "STR": "foo",
-  "BLOB": "6d331beb3f1f6a11",
-  "SUBOBJECT": {
+  "bool": true,
+  "u64": 2222,
+  "i64": 20,
+  "u32": 10,
+  "i32": 20,
+  "f32": 3.0e+01,
+  "f64": 2.0e+01,
+  "str": "foo",
+  "blob": "6d331bebd667a6af",
+  "subobject": {
     "__type_name": "ct_foo_asset",
     "__uuid": "018b5846-c2d5-7c82-82b4-525348222242"
   },
-  "REFERENCE": "ct_foo_asset:018b5c72-5350-7d06-b5ed-6fed2793fdd4",
-  "SUBOBJECT_SET": [
+  "reference": "ct_foo_asset:018b5c72-5350-7d06-b5ed-6fed2793fdd4",
+  "subobject_set": [
     {
       "__type_name": "ct_foo_asset",
       "__uuid": "018b5846-c2d5-7584-9183-a95f78095230"
@@ -30,7 +30,7 @@
       "__uuid": "9986f5cc-bc90-4443-8ad0-83357c02d28d"
     }
   ],
-  "REFERENCE_SET": [
+  "reference_set": [
     "ct_foo_asset:018b5c72-5350-7d06-b5ed-6fed2793fdd4",
     "ct_foo_asset:028ef368-9b36-44f9-b8cc-d377365f836c"
   ]

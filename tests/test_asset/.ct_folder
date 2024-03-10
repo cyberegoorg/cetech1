@@ -2,5 +2,11 @@
   "__version": "0.1.0",
   "__asset_uuid": "018e0f87-9fc6-79d7-9718-d8e2c1162713",
   "__type_name": "ct_folder",
-  "__uuid": "018e0f87-9fc6-7132-ae4b-1be7a2643632"
+  "__uuid": "018e0f87-9fc6-7132-ae4b-1be7a2643632",
+  "color": {
+    "__type_name": "ct_color_4f",
+    "__uuid": "018e2d90-aa94-7615-92ac-ffdcca49becb",
+    "g": 0.0e+00,
+    "b": 0.0e+00
+  }
 }

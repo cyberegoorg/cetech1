@@ -26,6 +26,7 @@ pub const Colors = struct {
 pub const Icons = struct {
     pub const Open = CoreIcons.FA_FOLDER_OPEN;
     pub const OpenProject = CoreIcons.FA_FOLDER_OPEN;
+    pub const Create = CoreIcons.FA_CIRCLE_PLUS;
 
     pub const OpenTab = CoreIcons.FA_WINDOW_MAXIMIZE;
     pub const CloseTab = CoreIcons.FA_RECTANGLE_XMARK;
@@ -35,6 +36,7 @@ pub const Icons = struct {
 
     pub const Add = CoreIcons.FA_PLUS;
     pub const AddFile = CoreIcons.FA_FILE_CIRCLE_PLUS;
+    pub const AddAsset = CoreIcons.FA_FILE_CIRCLE_PLUS;
     pub const AddFolder = CoreIcons.FA_FOLDER_PLUS;
     pub const Remove = CoreIcons.FA_MINUS;
     pub const Close = CoreIcons.FA_XMARK;
@@ -58,305 +60,47 @@ pub const Icons = struct {
     pub const Folder = CoreIcons.FA_FOLDER_CLOSED;
     pub const Asset = CoreIcons.FA_FILE;
 
-    pub const MoveHere = CoreIcons.FA_ARROWS_UP_DOWN_LEFT_RIGHT;
+    pub const Move = CoreIcons.FA_ARROWS_UP_DOWN_LEFT_RIGHT;
+    pub const MoveHere = CoreIcons.FA_DOWN_LONG;
+
+    pub const Settings = CoreIcons.FA_SCREWDRIVER_WRENCH;
+    pub const Properties = CoreIcons.FA_SLIDERS;
+    pub const Buffer = CoreIcons.FA_LAYER_GROUP;
+    pub const Windows = CoreIcons.FA_WINDOW_RESTORE;
+    pub const Editor = CoreIcons.FA_HOUSE;
+    pub const Colors = CoreIcons.FA_PALETTE;
+    pub const TickRate = CoreIcons.FA_STOPWATCH_20;
+    pub const ContextMenu = CoreIcons.FA_BARS;
+    pub const Explorer = CoreIcons.FA_TREE;
+    pub const Clear = CoreIcons.FA_BROOM;
+    pub const Select = CoreIcons.FA_HAND_POINTER;
+    pub const Rename = CoreIcons.FA_PENCIL;
 };
 
 pub const EditorUII = extern struct {
     pub const c_name = "ct_editorui_ui_i";
+    pub const name_hash = strid.strId64(@This().c_name);
 
     ui: *const fn (allocator: *const std.mem.Allocator) callconv(.C) void,
 
-    pub inline fn implement(
-        ui_fn: *const fn (
-            allocator: std.mem.Allocator,
-        ) anyerror!void,
-    ) EditorUII {
-        const Wrap = struct {
-            pub fn ui_c(
+    pub inline fn implement(comptime T: type) EditorUII {
+        if (!std.meta.hasFn(T, "ui")) @compileError("implement me");
+
+        return EditorUII{ .ui = struct {
+            pub fn f(
                 allocator: *const std.mem.Allocator,
             ) callconv(.C) void {
-                ui_fn(allocator.*) catch |err| {
+                T.ui(allocator.*) catch |err| {
                     std.log.err("EditorUII {}", .{err});
                     std.debug.assert(false);
                 };
             }
-        };
-
-        return EditorUII{
-            .ui = Wrap.ui_c,
-        };
+        }.f };
     }
 };
 
 pub const color4f = extern struct {
     c: [4]f32,
-};
-
-pub const UiVisualAspect = extern struct {
-    ui_name: ?*const fn (
-        allocator: *const std.mem.Allocator,
-        db: *cdb.Db,
-        obj: cdb.ObjId,
-    ) callconv(.C) [*c]const u8 = null,
-
-    ui_icons: ?*const fn (
-        allocator: *const std.mem.Allocator,
-        db: *cdb.Db,
-        obj: cdb.ObjId,
-    ) callconv(.C) [*c]const u8 = null,
-
-    ui_color: ?*const fn (
-        db: *cdb.Db,
-        obj: cdb.ObjId,
-    ) callconv(.C) color4f = null,
-
-    ui_tooltip: ?*const fn (
-        allocator: *const std.mem.Allocator,
-        db: *cdb.Db,
-        obj: cdb.ObjId,
-    ) callconv(.C) void = null,
-
-    pub inline fn implement(
-        ui_name: ?*const fn (
-            allocator: std.mem.Allocator,
-            db: *cdb.Db,
-            obj: cdb.ObjId,
-        ) anyerror![:0]const u8,
-        ui_icons: ?*const fn (
-            allocator: std.mem.Allocator,
-            db: *cdb.Db,
-            obj: cdb.ObjId,
-        ) anyerror![:0]const u8,
-        ui_color: ?*const fn (
-            db: *cdb.Db,
-            obj: cdb.ObjId,
-        ) anyerror![4]f32,
-        ui_tooltip: ?*const fn (
-            allocator: std.mem.Allocator,
-            db: *cdb.Db,
-            obj: cdb.ObjId,
-        ) void,
-    ) UiVisualAspect {
-        const Wrap = struct {
-            pub fn ui_name_c(
-                allocator: *const std.mem.Allocator,
-                db: *cdb.Db,
-                obj: cdb.ObjId,
-            ) callconv(.C) [*c]const u8 {
-                const name = ui_name.?(allocator.*, db, obj) catch |err| {
-                    std.log.err("UiVisualAspect {}", .{err});
-                    @breakpoint();
-                    return "";
-                };
-                return name;
-            }
-
-            pub fn ui_icons_c(
-                allocator: *const std.mem.Allocator,
-                db: *cdb.Db,
-                obj: cdb.ObjId,
-            ) callconv(.C) [*c]const u8 {
-                const icons = ui_icons.?(allocator.*, db, obj) catch |err| {
-                    std.log.err("UiVisualAspect {}", .{err});
-                    @breakpoint();
-                    return allocator.dupeZ(u8, "") catch undefined;
-                };
-                return icons;
-            }
-
-            pub fn ui_color_c(
-                db: *cdb.Db,
-                obj: cdb.ObjId,
-            ) callconv(.C) color4f {
-                const color = ui_color.?(db, obj) catch |err| {
-                    std.log.err("UiVisualAspect {}", .{err});
-                    return .{ .c = .{ 1.0, 1.0, 1.0, 1.0 } };
-                };
-                return .{ .c = .{ color[0], color[1], color[2], color[3] } };
-            }
-
-            pub fn ui_tooltip_c(allocator: *const std.mem.Allocator, db: *cdb.Db, obj: cdb.ObjId) callconv(.C) void {
-                ui_tooltip.?(allocator.*, db, obj);
-            }
-        };
-
-        return UiVisualAspect{
-            .ui_name = if (ui_name) |_| Wrap.ui_name_c else null,
-            .ui_icons = if (ui_icons) |_| Wrap.ui_icons_c else null,
-            .ui_color = if (ui_color) |_| Wrap.ui_color_c else null,
-            .ui_tooltip = if (ui_tooltip) |_| Wrap.ui_tooltip_c else null,
-        };
-    }
-};
-
-pub const UiSetMenus = extern struct {
-    add_menu: ?*const fn (
-        allocator: *const std.mem.Allocator,
-        db: *cdb.Db,
-        obj: cdb.ObjId,
-        prop_idx: u32,
-    ) callconv(.C) void = null,
-
-    pub inline fn implement(
-        add_menu: *const fn (
-            allocator: std.mem.Allocator,
-            dbc: *cdb.Db,
-            obj: cdb.ObjId,
-            prop_idx: u32,
-        ) anyerror!void,
-    ) UiSetMenus {
-        const Wrap = struct {
-            pub fn add_menu_c(
-                allocator: *const std.mem.Allocator,
-                db: *cdb.Db,
-                obj: cdb.ObjId,
-                prop_idx: u32,
-            ) callconv(.C) void {
-                add_menu(allocator.*, db, obj, prop_idx) catch |err| {
-                    std.log.err("UiSetMenus {}", .{err});
-                    @breakpoint();
-                };
-            }
-        };
-
-        return UiSetMenus{
-            .add_menu = Wrap.add_menu_c,
-        };
-    }
-};
-
-// Properties
-
-pub const hidePropertyAspect = UiPropertyAspect{};
-
-pub const UiPropertyAspect = extern struct {
-    ui_property: ?*const fn (
-        allocator: *const std.mem.Allocator,
-        db: *cdb.Db,
-        cdb.ObjId,
-        prop_idx: u32,
-        args: cdbPropertiesViewArgs,
-    ) callconv(.C) void = null,
-
-    pub inline fn implement(
-        ui: *const fn (
-            allocator: std.mem.Allocator,
-            db: *cdb.Db,
-            obj: cdb.ObjId,
-            prop_idx: u32,
-            args: cdbPropertiesViewArgs,
-        ) anyerror!void,
-    ) UiPropertyAspect {
-        const Wrap = struct {
-            pub fn ui_c(
-                allocator: *const std.mem.Allocator,
-                db: *cdb.Db,
-                obj: cdb.ObjId,
-                prop_idx: u32,
-                args: cdbPropertiesViewArgs,
-            ) callconv(.C) void {
-                ui(allocator.*, db, obj, prop_idx, args) catch |err| {
-                    std.log.err("UiPropertyAspect {}", .{err});
-                    @breakpoint();
-                };
-            }
-        };
-
-        return UiPropertyAspect{
-            .ui_property = Wrap.ui_c,
-        };
-    }
-};
-
-pub const UiEmbedPropertiesAspect = extern struct {
-    ui_properties: ?*const fn (
-        allocator: *const std.mem.Allocator,
-        db: *cdb.Db,
-        obj: cdb.ObjId,
-        args: cdbPropertiesViewArgs,
-    ) callconv(.C) void = null,
-
-    pub inline fn implement(
-        ui: *const fn (
-            allocator: std.mem.Allocator,
-            db: *cdb.Db,
-            obj: cdb.ObjId,
-            args: cdbPropertiesViewArgs,
-        ) anyerror!void,
-    ) UiEmbedPropertiesAspect {
-        const Wrap = struct {
-            pub fn ui_c(
-                allocator: *const std.mem.Allocator,
-                db: *cdb.Db,
-                obj: cdb.ObjId,
-                args: cdbPropertiesViewArgs,
-            ) callconv(.C) void {
-                ui(allocator.*, db, obj, args) catch |err| {
-                    std.log.err("UiEmbedPropertiesAspect {}", .{err});
-                    @breakpoint();
-                };
-            }
-        };
-
-        return UiEmbedPropertiesAspect{
-            .ui_properties = Wrap.ui_c,
-        };
-    }
-};
-
-pub const UiEmbedPropertyAspect = extern struct {
-    ui_properties: ?*const fn (
-        allocator: *const std.mem.Allocator,
-        db: *cdb.Db,
-        obj: cdb.ObjId,
-        prop_idx: u32,
-        args: cdbPropertiesViewArgs,
-    ) callconv(.C) void = null,
-
-    pub inline fn implement(
-        ui: *const fn (
-            allocator: std.mem.Allocator,
-            db: *cdb.Db,
-            obj: cdb.ObjId,
-            prop_idx: u32,
-            args: cdbPropertiesViewArgs,
-        ) anyerror!void,
-    ) UiEmbedPropertyAspect {
-        const Wrap = struct {
-            pub fn ui_c(
-                allocator: *const std.mem.Allocator,
-                db: *cdb.Db,
-                obj: cdb.ObjId,
-                prop_idx: u32,
-                args: cdbPropertiesViewArgs,
-            ) callconv(.C) void {
-                ui(allocator.*, db, obj, prop_idx, args) catch |err| {
-                    std.log.err("UiEmbedPropertyAspect {}", .{err});
-                    @breakpoint();
-                };
-            }
-        };
-
-        return UiEmbedPropertyAspect{
-            .ui_properties = Wrap.ui_c,
-        };
-    }
-};
-
-pub const UiPropertiesConfigAspect = extern struct {
-    hide_prototype: bool = false,
-};
-
-pub const UiPropertyConfigAspect = extern struct {
-    hide_prototype: bool = false,
-};
-
-pub const UiVisualPropertyConfigAspect = extern struct {
-    no_subtree: bool = false,
-};
-
-pub const cdbPropertiesViewArgs = extern struct {
-    filter: ?[*:0]const u8 = null,
 };
 
 pub const EditorUIApi = struct {
@@ -407,10 +151,10 @@ pub const EditorUIApi = struct {
     beginMenuBar: *const fn () void,
     endMenuBar: *const fn () void,
 
-    beginMenu: *const fn (label: [:0]const u8, enabled: bool) bool,
+    beginMenu: *const fn (allocator: std.mem.Allocator, label: [:0]const u8, enabled: bool, filter: ?[:0]const u8) bool,
     endMenu: *const fn () void,
-    menuItem: *const fn (label: [:0]const u8, args: MenuItem) bool,
-    menuItemPtr: *const fn (label: [:0]const u8, args: MenuItemPtr) bool,
+    menuItem: *const fn (allocator: std.mem.Allocator, label: [:0]const u8, args: MenuItem, filter: ?[:0]const u8) bool,
+    menuItemPtr: *const fn (allocator: std.mem.Allocator, label: [:0]const u8, args: MenuItemPtr, filter: ?[:0]const u8) bool,
 
     beginChild: *const fn (str_id: [:0]const u8, args: BeginChild) bool,
     endChild: *const fn () void,
@@ -444,6 +188,14 @@ pub const EditorUIApi = struct {
     inputU32: *const fn (label: [:0]const u8, args: InputScalarGen(u32)) bool,
     inputI64: *const fn (label: [:0]const u8, args: InputScalarGen(i64)) bool,
     inputU64: *const fn (label: [:0]const u8, args: InputScalarGen(u64)) bool,
+
+    dragFloat: *const fn (label: [:0]const u8, args: DragFloatGen(f32)) bool,
+    dragDouble: *const fn (label: [:0]const u8, args: DragScalarGen(f64)) bool,
+    dragI32: *const fn (label: [:0]const u8, args: DragScalarGen(i32)) bool,
+    dragU32: *const fn (label: [:0]const u8, args: DragScalarGen(u32)) bool,
+    dragI64: *const fn (label: [:0]const u8, args: DragScalarGen(i64)) bool,
+    dragU64: *const fn (label: [:0]const u8, args: DragScalarGen(u64)) bool,
+
     checkbox: *const fn (label: [:0]const u8, args: Checkbox) bool,
     setClipboardText: *const fn (value: [:0]const u8) void,
 
@@ -493,9 +245,6 @@ pub const EditorUIApi = struct {
     isMouseDoubleClicked: *const fn (mouse_button: MouseButton) bool,
     isMouseDown: *const fn (mouse_button: MouseButton) bool,
     isMouseClicked: *const fn (mouse_button: MouseButton) bool,
-
-    buffFormatObjLabel: *const fn (allocator: std.mem.Allocator, buff: [:0]u8, db: *cdb.CdbDb, obj: cdb.ObjId) ?[:0]u8,
-    getObjColor: *const fn (db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cdb.ObjId) [4]f32,
 
     // Selection OBJ
     isSelected: *const fn (db: *cdb.CdbDb, selection: cdb.ObjId, obj: cdb.ObjId) bool,
@@ -1320,3 +1069,48 @@ pub const Condition = enum(c_int) {
     first_use_ever = 4,
     appearing = 8,
 };
+
+pub const SliderFlags = packed struct(c_int) {
+    _reserved0: bool = false,
+    _reserved1: bool = false,
+    _reserved2: bool = false,
+    _reserved3: bool = false,
+    always_clamp: bool = false,
+    logarithmic: bool = false,
+    no_round_to_format: bool = false,
+    no_input: bool = false,
+    _padding: u24 = 0,
+};
+
+pub fn DragFloatGen(comptime T: type) type {
+    return struct {
+        v: *T,
+        speed: f32 = 1.0,
+        min: f32 = 0.0,
+        max: f32 = 0.0,
+        cfmt: [:0]const u8 = "%.3f",
+        flags: SliderFlags = .{},
+    };
+}
+
+pub fn DragIntGen(comptime T: type) type {
+    return struct {
+        v: *T,
+        speed: f32 = 1.0,
+        min: i32 = 0.0,
+        max: i32 = 0.0,
+        cfmt: [:0]const u8 = "%d",
+        flags: SliderFlags = .{},
+    };
+}
+
+pub fn DragScalarGen(comptime T: type) type {
+    return struct {
+        v: *T,
+        speed: f32 = 1.0,
+        min: ?T = null,
+        max: ?T = null,
+        cfmt: ?[:0]const u8 = null,
+        flags: SliderFlags = .{},
+    };
+}

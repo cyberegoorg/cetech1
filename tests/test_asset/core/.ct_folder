@@ -6,5 +6,11 @@
     "ct_tag:018e0348-b358-779f-b40c-7d34d3fca2a7"
   ],
   "__type_name": "ct_folder",
-  "__uuid": "018e0f87-9fc7-7b4c-bdff-2c59cb132a4b"
+  "__uuid": "018e0f87-9fc7-7b4c-bdff-2c59cb132a4b",
+  "color": {
+    "__type_name": "ct_color_4f",
+    "__uuid": "018e2d91-97ea-7d29-a860-f3ac9792955a",
+    "r": 0.0e+00,
+    "b": 0.0e+00
+  }
 }

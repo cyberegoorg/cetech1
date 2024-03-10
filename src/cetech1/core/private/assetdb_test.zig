@@ -82,12 +82,12 @@ test "asset: Should save asset to json" {
     const proto_w = db.writeObj(prototype_obj).?;
     const proto_sub_obj1_w = db.writeObj(proto_sub_obj1).?;
     const proto_sub_obj2_w = db.writeObj(proto_sub_obj2).?;
-    try FooAsset.addRefToSet(&db, proto_w, .REFERENCE_SET, &.{ proto_ref_obj1, proto_ref_obj2 });
+    try FooAsset.addRefToSet(&db, proto_w, .ReferenceSet, &.{ proto_ref_obj1, proto_ref_obj2 });
 
     try FooAsset.addSubObjToSet(
         &db,
         proto_w,
-        .SUBOBJECT_SET,
+        .SubobjectSet,
         &.{ proto_sub_obj1_w, proto_sub_obj2_w },
     );
 
@@ -113,22 +113,22 @@ test "asset: Should save asset to json" {
     FooAsset.setValue(&db, u64, prototype_obj_w, .U64, 10);
     FooAsset.setValue(&db, i64, prototype_obj_w, .I64, 20);
 
-    try FooAsset.setStr(&db, asset_obj_w, .STR, "foo");
-    FooAsset.setValue(&db, bool, asset_obj_w, .BOOL, true);
+    try FooAsset.setStr(&db, asset_obj_w, .Str, "foo");
+    FooAsset.setValue(&db, bool, asset_obj_w, .Bool, true);
     FooAsset.setValue(&db, u32, asset_obj_w, .U32, 10);
     FooAsset.setValue(&db, i32, asset_obj_w, .I32, 20);
     FooAsset.setValue(&db, f64, asset_obj_w, .F64, 20.0);
     FooAsset.setValue(&db, f32, asset_obj_w, .F32, 30.0);
 
-    try FooAsset.setRef(&db, asset_obj_w, .REFERENCE, ref_obj1);
-    try FooAsset.addRefToSet(&db, asset_obj_w, .REFERENCE_SET, &.{ref_obj2});
-    try FooAsset.removeFromRefSet(&db, asset_obj_w, .REFERENCE_SET, proto_ref_obj1);
+    try FooAsset.setRef(&db, asset_obj_w, .Reference, ref_obj1);
+    try FooAsset.addRefToSet(&db, asset_obj_w, .ReferenceSet, &.{ref_obj2});
+    try FooAsset.removeFromRefSet(&db, asset_obj_w, .ReferenceSet, proto_ref_obj1);
 
-    try FooAsset.setSubObj(&db, asset_obj_w, .SUBOBJECT, sub_obj1_w);
-    const inisiated_subobj1 = try db.instantiateSubObjFromSet(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.SUBOBJECT_SET), proto_sub_obj1);
-    try FooAsset.addSubObjToSet(&db, asset_obj_w, .SUBOBJECT_SET, &.{sub_obj2_w});
+    try FooAsset.setSubObj(&db, asset_obj_w, .Subobject, sub_obj1_w);
+    const inisiated_subobj1 = try db.instantiateSubObjFromSet(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.SubobjectSet), proto_sub_obj1);
+    try FooAsset.addSubObjToSet(&db, asset_obj_w, .SubobjectSet, &.{sub_obj2_w});
 
-    const blob = (try FooAsset.createBlob(&db, asset_obj_w, .BLOB, "hello blob".len)).?;
+    const blob = (try FooAsset.createBlob(&db, asset_obj_w, .Blob, "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
     try db.writeCommit(sub_obj1_w);
@@ -145,35 +145,35 @@ test "asset: Should save asset to json" {
         \\  "__type_name": "ct_foo_asset",
         \\  "__uuid": "{s}",
         \\  "__prototype_uuid": "9c49cfdb-0d31-485f-8623-24248b53c30f",
-        \\  "BOOL": true,
-        \\  "U32": 10,
-        \\  "I32": 20,
-        \\  "F32": 3.0e+01,
-        \\  "F64": 2.0e+01,
-        \\  "STR": "foo",
-        \\  "BLOB": "{x}3f1f6a11",
-        \\  "SUBOBJECT": {{
+        \\  "bool": true,
+        \\  "u32": 10,
+        \\  "i32": 20,
+        \\  "f32": 3.0e+01,
+        \\  "f64": 2.0e+01,
+        \\  "str": "foo",
+        \\  "blob": "{x}d667a6af",
+        \\  "subobject": {{
         \\    "__type_name": "ct_foo_asset",
         \\    "__uuid": "{s}"
         \\  }},
-        \\  "REFERENCE": "ct_foo_asset:{s}",
-        \\  "SUBOBJECT_SET": [
+        \\  "reference": "ct_foo_asset:{s}",
+        \\  "subobject_set": [
         \\    {{
         \\      "__type_name": "ct_foo_asset",
         \\      "__uuid": "{s}"
         \\    }}
         \\  ],
-        \\  "SUBOBJECT_SET__instantiate": [
+        \\  "subobject_set__instantiate": [
         \\    {{
         \\      "__type_name": "ct_foo_asset",
         \\      "__uuid": "{s}",
         \\      "__prototype_uuid": "{s}"
         \\    }}
         \\  ],
-        \\  "REFERENCE_SET": [
+        \\  "reference_set": [
         \\    "ct_foo_asset:{s}"
         \\  ],
-        \\  "REFERENCE_SET__removed": [
+        \\  "reference_set__removed": [
         \\    "ct_foo_asset:{s}"
         \\  ]
         \\}}
@@ -240,8 +240,8 @@ test "asset: Should read asset from json reader" {
     const proto_sub_obj1_w = db.writeObj(proto_sub_obj1).?;
     const proto_sub_obj2_w = db.writeObj(proto_sub_obj2).?;
 
-    try FooAsset.addRefToSet(&db, proto_w, .REFERENCE_SET, &.{ proto_ref_obj1, proto_ref_obj2 });
-    try FooAsset.addSubObjToSet(&db, proto_w, .SUBOBJECT_SET, &.{ proto_sub_obj1_w, proto_sub_obj2_w });
+    try FooAsset.addRefToSet(&db, proto_w, .ReferenceSet, &.{ proto_ref_obj1, proto_ref_obj2 });
+    try FooAsset.addSubObjToSet(&db, proto_w, .SubobjectSet, &.{ proto_sub_obj1_w, proto_sub_obj2_w });
 
     try db.writeCommit(proto_sub_obj2_w);
     try db.writeCommit(proto_sub_obj1_w);
@@ -249,7 +249,7 @@ test "asset: Should read asset from json reader" {
 
     const folder1_asset = try public.AssetType.createObject(&db);
     const folder1 = try public.FolderType.createObject(&db);
-    const folder1_w = db.writeObj(folder1).?;
+    const folder1_w = public.FolderType.write(&db, folder1).?;
     const folder1_asset_w = db.writeObj(folder1_asset).?;
     try public.AssetType.setSubObj(&db, folder1_asset_w, .Object, folder1_w);
     try db.writeCommit(folder1_w);
@@ -271,34 +271,34 @@ test "asset: Should read asset from json reader" {
         \\  "__type_name": "ct_foo_asset",
         \\  "__uuid": "018b5846-c2d5-712f-bb12-9d9d15321ecb",
         \\  "__prototype_uuid": "9c49cfdb-0d31-485f-8623-24248b53c30f",
-        \\  "BOOL": true,
-        \\  "U32": 10,
-        \\  "I32": 20,
-        \\  "F32": 3.0e+01,
-        \\  "F64": 2.0e+01,
-        \\  "STR": "foo",
-        \\  "SUBOBJECT": {
+        \\  "bool": true,
+        \\  "u32": 10,
+        \\  "i32": 20,
+        \\  "f32": 3.0e+01,
+        \\  "f64": 2.0e+01,
+        \\  "str": "foo",
+        \\  "subobject": {
         \\    "__type_name": "ct_foo_asset",
         \\    "__uuid": "018b5846-c2d5-7c82-82b4-525348222242"
         \\  },
-        \\  "REFERENCE": "ct_foo_asset:018b5846-c2d5-7921-823a-60d80f9285de",
-        \\  "SUBOBJECT_SET": [
+        \\  "reference": "ct_foo_asset:018b5846-c2d5-7921-823a-60d80f9285de",
+        \\  "subobject_set": [
         \\    {
         \\      "__type_name": "ct_foo_asset",
         \\      "__uuid": "018b5846-c2d5-7584-9183-a95f78095230"
         \\    }
         \\  ],
-        \\  "SUBOBJECT_SET__instantiate": [
+        \\  "subobject_set__instantiate": [
         \\    {
         \\      "__type_name": "ct_foo_asset",
         \\      "__uuid": "0277c070-b7a4-4ae1-947f-f85c67ec15a6",
         \\      "__prototype_uuid": "16e130f3-f21d-4fa7-8974-b90e607ce640"
         \\    }
         \\  ],
-        \\  "REFERENCE_SET": [
+        \\  "reference_set": [
         \\    "ct_foo_asset:018b5846-c2d5-74f2-a050-c9375ad9a1f6"
         \\  ],
-        \\  "REFERENCE_SET__removed": [
+        \\  "reference_set__removed": [
         \\    "ct_foo_asset:965a0c48-f166-4f66-a894-9f8d750c7c28"
         \\  ]
         \\}
@@ -368,19 +368,19 @@ test "asset: Should open asset dir" {
     // log.api.err(
     //     MODULE_NAME,
     //     "ddddd {x}{x}",
-    //     .{ cetech1.strid.strId32(&(try uuid.fromStr("018b5846-c2d5-712f-bb12-9d9d15321ecb")).bytes).id, cetech1.strid.strId32("BLOB").id },
+    //     .{ cetech1.strid.strId32(&(try uuid.fromStr("018b5846-c2d5-712f-bb12-9d9d15321ecb")).bytes).id, cetech1.strid.strId32("blob").id },
     // );
 
     // log.api.err(
     //     MODULE_NAME,
     //     "ddddd {x}{x}",
-    //     .{ cetech1.strid.strId32(&(try uuid.fromStr("018b5c74-06f7-79fd-a6ad-3678552795a1")).bytes).id, cetech1.strid.strId32("BLOB").id },
+    //     .{ cetech1.strid.strId32(&(try uuid.fromStr("018b5c74-06f7-79fd-a6ad-3678552795a1")).bytes).id, cetech1.strid.strId32("blob").id },
     // );
 
     // log.api.err(
     //     MODULE_NAME,
     //     "ddddd {x}{x}",
-    //     .{ cetech1.strid.strId32(&(try uuid.fromStr("018b5c72-5350-7d06-b5ed-6fed2793fdd4")).bytes).id, cetech1.strid.strId32("BLOB").id },
+    //     .{ cetech1.strid.strId32(&(try uuid.fromStr("018b5c72-5350-7d06-b5ed-6fed2793fdd4")).bytes).id, cetech1.strid.strId32("blob").id },
     // );
 
     var db = try cdb.api.createDb("Test");
@@ -413,7 +413,7 @@ test "asset: Should open asset dir" {
                 public.AssetType.readStr(&db, db.readObj(foo_obj_asset).?, .Name).?,
             );
 
-            const blob = db.readBlob(db.readObj(foo_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.BLOB));
+            const blob = db.readBlob(db.readObj(foo_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.Blob));
             try std.testing.expectEqualSlices(u8, "hello blob", blob);
 
             root_folder = public.AssetType.readRef(&db, db.readObj(foo_obj_asset).?, .Folder);
@@ -433,8 +433,8 @@ test "asset: Should open asset dir" {
             const expect_name2 = "foo core";
             try std.testing.expectEqualStrings(expect_name2, FooAsset.readStr(
                 &db,
-                db.readObj(FooAsset.readRef(&db, db.readObj(foo_obj.?).?, .REFERENCE).?).?,
-                .STR,
+                db.readObj(FooAsset.readRef(&db, db.readObj(foo_obj.?).?, .Reference).?).?,
+                .Str,
             ).?);
         }
 
@@ -452,7 +452,7 @@ test "asset: Should open asset dir" {
                 public.AssetType.readStr(&db, db.readObj(foo_core_obj_asset).?, .Name).?,
             );
 
-            const blob = db.readBlob(db.readObj(foo_core_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.BLOB));
+            const blob = db.readBlob(db.readObj(foo_core_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.Blob));
             try std.testing.expectEqualSlices(u8, "hello core blob", blob);
 
             core_folder = public.AssetType.readRef(&db, db.readObj(foo_core_obj_asset).?, .Folder);
@@ -488,10 +488,10 @@ test "asset: Should open asset dir" {
                 public.AssetType.readStr(&db, db.readObj(foo_subcore_obj_asset).?, .Name).?,
             );
 
-            const blob = db.readBlob(db.readObj(foo_subcore_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.BLOB));
+            const blob = db.readBlob(db.readObj(foo_subcore_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.Blob));
             try std.testing.expectEqualSlices(u8, "hello subcore blob", blob);
 
-            const ref_set = db.readRefSet(db.readObj(foo_subcore_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.REFERENCE_SET), std.testing.allocator);
+            const ref_set = db.readRefSet(db.readObj(foo_subcore_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.ReferenceSet), std.testing.allocator);
             defer std.testing.allocator.free(ref_set.?);
             try std.testing.expect(ref_set != null);
             try std.testing.expectEqualSlices(
@@ -502,7 +502,7 @@ test "asset: Should open asset dir" {
 
             const subobj = private.api.getObjId(uuid.fromStr("018b5c74-06f7-70bb-94e3-10a2a8619d31").?);
             const inisiated_subobj = private.api.getObjId(uuid.fromStr("7d0d10ce-128e-45ab-8c14-c5d486542d4f").?);
-            const subobj_set = db.readRefSet(db.readObj(foo_subcore_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.SUBOBJECT_SET), std.testing.allocator);
+            const subobj_set = db.readRefSet(db.readObj(foo_subcore_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.SubobjectSet), std.testing.allocator);
             defer std.testing.allocator.free(subobj_set.?);
             try std.testing.expect(subobj_set != null);
             try std.testing.expectEqualSlices(
@@ -533,8 +533,8 @@ test "asset: Should open asset dir" {
             const expect_name2 = "foo core";
             try std.testing.expectEqualStrings(expect_name2, FooAsset.readStr(
                 &db,
-                db.readObj(FooAsset.readRef(&db, db.readObj(foo_subcore_obj.?).?, .REFERENCE).?).?,
-                .STR,
+                db.readObj(FooAsset.readRef(&db, db.readObj(foo_subcore_obj.?).?, .Reference).?).?,
+                .Str,
             ).?);
         }
     }
@@ -567,7 +567,7 @@ test "asset: Should save asset dir" {
     const asset_obj_w = db.writeObj(asset_obj).?;
     const asset_w = db.writeObj(asset).?;
 
-    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.BLOB), "hello blob".len)).?;
+    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
     try db.writeCommit(asset_w);
@@ -617,7 +617,7 @@ test "asset: Should save modified asset" {
     const asset_obj_w = db.writeObj(asset_obj).?;
     const asset_w = db.writeObj(asset).?;
 
-    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.BLOB), "hello blob".len)).?;
+    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
     try db.writeCommit(asset_w);

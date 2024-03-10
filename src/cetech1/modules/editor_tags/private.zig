@@ -2,38 +2,42 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const public = @import("editor_tags.zig");
+
 const cetech1 = @import("cetech1");
 const editorui = cetech1.editorui;
-const TagType = cetech1.assetdb.TagType;
+const cdb = cetech1.cdb;
+const assetdb = cetech1.assetdb;
+const TagType = assetdb.TagType;
 
 const editor = @import("editor");
 const Icons = cetech1.editorui.Icons;
 
+const editor_inspector = @import("editor_inspector");
+
 const MODULE_NAME = "editor_tags";
 
 const FOLDER_PROPERTY_CONFIG_ASPECT_NAME = "ct_project_setings_properties_config_aspect";
-const TAGS_SETTINGS_TAGS_VISUAL_CONFIG_ASPECT_NAME = "ct_tags_settings_tags_config_aspect";
-const TAGS_SETTINGS_ASPECT_NAME = "ct_tags_setings_aspect";
 const TAGS_ASPECT_NAME = "ct_tags_property_aspect";
 const TAG_VISUAL_ASPECT_NAME = "ct_tag_visual_aspect";
-const SETTINGS_VISUAL_ASPECT_NAME = "ct_project_setings_visual_aspect";
 
 var _allocator: Allocator = undefined;
 var _apidb: *cetech1.apidb.ApiDbAPI = undefined;
 var _log: *cetech1.log.LogAPI = undefined;
-var _cdb: *cetech1.cdb.CdbAPI = undefined;
+var _cdb: *cdb.CdbAPI = undefined;
 var _editorui: *cetech1.editorui.EditorUIApi = undefined;
 var _editor: *editor.EditorAPI = undefined;
-var _assetdb: *cetech1.assetdb.AssetDBAPI = undefined;
+var _assetdb: *assetdb.AssetDBAPI = undefined;
 var _kernel: *cetech1.kernel.KernelApi = undefined;
 var _tempalloc: *cetech1.tempalloc.TempAllocApi = undefined;
 
 // Global state
 const G = struct {
-    tag_prop_aspect: *editorui.UiEmbedPropertyAspect = undefined,
-    tag_visual_aspect: *editorui.UiVisualAspect = undefined,
-    noproto_config_aspect: *editorui.UiPropertiesConfigAspect = undefined,
-    tags_settings_prop_aspect: *editor.UiPropertiesAspect = undefined,
+    tag_prop_aspect: *editor_inspector.UiEmbedPropertyAspect = undefined,
+    tag_visual_aspect: *editor.UiVisualAspect = undefined,
+    noproto_config_aspect: *editor_inspector.UiPropertiesConfigAspect = undefined,
+
+    filter_buff: [256:0]u8 = std.mem.zeroes([256:0]u8),
+    filter: ?[:0]const u8 = null,
 };
 var _g: *G = undefined;
 
@@ -41,7 +45,7 @@ var api = public.EditorTagsApi{
     .tagsInput = tagsInput,
 };
 
-fn tagButton(db: *cetech1.cdb.CdbDb, tag: cetech1.cdb.ObjId, wrap: bool) bool {
+fn tagButton(db: *cdb.CdbDb, filter: ?[:0]const u8, tag: cdb.ObjId, wrap: bool) bool {
     var buff: [128:0]u8 = undefined;
     const tag_r = db.readObj(tag) orelse return false;
     const tag_name = TagType.readStr(db, tag_r, .Name) orelse "NO NAME =(";
@@ -54,6 +58,10 @@ fn tagButton(db: *cetech1.cdb.CdbDb, tag: cetech1.cdb.ObjId, wrap: bool) bool {
     defer _editorui.popId();
 
     const label = std.fmt.bufPrintZ(&buff, editorui.Icons.Tag ++ "  " ++ "{s}", .{tag_name}) catch return false;
+
+    if (filter) |f| {
+        if (_editorui.uiFilterPass(_allocator, f, label, false) == null) return false;
+    }
 
     if (wrap) {
         const style = _editorui.getStyle();
@@ -81,8 +89,8 @@ fn tagButton(db: *cetech1.cdb.CdbDb, tag: cetech1.cdb.ObjId, wrap: bool) bool {
 
 fn tagsInput(
     allocator: std.mem.Allocator,
-    db: *cetech1.cdb.CdbDb,
-    obj: cetech1.cdb.ObjId,
+    db: *cdb.CdbDb,
+    obj: cdb.ObjId,
     prop_idx: u32,
     in_table: bool,
     filter: ?[*:0]const u8,
@@ -102,7 +110,7 @@ fn tagsInput(
     if (db.readRefSet(obj_r, prop_idx, allocator)) |tags| {
         for (tags) |tag| {
             any_tag_set = true;
-            if (tagButton(db, tag, true)) {
+            if (tagButton(db, null, tag, true)) {
                 const obj_w = db.writeObj(obj).?;
                 try db.removeFromRefSet(obj_w, prop_idx, tag);
                 try db.writeCommit(obj_w);
@@ -113,10 +121,12 @@ fn tagsInput(
     if (_editorui.beginPopup("ui_tag_add_popup", .{})) {
         defer _editorui.endPopup();
 
-        if (db.getAllObjectByType(allocator, cetech1.assetdb.TagType.type_hash)) |tags| {
+        _g.filter = _editorui.uiFilter(&_g.filter_buff, _g.filter);
+
+        if (db.getAllObjectByType(allocator, assetdb.TagType.type_hash)) |tags| {
             for (tags) |tag| {
                 if (db.isInSet(obj_r, prop_idx, tag)) continue;
-                if (tagButton(db, tag, true)) {
+                if (tagButton(db, _g.filter, tag, true)) {
                     const obj_w = db.writeObj(obj).?;
                     try db.addRefToSet(obj_w, prop_idx, &.{tag});
                     _editorui.closeCurrentPopup();
@@ -132,55 +142,57 @@ fn tagsInput(
 //
 // Create tag asset
 
-var create_tag_asset_i = editor.CreateAssetI.implement(
-    createFooAssetMenuItem,
-    createFooAssetMenuItemCreate,
-);
-fn createFooAssetMenuItemCreate(
-    allocator: *const std.mem.Allocator,
-    dbc: *cetech1.cdb.Db,
-    folder: cetech1.cdb.ObjId,
-) !void {
-    var db = cetech1.cdb.CdbDb.fromDbT(dbc, _cdb);
+var create_tag_asset_i = editor.CreateAssetI.implement(struct {
+    pub fn create(
+        allocator: *const std.mem.Allocator,
+        dbc: *cdb.Db,
+        folder: cdb.ObjId,
+    ) !void {
+        var db = cdb.CdbDb.fromDbT(dbc, _cdb);
 
-    var buff: [256:0]u8 = undefined;
-    const name = try _assetdb.buffGetValidName(
-        allocator.*,
-        &buff,
-        &db,
-        folder,
-        cetech1.assetdb.FooAsset.type_hash,
-        "NewTag",
-    );
-    const new_obj = try cetech1.assetdb.TagType.createObject(&db);
-    {
-        const w = db.writeObj(new_obj).?;
-        try cetech1.assetdb.TagType.setStr(&db, w, .Name, name);
-        try db.writeCommit(w);
+        var buff: [256:0]u8 = undefined;
+        const name = try _assetdb.buffGetValidName(
+            allocator.*,
+            &buff,
+            &db,
+            folder,
+            assetdb.FooAsset.type_hash,
+            "NewTag",
+        );
+        const new_obj = try assetdb.TagType.createObject(&db);
+        {
+            const w = db.writeObj(new_obj).?;
+            try assetdb.TagType.setStr(&db, w, .Name, name);
+            try db.writeCommit(w);
+        }
+
+        _ = _assetdb.createAsset(name, folder, new_obj);
     }
 
-    _ = _assetdb.createAsset(name, folder, new_obj);
-}
-
-fn createFooAssetMenuItem() [*]const u8 {
-    return editorui.Icons.Tag ++ "  " ++ "Tag asset";
-}
+    pub fn menuItem() [*]const u8 {
+        return editorui.Icons.Tag ++ "  " ++ "Tag";
+    }
+});
 
 // Tag property  aspect
-var tag_prop_aspect = editorui.UiEmbedPropertyAspect.implement(tagsPropertyUiPropertyAspect);
-fn tagsPropertyUiPropertyAspect(
-    allocator: std.mem.Allocator,
-    dbc: *cetech1.cdb.Db,
-    obj: cetech1.cdb.ObjId,
-    prop_idx: u32,
-    args: editorui.cdbPropertiesViewArgs,
-) !void {
-    var db = cetech1.cdb.CdbDb.fromDbT(dbc, _cdb);
-    _ = try tagsInput(allocator, &db, obj, prop_idx, true, args.filter);
-}
+var tag_prop_aspect = editor_inspector.UiEmbedPropertyAspect.implement(struct {
+    pub fn ui(
+        allocator: std.mem.Allocator,
+        dbc: *cdb.Db,
+        obj: cdb.ObjId,
+        prop_idx: u32,
+        args: editor_inspector.cdbPropertiesViewArgs,
+    ) !void {
+        var db = cdb.CdbDb.fromDbT(dbc, _cdb);
+        _ = try tagsInput(allocator, &db, obj, prop_idx, true, args.filter);
+    }
+});
+
 //
 
-fn getTagColor(db: *cetech1.cdb.CdbDb, tag_r: *cetech1.cdb.Obj) [4]f32 {
+fn getTagColor(db: *cdb.CdbDb, tag_r: *cdb.Obj) [4]f32 {
+    if (!_editor.isColorsEnabled()) return .{ 1.0, 1.0, 1.0, 1.0 };
+
     const tag_color_obj = TagType.readSubObj(db, tag_r, .Color);
     var color: [4]f32 = .{ 1.0, 1.0, 1.0, 1.0 };
     if (tag_color_obj) |color_obj| {
@@ -190,105 +202,76 @@ fn getTagColor(db: *cetech1.cdb.CdbDb, tag_r: *cetech1.cdb.Obj) [4]f32 {
 }
 
 // Tag visual aspect
-var tag_visual_aspect = editorui.UiVisualAspect.implement(
-    tagNameUIVisalAspect,
-    tagIconUIVisalAspect,
-    tagColorUIVisalAspect,
-    null,
-);
-
-fn tagNameUIVisalAspect(
-    allocator: std.mem.Allocator,
-    dbc: *cetech1.cdb.Db,
-    obj: cetech1.cdb.ObjId,
-) ![:0]const u8 {
-    var db = cetech1.cdb.CdbDb.fromDbT(dbc, _cdb);
-    const obj_r = db.readObj(obj).?;
-    return std.fmt.allocPrintZ(allocator, "{s}", .{
-        TagType.readStr(&db, obj_r, .Name) orelse "No NAME =()",
-    });
-}
-fn tagIconUIVisalAspect(
-    allocator: std.mem.Allocator,
-    dbc: *cetech1.cdb.Db,
-    obj: cetech1.cdb.ObjId,
-) ![:0]const u8 {
-    _ = dbc;
-    _ = obj;
-    return std.fmt.allocPrintZ(allocator, "{s}", .{editorui.Icons.Tag});
-}
-
-fn tagColorUIVisalAspect(
-    dbc: *cetech1.cdb.Db,
-    obj: cetech1.cdb.ObjId,
-) ![4]f32 {
-    var db = cetech1.cdb.CdbDb.fromDbT(dbc, _cdb);
-
-    if (TagType.readSubObj(&db, db.readObj(obj).?, .Color)) |color_obj| {
-        return cetech1.cdb_types.color4fToSlice(&db, color_obj);
+var tag_visual_aspect = editor.UiVisualAspect.implement(struct {
+    pub fn uiName(
+        allocator: std.mem.Allocator,
+        dbc: *cdb.Db,
+        obj: cdb.ObjId,
+    ) ![:0]const u8 {
+        var db = cdb.CdbDb.fromDbT(dbc, _cdb);
+        const obj_r = db.readObj(obj).?;
+        return std.fmt.allocPrintZ(allocator, "{s}", .{
+            TagType.readStr(&db, obj_r, .Name) orelse "No NAME =()",
+        });
     }
-    return .{ 1.0, 1.0, 1.0, 1.0 };
-}
-//
-// Settings visual aspect
-var settings_visual_aspect = editorui.UiVisualAspect.implement(
-    settingsNameUIVisalAspect,
-    settingsIconUIVisalAspect,
-    null,
-);
-fn settingsNameUIVisalAspect(
-    allocator: std.mem.Allocator,
-    dbc: *cetech1.cdb.Db,
-    obj: cetech1.cdb.ObjId,
-) ![:0]const u8 {
-    _ = dbc;
-    _ = obj;
 
-    return std.fmt.allocPrintZ(allocator, "Tags settings", .{});
-}
-fn settingsIconUIVisalAspect(
-    allocator: std.mem.Allocator,
-    dbc: *cetech1.cdb.Db,
-    obj: cetech1.cdb.ObjId,
-) ![:0]const u8 {
-    _ = dbc;
-    _ = obj;
+    pub fn uiIcons(
+        allocator: std.mem.Allocator,
+        dbc: *cdb.Db,
+        obj: cdb.ObjId,
+    ) ![:0]const u8 {
+        _ = dbc;
+        _ = obj;
+        return std.fmt.allocPrintZ(allocator, "{s}", .{editorui.Icons.Tag});
+    }
 
-    return std.fmt.allocPrintZ(allocator, "{s}", .{editorui.Icons.Tag});
-}
+    pub fn uiColor(
+        dbc: *cdb.Db,
+        obj: cdb.ObjId,
+    ) ![4]f32 {
+        var db = cdb.CdbDb.fromDbT(dbc, _cdb);
+
+        if (TagType.readSubObj(&db, db.readObj(obj).?, .Color)) |color_obj| {
+            return cetech1.cdb_types.color4fToSlice(&db, color_obj);
+        }
+        return .{ 1.0, 1.0, 1.0, 1.0 };
+    }
+});
+
 //
 
 // Create cdb types
-var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(cdbCreateTypes);
-fn cdbCreateTypes(db_: *cetech1.cdb.Db) !void {
-    var db = cetech1.cdb.CdbDb.fromDbT(db_, _cdb);
+var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
+    pub fn createTypes(db_: *cdb.Db) !void {
+        var db = cdb.CdbDb.fromDbT(db_, _cdb);
 
-    try cetech1.assetdb.TagType.addAspect(
-        &db,
-        editorui.UiPropertiesConfigAspect,
-        _g.noproto_config_aspect,
-    );
+        try assetdb.TagType.addAspect(
+            &db,
+            editor_inspector.UiPropertiesConfigAspect,
+            _g.noproto_config_aspect,
+        );
 
-    try cetech1.assetdb.TagType.addAspect(
-        &db,
-        editorui.UiVisualAspect,
-        _g.tag_visual_aspect,
-    );
+        try assetdb.TagType.addAspect(
+            &db,
+            editor.UiVisualAspect,
+            _g.tag_visual_aspect,
+        );
 
-    try cetech1.assetdb.AssetType.addPropertyAspect(
-        &db,
-        editorui.UiEmbedPropertyAspect,
-        .Tags,
-        _g.tag_prop_aspect,
-    );
-}
+        try assetdb.AssetType.addPropertyAspect(
+            &db,
+            editor_inspector.UiEmbedPropertyAspect,
+            .Tags,
+            _g.tag_prop_aspect,
+        );
+    }
+});
 
 //
-var folder_properties_config_aspect = editorui.UiPropertiesConfigAspect{
+var folder_properties_config_aspect = editor_inspector.UiPropertiesConfigAspect{
     .hide_prototype = true,
 };
 
-var settings_visual_config_aspect = editorui.UiVisualPropertyConfigAspect{
+var settings_visual_config_aspect = editor_inspector.UiVisualPropertyConfigAspect{
     .no_subtree = true,
 };
 
@@ -299,26 +282,26 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     _allocator = allocator;
     _log = log;
     _apidb = apidb;
-    _cdb = apidb.getZigApi(cetech1.cdb.CdbAPI).?;
+    _cdb = apidb.getZigApi(cdb.CdbAPI).?;
     _editorui = apidb.getZigApi(cetech1.editorui.EditorUIApi).?;
     _editor = apidb.getZigApi(editor.EditorAPI).?;
-    _assetdb = apidb.getZigApi(cetech1.assetdb.AssetDBAPI).?;
+    _assetdb = apidb.getZigApi(assetdb.AssetDBAPI).?;
     _kernel = apidb.getZigApi(cetech1.kernel.KernelApi).?;
     _tempalloc = apidb.getZigApi(cetech1.tempalloc.TempAllocApi).?;
 
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, MODULE_NAME, "_g", .{});
 
-    _g.noproto_config_aspect = try apidb.globalVar(editorui.UiPropertiesConfigAspect, MODULE_NAME, FOLDER_PROPERTY_CONFIG_ASPECT_NAME, .{});
+    _g.noproto_config_aspect = try apidb.globalVar(editor_inspector.UiPropertiesConfigAspect, MODULE_NAME, FOLDER_PROPERTY_CONFIG_ASPECT_NAME, .{});
     _g.noproto_config_aspect.* = folder_properties_config_aspect;
 
-    _g.tag_prop_aspect = try apidb.globalVar(editorui.UiEmbedPropertyAspect, MODULE_NAME, TAGS_ASPECT_NAME, .{});
+    _g.tag_prop_aspect = try apidb.globalVar(editor_inspector.UiEmbedPropertyAspect, MODULE_NAME, TAGS_ASPECT_NAME, .{});
     _g.tag_prop_aspect.* = tag_prop_aspect;
 
-    _g.tag_visual_aspect = try apidb.globalVar(editorui.UiVisualAspect, MODULE_NAME, TAG_VISUAL_ASPECT_NAME, .{});
+    _g.tag_visual_aspect = try apidb.globalVar(editor.UiVisualAspect, MODULE_NAME, TAG_VISUAL_ASPECT_NAME, .{});
     _g.tag_visual_aspect.* = tag_visual_aspect;
 
-    try apidb.implOrRemove(cetech1.cdb.CreateTypesI, &create_cdb_types_i, load);
+    try apidb.implOrRemove(cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(editor.CreateAssetI, &create_tag_asset_i, load);
 
     try apidb.setOrRemoveZigApi(public.EditorTagsApi, &api, load);

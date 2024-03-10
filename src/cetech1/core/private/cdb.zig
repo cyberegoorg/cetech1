@@ -223,7 +223,20 @@ pub const TypeStorage = struct {
     contain_set: bool,
     contain_subobject: bool,
 
+    // Metrics
+    write_commit_count: AtomicInt32,
+    writers_created_count: AtomicInt32,
+    read_obj_count: AtomicInt32,
+
+    write_commit_count_last: u32 = 0,
+    writers_created_count_last: u32 = 0,
+    read_obj_count_last: u32 = 0,
+
+    // Buffers for profiler
     gc_name: [256:0]u8 = undefined,
+    read_name: [256:0]u8 = undefined,
+    write_commit_name: [256:0]u8 = undefined,
+    writers_name: [256:0]u8 = undefined,
 
     pub fn init(allocator: std.mem.Allocator, db: *Db, name: []const u8, props_def: []const public.PropDef) !Self {
         var props_size: usize = 0;
@@ -255,7 +268,7 @@ pub const TypeStorage = struct {
         var copy_def = try std.ArrayList(public.PropDef).initCapacity(_allocator, props_def.len);
         try copy_def.appendSlice(props_def);
 
-        const ts = TypeStorage{
+        var ts = TypeStorage{
             .db = db,
             .name = name,
             .type_hash = strId32(name),
@@ -287,7 +300,15 @@ pub const TypeStorage = struct {
             .aspect_map = TypeAspectMap.init(allocator),
             .strid2aspectname = StrId2TypeAspectName.init(allocator),
             .property_aspect_map = PropertyTypeAspectMap.init(allocator),
+
+            .write_commit_count = AtomicInt32.init(0),
+            .writers_created_count = AtomicInt32.init(0),
+            .read_obj_count = AtomicInt32.init(0),
         };
+
+        _ = std.fmt.bufPrintZ(&ts.read_name, "CDB/{s}/{s}/Readers", .{ db.name, name }) catch undefined;
+        _ = std.fmt.bufPrintZ(&ts.writers_name, "CDB/{s}/{s}/Writers", .{ db.name, name }) catch undefined;
+        _ = std.fmt.bufPrintZ(&ts.write_commit_name, "CDB/{s}/{s}/Commits", .{ db.name, name }) catch undefined;
 
         return ts;
     }
@@ -985,9 +1006,6 @@ pub const Db = struct {
     next: ?*Db = null,
 
     // Stats
-    write_commit_count: AtomicInt32,
-    writers_created_count: AtomicInt32,
-    read_obj_count: AtomicInt32,
     free_objects: u32,
     objids_alocated: u32,
     objects_alocated: u32,
@@ -995,28 +1013,37 @@ pub const Db = struct {
     on_obj_destroy_map: OnObjIdDestroyMap,
 
     // Buffers for profiler
+    read_name: [256:0]u8 = undefined,
     write_commit_name: [256:0]u8 = undefined,
     writers_name: [256:0]u8 = undefined,
+
     alocated_objects_name: [256:0]u8 = undefined,
     alocated_obj_ids_name: [256:0]u8 = undefined,
     gc_free_objects_name: [256:0]u8 = undefined,
-    read_name: [256:0]u8 = undefined,
+
+    metrics_init: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, name: [:0]const u8) Db {
-        return .{
+        var self: @This() = .{
             .name = name,
             .allocator = allocator,
             .typestorage_map = TypeStorageMap.init(allocator),
 
             .on_obj_destroy_map = OnObjIdDestroyMap.init(allocator),
 
-            .write_commit_count = AtomicInt32.init(0),
-            .writers_created_count = AtomicInt32.init(0),
-            .read_obj_count = AtomicInt32.init(0),
             .free_objects = 0,
             .objids_alocated = 0,
             .objects_alocated = 0,
         };
+
+        _ = std.fmt.bufPrintZ(&self.alocated_obj_ids_name, "CDB/{s}/Allocated ids", .{self.name}) catch undefined;
+        _ = std.fmt.bufPrintZ(&self.alocated_objects_name, "CDB/{s}/Allocated objects", .{self.name}) catch undefined;
+        _ = std.fmt.bufPrintZ(&self.gc_free_objects_name, "CDB/{s}/GC free objects", .{self.name}) catch undefined;
+        _ = std.fmt.bufPrintZ(&self.writers_name, "CDB/{s}/Writers", .{self.name}) catch undefined;
+        _ = std.fmt.bufPrintZ(&self.write_commit_name, "CDB/{s}/Commits", .{self.name}) catch undefined;
+        _ = std.fmt.bufPrintZ(&self.read_name, "CDB/{s}/Readers", .{self.name}) catch undefined;
+
+        return self;
     }
 
     pub fn deinit(self: *Self) void {
@@ -1033,12 +1060,50 @@ pub const Db = struct {
         self.typestorage_map.deinit();
     }
 
+    pub fn readersCount(self: *Self) usize {
+        var i: usize = 0;
+
+        for (self.typestorage_map.values()) |type_map| {
+            i += type_map.read_obj_count.raw;
+        }
+
+        return i;
+    }
+
+    pub fn writersCount(self: *Self) usize {
+        var i: usize = 0;
+
+        for (self.typestorage_map.values()) |type_map| {
+            i += type_map.writers_created_count.raw;
+        }
+
+        return i;
+    }
+
+    pub fn commitCount(self: *Self) usize {
+        var i: usize = 0;
+
+        for (self.typestorage_map.values()) |type_map| {
+            i += type_map.write_commit_count.raw;
+        }
+
+        return i;
+    }
+
     pub fn gc(self: *Self, tmp_allocator: std.mem.Allocator) !void {
         var zone_ctx = profiler.ztracy.ZoneN(@src(), "CDB:GC");
         defer zone_ctx.End();
 
-        self.free_objects = 0;
+        // if (!self.metrics_init) {
+        //     self.metrics_init = true;
+        //     for (self.typestorage_map.values()) |*type_map| {
+        //         profiler.api.plotU64(&type_map.writers_name, 0);
+        //         profiler.api.plotU64(&type_map.write_commit_name, 0);
+        //         profiler.api.plotU64(&type_map.read_name, 0);
+        //     }
+        // }
 
+        self.free_objects = 0;
         for (self.typestorage_map.values()) |*type_storage| {
             if (type_storage.to_free_queue.isEmpty()) continue;
             self.free_objects += try type_storage.gc(tmp_allocator);
@@ -1055,28 +1120,38 @@ pub const Db = struct {
         }
 
         if (profiler.profiler_enabled) {
-            _ = try std.fmt.bufPrintZ(&self.alocated_obj_ids_name, "CDB allocated ids: {s}", .{self.name});
             profiler.api.plotU64(&self.alocated_obj_ids_name, self.objids_alocated);
-
-            _ = try std.fmt.bufPrintZ(&self.alocated_objects_name, "CDB allocated objects: {s}", .{self.name});
             profiler.api.plotU64(&self.alocated_objects_name, self.objects_alocated);
-
-            _ = try std.fmt.bufPrintZ(&self.gc_free_objects_name, "CDB GC free objects: {s}", .{self.name});
             profiler.api.plotU64(&self.gc_free_objects_name, self.free_objects);
 
-            _ = try std.fmt.bufPrintZ(&self.writers_name, "CDB writers: {s}", .{self.name});
-            profiler.api.plotU64(&self.writers_name, self.writers_created_count.raw);
+            profiler.api.plotU64(&self.writers_name, self.writersCount());
+            profiler.api.plotU64(&self.write_commit_name, self.commitCount());
+            profiler.api.plotU64(&self.read_name, self.readersCount());
 
-            _ = try std.fmt.bufPrintZ(&self.write_commit_name, "CDB commits: {s}", .{self.name});
-            profiler.api.plotU64(&self.write_commit_name, self.write_commit_count.raw);
+            for (self.typestorage_map.values()) |*type_map| {
+                if (type_map.writers_created_count.raw != 0 and type_map.writers_created_count_last != 0) {
+                    profiler.api.plotU64(&type_map.writers_name, type_map.writers_created_count.raw);
+                }
 
-            _ = try std.fmt.bufPrintZ(&self.read_name, "CDB reads: {s}", .{self.name});
-            profiler.api.plotU64(&self.read_name, self.read_obj_count.raw);
+                if (type_map.write_commit_count.raw != 0 and type_map.write_commit_count_last != 0) {
+                    profiler.api.plotU64(&type_map.write_commit_name, type_map.write_commit_count.raw);
+                }
+
+                if (type_map.read_obj_count.raw != 0 and type_map.read_obj_count_last != 0) {
+                    profiler.api.plotU64(&type_map.read_name, type_map.read_obj_count.raw);
+                }
+            }
         }
 
-        self.write_commit_count = AtomicInt32.init(0);
-        self.writers_created_count = AtomicInt32.init(0);
-        self.read_obj_count = AtomicInt32.init(0);
+        for (self.typestorage_map.values()) |*type_map| {
+            type_map.write_commit_count_last = type_map.write_commit_count.raw;
+            type_map.writers_created_count_last = type_map.writers_created_count.raw;
+            type_map.read_obj_count_last = type_map.read_obj_count.raw;
+
+            type_map.write_commit_count = AtomicInt32.init(0);
+            type_map.writers_created_count = AtomicInt32.init(0);
+            type_map.read_obj_count = AtomicInt32.init(0);
+        }
     }
 
     pub fn addOnObjIdDestroyed(self: *Self, fce: public.OnObjIdDestroyed) !void {
@@ -1279,10 +1354,10 @@ pub const Db = struct {
     }
 
     pub fn writerObj(self: *Self, obj: public.ObjId) ?*public.Obj {
-        _ = self.writers_created_count.fetchAdd(1, .Monotonic);
-
         const true_obj = self.getObjectPtr(obj);
         var storage = self.getTypeStorage(obj.type_hash) orelse return null;
+        _ = storage.writers_created_count.fetchAdd(1, .Monotonic);
+
         storage.increaseReference(obj);
         const new_obj = storage.cloneObjectRaw(true_obj.?, false, false, false) catch |err| {
             log.api.err(MODULE_NAME, "Could not crate writer {}", .{err});
@@ -1340,9 +1415,10 @@ pub const Db = struct {
         defer zone_ctx.End();
 
         const new_obj = toObjFromObjO(writer);
-        _ = self.write_commit_count.fetchAdd(1, .Monotonic);
 
         var storage = self.getTypeStorage(new_obj.objid.type_hash).?;
+        _ = storage.write_commit_count.fetchAdd(1, .Monotonic);
+
         _ = try storage.decreaseReferenceToFree(new_obj);
 
         const old_obj = storage.objid2obj.items[new_obj.objid.id].?;
@@ -1378,7 +1454,8 @@ pub const Db = struct {
 
     pub fn readObj(self: *Self, obj: public.ObjId) ?*public.Obj {
         const true_obj = self.getObjectPtr(obj);
-        _ = self.read_obj_count.fetchAdd(1, .Monotonic);
+        const storage = self.getTypeStorage(obj.type_hash) orelse return null;
+        _ = storage.read_obj_count.fetchAdd(1, .Monotonic);
         return @ptrCast(true_obj);
     }
 
@@ -1610,6 +1687,7 @@ pub const Db = struct {
 
         return self.readSet(writer, prop_idx, allocator) catch |err| {
             log.api.err(MODULE_NAME, "Could not read suboj set {}", .{err});
+            @breakpoint();
             return null;
         };
     }
@@ -1620,6 +1698,7 @@ pub const Db = struct {
 
         return self.readSetAddedShallow(writer, prop_idx, allocator) catch |err| {
             log.api.err(MODULE_NAME, "Could not read suboj set {}", .{err});
+            @breakpoint();
             return null;
         };
     }
@@ -1629,6 +1708,7 @@ pub const Db = struct {
         defer zone_ctx.End();
         return self.readSetAddedShallow(writer, prop_idx, allocator) catch |err| {
             log.api.err(MODULE_NAME, "Could not read ref set {}", .{err});
+            @breakpoint();
             return null;
         };
     }
@@ -1639,6 +1719,7 @@ pub const Db = struct {
 
         return self.readSetRemovedShallow(writer, prop_idx, allocator) catch |err| {
             log.api.err(MODULE_NAME, "Could not read suboj set {}", .{err});
+            @breakpoint();
             return null;
         };
     }
@@ -1648,6 +1729,7 @@ pub const Db = struct {
         defer zone_ctx.End();
         return self.readSetRemovedShallow(writer, prop_idx, allocator) catch |err| {
             log.api.err(MODULE_NAME, "Could not read ref set {}", .{err});
+            @breakpoint();
             return null;
         };
     }
@@ -1657,6 +1739,7 @@ pub const Db = struct {
         defer zone_ctx.End();
         return self.readSet(writer, prop_idx, allocator) catch |err| {
             log.api.err(MODULE_NAME, "Could not read ref set {}", .{err});
+            @breakpoint();
             return null;
         };
     }
@@ -1917,22 +2000,22 @@ pub const Db = struct {
 
         const writer = self.writerObj(obj1).?;
 
-        self.setT(bool, writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.BOOL), true);
+        self.setT(bool, writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.Bool), true);
         self.setT(u64, writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.U64), 10);
         self.setT(i64, writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.I64), 20);
         self.setT(u32, writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.U32), 10);
         self.setT(i32, writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.I32), 20);
         self.setT(f64, writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.F64), 20.10);
         self.setT(f32, writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.F32), 30.20);
-        try self.setRef(writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.REFERENCE), ref_obj1);
-        try self.addRefToSet(writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.REFERENCE_SET), &[_]public.ObjId{ref_obj1});
+        try self.setRef(writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.Reference), ref_obj1);
+        try self.addRefToSet(writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.ReferenceSet), &[_]public.ObjId{ref_obj1});
 
         const writer2 = self.writerObj(obj2).?;
-        try self.setSubObj(writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.SUBOBJECT), writer2);
+        try self.setSubObj(writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.Subobject), writer2);
         try self.writerCommit(writer2);
 
         const writer3 = self.writerObj(obj3).?;
-        try self.addToSubObjSet(writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.SUBOBJECT_SET), &[_]*public.Obj{writer3});
+        try self.addToSubObjSet(writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.SubobjectSet), &[_]*public.Obj{writer3});
         try self.writerCommit(writer3);
 
         try self.writerCommit(writer);

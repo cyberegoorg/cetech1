@@ -36,34 +36,35 @@ folder `core_subfolder`.
 {
   "__version": "0.1.0",
   "__asset_uuid": "018b5c74-06f7-740e-be81-d727adec5fb4",
+  "__description": "Simple test asset",
   "__type_name": "ct_foo_asset",
   "__uuid": "018b5c74-06f7-79fd-a6ad-3678552795a1",
   "__prototype_uuid": "018b5846-c2d5-712f-bb12-9d9d15321ecb",
-  "U64": 110,
-  "I64": 220,
-  "STR": "foo subcore",
-  "BLOB": "e1ae88d73f1f6a11",
-  "SUBOBJECT": {
+  "u64": 110,
+  "i64": 220,
+  "str": "foo subcore",
+  "blob": "e1ae88d73f1f6a11",
+  "subobject": {
     "__type_name": "ct_foo_asset",
     "__uuid": "018b5c74-06f7-7472-b90c-945f1737ba9d"
   },
-  "SUBOBJECT_SET": [
+  "subobject_set": [
     {
       "__type_name": "ct_foo_asset",
       "__uuid": "018b5c74-06f7-70bb-94e3-10a2a8619d31"
     }
   ],
-  "SUBOBJECT_SET__instantiate": [
+  "subobject_set__instantiate": [
     {
       "__type_name": "ct_foo_asset",
       "__uuid": "7d0d10ce-128e-45ab-8c14-c5d486542d4f",
       "__prototype_uuid": "018b5846-c2d5-7584-9183-a95f78095230"
     }
   ],
-  "SUBOBJECT_SET__removed": [
+  "subobject_set__removed": [
     "ct_foo_asset:9986f5cc-bc90-4443-8ad0-83357c02d28d"
   ],
-  "REFERENCE_SET__removed": [
+  "reference_set__removed": [
     "ct_foo_asset:028ef368-9b36-44f9-b8cc-d377365f836c"
   ]
 }
@@ -72,12 +73,13 @@ folder `core_subfolder`.
 Reserved keyword begin with`__` prefix and some with `__` postfix after property name.
 Reference UUID is in format `cdb_type_name:UUID`.
 
-| Keyword                 | Required           | Description                                                                                                           |
-|-------------------------|--------------------|-----------------------------------------------------------------------------------------------------------------------|
-| `__version`             | Yes                | File format version in semver format                                                                                  |
-| `__asset_uuid`          | Only for top-level | UUID for asset wrapper not asset object                                                                               |
-| `__type_name`           | Yes                | CDB type name as string                                                                                               |
-| `__uuid`                | Yes                | UUID of asset object                                                                                                  |
-| `__prototype_uuid`      | No                 | If object is based on prototype must have this filed                                                                  |
-| `PROPNAME__instantiate` | No                 | This create subobject instance from prototype, and replace it in set. Valid only for `SUBOBJECT_SET` base properties. |
-| `PROPNAME__removed`     | No                 | This remove subobject from set. Valid only for `_SET` base properties.                                                |
+| Keyword                   | Required                          | Description                                                                                                           |
+|---------------------------| --------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `__version`               | Yes                               | File format version in semver format                                                                                  |
+| `__asset_uuid`            | Only for top-level                | UUID for asset wrapper not asset object                                                                               |
+| `__description`           | No and allowed only for top-level | Descritption for asset                                                                                                |
+| `__type_name`             | Yes                               | CDB type name as string                                                                                               |
+| `__uuid`                  | Yes                               | UUID of asset object                                                                                                  |
+| `__prototype_uuid`        | No                                | If object is based on prototype must have this filed                                                                  |
+| `<PROPNAME>__instantiate` | No                                | This create subobject instance from prototype, and replace it in set. Valid only for `SUBOBJECT_SET` base properties. |
+| `<PROPNAME>__removed`     | No                                | This remove subobject from set. Valid only for `_SET` base properties.                                                |

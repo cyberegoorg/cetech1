@@ -94,20 +94,19 @@ pub const PropDef = struct {
 
 pub const CreateTypesI = extern struct {
     pub const c_name = "ct_cdb_create_types_i";
+    pub const name_hash = strid.strId64(@This().c_name);
 
     create_types: *const fn (db: *Db) callconv(.C) void,
 
-    pub inline fn implement(
-        create_types: ?*const fn (db: *Db) anyerror!void,
-    ) CreateTypesI {
-        const Wrap = struct {
-            pub fn init_fn(main_db: *Db) callconv(.C) void {
-                create_types.?(main_db) catch undefined;
-            }
-        };
+    pub inline fn implement(comptime T: type) CreateTypesI {
+        if (!std.meta.hasFn(T, "createTypes")) @compileError("implement me");
 
         return CreateTypesI{
-            .create_types = Wrap.init_fn,
+            .create_types = struct {
+                pub fn f(main_db: *Db) callconv(.C) void {
+                    T.createTypes(main_db) catch undefined;
+                }
+            }.f,
         };
     }
 };
@@ -159,6 +158,18 @@ pub fn CdbTypeDecl(comptime type_name: [:0]const u8, comptime props_enum: type) 
 
         pub fn createObject(db: *CdbDb) !ObjId {
             return db.createObject(type_hash);
+        }
+
+        pub fn read(db: *CdbDb, obj: ObjId) ?*Obj {
+            return db.readObj(obj);
+        }
+
+        pub fn write(db: *CdbDb, obj: ObjId) ?*Obj {
+            return db.writeObj(obj);
+        }
+
+        pub fn commit(db: *CdbDb, writer: *Obj) !void {
+            return db.writeCommit(writer);
         }
 
         pub fn readValue(db: *CdbDb, comptime T: type, reader: *Obj, prop: PropsEnum) T {
@@ -275,22 +286,22 @@ pub const CdbDb = struct {
 
     /// Add aspect to type.
     pub fn addAspect(self: *Self, comptime T: type, type_hash: strid.StrId32, aspect_ptr: *T) !void {
-        try self.cdbapi.addAspectFn(self.db, type_hash, sanitizeApiName(T), aspect_ptr);
+        try self.cdbapi.addAspectFn(self.db, type_hash, T.c_name, aspect_ptr);
     }
 
     /// Get type aspect.
     pub fn getAspect(self: *Self, comptime T: type, type_hash: strid.StrId32) ?*T {
-        return @alignCast(@ptrCast(self.cdbapi.getAspectFn(self.db, type_hash, strid.strId32(sanitizeApiName(T)))));
+        return @alignCast(@ptrCast(self.cdbapi.getAspectFn(self.db, type_hash, T.name_hash)));
     }
 
     /// Add aspect to property.
     pub fn addPropertyAspect(self: *Self, comptime T: type, type_hash: strid.StrId32, prop_idx: u32, aspect_ptr: *T) !void {
-        try self.cdbapi.addPropertyAspectFn(self.db, type_hash, prop_idx, sanitizeApiName(T), aspect_ptr);
+        try self.cdbapi.addPropertyAspectFn(self.db, type_hash, prop_idx, T.c_name, aspect_ptr);
     }
 
     /// Get aspect for property.
     pub fn getPropertyAspect(self: *Self, comptime T: type, type_hash: strid.StrId32, prop_idx: u32) ?*T {
-        return @alignCast(@ptrCast(self.cdbapi.getPropertyAspectFn(self.db, type_hash, prop_idx, strid.strId32(sanitizeApiName(T)))));
+        return @alignCast(@ptrCast(self.cdbapi.getPropertyAspectFn(self.db, type_hash, prop_idx, T.name_hash)));
     }
 
     /// Create object for type hash

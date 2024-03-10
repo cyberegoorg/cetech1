@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "*.ct_*": "json",
+        "types.h": "c"
     },
     "[json]": {
         "editor.insertSpaces": true,

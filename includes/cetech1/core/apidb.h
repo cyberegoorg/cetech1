@@ -5,8 +5,11 @@
 #define CT_APIDB_LANG_ZIG "zig"
 
 #define ct_to_interface(impl_iter, interface_type) ((*interface_type)impl_iter->interface)
+
 #define ct_apidb_name(x) CT_STRINGIZE(x)
 #define ct_apidb_api_arg(x) ct_apidb_name(x), sizeof(x)
+
+#define ct_apidb_iname(strid_api, x) ((strid_api)->strid64(ct_apidb_name(x)))
 
 typedef struct ct_apidb_impl_iter_t
 {
@@ -24,8 +27,8 @@ typedef struct ct_apidb_api_t
 
     void *(*global_var)(const char *module, const char *var_name, uint32_t size, const void *defaultt);
 
-    void (*impl)(const char *interface_name, void *impl_ptr);
-    void (*remove_impl)(const char *interface_name, void *impl_ptr);
-    void (*impl_or_remove)(const char *interface_name, void *impl_ptr, bool load);
-    const ct_apidb_impl_iter_t *(*get_first_impl)(const char *interface_name);
+    void (*impl)(ct_strid64_t interface_name, void *impl_ptr);
+    void (*remove_impl)(ct_strid64_t interface_name, void *impl_ptr);
+    void (*impl_or_remove)(ct_strid64_t interface_name, void *impl_ptr, bool load);
+    const ct_apidb_impl_iter_t *(*get_first_impl)(ct_strid64_t interface_name);
 } ct_apidb_api_t;

@@ -2,6 +2,7 @@ const std = @import("std");
 const mem = std.mem;
 
 const cetech1 = @import("../cetech1.zig");
+const strid = cetech1.strid;
 
 const apidb = @import("apidb.zig");
 
@@ -119,8 +120,8 @@ test "Can implement and use interface" {
 
     var foo_impl = FooInterace{ .bar = &FooInteraceImpl.barImpl };
 
-    try apidb.api.implInterfaceFn("foo_i", &foo_impl);
-    var foo_i_ptr: *FooInterace = @alignCast(@ptrCast(apidb.api.getFirstImplFn("foo_i").?.interface));
+    try apidb.api.implInterfaceFn(cetech1.strid.strId64("foo_i"), &foo_impl);
+    var foo_i_ptr: *FooInterace = @alignCast(@ptrCast(apidb.api.getFirstImplFn(cetech1.strid.strId64("foo_i")).?.interface));
 
     try std.testing.expectEqual(@intFromPtr(&foo_impl), @intFromPtr(foo_i_ptr));
 
@@ -134,6 +135,8 @@ test "Interface should have multiple implementation" {
 
     const ct_foo_i = struct {
         pub const c_name = "ct_foo_i";
+        pub const name_hash = strid.strId64(@This().c_name);
+
         bar: *const fn () callconv(.C) i32,
     };
 
@@ -172,6 +175,7 @@ test "Interface implementation can be removed" {
 
     const ct_foo_i = struct {
         pub const c_name = "ct_foo_i";
+        pub const name_hash = strid.strId64(@This().c_name);
         bar: *const fn () callconv(.C) i32,
     };
 

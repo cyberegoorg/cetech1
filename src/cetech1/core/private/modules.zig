@@ -241,7 +241,29 @@ pub fn reloadAllIfNeeded() !bool {
         const k = keys[dyn_modules_map_n - 1 - i];
         const v = value[dyn_modules_map_n - 1 - i];
 
-        const f = try std.fs.cwd().openFile(k, .{ .mode = .read_only });
+        const f = std.fs.cwd().openFile(k, .{ .mode = .read_only }) catch |err| switch (err) {
+            error.FileNotFound => {
+                //unload old
+                const old_module_desc = _getModule(k).?;
+
+                const alloc_item = _modules_allocator_map.getPtr(cetech1.fromCstr(old_module_desc.name)).?;
+
+                if (0 == old_module_desc.module_fce.?(&apidb.apidb_global_c, @ptrCast(&alloc_item.*.allocator), 0, 1)) {
+                    log.api.err(MODULE_NAME, "Problem with unload old module {s}\n", .{k});
+                    continue;
+                }
+
+                var v_ptr = _dyn_modules_map.getPtr(k).?;
+                v_ptr.close();
+                _allocator.free(v_ptr.full_path);
+
+                modules_reloaded = true;
+
+                continue;
+            },
+            else => |e| return e,
+        };
+
         defer f.close();
         const f_stat = try f.stat();
 

@@ -68,8 +68,8 @@ test "cdb: Should register create types handler " {
     try testInit();
     defer testDeinit();
 
-    const Handler = struct {
-        pub fn load_types(db_: *cetech1.cdb.Db) !void {
+    var create_types_i = public.CreateTypesI.implement(struct {
+        pub fn createTypes(db_: *cetech1.cdb.Db) !void {
             var db = public.CdbDb.fromDbT(db_, &cdb.api);
 
             const type_hash = db.addType(
@@ -81,8 +81,7 @@ test "cdb: Should register create types handler " {
             ) catch unreachable;
             _ = type_hash;
         }
-    };
-    var create_types_i = public.CreateTypesI.implement(Handler.load_types);
+    });
 
     try apidb.api.implOrRemove(public.CreateTypesI, &create_types_i, true);
 
@@ -101,6 +100,9 @@ test "cdb: Should register aspect" {
     defer testDeinit();
 
     const FooAspect = struct {
+        pub const c_name = "foo_aspect";
+        pub const name_hash = cetech1.strid.strId32("foo_aspect");
+
         const Self = @This();
         barFn: *const fn (db_: ?*public.Db) callconv(.C) void,
 
@@ -116,8 +118,8 @@ test "cdb: Should register aspect" {
 
     var foo_aspect = FooAspect{ .barFn = &FooAspect.barImpl };
 
-    const Handler = struct {
-        pub fn load_types(db_: *cetech1.cdb.Db) !void {
+    var create_types_i = public.CreateTypesI.implement(struct {
+        pub fn createTypes(db_: *cetech1.cdb.Db) !void {
             var db = public.CdbDb.fromDbT(db_, &cdb.api);
 
             const type_hash = db.addType(
@@ -129,9 +131,7 @@ test "cdb: Should register aspect" {
             ) catch unreachable;
             _ = type_hash;
         }
-    };
-
-    var create_types_i = public.CreateTypesI.implement(Handler.load_types);
+    });
 
     try apidb.api.implOrRemove(public.CreateTypesI, &create_types_i, true);
 
@@ -157,6 +157,9 @@ test "cdb: Should register property aspect" {
     defer testDeinit();
 
     const FooAspect = struct {
+        pub const c_name = "foo_aspect";
+        pub const name_hash = cetech1.strid.strId32("foo_aspect");
+
         const Self = @This();
         barFn: *const fn (db_: ?*public.Db) callconv(.C) void,
 
@@ -172,8 +175,8 @@ test "cdb: Should register property aspect" {
 
     var foo_aspect = FooAspect{ .barFn = &FooAspect.barImpl };
 
-    const Handler = struct {
-        pub fn load_types(db_: *cetech1.cdb.Db) !void {
+    var create_types_i = public.CreateTypesI.implement(struct {
+        pub fn createTypes(db_: *cetech1.cdb.Db) !void {
             var db = public.CdbDb.fromDbT(db_, &cdb.api);
 
             const type_hash = db.addType(
@@ -185,9 +188,7 @@ test "cdb: Should register property aspect" {
             ) catch unreachable;
             _ = type_hash;
         }
-    };
-
-    var create_types_i = public.CreateTypesI.implement(Handler.load_types);
+    });
     try apidb.api.implOrRemove(public.CreateTypesI, &create_types_i, true);
 
     var db = try cdb.api.createDb("Test");
@@ -1487,8 +1488,8 @@ fn stressTest(comptime task_count: u32, task_based: bool) !void {
     var true_db = cdb.toDbFromDbT(db.db);
     const storage = true_db.getTypeStorage(type_hash).?;
     try std.testing.expectEqual(@as(u32, task_count + 1), storage.objid_pool.count.raw);
-    try std.testing.expectEqual(@as(u32, task_count * 3), true_db.writers_created_count.raw);
-    try std.testing.expectEqual(@as(u32, task_count * 3), true_db.write_commit_count.raw);
+    try std.testing.expectEqual(@as(u32, task_count * 3), true_db.writersCount());
+    try std.testing.expectEqual(@as(u32, task_count * 3), true_db.commitCount());
 
     db.destroyObject(ref_obj1);
 
