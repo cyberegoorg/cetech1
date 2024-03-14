@@ -12,10 +12,31 @@
         "README.md",
     },
     .dependencies = .{
+        // Public cetech1 API
+        .cetech1 = .{ .path = "src/" },
+
+        // CETech1 examples
+        .bar = .{ .path = "examples/bar" },
+        .foo = .{ .path = "examples/foo" },
+        .editor_foo_tab = .{ .path = "examples/editor_foo_tab" },
+
+        // CETech1 bundled modules
+        .editor = .{ .path = "modules/editor" },
+        .editor_asset = .{ .path = "modules/editor_asset" },
+        .editor_asset_browser = .{ .path = "modules/editor_asset_browser" },
+        .editor_explorer = .{ .path = "modules/editor_explorer" },
+        .editor_fixtures = .{ .path = "modules/editor_fixtures" },
+        .editor_inspector = .{ .path = "modules/editor_inspector" },
+        .editor_obj_buffer = .{ .path = "modules/editor_obj_buffer" },
+        .editor_tags = .{ .path = "modules/editor_tags" },
+        .editor_tree = .{ .path = "modules/editor_tree" },
+        //
+
+        // Externals
         .zf = .{ .path = "externals/shared/lib/zf" },
-        .nfd = .{ .path = "externals/shared/lib/nfd/" },
         .uuid = .{ .path = "externals/shared/lib/zig-uuid/" },
         .mach_gamemode = .{ .path = "externals/shared/lib/mach-gamemode" },
+        .znfde = .{ .path = "externals/shared/lib/znfde" },
 
         // zig-gamedev
         .system_sdk = .{ .path = "externals/shared/lib/zig-gamedev/libs/system-sdk" },
@@ -25,7 +46,9 @@
         .ztracy = .{ .path = "externals/shared/lib/zig-gamedev/libs/ztracy" },
         .zgui = .{ .path = "externals/shared/lib/zig-gamedev/libs/zgui" },
         .zgpu = .{ .path = "externals/shared/lib/zig-gamedev/libs/zgpu" },
+        //.znfde = .{ .path = "externals/shared/lib/zig-gamedev/libs/znfde" },
 
+        // zgpu dependencies
         .dawn_x86_64_windows_gnu = .{
             .url = "https://github.com/michal-z/webgpu_dawn-x86_64-windows-gnu/archive/d3a68014e6b6b53fd330a0ccba99e4dcfffddae5.tar.gz",
             .hash = "1220f9448cde02ef3cd51bde2e0850d4489daa0541571d748154e89c6eb46c76a267",

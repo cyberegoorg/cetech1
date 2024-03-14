@@ -8,7 +8,7 @@
 > Currently develop on `aarch64-macos`, `x86_64-macos` and `SteamDeck`.
 > {style="note"}
 
-| \<ARCH\>         | Description      |
+| &lt;ARCH&gt;     | Description      |
 |------------------|------------------|
 | `x86_64-macos`   | Apple Intel      |
 | `aarch64-macos`  | Apple Arm        |
@@ -17,8 +17,10 @@
 | `x86_64-windows` | Windows          |
 
 ## Prerequisite
- - [Git](https://git-scm.com/downloads)
- - [Git-lfs](https://git-lfs.com)
+
+- [Git](https://git-scm.com/downloads)
+- [Git-lfs](https://git-lfs.com)
+- [curl](https://curl.se/download.html)
 
 ## Clone
 
@@ -42,12 +44,12 @@
     </tab>
 </tabs>
 
-| Args                 | Value         | Default | Description                                      |
-|----------------------|---------------|---------|--------------------------------------------------|
-| `-Dwith-tracy=`      | true \| false | true    | Build with [tracy](#tracy-profiler) support?     |
-| `-Dtracy-on-demand=` | true \| false | true    | Collect data only if exist client.               |
-| `-Dwith-nfd=`        | true \| false | true    | Build with NFD (native file dialog)              |
-| `-Dnfd-zenity=`      | true \| false | false   | Build NFD with zenity. Linux, nice for SteamDeck |
+| Args                | Value             | Default | Description                                                                 |
+|---------------------|-------------------|---------|-----------------------------------------------------------------------------|
+| `-Dstatic-modules=` | `true` or `false` | `false` | Embed modules to executable.                                                |
+| `-Dwith-tracy=`     | `true` or `false` | `true`  | Build with [tracy](#tracy-profiler) support?                                |
+| `-Dwith-nfd=`       | `true` or `false` | `true`  | Build with NFD (native file dialog)                                         |
+| `-Dnfd-portal=`     | `true` or `false` | `true`  | Build NFD with xdg-desktop-portal instead of GTK. Linux, nice for SteamDeck |
 
 ## Run
 
@@ -63,14 +65,21 @@
     </tab>
 </tabs>
 
-| Args                     | Value  | Default | Description                                |
-|--------------------------|--------|---------|--------------------------------------------|
-| `--load-dynamic`         | 1 \| 0 | 1       | Load dynamic modules?                      |
-| `--max-kernel-tick`      | n      | null    | Quit after kernel make n ticks.            |
-| `--max-kernel-tick-rate` | n      | 60      | Kernel frame rate.                         |
-| `--headless`             | 1 \| 0 | 0       | Without creating real window.              |
-| `--asset-root`           | str    | null    | Path to asset root (project path)          |
-| `--fullscreen`           | 1 \| 0 | 0       | Force full-screen mode, nice for SteamDeck |
+> Bool arguments does not need value 1 for true value. ex.: `--fullscreen` is equal `--fullscreen 1`
+> {style="note"}
+
+| Args                     | Value                          | Default | Description                                 |
+|--------------------------|--------------------------------|---------|---------------------------------------------|
+| `--load-dynamic`         | `1` or `0`                     | `1`     | Load dynamic modules?                       |
+| `--max-kernel-tick`      | `n`                            | `null`  | Quit after kernel make n ticks.             |
+| `--max-kernel-tick-rate` | `n`                            | `60`    | Kernel frame rate.                          |
+| `--headless`             | `1` or `0`                     | `0`     | Without creating real window.               |
+| `--asset-root`           | `str`                          | `null`  | Path to asset root. (project path)          |
+| `--fullscreen`           | `1` or `0`                     | `0`     | Force full-screen mode, nice for SteamDeck. |
+| `--test-ui`              | `1` or `0`                     | `0`     | Run UI tests and quit.                      |
+| `--test-ui-filter`       | `str`                          | `all`   | Run only ui tests that pass this filter.    |
+| `--test-ui-speed`        | `fast`, `normal`,  `cinematic` | `fast`  | UI test speed.                              |
+| `--test-ui-junit`        | `str`                          | `null`  | UI test JUnit result filename.              |
 
 ## Tracy profiler
 
@@ -113,13 +122,16 @@ CeTech1 has builtin support for tracy profiler.
 > Repository contain recommended extension.
 
 1. Build [ZLS](#zls)
-2. Install extension `ziglang.vscode-zig`
+2. Install extension `ziglang.vscode-zig` (or install all recommended)
 3. Set zig path to `<FULL_PATH_TO_CETECH_REPO>/zig/bin/<ARCH>/zig`
 4. Set zls path to `<FULL_PATH_TO_CETECH_REPO>/externals/shared/tools/zls/zig-out/bin/zls`
 
 ## Docker compose
 
-You must fetch valid zig version for container `ARCH` via `./bin/zig/lfs_pull.sh <ARCH>`
+> Currently, not usable
+> {style="warning"}
+
+You must fetch valid zig version for container `ARCH` via `./zig/get_zig.sh <ARCH>`
 
 <tabs>
     <tab title="MacOS/Linux">

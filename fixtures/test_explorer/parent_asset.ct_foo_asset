@@ -1,0 +1,12 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "018e7ba1-d63a-7500-8918-23661dbad5cc",
+  "__type_name": "ct_foo_asset",
+  "__uuid": "018e7ba3-3540-7790-bb65-3e63081a76f7",
+  "subobject_set": [
+    {
+      "__type_name": "ct_foo_asset",
+      "__uuid": "018e7ba3-4f75-7e4f-bb0a-697eff5b21e2"
+    }
+  ]
+}

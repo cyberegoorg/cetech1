@@ -1,4 +1,7 @@
-name: "Build & Test"
+name: Test
+
+permissions:
+  checks: write
 
 on:
   pull_request:
@@ -9,6 +12,7 @@ on:
       - "include/**"
       - "externals/**"
       - "build.zig"
+      - "build.zig.zon"
 
 concurrency:
   group: ${{ github.head_ref || github.run_id }}-${{ github.actor }}
@@ -18,14 +22,28 @@ jobs:
   validation:
     name: Validation
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: true
-      - name: Prepare
+
+      - name: Read .zig-version
+        id: zigversion
+        uses: juliangruber/read-file-action@v1
+        with:
+          path: ./.zigversion
+      - name: Cache zig binary
+        id: cache-zig
+        uses: actions/cache@v4
+        with:
+          path: zig/bin/x86_64-linux/zig
+          key: ${{ runner.arch }}-${{ runner.os }}-zig-${{ steps.zigversion.outputs.content }}
+      - name: Init zig
+        if: steps.cache-zig.outputs.cache-hit != 'true'
         run: .ci/init_zig.sh x86_64-linux
+      
       - name: Lint
         run: zig/bin/x86_64-linux/zig fmt --check . --exclude externals/
 
@@ -41,7 +59,22 @@ jobs:
           submodules: true
 
       - name: Prepare
-        run: sudo apt-get update && sudo apt-get install libgtk-3-dev kcov
+        run: sudo apt-get update && sudo apt-get install kcov libdbus-1-dev
+      
+      - name: Read .zig-version
+        id: zigversion
+        uses: juliangruber/read-file-action@v1
+        with:
+          path: ./.zigversion
+      - name: Cache zig binary
+        id: cache-zig
+        uses: actions/cache@v4
+        with:
+          path: zig/bin/x86_64-linux/zig
+          key: ${{ runner.arch }}-${{ runner.os }}-zig-${{ steps.zigversion.outputs.content }}
+      - name: Init zig
+        if: steps.cache-zig.outputs.cache-hit != 'true'
+        run: .ci/init_zig.sh x86_64-linux
 
       - name: Build
         run: .ci/build.sh x86_64-linux Debug
@@ -54,7 +87,7 @@ jobs:
           overwrite: true
           retention-days: 1
 
-      - name: Run test
+      - name: Test unit
         run: kcov --include-pattern=cetech1/src/ kcov-output zig-out/bin/cetech1_test
 
       - name: Upload code coverage report to Codecov
@@ -65,12 +98,25 @@ jobs:
           slug: cyberegoorg/cetech1
           fail_ci_if_error: true
           verbose: true
+          flags: unittests
 
       - name: Test headless standalone
         run: zig-out/bin/cetech1 --headless --max-kernel-tick 5
 
       - name: Test headless standalone with asset root
-        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root tests/test_asset/
+        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
+      
+      # TODO: make linux work in CI
+      # - name: Test UI headless 
+      #   run: zig-out/bin/cetech1 --headless --test-ui --test-ui-junit ./result.xml
+      #
+      # - name: Publish Test Report
+      #   uses: mikepenz/action-junit-report@v4
+      #   if: success() || failure() # always run even if the previous step fails
+      #   with:
+      #     report_paths: "./result.xml"
+      #     fail_on_failure: true
+      #     detailed_summary: true
 
   x86-64-macos:
     needs: ["validation"]
@@ -88,6 +134,21 @@ jobs:
           brew update
           brew install kcov
 
+      - name: Read .zig-version
+        id: zigversion
+        uses: juliangruber/read-file-action@v1
+        with:
+          path: ./.zigversion
+      - name: Cache zig binary
+        id: cache-zig
+        uses: actions/cache@v4
+        with:
+          path: zig/bin/x86_64-macos/zig
+          key: ${{ runner.arch }}-${{ runner.os }}-zig-${{ steps.zigversion.outputs.content }}
+      - name: Init zig
+        if: steps.cache-zig.outputs.cache-hit != 'true'
+        run: .ci/init_zig.sh x86_64-macos
+
       - name: Build
         run: .ci/build.sh x86_64-macos Debug
 
@@ -99,14 +160,27 @@ jobs:
           overwrite: true
           retention-days: 1
 
-      - name: Run test
+      - name: Test unit
         run: zig-out/bin/cetech1_test
+        #run: kcov --include-pattern=cetech1/src/ kcov-output zig-out/bin/cetech1_test
 
       - name: Test headless standalone
         run: zig-out/bin/cetech1 --headless --max-kernel-tick 5
 
       - name: Test headless standalone with asset root
-        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root tests/test_asset/
+        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
+
+      - name: Test UI headless 
+        run: zig-out/bin/cetech1 --headless --test-ui --test-ui-junit ./result.xml
+
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@v4
+        if: success() || failure() # always run even if the previous step fails
+        with:
+          report_paths: "./result.xml"
+          fail_on_failure: true
+          detailed_summary: true
+          require_tests: true
 
   x86-64-windows:
     needs: ["validation"]
@@ -119,6 +193,22 @@ jobs:
         with:
           submodules: true
 
+      - name: Read .zig-version
+        id: zigversion
+        uses: juliangruber/read-file-action@v1
+        with:
+          path: ./.zigversion
+      - name: Cache zig binary
+        id: cache-zig
+        uses: actions/cache@v4
+        with:
+          path: zig/bin/x86_64-windows/zig.exe
+          key: ${{ runner.arch }}-${{ runner.os }}-zig-${{ steps.zigversion.outputs.content }}
+      - name: Init zig
+        if: steps.cache-zig.outputs.cache-hit != 'true'
+        shell: bash
+        run: .ci/init_zig.sh x86_64-windows
+        
       - name: Build
         shell: bash
         run: .ci/build.sh x86_64-windows Debug
@@ -138,11 +228,27 @@ jobs:
           maximum-size: 16GB
           disk-root: "C:"
 
-      - name: Run test
-        run: zig-out/bin/cetech1_test.exe
+      - name: Test unit
+        shell: bash
+        run: zig-out/bin/cetech1_test
 
       - name: Test headless standalone
-        run: zig-out/bin/cetech1.exe --headless --max-kernel-tick 5
+        shell: bash
+        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5
 
       - name: Test headless standalone with asset root
-        run: zig-out/bin/cetech1.exe --headless --max-kernel-tick 5 --asset-root tests/test_asset/
+        shell: bash
+        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
+
+      - name: Test UI headless 
+        shell: bash
+        run: zig-out/bin/cetech1 --headless --test-ui
+      
+      # TODO: error on save
+      # - name: Publish Test Report
+      #   uses: mikepenz/action-junit-report@v4
+      #   if: success() || failure() # always run even if the previous step fails
+      #   with:
+      #     report_paths: "./result.xml"
+      #     fail_on_failure: true
+      #     detailed_summary: true

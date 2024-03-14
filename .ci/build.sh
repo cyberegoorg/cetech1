@@ -6,13 +6,13 @@ set -e
 ZIG_ARCH=$1
 OPTIMIZE=$2
 
-./zig/lfs_pull.sh ${ZIG_ARCH}
+#./zig/get_zig.sh ${ZIG_ARCH}
 ./lfs_pull.sh
 
 function build() {
     WITH_TRACY=$1
     WITH_NFD=$2
-    zig/bin/${ZIG_ARCH}/zig build --verbose -Doptimize=${OPTIMIZE} -Dwith-tracy=${WITH_TRACY} -Dwith-nfd=${WITH_NFD}
+    zig/bin/${ZIG_ARCH}/zig build -Doptimize=${OPTIMIZE} -Dwith-tracy=${WITH_TRACY} -Dwith-nfd=${WITH_NFD}
 }
 
 build false true

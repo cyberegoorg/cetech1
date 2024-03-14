@@ -1,0 +1,13 @@
+.{
+    .name = "editor_tags",
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../src/" },
+        .editor = .{ .path = "../editor" },
+        .editor_inspector = .{ .path = "../editor_inspector" },
+    },
+}

@@ -1,94 +1,58 @@
 {
     "files.associations": {
         "*.ct_*": "json",
-        "types.h": "c"
+        "*.inc": "c",
+        "*.h": "c"
     },
     "[json]": {
         "editor.insertSpaces": true,
         "editor.tabSize": 2
     },
     "todo-tree.filtering.excludeGlobs": [
-        "bin",
+        "zig",
+        "zig-out",
+        "zig-cache",
         "externals",
     ],
     "todo-tree.highlights.customHighlight": {
         "TODO": {
             "icon": "checkbox",
-            "foreground": "black",
-            "background": "yellow",
-            "iconColour": "yellow"
         },
         "NOTE": {
             "icon": "note",
-            "foreground": "white",
-            "background": "cornflowerblue",
-            "iconColour": "cornflowerblue"
         },
         "USEFUL": {
             "icon": "verified",
-            "foreground": "black",
-            "background": "mediumaquamarine",
-            "iconColour": "mediumaquamarine"
         },
         "COMMENT": {
             "icon": "comment",
-            "foreground": "white",
-            "background": "gray",
-            "iconColour": "white"
         },
         "LEARN": {
             "icon": "bookmark",
-            "foreground": "white",
-            "background": "hotpink",
-            "iconColour": "hotpink"
         },
         "FIXME": {
             "icon": "tools",
-            "foreground": "crimson",
-            "background": "burlywood",
-            "iconColour": "burlywood"
         },
         "RECHECK": {
             "icon": "codescan",
-            "foreground": "white",
-            "background": "chocolate",
-            "iconColour": "chocolate"
         },
         "INCOMPLETE": {
             "icon": "alert",
-            "foreground": "white",
-            "background": "mediumvioletred",
-            "iconColour": "mediumvioletred"
         },
         "BUG": {
             "icon": "bug",
-            "foreground": "white",
-            "background": "crimson",
-            "iconColour": "crimson"
         },
         "SEE NOTES": {
             "icon": "note",
-            "foreground": "white",
-            "background": "teal",
-            "iconColour": "teal"
         },
         "POST": {
             "icon": "share",
-            "foreground": "white",
-            "background": "green",
-            "iconColour": "green"
         },
         "[ ]": {
             "icon": "check",
-            "foreground": "black",
-            "background": "white",
-            "iconColour": "yellow"
         },
         "[x]": {
             "icon": "check",
-            "foreground": "white",
-            "background": "green",
-            "iconColour": "green"
         }
     },
     "todo-tree.general.tags": [
@@ -108,4 +72,8 @@
         "[x]"
     ],
     "todo-tree.regex.regex": "(//|#|<!--|;|/\\*|^|^\\s*(-|\\d+.))\\s*($TAGS).*(\\n\\s*//\\s{2,}.*)*",
+    "lldb.displayFormat": "auto",
+    "lldb.showDisassembly": "auto",
+    "lldb.dereferencePointers": true,
+    "lldb.consoleMode": "evaluate",
 }

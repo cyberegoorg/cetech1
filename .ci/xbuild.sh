@@ -7,7 +7,7 @@ ZIG_ARCH=$1
 TARGET_ZIG_ARCH=$2
 OPTIMIZE=$3
 
-./zig/lfs_pull.sh ${ZIG_ARCH}
+./zig/get_zig.sh ${ZIG_ARCH}
 ./lfs_pull.sh
 
 mkdir -p build/${OPTIMIZE}

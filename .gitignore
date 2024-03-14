@@ -25,9 +25,15 @@ zig-out
 kcov-output/
 
 imgui.ini
+!**/default/imgui.ini
+
+_static.zig
 
 # temp folder for tests
-/tests/tmp
+/fixtures/tmp
 
 # folder for generated tmp data, cache and debug purpose files
 .ct_temp
+
+result.xml
+*.tracy

@@ -25,23 +25,24 @@ will be replaced with type_hash->type_idx and skip hash lookup)
 
 Object has Type, ID and properties.
 
-```mermaid
-classDiagram
-    class BigTypes {
-        +BOOL BOOL
-        +U64 U64
-        +I64 I64
-        +U32 U32
-        +I32 I32
-        +F32 F32
-        +F64 F64
-        +STR STR
-        +BLOB BLOB
-        +SUBOBJECT SUBOBJECT
-        +REFERENCE REFERENCE
-        +SUBOBJECT_SET SUBOBJECT_SET
-        +REFERENCE_SET REFERENCE_SET
-    }
+```d2
+BigTypes: {
+    shape: class
+
+    + bool: "BOOL"
+    + u64: "U64"
+    + i64: "I64"
+    + u32: "U32"
+    + i32: "I32"
+    + f32: "F32"
+    + f64: "F64"
+    + str: "STR"
+    + blob: "BLOB"
+    + subobject: "SUBOBJECT"
+    + reference: "REFERENCE"
+    + subobject_set: "SUBOBJECT_SET"
+    + reference_set: "REFERENCE_SET"
+}
 ```
 
 ## Properties
@@ -74,29 +75,31 @@ If property is changed (override) on instance and property is changed on prototy
 
 Obj1 is prototype for Obj2 and Obj2 is prototype for Obj3
 
-```mermaid
-classDiagram
-    class Obj1 {
-        +I64 prop1
-        +I64 prop2
-        +I64 prop3
-        +SUBOBJECT Prop2
-    }
+```d2
+Obj1: {
+    shape: class
 
-    class Obj2 {
-        +I64 prop1
-        +I64 prop2
-        +I64 prop3
-        +SUBOBJECT Prop2
-    }
+    prop1: "i64"
+    prop2: "i64"
+    prop3: "i64"
+}
 
-    class Obj3 {
-        +I64 prop1
-        +I64 prop2
-        +I64 prop3
-        +SUBOBJECT Prop2
-    }
+Obj2: {
+    shape: class
 
-    Obj3 --|> Obj2
-    Obj2 --|> Obj1
+    prop1: "i64"
+    prop2: "i64"
+    prop3: "i64"
+}
+
+Obj3: {
+    shape: class
+
+    prop1: "i64"
+    prop2: "i64"
+    prop3: "i64"
+}
+
+Obj3 -> Obj2
+Obj2 -> Obj1
 ```

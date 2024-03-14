@@ -1,0 +1,16 @@
+// CETech1 light api
+// Primary for modules
+// TODO: How to move this to root?
+
+.{
+    .name = "cetech1",
+    .version = "0.1.0",
+    .paths = .{
+        "includes",
+        "cetech1",
+        "build.zig",
+        "build.zig.zon",
+    },
+
+    .dependencies = .{},
+}

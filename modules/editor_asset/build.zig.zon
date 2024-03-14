@@ -1,0 +1,15 @@
+.{
+    .name = "editor_asset",
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../src/" },
+        .editor = .{ .path = "../editor" },
+        .editor_inspector = .{ .path = "../editor_inspector" },
+        .editor_tree = .{ .path = "../editor_tree" },
+        .editor_obj_buffer = .{ .path = "../editor_obj_buffer" },
+    },
+}

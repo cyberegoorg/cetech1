@@ -1,25 +1,61 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const ztracy = @import("ztracy");
-const zpool = @import("zpool");
-const zglfw = @import("zglfw");
-const zjobs = @import("zjobs");
-const zgui = @import("zgui");
-const zgpu = @import("zgpu");
-const nfd = @import("nfd");
+pub const min_zig_version = std.SemanticVersion{ .major = 0, .minor = 12, .patch = 0, .pre = "dev.2063" };
 
-const CETECH1_MODULE_PREFIX = "ct_";
-const CETECH1_MAX_MODULE_NAME = 128;
+const version: std.SemanticVersion = .{ .major = 0, .minor = 1, .patch = 0, .pre = "a1" };
+
+const bundled_modules = [_][]const u8{
+    "bar",
+    "foo",
+    "editor_foo_tab",
+    "editor",
+    "editor_asset",
+    "editor_asset_browser",
+    "editor_explorer",
+    "editor_fixtures",
+    "editor_inspector",
+    "editor_obj_buffer",
+    "editor_tags",
+    "editor_tree",
+};
 
 pub fn build(b: *std.Build) !void {
+    try ensureZigVersion();
+
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const enable_tracy = b.option(bool, "with-tracy", "build with tracy.") orelse true;
-    const tracy_on_demand = b.option(bool, "tracy-on-demand", "build tracy with TRACY_ON_DEMAND") orelse true;
-    const enable_nfd = b.option(bool, "with-nfd", "build with NFD (Native File Dialog).") orelse true;
-    const nfd_zenity = b.option(bool, "nfd-zenity", "build NFD with zenity. ( Linux, nice for steamdeck;) )") orelse false;
+    //
+    // OPTIONS
+    //
+
+    const options = .{
+        .modules = b.option([]const []const u8, "with-module", "build with this modules.") orelse &bundled_modules,
+
+        .static_modules = b.option(bool, "static-modules", "build all modules in static mode.") orelse false,
+
+        // Tracy options
+        .enable_tracy = b.option(bool, "with-tracy", "build with tracy.") orelse true,
+        .tracy_on_demand = b.option(bool, "tracy-on-demand", "build tracy with TRACY_ON_DEMAND") orelse true,
+
+        // NFD options
+        .enable_nfd = b.option(bool, "with-nfd", "build with NFD (Native File Dialog).") orelse true,
+        .nfd_portal = b.option(bool, "nfd-portal", "build NFD with xdg-desktop-portal instead of GTK. ( Linux, nice for steamdeck;) )") orelse true,
+    };
+    const options_step = b.addOptions();
+    inline for (std.meta.fields(@TypeOf(options))) |field| {
+        options_step.addOption(field.type, field.name, @field(options, field.name));
+    }
+    options_step.addOption(std.SemanticVersion, "version", version);
+    const options_module = options_step.createModule();
+
+    // TODO: Custom step?
+    try generateStatic(b, options.modules);
+
+    //
+    // Extrnals
+    //
 
     // UUID
     const uuid_module = b.dependency("uuid", .{}).module("Uuid");
@@ -27,369 +63,182 @@ pub fn build(b: *std.Build) !void {
     // ZF
     const zf_module = b.dependency("zf", .{}).module("zf");
 
-    //NFD
-    const nfd_pkg = nfd.package(b, target, optimize, .{
-        .options = .{ .enable_nfd = enable_nfd, .with_zenity = nfd_zenity },
+    // ZNFDE
+    const znfde = b.dependency("znfde", .{
+        .with_portal = options.nfd_portal,
+        .target = target,
     });
 
     // Mach gamemode
     const mach_gamemode_module = b.dependency(
         "mach_gamemode",
-        .{ .target = target, .optimize = optimize },
+        .{ .target = target },
     ).module("mach-gamemode");
 
     // Tracy
-    const ztracy_pkg = ztracy.package(b, target, optimize, .{
-        .options = .{
-            .enable_ztracy = enable_tracy,
-            .enable_fibers = true,
-        },
+    const ztracy = b.dependency("ztracy", .{
+        .enable_ztracy = options.enable_tracy,
+        .enable_fibers = false,
+        .on_demand = options.tracy_on_demand,
+        .target = target,
     });
-    if (enable_tracy) {
-        // Collect only if client is connected
-        if (tracy_on_demand) ztracy_pkg.ztracy_c_cpp.defineCMacro("TRACY_ON_DEMAND", null);
-    }
 
     // ZJobs
-    const zjobs_pkg = zjobs.package(b, target, optimize, .{});
+    const zjobs = b.dependency("zjobs", .{
+        .target = target,
+    });
 
     // ZGUI
-    const zgui_pkg = zgui.package(b, target, optimize, .{
-        .options = .{ .backend = .glfw_wgpu },
+    const zgui = b.dependency("zgui", .{
+        .backend = .glfw_wgpu,
+        .target = target,
+        .with_te = true,
     });
 
-    // Needed for glfw/wgpu rendering backend
-    const zglfw_pkg = zglfw.package(b, target, optimize, .{});
-    const zpool_pkg = zpool.package(b, target, optimize, .{});
-    const zgpu_pkg = zgpu.package(b, target, optimize, .{
-        .deps = .{ .zpool = zpool_pkg },
+    // ZGLFW
+    const zglfw = b.dependency("zglfw", .{
+        .target = target,
     });
+
+    // ZPOOL
+    const zpool = b.dependency("zpool", .{
+        .target = target,
+    });
+
+    // ZGPU
+    const zgpu = b.dependency("zgpu", .{
+        .target = target,
+    });
+
+    //
+    // CETech1 core
+    //
 
     // cetech1 static lib
     // TODO: Is this needed this?
     const core_lib_static = b.addStaticLibrary(.{
         .name = "cetech1",
         .version = .{ .major = 0, .minor = 0, .patch = 0 },
-        .root_source_file = .{ .path = "src/cetech1/core/private/private.zig" },
+        .root_source_file = .{ .path = "src/private/private.zig" },
         .target = target,
         .optimize = optimize,
     });
-    core_lib_static.addIncludePath(.{ .path = thisDir() ++ "/includes/" });
-    core_lib_static.addCSourceFile(.{ .file = .{ .path = "src/cetech1/core/private/log.c" }, .flags = &.{} });
+    core_lib_static.addIncludePath(.{ .path = "src/includes" });
+    core_lib_static.addCSourceFile(.{ .file = .{ .path = "src/private/log.c" }, .flags = &.{} });
     core_lib_static.linkLibC();
-
-    // cetech1 standalone test
-    const exe_test = b.addTest(.{
-        .name = "cetech1_test",
-        .root_source_file = .{ .path = "src/cetech1/tests.zig" },
-        .target = target,
-        .optimize = optimize,
-    });
-    exe_test.root_module.addImport("zf", zf_module);
-    exe_test.root_module.addImport("Uuid", uuid_module);
-    exe_test.root_module.addImport("mach-gamemode", mach_gamemode_module);
-    exe_test.addIncludePath(.{ .path = thisDir() ++ "/includes" });
 
     // cetech1 standalone exe
     const exe = b.addExecutable(.{
         .name = "cetech1",
-        .root_source_file = .{ .path = "src/cetech1/main.zig" },
+        .root_source_file = .{ .path = "src/main.zig" },
         .target = target,
         .optimize = optimize,
     });
-    exe.root_module.addImport("zf", zf_module);
-    exe.root_module.addImport("Uuid", uuid_module);
-    exe.root_module.addImport("mach-gamemode", mach_gamemode_module);
-    exe.addIncludePath(.{ .path = thisDir() ++ "/includes" });
-
-    // Dependency links
-
-    ztracy_pkg.link(exe);
-    ztracy_pkg.link(exe_test);
-    zjobs_pkg.link(exe);
-    zjobs_pkg.link(exe_test);
-    zglfw_pkg.link(exe);
-    zgpu_pkg.link(exe);
-    zgui_pkg.link(exe);
-    zglfw_pkg.link(exe_test);
-    zgpu_pkg.link(exe_test);
-    zgui_pkg.link(exe_test);
-
-    nfd_pkg.link(exe);
-    nfd_pkg.link(exe_test);
-
-    exe.linkLibrary(core_lib_static);
-    exe_test.linkLibrary(core_lib_static);
-
-    exe.linkLibC();
-    exe_test.linkLibC();
-
-    // cetech1 module
-    const cetech1_module = b.createModule(.{
-        .root_source_file = .{ .path = "src/cetech1/core/cetech1.zig" },
-    });
-    cetech1_module.addIncludePath(.{ .path = "includes" });
-
-    // cetech1 core modules
-
-    // Foo module is Zig based module and is used as sample and test
-    const module_foo = try createCetechModule(
-        b,
-        "foo",
-        "src/cetech1/modules/examples/foo/private.zig",
-        .{ .major = 0, .minor = 1, .patch = 0 },
-        target,
-        optimize,
-        cetech1_module,
-    );
-    _ = module_foo;
-
-    // Bar module is C based module and is used as sample and test
-    const module_bar = try createCetechModule(
-        b,
-        "bar",
-        null,
-        .{ .major = 0, .minor = 1, .patch = 0 },
-        target,
-        optimize,
-        cetech1_module,
-    );
-    module_bar.addCSourceFile(.{ .file = .{ .path = "src/cetech1/modules/examples/bar/module_bar.c" }, .flags = &.{} });
-
-    // Main editor
-    const module_editor_public = b.createModule(.{
-        .root_source_file = .{ .path = "src/cetech1/modules/editor/editor.zig" },
-        .imports = &.{
-            .{ .name = "cetech1", .module = cetech1_module },
-        },
-    });
-
-    const module_editor = try createCetechModule(
-        b,
-        "editor",
-        "src/cetech1/modules/editor/private.zig",
-        .{ .major = 0, .minor = 1, .patch = 0 },
-        target,
-        optimize,
-        cetech1_module,
-    );
-    _ = module_editor;
-
-    const module_editor_inspector_public = b.createModule(.{
-        .root_source_file = .{ .path = "src/cetech1/modules/editor_inspector/editor_inspector.zig" },
-        .imports = &.{
-            .{ .name = "cetech1", .module = cetech1_module },
-            .{ .name = "editor", .module = module_editor_public },
-        },
-    });
-
-    // Editor tree
-    const module_editor_tree_public = b.createModule(.{
-        .root_source_file = .{ .path = "src/cetech1/modules/editor_tree/editor_tree.zig" },
-        .imports = &.{
-            .{ .name = "cetech1", .module = cetech1_module },
-            .{ .name = "editor", .module = module_editor_public },
-        },
-    });
-
-    const module_editor_tree = try createCetechModule(
-        b,
-        "editor_tree",
-        "src/cetech1/modules/editor_tree/private.zig",
-        .{ .major = 0, .minor = 1, .patch = 0 },
-        target,
-        optimize,
-        cetech1_module,
-    );
-    module_editor_tree.root_module.addImport("editor", module_editor_public);
-    module_editor_tree.root_module.addImport("editor_inspector", module_editor_inspector_public);
-
-    // Obj buffer
-    const module_editor_obj_buffer_public = b.createModule(.{
-        .root_source_file = .{ .path = "src/cetech1/modules/editor_obj_buffer/editor_obj_buffer.zig" },
-        .imports = &.{
-            .{ .name = "cetech1", .module = cetech1_module },
-            .{ .name = "editor", .module = module_editor_public },
-        },
-    });
-    var module_editor_obj_buffer = try createCetechModule(
-        b,
-        "editor_obj_buffer",
-        "src/cetech1/modules/editor_obj_buffer/private.zig",
-        .{ .major = 0, .minor = 1, .patch = 0 },
-        target,
-        optimize,
-        cetech1_module,
-    );
-    module_editor_obj_buffer.root_module.addImport("editor", module_editor_public);
-    module_editor_obj_buffer.root_module.addImport("editor_tree", module_editor_tree_public);
-
-    // Editor  tags
-    const module_editor_tags_public = b.createModule(.{
-        .root_source_file = .{ .path = "src/cetech1/modules/editor_tags/editor_tags.zig" },
-        .imports = &.{
-            .{ .name = "cetech1", .module = cetech1_module },
-            .{ .name = "editor", .module = module_editor_public },
-        },
-    });
-    var module_editor_tags = try createCetechModule(
-        b,
-        "editor_tags",
-        "src/cetech1/modules/editor_tags/private.zig",
-        .{ .major = 0, .minor = 1, .patch = 0 },
-        target,
-        optimize,
-        cetech1_module,
-    );
-    module_editor_tags.root_module.addImport("editor", module_editor_public);
-    module_editor_tags.root_module.addImport("editor_inspector", module_editor_inspector_public);
-
-    // Editor asset browser
-    const module_editor_asset_browser_public = b.createModule(.{
-        .root_source_file = .{ .path = "src/cetech1/modules/editor_asset_browser/editor_asset_browser.zig" },
-        .imports = &.{
-            .{ .name = "cetech1", .module = cetech1_module },
-        },
-    });
-    var module_editor_asset_browser = try createCetechModule(
-        b,
-        "editor_asset_browser",
-        "src/cetech1/modules/editor_asset_browser/private.zig",
-        .{ .major = 0, .minor = 1, .patch = 0 },
-        target,
-        optimize,
-        cetech1_module,
-    );
-    module_editor_asset_browser.root_module.addImport("editor", module_editor_public);
-    module_editor_asset_browser.root_module.addImport("editor_tree", module_editor_tree_public);
-    module_editor_asset_browser.root_module.addImport("editor_tags", module_editor_tags_public);
-
-    // Editor properties
-    var module_editor_inspector = try createCetechModule(
-        b,
-        "editor_inspector",
-        "src/cetech1/modules/editor_inspector/private.zig",
-        .{ .major = 0, .minor = 1, .patch = 0 },
-        target,
-        optimize,
-        cetech1_module,
-    );
-    module_editor_inspector.root_module.addImport("editor", module_editor_public);
-    module_editor_inspector.root_module.addImport("editor_asset_browser", module_editor_asset_browser_public);
-
-    // Editor explorer
-    var module_editor_explorer = try createCetechModule(
-        b,
-        "editor_explorer",
-        "src/cetech1/modules/editor_explorer/private.zig",
-        .{ .major = 0, .minor = 1, .patch = 0 },
-        target,
-        optimize,
-        cetech1_module,
-    );
-    module_editor_explorer.root_module.addImport("editor", module_editor_public);
-    module_editor_explorer.root_module.addImport("editor_tree", module_editor_tree_public);
-
-    // Editor asset
-    var module_editor_asset = try createCetechModule(
-        b,
-        "editor_asset",
-        "src/cetech1/modules/editor_asset/private.zig",
-        .{ .major = 0, .minor = 1, .patch = 0 },
-        target,
-        optimize,
-        cetech1_module,
-    );
-    module_editor_asset.root_module.addImport("editor", module_editor_public);
-    module_editor_asset.root_module.addImport("editor_inspector", module_editor_inspector_public);
-    module_editor_asset.root_module.addImport("editor_tree", module_editor_tree_public);
-    module_editor_asset.root_module.addImport("editor_obj_buffer", module_editor_obj_buffer_public);
-
-    // Editor fixtures
-    const module_editor_fixtures_public = b.createModule(.{
-        .root_source_file = .{ .path = "src/cetech1/modules/editor_fixtures/editor_fixtures.zig" },
-        .imports = &.{
-            .{ .name = "cetech1", .module = cetech1_module },
-            .{ .name = "editor", .module = module_editor_public },
-        },
-    });
-    _ = module_editor_fixtures_public;
-    var module_editor_fixtures = try createCetechModule(
-        b,
-        "editor_fixtures",
-        "src/cetech1/modules/editor_fixtures/private.zig",
-        .{ .major = 0, .minor = 1, .patch = 0 },
-        target,
-        optimize,
-        cetech1_module,
-    );
-    module_editor_fixtures.root_module.addImport("editor", module_editor_public);
-    module_editor_fixtures.root_module.addImport("editor_asset_browser", module_editor_asset_browser_public);
-
-    // Foo editor tab
-    var module_editor_foo_tab = try createCetechModule(
-        b,
-        "editor_foo_tab",
-        "src/cetech1/modules/examples/editor_foo_tab/private.zig",
-        .{ .major = 0, .minor = 1, .patch = 0 },
-        target,
-        optimize,
-        cetech1_module,
-    );
-    module_editor_foo_tab.root_module.addImport("editor", module_editor_public);
-
-    // Install artifacts
-    b.installArtifact(exe_test);
     b.installArtifact(exe);
-    b.installArtifact(core_lib_static);
-}
+    exe.linkLibrary(core_lib_static);
+    exe.linkLibC();
 
-fn getDynamicModuleExtensionForTargetOS(tag: std.Target.Os.Tag) []const u8 {
-    return switch (tag) {
-        .linux, .freebsd, .openbsd => ".so",
-        .windows => ".dll",
-        .macos, .tvos, .watchos, .ios => ".dylib",
-        else => return undefined,
-    };
-}
-
-fn createCetechModule(
-    b: *std.Build,
-    name: []const u8,
-    root_source_file: ?[]const u8,
-    version: ?std.SemanticVersion,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-    cetech_core_module: *std.Build.Module,
-) !*std.Build.Step.Compile {
-    var buffer: [CETECH1_MAX_MODULE_NAME]u8 = undefined;
-    var fba = std.heap.FixedBufferAllocator.init(&buffer);
-    const tmp_allocator = fba.allocator();
-
-    const module_name = try std.mem.join(
-        tmp_allocator,
-        "",
-        &[_][]const u8{ CETECH1_MODULE_PREFIX, name, getDynamicModuleExtensionForTargetOS(target.result.os.tag) },
-    );
-
-    const module = b.addSharedLibrary(.{
-        .name = name,
-        .version = version,
-        .root_source_file = if (root_source_file) |path| .{ .path = path } else null,
+    // cetech1 standalone test
+    const tests = b.addTest(.{
+        .name = "cetech1_test",
+        .root_source_file = .{ .path = "src/tests.zig" },
         .target = target,
         .optimize = optimize,
     });
+    b.installArtifact(tests);
+    tests.linkLibrary(core_lib_static);
+    tests.linkLibC();
 
-    module.root_module.addImport("cetech1", cetech_core_module);
-    module.addIncludePath(.{ .path = "includes" });
+    const executables = .{ exe, tests };
+    inline for (executables) |e| {
+        @import("system_sdk").addLibraryPathsTo(e);
+        @import("zgpu").addLibraryPathsTo(e);
 
-    const plugin_install = b.addInstallFileWithDir(module.getEmittedBin(), .lib, module_name);
-    plugin_install.step.dependOn(&module.step);
-    b.getInstallStep().dependOn(&plugin_install.step);
+        e.addIncludePath(.{ .path = "src/includes" });
+        e.root_module.addImport("cetech1_options", options_module);
 
-    return module;
+        e.root_module.addImport("ztracy", ztracy.module("root"));
+        e.root_module.addImport("zjobs", zjobs.module("root"));
+        e.root_module.addImport("zpool", zpool.module("root"));
+        e.root_module.addImport("zglfw", zglfw.module("root"));
+        e.root_module.addImport("zgpu", zgpu.module("root"));
+        e.root_module.addImport("zgui", zgui.module("root"));
+        e.root_module.addImport("zf", zf_module);
+        e.root_module.addImport("Uuid", uuid_module);
+        e.root_module.addImport("mach-gamemode", mach_gamemode_module);
+
+        e.linkLibrary(ztracy.artifact("tracy"));
+        e.linkLibrary(zglfw.artifact("glfw"));
+        e.linkLibrary(zgpu.artifact("zdawn"));
+        e.linkLibrary(zgui.artifact("imgui"));
+
+        if (options.enable_nfd) {
+            e.root_module.addImport("znfde", znfde.module("root"));
+            e.linkLibrary(znfde.artifact("nfde"));
+        }
+
+        if (options.static_modules) {
+            for (options.modules) |m| {
+                e.linkLibrary(b.dependency(m, .{}).artifact("static"));
+            }
+        }
+    }
+
+    var buff: [256:0]u8 = undefined;
+    for (options.modules) |m| {
+        const artifact_name = try std.fmt.bufPrintZ(&buff, "ct_{s}", .{m});
+        b.installArtifact(b.dependency(m, .{}).artifact(artifact_name));
+    }
 }
 
-inline fn thisDir() []const u8 {
-    return comptime std.fs.path.dirname(@src().file) orelse ".";
+pub fn generateStatic(b: *std.Build, modules: []const []const u8) !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+
+    const output_file_path = b.pathFromRoot("src/_static.zig");
+    var output_file = std.fs.cwd().createFile(output_file_path, .{}) catch |err| {
+        std.log.err("unable to open '{s}': {s}", .{ output_file_path, @errorName(err) });
+        return err;
+    };
+    defer output_file.close();
+
+    var w = output_file.writer();
+
+    try w.print("// GENERATED - DO NOT EDIT\n", .{});
+    try w.print("const cetech1 = @import(\"cetech1.zig\");\n\n", .{});
+
+    for (modules) |m| {
+        try w.print("extern fn ct_load_module_{s}(?*const cetech1.apidb.ct_apidb_api_t, ?*const cetech1.apidb.ct_allocator_t, u8, u8) callconv(.C) u8;\n", .{m});
+    }
+
+    try w.print("\npub const descs = [_]cetech1.modules.ct_module_desc_t{{\n", .{});
+
+    for (modules) |m| {
+        try w.print("    .{{ .name = \"{s}\", .module_fce = ct_load_module_{s} }},\n", .{ m, m });
+    }
+
+    try w.print("}};\n", .{});
+}
+
+fn ensureZigVersion() !void {
+    var installed_ver = builtin.zig_version;
+    installed_ver.build = null;
+
+    if (installed_ver.order(min_zig_version) == .lt) {
+        std.log.err("\n" ++
+            \\---------------------------------------------------------------------------
+            \\
+            \\Installed Zig compiler version is too old.
+            \\
+            \\Min. required version: {any}
+            \\Installed version: {any}
+            \\
+            \\Please install newer version and try again.
+            \\zig/get_zig.sh <ARCH>
+            \\
+            \\---------------------------------------------------------------------------
+            \\
+        , .{ min_zig_version, installed_ver });
+        return error.ZigIsTooOld;
+    }
 }

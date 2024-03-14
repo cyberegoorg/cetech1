@@ -1,0 +1,9 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "018b7c93-ea84-7760-9abd-e63d6373eac1",
+  "__description": "Test project for asset root load",
+  "__type_name": "ct_project",
+  "__uuid": "018b7c93-ea84-7435-879e-67f393b58ba4",
+  "name": "test_asset",
+  "organization": "CyberEg{o.o}rg"
+}

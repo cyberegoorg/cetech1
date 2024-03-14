@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/zig-out/bin/cetech1",
             "args": [
                 "--asset-root",
-                "tests/test_asset/"
+                "fixtures/test_asset/"
             ],
             "cwd": "${workspaceFolder}"
         },
@@ -19,7 +19,7 @@
             "program": "${workspaceFolder}/zig-out/bin/cetech1",
             "args": [
                 "--asset-root",
-                "tests/test_asset/"
+                "fixtures/test_asset/"
             ],
             "cwd": "${workspaceFolder}"
         },
@@ -40,7 +40,7 @@
                 "--max-kernel-tick",
                 "5",
                 "--asset-root",
-                "tests/test_asset/"
+                "fixtures/test_asset/"
             ],
             "cwd": "${workspaceFolder}"
         },
@@ -53,7 +53,7 @@
                 "--max-kernel-tick",
                 "5",
                 "--asset-root",
-                "tests/test_asset/",
+                "fixtures/test_asset/",
                 "--headless"
             ],
             "cwd": "${workspaceFolder}"
@@ -72,6 +72,50 @@
             "name": "CeTech1.exe Tests ",
             "program": "${workspaceFolder}/zig-out/bin/cetech1_test.exe",
             "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "CeTech1 Tests UI",
+            "program": "${workspaceFolder}/zig-out/bin/cetech1",
+            "args": [
+                "--test-ui",
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "CeTech1.exe Tests UI",
+            "program": "${workspaceFolder}/zig-out/bin/cetech1.exe",
+            "args": [
+                "--test-ui",
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "CeTech1 Tests UI (headless) ",
+            "program": "${workspaceFolder}/zig-out/bin/cetech1",
+            "args": [
+                "--test-ui",
+                "--headless",
+                "--test-ui-junit",
+                "./result.xml"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "CeTech1.exe Tests UI (headless) ",
+            "program": "${workspaceFolder}/zig-out/bin/cetech1.exe",
+            "args": [
+                "--test-ui",
+                "--headless"
+            ],
             "cwd": "${workspaceFolder}"
         },
     ]

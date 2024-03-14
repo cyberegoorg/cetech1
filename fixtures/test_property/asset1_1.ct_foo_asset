@@ -1,0 +1,8 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "018e4b5b-291e-7811-bb9a-28f35a836ba8",
+  "__description": "Instance of asset1",
+  "__type_name": "ct_foo_asset",
+  "__uuid": "018e4b5d-01cb-7fc9-8730-7939c945c996",
+  "__prototype_uuid": "018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f"
+}

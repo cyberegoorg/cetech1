@@ -1,0 +1,8 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "018e4b58-fb0f-770d-9de9-2785dc5509d0",
+  "__description": "Fixtures for property based tests",
+  "__type_name": "ct_project",
+  "__uuid": "018e4b58-fb0f-75bf-a532-ac85e2169ddc",
+  "name": "test_property"
+}
