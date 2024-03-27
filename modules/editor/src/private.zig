@@ -509,7 +509,7 @@ fn quitSaveModal() !void {
     )) {
         defer _coreui.endPopup();
 
-        _coreui.textUnformatted("Project have unsaved changes.\nWhat do you do?");
+        _coreui.text("Project have unsaved changes.\nWhat do you do?");
 
         _coreui.separator();
 
@@ -597,6 +597,15 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
     if (_coreui.beginMenu(allocator, coreui.Icons.Settings, true, null)) {
         defer _coreui.endMenu();
         _ = _coreui.menuItemPtr(allocator, coreui.Icons.Colors ++ " " ++ "Colors", .{ .selected = &_g.enable_colors }, null);
+
+        // TODO: but neeed imgui docking
+        // if (_coreui.beginMenu(allocator, coreui.Icons.TickRate ++ " " ++ "Scale factor", true, null)) {
+        //     defer _coreui.endMenu();
+        //     var scale_factor = _coreui.getScaleFactor();
+        //     if (_coreui.inputF32("###kernel_tick_rate", .{ .v = &scale_factor, .flags = .{ .enter_returns_true = true } })) {
+        //         _coreui.setScaleFactor(scale_factor);
+        //     }
+        // }
 
         if (_coreui.beginMenu(allocator, coreui.Icons.TickRate ++ " " ++ "Kernel tick rate", true, null)) {
             defer _coreui.endMenu();
@@ -708,9 +717,10 @@ fn doTabs(tmp_allocator: std.mem.Allocator) !void {
         );
 
         const tab_flags = coreui.WindowFlags{
-            .menu_bar = true, //tab.vt.*.menu != null,
+            .menu_bar = tab.vt.*.menu != null,
             //.no_saved_settings = true,
         };
+        _coreui.setNextWindowSize(.{ .w = 200, .h = 200, .cond = .first_use_ever });
         if (_coreui.begin(tab_title_full, .{ .popen = &tab_open, .flags = tab_flags })) {
             if (_coreui.isWindowFocused(coreui.FocusedFlags.root_and_child_windows)) {
                 if (_g.last_focused_tab != tab) {
@@ -922,7 +932,7 @@ var open_in_context_menu_i = public.ObjContextMenuI.implement(struct {
 });
 
 // Assetdb opened
-var assetdb_opened_i = assetdb.AssetRootOpenedI.implement(struct {
+var asset_root_opened_i = assetdb.AssetRootOpenedI.implement(struct {
     pub fn opened() !void {
         var tabs = std.ArrayList(*public.EditorTabI).init(_allocator);
         defer tabs.deinit();
@@ -935,6 +945,7 @@ var assetdb_opened_i = assetdb.AssetRootOpenedI.implement(struct {
                 }
                 continue;
             }
+            if (tab.tabid == 1) continue;
             destroyTab(tab);
         }
     }
@@ -980,7 +991,7 @@ pub fn load_module_zig(apidb_: *apidb.ApiDbAPI, allocator: Allocator, log_api: *
     try _apidb.implOrRemove(public.ObjContextMenuI, &open_in_context_menu_i, load);
 
     try _apidb.implOrRemove(cdb.CreateTypesI, &create_types_i, true);
-    try _apidb.implOrRemove(assetdb.AssetRootOpenedI, &assetdb_opened_i, true);
+    try _apidb.implOrRemove(assetdb.AssetRootOpenedI, &asset_root_opened_i, true);
 
     _kernel.setCanQuit(kernelQuitHandler);
     return true;

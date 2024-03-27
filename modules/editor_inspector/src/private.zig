@@ -710,7 +710,7 @@ fn uiPropInputRaw(db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: u32) !void {
         },
         .F32 => {
             var value = db.readValue(f32, reader, prop_idx);
-            if (_coreui.dragFloat(label, .{
+            if (_coreui.dragF32(label, .{
                 .v = &value,
                 .flags = .{
                     //.enter_returns_true = true,
@@ -723,7 +723,7 @@ fn uiPropInputRaw(db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: u32) !void {
         },
         .F64 => {
             var value = db.readValue(f64, reader, prop_idx);
-            if (_coreui.dragDouble(label, .{
+            if (_coreui.dragF64(label, .{
                 .v = &value,
                 .flags = .{
                     //.enter_returns_true = true,
@@ -805,10 +805,10 @@ fn uiPropInputRaw(db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: u32) !void {
             }
         },
         .BLOB => {
-            _coreui.textUnformatted("---");
+            _coreui.text("---");
         },
         else => {
-            _coreui.textUnformatted("- !!INVALID TYPE!! -");
+            _coreui.text("- !!INVALID TYPE!! -");
             log.err("Invalid property type for uiInputForProperty {}", .{prop_def.type});
         },
     }
@@ -830,9 +830,9 @@ fn uiPropLabel(allocator: std.mem.Allocator, name: [:0]const u8, color: ?[4]f32,
 
     _coreui.alignTextToFramePadding();
     if (color) |colorr| {
-        _coreui.textUnformattedColored(colorr, name);
+        _coreui.textColored(colorr, name);
     } else {
-        _coreui.textUnformatted(name);
+        _coreui.text(name);
     }
 
     return true;

@@ -18,6 +18,7 @@ const bundled_modules = [_][]const u8{
     "editor_obj_buffer",
     "editor_tags",
     "editor_tree",
+    "editor_log",
 };
 
 pub fn build(b: *std.Build) !void {

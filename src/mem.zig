@@ -132,7 +132,7 @@ pub fn VirtualArray(comptime T: type) type {
                         new.reservation.ptr = @alignCast(@ptrCast(try windows.VirtualAlloc(
                             null,
                             max_size,
-                            windows.MEM_RESERVE | windows.MEM_COMMIT,
+                            windows.MEM_RESERVE | windows.MEM_COMMIT, // TODO: SHIT we need commit on page level
                             windows.PAGE_READWRITE,
                         )));
                         new.reservation.len = max_size;

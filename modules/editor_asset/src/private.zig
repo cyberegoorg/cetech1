@@ -230,7 +230,7 @@ var move_to_context_menu_i = editor.ObjContextMenuI.implement(struct {
 
 // Asset cntx menu
 // TODO: split this shit
-var asset_context_menu_i = editor.ObjContextMenuI.implement(struct {
+var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn isValid(
         allocator: std.mem.Allocator,
         dbc: *cetech1.cdb.Db,
@@ -244,6 +244,8 @@ var asset_context_menu_i = editor.ObjContextMenuI.implement(struct {
         _ = tab;
         _ = prop_idx;
         _ = in_set_obj;
+
+        if (context.id != editor.Contexts.debug.id) return false;
 
         var db = cdb.CdbDb.fromDbT(dbc, _cdb);
 
@@ -259,18 +261,8 @@ var asset_context_menu_i = editor.ObjContextMenuI.implement(struct {
         var valid = true;
         if (filter) |f| {
             valid = false;
-
-            switch (context.id) {
-                editor.Contexts.delete.id => {
-                    if (_coreui.uiFilterPass(allocator, f, "Revive asset", false) != null) return true;
-                    if (_coreui.uiFilterPass(allocator, f, "Delete asset", false) != null) return true;
-                },
-                editor.Contexts.debug.id => {
-                    if (_coreui.uiFilterPass(allocator, f, "Copy to clipboard", false) != null) return true;
-                    if (_coreui.uiFilterPass(allocator, f, "Force save", false) != null) return true;
-                },
-                else => {},
-            }
+            if (_coreui.uiFilterPass(allocator, f, "Copy to clipboard", false) != null) return true;
+            if (_coreui.uiFilterPass(allocator, f, "Force save", false) != null) return true;
         }
         return valid;
     }
@@ -285,6 +277,7 @@ var asset_context_menu_i = editor.ObjContextMenuI.implement(struct {
         in_set_obj: ?cdb.ObjId,
         filter: ?[:0]const u8,
     ) !void {
+        _ = context; // autofix
         _ = tab;
         _ = prop_idx;
         _ = in_set_obj;
@@ -300,49 +293,107 @@ var asset_context_menu_i = editor.ObjContextMenuI.implement(struct {
             is_root_folder = ref == null;
         }
 
-        switch (context.id) {
-            editor.Contexts.delete.id => {
-                if (_assetdb.isToDeleted(obj)) {
-                    if (_coreui.menuItem(allocator, coreui.Icons.Revive ++ " " ++ "Revive asset" ++ "###ReviveAsset", .{ .enabled = !is_root_folder }, filter)) {
-                        _assetdb.reviveDeleted(obj);
-                    }
-                } else {
-                    if (_coreui.menuItem(allocator, coreui.Icons.Delete ++ "  " ++ "Delete asset" ++ "###DeleteAsset", .{ .enabled = !is_root_folder }, filter)) {
-                        if (_coreui.getSelected(allocator, &db, selection)) |selected_objs| {
-                            defer allocator.free(selected_objs);
-                            for (selected_objs) |selected_obj| {
-                                if (_assetdb.isAssetFolder(selected_obj)) {
-                                    _assetdb.deleteFolder(&db, selected_obj) catch undefined;
-                                } else {
-                                    _assetdb.deleteAsset(&db, selected_obj) catch undefined;
-                                }
-                            }
+        if (_coreui.beginMenu(allocator, coreui.Icons.CopyToClipboard ++ " " ++ "Copy to clipboard", true, filter)) {
+            defer _coreui.endMenu();
+
+            if (_coreui.menuItem(allocator, "Asset UUID", .{}, filter)) {
+                const uuid = _assetdb.getUuid(obj).?;
+                var buff: [128]u8 = undefined;
+                const uuid_str = std.fmt.bufPrintZ(&buff, "{s}", .{uuid}) catch undefined;
+                _coreui.setClipboardText(uuid_str);
+            }
+        }
+
+        if (_coreui.menuItem(allocator, coreui.Icons.Save ++ " " ++ "Force save", .{}, filter)) {
+            if (_coreui.getSelected(allocator, &db, selection)) |selected_objs| {
+                defer allocator.free(selected_objs);
+                for (selected_objs) |selected_obj| {
+                    _assetdb.saveAsset(allocator, selected_obj) catch undefined;
+                }
+            }
+        }
+    }
+});
+
+var delete_context_menu_i = editor.ObjContextMenuI.implement(struct {
+    pub fn isValid(
+        allocator: std.mem.Allocator,
+        dbc: *cetech1.cdb.Db,
+        tab: *editor.TabO,
+        context: cetech1.strid.StrId64,
+        selection: cetech1.cdb.ObjId,
+        prop_idx: ?u32,
+        in_set_obj: ?cetech1.cdb.ObjId,
+        filter: ?[:0]const u8,
+    ) !bool {
+        _ = tab;
+        _ = prop_idx;
+        _ = in_set_obj;
+        if (context.id != editor.Contexts.delete.id) return false;
+
+        var db = cdb.CdbDb.fromDbT(dbc, _cdb);
+
+        if (_coreui.getSelected(allocator, &db, selection)) |selected_objs| {
+            defer allocator.free(selected_objs);
+            for (selected_objs) |obj| {
+                if (!assetdb.AssetType.isSameType(obj)) return false;
+                if (context.id != editor.Contexts.delete.id) continue;
+                if (_assetdb.getObjForAsset(obj)) |o| if (assetdb.ProjectType.isSameType(o)) return false;
+            }
+        }
+
+        var valid = true;
+        if (filter) |f| {
+            valid = false;
+            if (_coreui.uiFilterPass(allocator, f, "Revive asset", false) != null) return true;
+            if (_coreui.uiFilterPass(allocator, f, "Delete asset", false) != null) return true;
+        }
+        return valid;
+    }
+
+    pub fn menu(
+        allocator: std.mem.Allocator,
+        dbc: *cdb.Db,
+        tab: *editor.TabO,
+        context: strid.StrId64,
+        selection: cdb.ObjId,
+        prop_idx: ?u32,
+        in_set_obj: ?cdb.ObjId,
+        filter: ?[:0]const u8,
+    ) !void {
+        _ = context; // autofix
+        _ = tab;
+        _ = prop_idx;
+        _ = in_set_obj;
+
+        var db = cdb.CdbDb.fromDbT(dbc, _cdb);
+
+        const obj = _coreui.getFirstSelected(allocator, &db, selection);
+
+        var is_root_folder = false;
+        const is_folder = _assetdb.isAssetFolder(obj);
+        if (is_folder) {
+            const ref = assetdb.AssetType.readRef(&db, db.readObj(obj).?, .Folder);
+            is_root_folder = ref == null;
+        }
+
+        if (_assetdb.isToDeleted(obj)) {
+            if (_coreui.menuItem(allocator, coreui.Icons.Revive ++ " " ++ "Revive asset" ++ "###ReviveAsset", .{ .enabled = !is_root_folder }, filter)) {
+                _assetdb.reviveDeleted(obj);
+            }
+        } else {
+            if (_coreui.menuItem(allocator, coreui.Icons.Delete ++ "  " ++ "Delete asset" ++ "###DeleteAsset", .{ .enabled = !is_root_folder }, filter)) {
+                if (_coreui.getSelected(allocator, &db, selection)) |selected_objs| {
+                    defer allocator.free(selected_objs);
+                    for (selected_objs) |selected_obj| {
+                        if (_assetdb.isAssetFolder(selected_obj)) {
+                            _assetdb.deleteFolder(&db, selected_obj) catch undefined;
+                        } else {
+                            _assetdb.deleteAsset(&db, selected_obj) catch undefined;
                         }
                     }
                 }
-            },
-            editor.Contexts.debug.id => {
-                if (_coreui.beginMenu(allocator, coreui.Icons.CopyToClipboard ++ " " ++ "Copy to clipboard", true, filter)) {
-                    defer _coreui.endMenu();
-
-                    if (_coreui.menuItem(allocator, "Asset UUID", .{}, filter)) {
-                        const uuid = _assetdb.getUuid(obj).?;
-                        var buff: [128]u8 = undefined;
-                        const uuid_str = std.fmt.bufPrintZ(&buff, "{s}", .{uuid}) catch undefined;
-                        _coreui.setClipboardText(uuid_str);
-                    }
-                }
-
-                if (_coreui.menuItem(allocator, coreui.Icons.Save ++ " " ++ "Force save", .{}, filter)) {
-                    if (_coreui.getSelected(allocator, &db, selection)) |selected_objs| {
-                        defer allocator.free(selected_objs);
-                        for (selected_objs) |selected_obj| {
-                            _assetdb.saveAsset(allocator, selected_obj) catch undefined;
-                        }
-                    }
-                }
-            },
-            else => {},
+            }
         }
     }
 });
@@ -379,22 +430,17 @@ var create_context_menu_i = editor.ObjContextMenuI.implement(struct {
         if (contexts.id != editor.Contexts.create.id) return false;
 
         if (filter) |f| {
-            return _coreui.uiFilterPass(allocator, f, "Asset", false) != null;
+            var it = _apidb.getFirstImpl(editor.CreateAssetI);
+            while (it) |node| : (it = node.next) {
+                const iface = cetech1.apidb.ApiDbAPI.toInterface(editor.CreateAssetI, node);
+                const menu_name = iface.menu_item.?();
+
+                if (_coreui.uiFilterPass(allocator, f, cetech1.fromCstrZ(menu_name), false) != null) return true;
+            }
+            return false;
         }
+
         return true;
-        // if (filter) |f| {
-        //     var it = _apidb.getFirstImpl(editor.CreateAssetI);
-        //     while (it) |node| : (it = node.next) {
-        //         const iface = cetech1.apidb.ApiDbAPI.toInterface(editor.CreateAssetI, node);
-        //         const menu_name = iface.menu_item.?();
-        //         var buff: [256:0]u8 = undefined;
-        //         const label = std.fmt.bufPrintZ(&buff, "{s}", .{cetech1.fromCstrZ(menu_name)}) catch undefined;
-        //         _ = _coreui.uiFilterPass(allocator, f, label, false) orelse continue;
-        //         return true;
-        //     }
-        //     return false;
-        // }
-        // return true;
     }
 
     pub fn menu(
@@ -413,9 +459,16 @@ var create_context_menu_i = editor.ObjContextMenuI.implement(struct {
         _ = in_set_obj;
         var db = cdb.CdbDb.fromDbT(dbc, _cdb);
 
-        if (_coreui.beginMenu(allocator, coreui.Icons.AddAsset ++ "  " ++ "Asset" ++ "###AddAsset", true, filter)) {
-            defer _coreui.endMenu();
+        var menu_open = false;
+        if (filter == null) {
+            menu_open = _coreui.beginMenu(allocator, coreui.Icons.AddAsset ++ "  " ++ "Asset" ++ "###AddAsset", true, filter);
+        }
 
+        defer {
+            if (filter == null and menu_open) _coreui.endMenu();
+        }
+
+        if (menu_open or filter != null) {
             var it = _apidb.getFirstImpl(editor.CreateAssetI);
             while (it) |node| : (it = node.next) {
                 const iface = cetech1.apidb.ApiDbAPI.toInterface(editor.CreateAssetI, node);
@@ -477,7 +530,7 @@ var asset_visual_aspect = editor.UiVisualAspect.implement(struct {
         if (_assetdb.getUuid(obj)) |uuuid| {
             var buff: [256:0]u8 = undefined;
             const uuid_str = try std.fmt.bufPrintZ(&buff, "Asset UUID: {s}", .{uuuid});
-            _coreui.textUnformatted(uuid_str);
+            _coreui.text(uuid_str);
         }
 
         const asset_obj = _assetdb.getObjForAsset(obj).?;
@@ -776,19 +829,19 @@ fn formatTagsToLabel(allocator: std.mem.Allocator, db: *cdb.CdbDb, obj: cdb.ObjI
                 begin_pos = _coreui.getCursorPosX();
             }
 
-            _coreui.textUnformattedColored(tag_color, tag_lbl);
+            _coreui.textColored(tag_color, tag_lbl);
 
             if (_coreui.isItemHovered(.{})) {
                 _coreui.beginTooltip();
                 defer _coreui.endTooltip();
 
                 const name_lbl = try std.fmt.bufPrintZ(&tag_buf, coreui.Icons.Tag ++ " " ++ "{s}", .{tag_name});
-                _coreui.textUnformatted(name_lbl);
+                _coreui.text(name_lbl);
 
                 const tag_asset = _assetdb.getAssetForObj(tag).?;
                 const desription = assetdb.AssetType.readStr(db, db.readObj(tag_asset).?, .Description);
                 if (desription) |d| {
-                    _coreui.textUnformatted(d);
+                    _coreui.text(d);
                 }
             }
         }
@@ -1111,7 +1164,8 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
 
     try apidb.implOrRemove(editor.ObjContextMenuI, &move_to_context_menu_i, load);
     try apidb.implOrRemove(editor.ObjContextMenuI, &rename_context_menu_i, load);
-    try apidb.implOrRemove(editor.ObjContextMenuI, &asset_context_menu_i, load);
+    try apidb.implOrRemove(editor.ObjContextMenuI, &debug_context_menu_i, load);
+    try apidb.implOrRemove(editor.ObjContextMenuI, &delete_context_menu_i, load);
     try apidb.implOrRemove(editor.ObjContextMenuI, &create_context_menu_i, load);
     try apidb.implOrRemove(editor.CreateAssetI, &create_folder_i, load);
     try apidb.implOrRemove(coreui.RegisterTestsI, &register_tests_i, load);

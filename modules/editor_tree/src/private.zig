@@ -119,7 +119,7 @@ fn cdbObjTreeNode(
 
         const aasset_label = _editor.buffFormatObjLabel(allocator, &buff, db, obj, false) orelse "Not implemented";
         const aasset_color = _editor.getAssetColor(db, obj);
-        _coreui.textUnformattedColored(aasset_color, aasset_label);
+        _coreui.textColored(aasset_color, aasset_label);
 
         if (_coreui.selectedCount(allocator, db, selection) == 1) {
             _ = _coreui.setDragDropPayload("obj", &std.mem.toBytes(obj), .once);

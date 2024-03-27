@@ -354,7 +354,7 @@ pub const EditorTabTypeI = extern struct {
         if (!std.meta.hasFn(T, "title")) @compileError("implement me");
         if (!std.meta.hasFn(T, "create")) @compileError("implement me");
         if (!std.meta.hasFn(T, "destroy")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "menu")) @compileError("implement me");
+        //if (!std.meta.hasFn(T, "menu")) @compileError("implement me");
         if (!std.meta.hasFn(T, "ui")) @compileError("implement me");
 
         return EditorTabTypeI{
@@ -435,13 +435,13 @@ pub const EditorTabTypeI = extern struct {
                     };
                 }
             }.f,
-            .menu = struct {
+            .menu = if (std.meta.hasFn(T, "menu")) struct {
                 pub fn f(tab: *TabO) callconv(.C) void {
                     return T.menu(tab) catch |err| {
                         log.err("EditorTabTypeI.menu() failed with error {}", .{err});
                     };
                 }
-            }.f,
+            }.f else null,
             .ui = struct {
                 pub fn f(tab: *TabO) callconv(.C) void {
                     return T.ui(tab) catch |err| {

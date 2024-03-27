@@ -83,7 +83,7 @@
 
 ## Tracy profiler
 
-CeTech1 has builtin support for tracy profiler.
+CETech1 has builtin support for tracy profiler.
 
 > For more details go to [tracy](https://github.com/wolfpld/tracy) repository.
 

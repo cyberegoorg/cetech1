@@ -283,7 +283,14 @@ pub const CoreUIApi = struct {
     isItemToggledOpen: *const fn () bool,
     dummy: *const fn (args: Dummy) void,
     spacing: *const fn () void,
+
     getScrollX: *const fn () f32,
+    getScrollY: *const fn () f32,
+    getScrollMaxX: *const fn () f32,
+    getScrollMaxY: *const fn () f32,
+    setScrollHereY: *const fn (args: SetScrollHereY) void,
+    setScrollHereX: *const fn (args: SetScrollHereX) void,
+
     getFontSize: *const fn () f32,
 
     getStyle: *const fn () *Style,
@@ -299,8 +306,8 @@ pub const CoreUIApi = struct {
 
     colorConvertFloat4ToU32: *const fn (in: [4]f32) u32,
 
-    textUnformatted: *const fn (txt: []const u8) void,
-    textUnformattedColored: *const fn (color: [4]f32, txt: []const u8) void,
+    text: *const fn (txt: []const u8) void,
+    textColored: *const fn (color: [4]f32, txt: []const u8) void,
 
     colorPicker4: *const fn (label: [:0]const u8, args: ColorPicker4) bool,
     colorEdit4: *const fn (label: [:0]const u8, args: ColorEdit4) bool,
@@ -342,15 +349,15 @@ pub const CoreUIApi = struct {
     sameLine: *const fn (args: SameLine) void,
 
     inputText: *const fn (label: [:0]const u8, args: InputText) bool,
-    inputFloat: *const fn (label: [:0]const u8, args: InputFloat) bool,
-    inputDouble: *const fn (label: [:0]const u8, args: InputDouble) bool,
+    inputF32: *const fn (label: [:0]const u8, args: InputF32) bool,
+    inputF64: *const fn (label: [:0]const u8, args: InputF64) bool,
     inputI32: *const fn (label: [:0]const u8, args: InputScalarGen(i32)) bool,
     inputU32: *const fn (label: [:0]const u8, args: InputScalarGen(u32)) bool,
     inputI64: *const fn (label: [:0]const u8, args: InputScalarGen(i64)) bool,
     inputU64: *const fn (label: [:0]const u8, args: InputScalarGen(u64)) bool,
 
-    dragFloat: *const fn (label: [:0]const u8, args: DragFloatGen(f32)) bool,
-    dragDouble: *const fn (label: [:0]const u8, args: DragScalarGen(f64)) bool,
+    dragF32: *const fn (label: [:0]const u8, args: DragFloatGen(f32)) bool,
+    dragF64: *const fn (label: [:0]const u8, args: DragScalarGen(f64)) bool,
     dragI32: *const fn (label: [:0]const u8, args: DragScalarGen(i32)) bool,
     dragU32: *const fn (label: [:0]const u8, args: DragScalarGen(u32)) bool,
     dragI64: *const fn (label: [:0]const u8, args: DragScalarGen(i64)) bool,
@@ -377,6 +384,7 @@ pub const CoreUIApi = struct {
     separatorText: *const fn (label: [:0]const u8) void,
 
     setNextItemWidth: *const fn (item_width: f32) void,
+    setNextWindowSize: *const fn (args: SetNextWindowSize) void,
 
     beginTable: *const fn (name: [:0]const u8, args: BeginTable) bool,
     endTable: *const fn () void,
@@ -384,6 +392,8 @@ pub const CoreUIApi = struct {
     tableHeadersRow: *const fn () void,
     tableNextColumn: *const fn () void,
     tableNextRow: *const fn (args: TableNextRow) void,
+    tableSetupScrollFreeze: *const fn (cols: i32, rows: i32) void,
+
     getItemRectMax: *const fn () [2]f32,
     getItemRectMin: *const fn () [2]f32,
     getCursorPosX: *const fn () f32,
@@ -447,18 +457,33 @@ pub const CoreUIApi = struct {
     testGetResult: *const fn () TestResult,
     testSetRunSpeed: *const fn (speed: ImGuiTestRunSpeed) void,
     testExportJunitResult: *const fn (filename: [:0]const u8) void,
-
     testCheck: *const fn (src: std.builtin.SourceLocation, flags: CheckFlags, resul: bool, expr: [:0]const u8) bool,
+
+    setScaleFactor: *const fn (scale_factor: f32) void,
+    getScaleFactor: *const fn () f32,
+};
+
+// Copy from zgui (THc a.k.a Temp hack)
+// TODO: Make own abstract types
+pub const Ident = u32;
+
+const SetScrollHereX = struct {
+    center_x_ratio: f32 = 0.5,
+};
+const SetScrollHereY = struct {
+    center_y_ratio: f32 = 0.5,
+};
+
+const SetNextWindowSize = struct {
+    w: f32,
+    h: f32,
+    cond: Condition = .none,
 };
 
 pub const TestResult = struct {
     count_tested: i32,
     count_success: i32,
 };
-
-// Copy from zgui (THc a.k.a Temp hack)
-// TODO: Make own abstract types
-pub const Ident = u32;
 
 const Begin = struct {
     popen: ?*bool = null,
@@ -903,7 +928,7 @@ pub const TableNextRow = struct {
     min_row_height: f32 = 0,
 };
 
-const InputFloat = struct {
+const InputF32 = struct {
     v: *f32,
     step: f32 = 0.0,
     step_fast: f32 = 0.0,
@@ -911,7 +936,7 @@ const InputFloat = struct {
     flags: InputTextFlags = .{},
 };
 
-const InputDouble = struct {
+const InputF64 = struct {
     v: *f64,
     step: f64 = 0.0,
     step_fast: f64 = 0.0,

@@ -14,13 +14,15 @@ const tempalloc = @import("tempalloc.zig");
 const kernel = @import("kernel.zig");
 
 const apidb = @import("apidb.zig");
-const log = @import("log.zig");
+
 const profiler = @import("profiler.zig");
 const assetdb = @import("assetdb.zig");
 
 const public = @import("../coreui.zig");
 const cetech1 = @import("../cetech1.zig");
 const Icons = cetech1.coreui.CoreIcons;
+
+const log = std.log.scoped(.coreui);
 
 const _main_font = @embedFile("./fonts/Roboto-Medium.ttf");
 const _fa_solid_font = @embedFile("./fonts/fa-solid-900.ttf");
@@ -38,6 +40,8 @@ var _enabled_ui = false;
 
 var _junit_filename_buff: [1024:0]u8 = undefined;
 var _junit_filename: ?[:0]const u8 = null;
+var _scale_factor: ?f32 = null;
+var _new_scale_factor: ?f32 = null;
 
 const _kernel_hook_i = cetech1.kernel.KernelLoopHookI.implement(struct {
     pub fn beginLoop() !void {
@@ -122,8 +126,8 @@ pub var api = public.CoreUIApi{
     .popStyleColor = @ptrCast(&zgui.popStyleColor),
     .tableSetBgColor = @ptrCast(&zgui.tableSetBgColor),
     .colorConvertFloat4ToU32 = @ptrCast(&zgui.colorConvertFloat4ToU32),
-    .textUnformatted = @ptrCast(&zgui.textUnformatted),
-    .textUnformattedColored = @ptrCast(&zgui.textUnformattedColored),
+    .text = @ptrCast(&zgui.textUnformatted),
+    .textColored = @ptrCast(&zgui.textUnformattedColored),
     .colorPicker4 = @ptrCast(&zgui.colorPicker4),
     .colorEdit4 = @ptrCast(&zgui.colorEdit4),
     .beginMainMenuBar = @ptrCast(&zgui.beginMainMenuBar),
@@ -139,6 +143,7 @@ pub var api = public.CoreUIApi{
     .separator = @ptrCast(&zgui.separator),
     .separatorText = @ptrCast(&zgui.separatorText),
     .setNextItemWidth = @ptrCast(&zgui.setNextItemWidth),
+    .setNextWindowSize = @ptrCast(&zgui.setNextWindowSize),
     .pushPtrId = @ptrCast(&zgui.pushPtrId),
     .pushIntId = @ptrCast(&zgui.pushIntId),
     .pushObjUUID = pushObjUUID,
@@ -158,12 +163,15 @@ pub var api = public.CoreUIApi{
     .isItemClicked = @ptrCast(&zgui.isItemClicked),
     .isItemActivated = @ptrCast(&zgui.isItemActivated),
     .isWindowFocused = @ptrCast(&zgui.isWindowFocused),
+
     .beginTable = @ptrCast(&zgui.beginTable),
     .endTable = @ptrCast(&zgui.endTable),
     .tableSetupColumn = @ptrCast(&zgui.tableSetupColumn),
     .tableHeadersRow = @ptrCast(&zgui.tableHeadersRow),
     .tableNextColumn = @ptrCast(&zgui.tableNextColumn),
     .tableNextRow = @ptrCast(&zgui.tableNextRow),
+    .tableSetupScrollFreeze = @ptrCast(&zgui.tableSetupScrollFreeze),
+
     .getItemRectMax = @ptrCast(&zgui.getItemRectMax),
     .getItemRectMin = @ptrCast(&zgui.getItemRectMin),
     .getCursorPosX = @ptrCast(&zgui.getCursorPosX),
@@ -184,14 +192,14 @@ pub var api = public.CoreUIApi{
     .smallButton = @ptrCast(&zgui.smallButton),
     .invisibleButton = @ptrCast(&zgui.invisibleButton),
     .inputText = @ptrCast(&zgui.inputText),
-    .inputFloat = @ptrCast(&zgui.inputFloat),
-    .inputDouble = @ptrCast(&zgui.inputDouble),
+    .inputF32 = @ptrCast(&zgui.inputFloat),
+    .inputF64 = @ptrCast(&zgui.inputDouble),
     .inputI32 = inputI32,
     .inputU32 = inputU32,
     .inputI64 = inputI64,
     .inputU64 = inputU64,
-    .dragFloat = @ptrCast(&zgui.dragFloat),
-    .dragDouble = dragDouble,
+    .dragF32 = @ptrCast(&zgui.dragFloat),
+    .dragF64 = dragDouble,
     .dragI32 = dragI32,
     .dragU32 = dragU32,
     .dragU64 = dragU64,
@@ -202,6 +210,11 @@ pub var api = public.CoreUIApi{
     .dummy = @ptrCast(&zgui.dummy),
     .spacing = @ptrCast(&zgui.spacing),
     .getScrollX = @ptrCast(&zgui.getScrollX),
+    .getScrollY = @ptrCast(&zgui.getScrollY),
+    .getScrollMaxX = @ptrCast(&zgui.getScrollMaxX),
+    .getScrollMaxY = @ptrCast(&zgui.getScrollMaxY),
+    .setScrollHereY = @ptrCast(&zgui.setScrollHereY),
+    .setScrollHereX = @ptrCast(&zgui.setScrollHereX),
 
     .supportFileDialog = supportFileDialog,
     .openFileDialog = openFileDialog,
@@ -255,7 +268,17 @@ pub var api = public.CoreUIApi{
     .testDragAndDrop = @ptrCast(&zguite.TestContext.dragAndDrop),
     .testKeyDown = @ptrCast(&zguite.TestContext.keyDown),
     .testKeyUp = @ptrCast(&zguite.TestContext.keyUp),
+    .setScaleFactor = setScaleFactor,
+    .getScaleFactor = getScaleFactor,
 };
+
+fn setScaleFactor(scale_factor: f32) void {
+    _new_scale_factor = scale_factor;
+}
+
+fn getScaleFactor() f32 {
+    return _scale_factor.?;
+}
 
 fn supportFileDialog() bool {
     return cetech1_options.enable_nfd;
@@ -408,11 +431,12 @@ fn uiFilterPass(allocator: std.mem.Allocator, filter: [:0]const u8, value: [:0]c
         tokens.append(word) catch return null;
     }
     //return 0;
+
     return zf.rank(value, tokens.items, false, !is_path);
 }
 
 fn uiFilter(buf: []u8, filter: ?[:0]const u8) ?[:0]const u8 {
-    api.textUnformatted(Icons.FA_MAGNIFYING_GLASS);
+    api.text(Icons.FA_MAGNIFYING_GLASS);
     api.sameLine(.{});
 
     var input_buff: [128:0]u8 = undefined;
@@ -465,16 +489,8 @@ pub fn registerToApi() !void {
     try apidb.api.setZigApi(public.CoreUIApi, &api);
 }
 
-pub fn enableWithWindow(window: *cetech1.system.Window, gpuctx: *cetech1.gpu.GpuContext) !void {
-    var true_window: *zglfw.Window = @ptrCast(window);
-    _true_gpuctx = @alignCast(@ptrCast(gpuctx));
-
-    const scale_factor = scale_factor: {
-        const scale = true_window.getContentScale();
-        break :scale_factor @max(scale[0], scale[1]);
-    };
-
-    const sized_pixel = std.math.floor(16.0 * scale_factor);
+pub fn initFonts(font_size: f32, scale_factor: f32) void {
+    const sized_pixel = std.math.floor(font_size * scale_factor);
 
     // Load main font
     var main_cfg = zgui.FontConfig.init();
@@ -492,11 +508,28 @@ pub fn enableWithWindow(window: *cetech1.system.Window, gpuctx: *cetech1.gpu.Gpu
         &[_]u16{ c.ICON_MIN_FA, c.ICON_MAX_FA, 0 },
     );
 
+    zgui.getStyle().scaleAllSizes(scale_factor);
+}
+
+pub fn enableWithWindow(window: *cetech1.system.Window, gpuctx: *cetech1.gpu.GpuContext) !void {
+    var true_window: *zglfw.Window = @ptrCast(window);
+    _true_gpuctx = @alignCast(@ptrCast(gpuctx));
+
+    _scale_factor = _scale_factor orelse scale_factor: {
+        const scale = true_window.getContentScale();
+        break :scale_factor @max(scale[0], scale[1]);
+    };
+
+    initFonts(16, _scale_factor.?);
+
+    zgui.getStyle().frame_rounding = 8;
+
     zgui.io.setConfigFlags(zgui.ConfigFlags{
         .nav_enable_keyboard = true,
         .nav_enable_gamepad = true,
         .nav_enable_set_mouse_pos = true,
     });
+    zgui.io.setConfigWindowsMoveFromTitleBarOnly(true);
 
     zgui.backend.init(
         true_window,
@@ -504,9 +537,6 @@ pub fn enableWithWindow(window: *cetech1.system.Window, gpuctx: *cetech1.gpu.Gpu
         @intFromEnum(zgpu.GraphicsContext.swapchain_format),
         @intFromEnum(zgpu.wgpu.TextureFormat.undef),
     );
-
-    zgui.getStyle().frame_rounding = 8;
-    zgui.getStyle().scaleAllSizes(scale_factor);
 
     _backed_initialised = true;
 
@@ -552,11 +582,25 @@ pub fn enableWithWindow(window: *cetech1.system.Window, gpuctx: *cetech1.gpu.Gpu
     }
 }
 
+extern fn ImGui_ImplWGPU_NewFrame() void;
+extern fn ImGui_ImplGlfw_NewFrame() void;
+
 fn newFrame() void {
-    zgui.backend.newFrame(
-        _true_gpuctx.?.swapchain_descriptor.width,
-        _true_gpuctx.?.swapchain_descriptor.height,
+    if (_new_scale_factor) |nsf| {
+        initFonts(16, nsf);
+        _scale_factor = nsf;
+    }
+
+    ImGui_ImplWGPU_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+
+    zgui.io.setDisplaySize(
+        @as(f32, @floatFromInt(_true_gpuctx.?.swapchain_descriptor.width)),
+        @as(f32, @floatFromInt(_true_gpuctx.?.swapchain_descriptor.height)),
     );
+    zgui.io.setDisplayFramebufferScale(1.0, 1.0);
+
+    zgui.newFrame();
 }
 
 fn afterAll() void {

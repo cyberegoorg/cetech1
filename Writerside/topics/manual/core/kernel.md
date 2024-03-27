@@ -1,6 +1,6 @@
 # Kernel
 
-`Kernel` is main part and entry point for CeTech1. Public api is defined `src/core/kernel.zig`
+`Kernel` is main part and entry point for CETech1. Public api is defined `src/core/kernel.zig`
 `Kernel` purpose is load and init all modules and run main loop that is make by separate [Phases](#update-phases).
 
 ## Kernel task

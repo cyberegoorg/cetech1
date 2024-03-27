@@ -30,6 +30,7 @@
         .editor_obj_buffer = .{ .path = "modules/editor_obj_buffer" },
         .editor_tags = .{ .path = "modules/editor_tags" },
         .editor_tree = .{ .path = "modules/editor_tree" },
+        .editor_log = .{ .path = "modules/editor_log" },
         //
 
         // Externals

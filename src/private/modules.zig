@@ -144,7 +144,7 @@ pub fn unloadAll() !void {
     for (_modules_map.values()) |*it| {
         const alloc_item = _modules_allocator_map.getPtr(cetech1.fromCstr(it.desc.name)).?;
 
-        if (0 == it.desc.module_fce.?(&apidb.apidb_global_c, @ptrCast(&alloc_item.*.allocator), 0, 1)) {
+        if (0 == it.desc.module_fce.?(&apidb.apidb_global_c, @ptrCast(&alloc_item.*.allocator), 0, 0)) {
             log.err("Problem with unload module {s}\n", .{it.desc.name});
         }
     }

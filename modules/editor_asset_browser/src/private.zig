@@ -152,7 +152,7 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
 
         const root_folder = _assetdb.getRootFolder();
         if (root_folder.isEmpty()) {
-            _coreui.textUnformatted("No root folder");
+            _coreui.text("No root folder");
             return;
         }
 

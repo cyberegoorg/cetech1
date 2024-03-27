@@ -17,7 +17,7 @@ pub const std_options = struct {
 // Log for module
 const log = std.log.scoped(.editor_foo_tab);
 
-const FOO_TAB_NAME = "ct_editor_foo_tab";
+const TAB_NAME = "ct_editor_foo_tab";
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
@@ -39,8 +39,8 @@ const FooTab = struct {
 
 // Fill editor tab interface
 var foo_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
-    .tab_name = FOO_TAB_NAME,
-    .tab_hash = .{ .id = cetech1.strid.strId32(FOO_TAB_NAME).id },
+    .tab_name = TAB_NAME,
+    .tab_hash = .{ .id = cetech1.strid.strId32(TAB_NAME).id },
 }, struct {
 
     // Return name for menu /Tabs/
@@ -54,7 +54,7 @@ var foo_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
         return Icons.FA_ROBOT ++ " Foo tab";
     }
 
-    // Create new FooTab instantce
+    // Create new tab instantce
     pub fn create(db: *cdb.Db) !?*editor.EditorTabI {
         _ = db;
         var tab_inst = _allocator.create(FooTab) catch undefined;
@@ -65,7 +65,7 @@ var foo_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
         return &tab_inst.tab_i;
     }
 
-    // Destroy FooTab instantce
+    // Destroy tab instantce
     pub fn destroy(tab_inst: *editor.EditorTabI) !void {
         const tab_o: *FooTab = @alignCast(@ptrCast(tab_inst.inst));
         _allocator.destroy(tab_o);
@@ -108,7 +108,7 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.test_tab_vt_ptr = try apidb.globalVar(editor.EditorTabTypeI, MODULE_NAME, FOO_TAB_NAME, .{});
+    _g.test_tab_vt_ptr = try apidb.globalVar(editor.EditorTabTypeI, MODULE_NAME, TAB_NAME, .{});
     // Patch vt pointer to new.
     _g.test_tab_vt_ptr.* = foo_tab;
 
