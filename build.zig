@@ -94,6 +94,7 @@ pub fn build(b: *std.Build) !void {
         .backend = .glfw_wgpu,
         .target = target,
         .with_te = true,
+        //.with_implot = false,
     });
 
     // ZGLFW

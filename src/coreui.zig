@@ -490,7 +490,7 @@ const Begin = struct {
     flags: WindowFlags = .{},
 };
 
-pub const WindowFlags = packed struct(u32) {
+pub const WindowFlags = packed struct(c_int) {
     no_title_bar: bool = false,
     no_resize: bool = false,
     no_move: bool = false,
@@ -507,11 +507,12 @@ pub const WindowFlags = packed struct(u32) {
     no_bring_to_front_on_focus: bool = false,
     always_vertical_scrollbar: bool = false,
     always_horizontal_scrollbar: bool = false,
-    always_use_window_padding: bool = false,
+    //always_use_window_padding: bool = false,
+    //_removed: u1 = 0,
     no_nav_inputs: bool = false,
     no_nav_focus: bool = false,
     unsaved_document: bool = false,
-    _padding: u12 = 0,
+    _padding: u13 = 0,
 
     pub const no_nav = WindowFlags{ .no_nav_inputs = true, .no_nav_focus = true };
     pub const no_decoration = WindowFlags{
@@ -527,6 +528,19 @@ pub const WindowFlags = packed struct(u32) {
     };
 };
 
+pub const ChildFlags = packed struct(c_int) {
+    border: bool = false,
+    no_move: bool = false,
+    always_use_window_padding: bool = false,
+    resize_x: bool = false,
+    resize_y: bool = false,
+    auto_resize_x: bool = false,
+    auto_resize_y: bool = false,
+    always_auto_resize: bool = false,
+    frame_style: bool = false,
+    _padding: u23 = 0,
+};
+
 pub const MenuItem = struct {
     shortcut: ?[:0]const u8 = null,
     selected: bool = false,
@@ -539,7 +553,7 @@ pub const MenuItemPtr = struct {
     enabled: bool = true,
 };
 
-pub const TreeNodeFlags = packed struct(u32) {
+pub const TreeNodeFlags = packed struct(c_int) {
     selected: bool = false,
     framed: bool = false,
     allow_item_overlap: bool = false,
@@ -553,8 +567,9 @@ pub const TreeNodeFlags = packed struct(u32) {
     frame_padding: bool = false,
     span_avail_width: bool = false,
     span_full_width: bool = false,
+    span_all_columns: bool = false,
     nav_left_jumps_back_here: bool = false,
-    _padding: u18 = 0,
+    _padding: u17 = 0,
 
     pub const collapsing_header = TreeNodeFlags{
         .framed = true,
@@ -563,7 +578,7 @@ pub const TreeNodeFlags = packed struct(u32) {
     };
 };
 
-pub const HoveredFlags = packed struct(u32) {
+pub const HoveredFlags = packed struct(c_int) {
     child_windows: bool = false,
     root_window: bool = false,
     any_window: bool = false,
@@ -572,13 +587,16 @@ pub const HoveredFlags = packed struct(u32) {
     allow_when_blocked_by_popup: bool = false,
     _reserved1: bool = false,
     allow_when_blocked_by_active_item: bool = false,
-    allow_when_overlapped: bool = false,
+    allow_when_overlapped_by_item: bool = false,
+    allow_when_overlapped_by_window: bool = false,
     allow_when_disabled: bool = false,
     no_nav_override: bool = false,
+    allow_when_overlapped: bool = false,
+    for_tooltip: bool = false,
     delay_normal: bool = false,
     delay_short: bool = false,
     no_shared_delay: bool = false,
-    _padding: u18 = 0,
+    _padding: u15 = 0,
 
     pub const rect_only = HoveredFlags{
         .allow_when_blocked_by_popup = true,
@@ -668,6 +686,18 @@ pub const Key = enum(u32) {
     f10,
     f11,
     f12,
+    f13,
+    f14,
+    f15,
+    f16,
+    f17,
+    f18,
+    f19,
+    f20,
+    f21,
+    f22,
+    f23,
+    f24,
     apostrophe,
     comma,
     minus,
@@ -701,6 +731,9 @@ pub const Key = enum(u32) {
     keypad_add,
     keypad_enter,
     keypad_equal,
+
+    app_back,
+    app_forward,
 
     gamepad_start,
     gamepad_back,
@@ -966,11 +999,12 @@ pub const PopupFlags = packed struct(c_int) {
     _reserved0: bool = false,
     _reserved1: bool = false,
 
+    no_reopen: bool = false,
     no_open_over_existing_popup: bool = false,
     no_open_over_items: bool = false,
     any_popup_id: bool = false,
     any_popup_level: bool = false,
-    _padding: u23 = 0,
+    _padding: u22 = 0,
 
     pub const any_popup = PopupFlags{ .any_popup_id = true, .any_popup_level = true };
 };
@@ -1161,6 +1195,8 @@ pub const Style = extern struct {
     tab_rounding: f32,
     tab_border_size: f32,
     tab_min_width_for_close_button: f32,
+    tab_bar_border_size: f32,
+    table_angled_header_angle: f32,
     color_button_position: Direction,
     button_text_align: [2]f32,
     selectable_text_align: [2]f32,
@@ -1178,6 +1214,13 @@ pub const Style = extern struct {
 
     colors: [@typeInfo(StyleCol).Enum.fields.len][4]f32,
 
+    HoverStationaryDelay: f32,
+    HoverDelayShort: f32,
+    HoverDelayNormal: f32,
+
+    HoverFlagsForTooltipMouse: c_int,
+    HoverFlagsForTooltipNav: c_int,
+
     /// `pub fn init() Style`
     pub const init = zguiStyle_Init;
     extern fn zguiStyle_Init() Style;
@@ -1187,10 +1230,10 @@ pub const Style = extern struct {
     extern fn zguiStyle_ScaleAllSizes(style: *Style, scale_factor: f32) void;
 
     pub fn getColor(style: Style, idx: StyleCol) [4]f32 {
-        return style.colors[@intFromEnum(idx)];
+        return style.colors[@intCast(@intFromEnum(idx))];
     }
     pub fn setColor(style: *Style, idx: StyleCol, color: [4]f32) void {
-        style.colors[@intFromEnum(idx)] = color;
+        style.colors[@intCast(@intFromEnum(idx))] = color;
     }
 };
 
@@ -1206,7 +1249,7 @@ const InvisibleButton = struct {
     flags: ButtonFlags = .{},
 };
 
-pub const StyleVar = enum(u32) {
+pub const StyleVar = enum(c_int) {
     alpha, // 1f
     disabled_alpha, // 1f
     window_padding, // 2f
@@ -1230,6 +1273,7 @@ pub const StyleVar = enum(u32) {
     grab_min_size, // 1f
     grab_rounding, // 1f
     tab_rounding, // 1f
+    tab_border_size, // 2f
     button_text_align, // 2f
     selectable_text_align, // 2f
     separator_text_border_size, // 1f
@@ -1255,7 +1299,7 @@ const BeginChild = struct {
     w: f32 = 0.0,
     h: f32 = 0.0,
     border: bool = false,
-    flags: WindowFlags = .{},
+    flags: ChildFlags = .{},
 };
 
 const Dummy = struct {
