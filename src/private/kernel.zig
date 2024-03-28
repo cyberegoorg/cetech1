@@ -24,6 +24,9 @@ const profiler = cetech1.profiler;
 const strid = cetech1.strid;
 const cetech1_options = @import("cetech1_options");
 
+const externals_credits = @embedFile("embed/externals_credit.md");
+const authors = @embedFile("embed/AUTHORS.md");
+
 const MODULE_NAME = "kernel";
 
 const log = std.log.scoped(.kernel);
@@ -121,7 +124,17 @@ pub var api = cetech1.kernel.KernelApi{
     .isTestigMode = isTestigMode,
     .getMainWindow = getMainWindow,
     .getGpuCtx = getGpuCtx,
+    .getExternalsCredit = getExternalsCredit,
+    .getAuthors = getAuthors,
 };
+
+fn getExternalsCredit() [:0]const u8 {
+    return externals_credits;
+}
+
+fn getAuthors() [:0]const u8 {
+    return authors;
+}
 
 fn getMainWindow() ?*cetech1.system.Window {
     return main_window;

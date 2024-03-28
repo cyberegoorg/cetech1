@@ -85,11 +85,11 @@ pub fn levelIcon(level: cetech1.log.LogAPI.Level) [:0]const u8 {
 
 pub fn levelColor(level: cetech1.log.LogAPI.Level) [4]f32 {
     if (!_editor.isColorsEnabled()) return _coreui.getStyle().getColor(.text);
-
+    const one = 0.80;
     return switch (level) {
-        .err => .{ 1.0, 0.0, 0.0, 1.0 },
-        .warn => .{ 0.7, 0.7, 0.0, 1.0 },
-        .debug => .{ 0.0, 1.0, 0.0, 1.0 },
+        .err => .{ one, 0.0, 0.0, 1.0 },
+        .warn => .{ one, one, 0.0, 1.0 },
+        .debug => .{ 0.0, one, 0.0, 1.0 },
         else => _coreui.getStyle().getColor(.text),
     };
 }

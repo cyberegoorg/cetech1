@@ -856,10 +856,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_create_new_folder",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_empty");
                     ctx.yield(_coreui, 1);
@@ -880,10 +876,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_create_new_tag",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_empty");
                     ctx.yield(_coreui, 1);
@@ -903,10 +895,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_rename_asset",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_asset");
                     ctx.yield(_coreui, 1);
@@ -929,10 +917,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_rename_multiple_asset",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_asset");
                     ctx.yield(_coreui, 1);
@@ -991,10 +975,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_move_asset_by_ctx_menu",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_move");
                     ctx.yield(_coreui, 1);
@@ -1016,10 +996,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_move_folder_by_ctx_menu",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_move");
                     ctx.yield(_coreui, 1);
@@ -1041,10 +1017,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_delete_and_revive_folder_by_ctx_menu",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_move");
                     ctx.yield(_coreui, 1);
@@ -1082,10 +1054,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_delete_and_revive_asset_by_ctx_menu",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_move");
                     ctx.yield(_coreui, 1);

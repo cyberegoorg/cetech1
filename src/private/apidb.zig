@@ -89,7 +89,6 @@ pub fn deinit() void {
         _allocator.free(entry.key_ptr.*);
         _allocator.free(entry.value_ptr.*);
     }
-
     _global_var_map.deinit();
 
     _api_map_pool.deinit();
@@ -107,15 +106,15 @@ fn _toBytes(ptr: *const anyopaque, ptr_size: usize) []u8 {
 
 fn globalVar(module: []const u8, var_name: []const u8, size: usize, default: []const u8) !*anyopaque {
     const combine_name = try std.fmt.allocPrint(_allocator, "{s}:{s}", .{ module, var_name });
+    defer _allocator.free(combine_name);
     const v = _global_var_map.get(combine_name);
     if (v == null) {
         const data = try _allocator.alloc(u8, size);
         @memcpy(data, default);
-        try _global_var_map.put(combine_name, data);
+        try _global_var_map.put(try _allocator.dupe(u8, combine_name), data);
         return data.ptr;
     }
 
-    _allocator.free(combine_name);
     return v.?.ptr;
 }
 

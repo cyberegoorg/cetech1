@@ -1,15 +1,14 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-pub const min_zig_version = std.SemanticVersion{ .major = 0, .minor = 12, .patch = 0, .pre = "dev.2063" };
-
-const version: std.SemanticVersion = .{ .major = 0, .minor = 1, .patch = 0, .pre = "a1" };
+const min_zig_version = std.SemanticVersion.parse(@embedFile(".zigversion")) catch @panic("Where is .zigversion?");
+const version = std.SemanticVersion.parse(@embedFile(".version")) catch @panic("Where is .version?");
 
 const bundled_modules = [_][]const u8{
     "bar",
     "foo",
-    "editor_foo_tab",
     "editor",
+    "editor_foo_tab",
     "editor_asset",
     "editor_asset_browser",
     "editor_explorer",
@@ -21,11 +20,38 @@ const bundled_modules = [_][]const u8{
     "editor_log",
 };
 
+const externals = .{
+    // ZIG
+    .{ .name = "zig", .file = "zig/LICENSE" },
+
+    // ImGui
+    .{ .name = "imgui", .file = "externals/shared/lib/zig-gamedev/libs/zgui/libs/imgui/LICENSE.txt" },
+    .{ .name = "imgui_test_engine", .file = "externals/shared/lib/zig-gamedev/libs/zgui/libs/imgui_test_engine/LICENSE.txt" },
+
+    // zig-gamedev
+    .{ .name = "zig-gamedev", .file = "externals/shared/lib/zig-gamedev/LICENSE" },
+
+    // GLFW
+    .{ .name = "glfw", .file = "externals/shared/lib/zig-gamedev/libs/zglfw/libs/glfw/LICENSE.md" },
+
+    // SDL_GameControllerDB
+    .{ .name = "SDL_GameControllerDB", .file = "externals/shared/lib/SDL_GameControllerDB/LICENSE" },
+
+    // zf
+    .{ .name = "zf", .file = "externals/shared/lib/zf/LICENSE" },
+
+    // zig-uuid
+    .{ .name = "zig-uuid", .file = "externals/shared/lib/zig-uuid/LICENSE.md" },
+
+    // nativefiledialog-extended
+    .{ .name = "nativefiledialog-extended", .file = "externals/shared/lib/znfde/nativefiledialog/LICENSE" },
+
+    // mach-gamemode
+    .{ .name = "mach-gamemode", .file = "externals/shared/lib/mach-gamemode/LICENSE" },
+};
+
 pub fn build(b: *std.Build) !void {
     try ensureZigVersion();
-
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
 
     //
     // OPTIONS
@@ -51,68 +77,181 @@ pub fn build(b: *std.Build) !void {
     options_step.addOption(std.SemanticVersion, "version", version);
     const options_module = options_step.createModule();
 
-    // TODO: Custom step?
-    try generateStatic(b, options.modules);
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
 
     //
     // Extrnals
     //
 
     // UUID
-    const uuid_module = b.dependency("uuid", .{}).module("Uuid");
+    const uuid = b.dependency(
+        "uuid",
+        .{
+            .target = target,
+            .optimize = optimize,
+        },
+    );
 
     // ZF
-    const zf_module = b.dependency("zf", .{}).module("zf");
+    const zf = b.dependency(
+        "zf",
+        .{
+            .target = target,
+            .optimize = optimize,
+        },
+    );
 
     // ZNFDE
-    const znfde = b.dependency("znfde", .{
-        .with_portal = options.nfd_portal,
-        .target = target,
-    });
+    const znfde = b.dependency(
+        "znfde",
+        .{
+            .target = target,
+            .optimize = optimize,
+            .with_portal = options.nfd_portal,
+        },
+    );
 
     // Mach gamemode
-    const mach_gamemode_module = b.dependency(
+    const mach_gamemode = b.dependency(
         "mach_gamemode",
-        .{ .target = target },
-    ).module("mach-gamemode");
+        .{
+            .target = target,
+            .optimize = optimize,
+        },
+    );
 
     // Tracy
-    const ztracy = b.dependency("ztracy", .{
-        .enable_ztracy = options.enable_tracy,
-        .enable_fibers = false,
-        .on_demand = options.tracy_on_demand,
-        .target = target,
-    });
+    const ztracy = b.dependency(
+        "ztracy",
+        .{
+            .target = target,
+            .optimize = optimize,
+            .enable_ztracy = options.enable_tracy,
+            .enable_fibers = false,
+            .on_demand = options.tracy_on_demand,
+        },
+    );
 
     // ZJobs
-    const zjobs = b.dependency("zjobs", .{
-        .target = target,
-    });
+    const zjobs = b.dependency(
+        "zjobs",
+        .{
+            .target = target,
+            .optimize = optimize,
+        },
+    );
 
     // ZGUI
-    const zgui = b.dependency("zgui", .{
-        .backend = .glfw_wgpu,
-        .target = target,
-        .with_te = true,
-    });
+    const zgui = b.dependency(
+        "zgui",
+        .{
+            .target = target,
+            .optimize = optimize,
+            .backend = .glfw_wgpu,
+            .with_te = true,
+        },
+    );
 
     // ZGLFW
-    const zglfw = b.dependency("zglfw", .{
-        .target = target,
-    });
+    const zglfw = b.dependency(
+        "zglfw",
+        .{
+            .target = target,
+            .optimize = optimize,
+        },
+    );
 
     // ZPOOL
-    const zpool = b.dependency("zpool", .{
-        .target = target,
-    });
+    const zpool = b.dependency(
+        "zpool",
+        .{
+            .target = target,
+            .optimize = optimize,
+        },
+    );
 
     // ZGPU
-    const zgpu = b.dependency("zgpu", .{
-        .target = target,
+    const zgpu = b.dependency(
+        "zgpu",
+        .{
+            .target = target,
+            .optimize = optimize,
+        },
+    );
+
+    //
+    // TOOLS
+    //
+
+    const copy_tool = b.addExecutable(.{
+        .name = "copy",
+        .root_source_file = .{ .path = "tools/copy.zig" },
+        .target = b.host,
+    });
+
+    const generate_static_tool = b.addExecutable(.{
+        .name = "generate_static",
+        .root_source_file = .{ .path = "tools/generate_static.zig" },
+        .target = b.host,
+    });
+
+    const generate_externals_tool = b.addExecutable(.{
+        .name = "generate_externals",
+        .root_source_file = .{ .path = "tools/generate_externals.zig" },
+        .target = b.host,
     });
 
     //
-    // CETech1 core
+    // Generated content
+    //
+    const generated_files = b.addWriteFiles();
+
+    // gamecontrollerdb.txt
+    {
+        const copy_gamepaddb = b.addRunArtifact(copy_tool);
+        copy_gamepaddb.addFileArg(.{ .path = "externals/shared/lib/SDL_GameControllerDB/gamecontrollerdb.txt" });
+        const output_file = copy_gamepaddb.addOutputFileArg("gamecontrollerdb.txt");
+
+        generated_files.addCopyFileToSource(output_file, "src/private/embed/gamecontrollerdb.txt");
+    }
+
+    // _static.zig
+    {
+        const modules_arg = try std.mem.join(b.allocator, ",", options.modules);
+        defer b.allocator.free(modules_arg);
+
+        const gen_static = b.addRunArtifact(generate_static_tool);
+        const output_file = gen_static.addOutputFileArg("_static.zig");
+        gen_static.addArg(modules_arg);
+
+        generated_files.addCopyFileToSource(output_file, "src/_static.zig");
+    }
+
+    // AUTHORS.md
+    {
+        const copy_gamepaddb = b.addRunArtifact(copy_tool);
+        copy_gamepaddb.addFileArg(.{ .path = "AUTHORS.md" });
+        const output_file = copy_gamepaddb.addOutputFileArg("AUTHORS.md");
+
+        generated_files.addCopyFileToSource(output_file, "src/private/embed/AUTHORS.md");
+    }
+
+    // Extrenals credits/license
+    {
+        const gen_static = b.addRunArtifact(generate_externals_tool);
+        const output_file = gen_static.addOutputFileArg("externals_credit.md");
+
+        inline for (externals) |external| {
+            gen_static.addArg(external.name);
+            gen_static.addDirectoryArg(.{ .path = external.file });
+        }
+
+        generated_files.addCopyFileToSource(output_file, "src/private/embed/externals_credit.md");
+    }
+
+    //
+    // CETech1 core build
     //
 
     // cetech1 static lib
@@ -150,10 +289,13 @@ pub fn build(b: *std.Build) !void {
     tests.linkLibrary(core_lib_static);
     tests.linkLibC();
 
-    const executables = .{ exe, tests };
+    const executables = [_]*std.Build.Step.Compile{ exe, tests };
     inline for (executables) |e| {
         @import("system_sdk").addLibraryPathsTo(e);
         @import("zgpu").addLibraryPathsTo(e);
+
+        // Make exe depends on generated files.
+        e.step.dependOn(&generated_files.step);
 
         e.addIncludePath(.{ .path = "src/includes" });
         e.root_module.addImport("cetech1_options", options_module);
@@ -164,9 +306,9 @@ pub fn build(b: *std.Build) !void {
         e.root_module.addImport("zglfw", zglfw.module("root"));
         e.root_module.addImport("zgpu", zgpu.module("root"));
         e.root_module.addImport("zgui", zgui.module("root"));
-        e.root_module.addImport("zf", zf_module);
-        e.root_module.addImport("Uuid", uuid_module);
-        e.root_module.addImport("mach-gamemode", mach_gamemode_module);
+        e.root_module.addImport("zf", zf.module("zf"));
+        e.root_module.addImport("Uuid", uuid.module("Uuid"));
+        e.root_module.addImport("mach-gamemode", mach_gamemode.module("mach-gamemode"));
 
         e.linkLibrary(ztracy.artifact("tracy"));
         e.linkLibrary(zglfw.artifact("glfw"));
@@ -190,35 +332,6 @@ pub fn build(b: *std.Build) !void {
         const artifact_name = try std.fmt.bufPrintZ(&buff, "ct_{s}", .{m});
         b.installArtifact(b.dependency(m, .{}).artifact(artifact_name));
     }
-}
-
-pub fn generateStatic(b: *std.Build, modules: []const []const u8) !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-
-    const output_file_path = b.pathFromRoot("src/_static.zig");
-    var output_file = std.fs.cwd().createFile(output_file_path, .{}) catch |err| {
-        std.log.err("unable to open '{s}': {s}", .{ output_file_path, @errorName(err) });
-        return err;
-    };
-    defer output_file.close();
-
-    var w = output_file.writer();
-
-    try w.print("// GENERATED - DO NOT EDIT\n", .{});
-    try w.print("const cetech1 = @import(\"cetech1.zig\");\n\n", .{});
-
-    for (modules) |m| {
-        try w.print("extern fn ct_load_module_{s}(?*const cetech1.apidb.ct_apidb_api_t, ?*const cetech1.apidb.ct_allocator_t, u8, u8) callconv(.C) u8;\n", .{m});
-    }
-
-    try w.print("\npub const descs = [_]cetech1.modules.ct_module_desc_t{{\n", .{});
-
-    for (modules) |m| {
-        try w.print("    .{{ .name = \"{s}\", .module_fce = ct_load_module_{s} }},\n", .{ m, m });
-    }
-
-    try w.print("}};\n", .{});
 }
 
 fn ensureZigVersion() !void {

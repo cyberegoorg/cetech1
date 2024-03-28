@@ -45,7 +45,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
         zglfw.windowHintTyped(.visible, false);
     }
 
-    const success = zglfw.Gamepad.updateMappings(@embedFile("gamepad/gamecontrollerdb.txt"));
+    const success = zglfw.Gamepad.updateMappings(@embedFile("embed/gamecontrollerdb.txt"));
     if (!success) {
         @panic("failed to update gamepad mappings");
     }

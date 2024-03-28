@@ -8,7 +8,6 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     const cetech1 = b.dependency("cetech1", .{});
-    const cetech1_module = cetech1.module("cetech1");
 
     const lib = b.addSharedLibrary(.{
         .name = "ct_bar",
@@ -25,9 +24,9 @@ pub fn build(b: *std.Build) !void {
     });
 
     inline for (.{ lib, slib }) |l| {
+        l.linkLibC();
         l.addCSourceFile(.{ .file = .{ .path = "module_bar.c" }, .flags = &.{} });
         l.addIncludePath(cetech1.path("includes"));
-        l.root_module.addImport("cetech1", cetech1_module);
         b.installArtifact(l);
     }
 }

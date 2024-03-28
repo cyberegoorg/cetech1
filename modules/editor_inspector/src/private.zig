@@ -1023,9 +1023,8 @@ var inspector_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
             tab_o.filter = filter;
         }
 
-        if (_coreui.beginChild("Inspector", .{ .border = true })) {
-            defer _coreui.endChild();
-
+        defer _coreui.endChild();
+        if (_coreui.beginChild("Inspector", .{ .child_flags = .{ .border = true } })) {
             const selectected_count = _coreui.selectedCount(allocator, &tab_o.db, tab_o.selected_obj);
             if (selectected_count == 0) return;
 
@@ -1094,10 +1093,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_edit_basic_properties",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_property");
                     ctx.yield(_coreui, 1);
@@ -1231,10 +1226,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_reset_value_from_prototype",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_property");
                     ctx.yield(_coreui, 1);
@@ -1402,10 +1393,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_propagate_value_to_prototype",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_property");
                     ctx.yield(_coreui, 1);
@@ -1573,10 +1560,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_open_asset_in_inspector",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_asset");
                     ctx.yield(_coreui, 1);
@@ -1601,10 +1584,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_set_prototype",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_property");
                     ctx.yield(_coreui, 1);
@@ -1637,10 +1616,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_clear_prototype",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_property");
                     ctx.yield(_coreui, 1);
@@ -1670,10 +1645,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_add_remove_tag",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_asset");
                     ctx.yield(_coreui, 1);
@@ -1697,10 +1668,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_add_ref_to_set",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_property");
                     ctx.yield(_coreui, 1);

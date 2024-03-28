@@ -278,9 +278,8 @@ fn uiAssetBrowser(
         //.{root_folder.toU64()},
     );
 
-    if (_coreui.beginChild(final_label, .{ .border = true, .flags = .{ .always_auto_resize = true } })) {
-        defer _coreui.endChild();
-
+    defer _coreui.endChild();
+    if (_coreui.beginChild(final_label, .{ .child_flags = .{ .border = true } })) {
         // Filter
         if (new_filter != null or tag_filter_used) {
             if (new_filter) |f| {
@@ -345,10 +344,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_filter_assets_and_folders",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_asset");
                     ctx.yield(_coreui, 1);
@@ -372,10 +367,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_filter_assets_by_uuid",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_asset");
                     ctx.yield(_coreui, 1);
@@ -395,10 +386,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_filter_assets_by_tag",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_asset");
                     ctx.yield(_coreui, 1);
@@ -416,16 +403,12 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
         );
 
         // TODO:
-        // Work in fast but not in others
+        //Work in fast but not in others
         // _ = _coreui.registerTest(
         //     "AssetBrowser",
         //     "should_move_assets_to_folder_by_drag_and_drop",
         //     @src(),
         //     struct {
-        //         pub fn gui(ctx: *coreui.TestContext) !void {
-        //             _ = ctx;
-        //         }
-
         //         pub fn run(ctx: *coreui.TestContext) !void {
         //             _kernel.openAssetRoot("fixtures/test_move");
         //             ctx.yield(_coreui, 1);
@@ -438,8 +421,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
         //             ctx.dragAndDrop(
         //                 _coreui,
-        //                 "//**/###ROOT/###asset_a.ct_foo_asset",
-        //                 "//**/###ROOT/###folder_b",
+        //                 "**/###ROOT/###asset_a.ct_foo_asset",
+        //                 "**/###ROOT/###folder_b",
         //                 //"//###ct_editor_asset_browser_tab_1/**/###ROOT/###folder_a",
         //                 .left,
         //             );

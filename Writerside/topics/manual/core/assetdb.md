@@ -74,7 +74,7 @@ Reserved keyword begin with`__` prefix and some with `__` postfix after property
 Reference UUID is in format `cdb_type_name:UUID`.
 
 | Keyword                   | Required                          | Description                                                                                                           |
-|---------------------------| --------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+|---------------------------|-----------------------------------|-----------------------------------------------------------------------------------------------------------------------|
 | `__version`               | Yes                               | File format version in semver format                                                                                  |
 | `__asset_uuid`            | Only for top-level                | UUID for asset wrapper not asset object                                                                               |
 | `__description`           | No and allowed only for top-level | Descritption for asset                                                                                                |

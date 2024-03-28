@@ -150,9 +150,8 @@ var obj_buffer_tab = editor.EditorTabTypeI.implement(
 
             const obj_buffer = tab_o.obj_buffer;
 
-            if (_coreui.beginChild("ObjBuffer", .{ .border = true })) {
-                defer _coreui.endChild();
-
+            defer _coreui.endChild();
+            if (_coreui.beginChild("ObjBuffer", .{ .child_flags = .{ .border = true } })) {
                 _coreui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 15 });
                 defer _coreui.popStyleVar(.{});
 

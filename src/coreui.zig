@@ -78,6 +78,10 @@ pub const Icons = struct {
     pub const Select = CoreIcons.FA_HAND_POINTER;
     pub const Rename = CoreIcons.FA_PENCIL;
     pub const UITest = CoreIcons.FA_WAND_MAGIC_SPARKLES;
+
+    pub const Help = CoreIcons.FA_CIRCLE_QUESTION;
+    pub const Externals = CoreIcons.FA_THUMBS_UP;
+    pub const Authors = CoreIcons.FA_USER_INJURED;
 };
 
 pub const CoreUII = extern struct {
@@ -181,7 +185,7 @@ pub const TestContext = opaque {
         return coreui_api.testItemInputFloatValue(ctx, ref, value);
     }
     pub fn dragAndDrop(ctx: *TestContext, coreui_api: *CoreUIApi, ref_src: [:0]const u8, ref_dst: [:0]const u8, button: MouseButton) void {
-        return coreui_api.testDragAndDrop(ctx, ref_src.ptr, ref_dst, button);
+        return coreui_api.testDragAndDrop(ctx, ref_src, ref_dst, button);
     }
     pub fn keyDown(ctx: *TestContext, coreui_api: *CoreUIApi, key_chord: Key) void {
         return coreui_api.testKeyDown(ctx, key_chord);
@@ -265,6 +269,8 @@ pub const CoreUIApi = struct {
 
     showDemoWindow: *const fn () void,
     showTestingWindow: *const fn (show: *bool) void,
+    showExternalCredits: *const fn (show: *bool) void,
+    showAuthors: *const fn (show: *bool) void,
 
     // Filter
     uiFilter: *const fn (buf: []u8, filter: ?[:0]const u8) ?[:0]const u8,
@@ -448,7 +454,7 @@ pub const CoreUIApi = struct {
     testItemInputFloatValue: *const fn (ctx: *TestContext, ref: [:0]const u8, value: f32) void,
     testContextYield: *const fn (ctx: *TestContext, frame_count: i32) void,
     testContextMenuAction: *const fn (ctx: *TestContext, action: Actions, ref: [:0]const u8) void,
-    testDragAndDrop: *const fn (ctx: *TestContext, ref_src: [*]const u8, ref_dst: [:0]const u8, button: MouseButton) void,
+    testDragAndDrop: *const fn (ctx: *TestContext, ref_src: [:0]const u8, ref_dst: [:0]const u8, button: MouseButton) void,
     testKeyDown: *const fn (ctx: *TestContext, key_chord: Key) void,
     testKeyUp: *const fn (ctx: *TestContext, key_chord: Key) void,
     testIsRunning: *const fn () bool,
@@ -461,10 +467,24 @@ pub const CoreUIApi = struct {
 
     setScaleFactor: *const fn (scale_factor: f32) void,
     getScaleFactor: *const fn () f32,
+
+    mainDockSpace: *const fn (flags: DockNodeFlags) Ident,
 };
 
 // Copy from zgui (THc a.k.a Temp hack)
 // TODO: Make own abstract types
+pub const DockNodeFlags = packed struct(c_int) {
+    keep_alive_only: bool = false,
+    _reserved: u1 = 0,
+    no_docking_over_central_node: bool = false,
+    passthru_central_node: bool = false,
+    no_docking_split: bool = false,
+    no_resize: bool = false,
+    auto_hide_tab_bar: bool = false,
+    no_undocking: bool = false,
+    _padding: u24 = 0,
+};
+
 pub const Ident = u32;
 
 const SetScrollHereX = struct {
@@ -490,7 +510,7 @@ const Begin = struct {
     flags: WindowFlags = .{},
 };
 
-pub const WindowFlags = packed struct(u32) {
+pub const WindowFlags = packed struct(c_int) {
     no_title_bar: bool = false,
     no_resize: bool = false,
     no_move: bool = false,
@@ -507,10 +527,10 @@ pub const WindowFlags = packed struct(u32) {
     no_bring_to_front_on_focus: bool = false,
     always_vertical_scrollbar: bool = false,
     always_horizontal_scrollbar: bool = false,
-    always_use_window_padding: bool = false,
     no_nav_inputs: bool = false,
     no_nav_focus: bool = false,
     unsaved_document: bool = false,
+    no_docking: bool = false,
     _padding: u12 = 0,
 
     pub const no_nav = WindowFlags{ .no_nav_inputs = true, .no_nav_focus = true };
@@ -527,6 +547,19 @@ pub const WindowFlags = packed struct(u32) {
     };
 };
 
+pub const ChildFlags = packed struct(c_int) {
+    border: bool = false,
+    no_move: bool = false,
+    always_use_window_padding: bool = false,
+    resize_x: bool = false,
+    resize_y: bool = false,
+    auto_resize_x: bool = false,
+    auto_resize_y: bool = false,
+    always_auto_resize: bool = false,
+    frame_style: bool = false,
+    _padding: u23 = 0,
+};
+
 pub const MenuItem = struct {
     shortcut: ?[:0]const u8 = null,
     selected: bool = false,
@@ -539,10 +572,10 @@ pub const MenuItemPtr = struct {
     enabled: bool = true,
 };
 
-pub const TreeNodeFlags = packed struct(u32) {
+pub const TreeNodeFlags = packed struct(c_int) {
     selected: bool = false,
     framed: bool = false,
-    allow_item_overlap: bool = false,
+    allow_overlap: bool = false,
     no_tree_push_on_open: bool = false,
     no_auto_open_on_log: bool = false,
     default_open: bool = false,
@@ -553,8 +586,9 @@ pub const TreeNodeFlags = packed struct(u32) {
     frame_padding: bool = false,
     span_avail_width: bool = false,
     span_full_width: bool = false,
+    span_all_columns: bool = false,
     nav_left_jumps_back_here: bool = false,
-    _padding: u18 = 0,
+    _padding: u17 = 0,
 
     pub const collapsing_header = TreeNodeFlags{
         .framed = true,
@@ -563,27 +597,32 @@ pub const TreeNodeFlags = packed struct(u32) {
     };
 };
 
-pub const HoveredFlags = packed struct(u32) {
+pub const HoveredFlags = packed struct(c_int) {
     child_windows: bool = false,
     root_window: bool = false,
     any_window: bool = false,
     no_popup_hierarchy: bool = false,
-    _reserved0: bool = false,
+    dock_hierarchy: bool = false,
     allow_when_blocked_by_popup: bool = false,
     _reserved1: bool = false,
     allow_when_blocked_by_active_item: bool = false,
-    allow_when_overlapped: bool = false,
+    allow_when_overlapped_by_item: bool = false,
+    allow_when_overlapped_by_window: bool = false,
     allow_when_disabled: bool = false,
     no_nav_override: bool = false,
+    for_tooltip: bool = false,
+    stationary: bool = false,
+    delay_none: bool = false,
     delay_normal: bool = false,
     delay_short: bool = false,
     no_shared_delay: bool = false,
-    _padding: u18 = 0,
+    _padding: u14 = 0,
 
     pub const rect_only = HoveredFlags{
         .allow_when_blocked_by_popup = true,
         .allow_when_blocked_by_active_item = true,
-        .allow_when_overlapped = true,
+        .allow_when_overlapped_by_item = true,
+        .allow_when_overlapped_by_window = true,
     };
     pub const root_and_child_windows = HoveredFlags{ .root_window = true, .child_windows = true };
 };
@@ -668,6 +707,18 @@ pub const Key = enum(u32) {
     f10,
     f11,
     f12,
+    f13,
+    f14,
+    f15,
+    f16,
+    f17,
+    f18,
+    f19,
+    f20,
+    f21,
+    f22,
+    f23,
+    f24,
     apostrophe,
     comma,
     minus,
@@ -701,6 +752,9 @@ pub const Key = enum(u32) {
     keypad_add,
     keypad_enter,
     keypad_equal,
+
+    app_back,
+    app_forward,
 
     gamepad_start,
     gamepad_back,
@@ -966,11 +1020,13 @@ pub const PopupFlags = packed struct(c_int) {
     _reserved0: bool = false,
     _reserved1: bool = false,
 
+    no_reopen: bool = false,
+    _reserved2: bool = false,
     no_open_over_existing_popup: bool = false,
     no_open_over_items: bool = false,
     any_popup_id: bool = false,
     any_popup_level: bool = false,
-    _padding: u23 = 0,
+    _padding: u21 = 0,
 
     pub const any_popup = PopupFlags{ .any_popup_id = true, .any_popup_level = true };
 };
@@ -985,7 +1041,7 @@ const SameLine = struct {
     spacing: f32 = -1.0,
 };
 
-pub const StyleCol = enum(u32) {
+pub const StyleCol = enum(c_int) {
     text,
     text_disabled,
     window_bg,
@@ -1024,6 +1080,8 @@ pub const StyleCol = enum(u32) {
     tab_active,
     tab_unfocused,
     tab_unfocused_active,
+    docking_preview,
+    docking_empty_bg,
     plot_lines,
     plot_lines_hovered,
     plot_histogram,
@@ -1049,16 +1107,16 @@ const PopStyleColor = struct {
     count: i32 = 1,
 };
 
-pub const FocusedFlags = packed struct(u32) {
+pub const FocusedFlags = packed struct(c_int) {
     child_windows: bool = false,
     root_window: bool = false,
     any_window: bool = false,
     no_popup_hierarchy: bool = false,
-    _padding: u28 = 0,
+    dock_hierarchy: bool = false,
+    _padding: u27 = 0,
 
     pub const root_and_child_windows = FocusedFlags{ .root_window = true, .child_windows = true };
 };
-
 pub const TableSetBgColor = struct {
     target: TableBgTarget,
     color: u32,
@@ -1123,7 +1181,7 @@ const CalcTextSize = struct {
     wrap_width: f32 = -1.0,
 };
 
-pub const Direction = enum(i32) {
+pub const Direction = enum(c_int) {
     none = -1,
     left = 0,
     right = 1,
@@ -1161,6 +1219,8 @@ pub const Style = extern struct {
     tab_rounding: f32,
     tab_border_size: f32,
     tab_min_width_for_close_button: f32,
+    tab_bar_border_size: f32,
+    table_angled_header_angle: f32,
     color_button_position: Direction,
     button_text_align: [2]f32,
     selectable_text_align: [2]f32,
@@ -1169,6 +1229,7 @@ pub const Style = extern struct {
     separator_text_padding: [2]f32,
     display_window_padding: [2]f32,
     display_safe_area_padding: [2]f32,
+    docking_separator_size: f32,
     mouse_cursor_scale: f32,
     anti_aliased_lines: bool,
     anti_aliased_lines_use_tex: bool,
@@ -1177,6 +1238,13 @@ pub const Style = extern struct {
     circle_tessellation_max_error: f32,
 
     colors: [@typeInfo(StyleCol).Enum.fields.len][4]f32,
+
+    hover_stationary_delay: f32,
+    hover_delay_short: f32,
+    hover_delay_normal: f32,
+
+    hover_flags_for_tooltip_mouse: HoveredFlags,
+    hover_flags_for_tooltip_nav: HoveredFlags,
 
     /// `pub fn init() Style`
     pub const init = zguiStyle_Init;
@@ -1187,10 +1255,10 @@ pub const Style = extern struct {
     extern fn zguiStyle_ScaleAllSizes(style: *Style, scale_factor: f32) void;
 
     pub fn getColor(style: Style, idx: StyleCol) [4]f32 {
-        return style.colors[@intFromEnum(idx)];
+        return style.colors[@intCast(@intFromEnum(idx))];
     }
     pub fn setColor(style: *Style, idx: StyleCol, color: [4]f32) void {
-        style.colors[@intFromEnum(idx)] = color;
+        style.colors[@intCast(@intFromEnum(idx))] = color;
     }
 };
 
@@ -1206,7 +1274,7 @@ const InvisibleButton = struct {
     flags: ButtonFlags = .{},
 };
 
-pub const StyleVar = enum(u32) {
+pub const StyleVar = enum(c_int) {
     alpha, // 1f
     disabled_alpha, // 1f
     window_padding, // 2f
@@ -1230,11 +1298,13 @@ pub const StyleVar = enum(u32) {
     grab_min_size, // 1f
     grab_rounding, // 1f
     tab_rounding, // 1f
+    tab_bar_border_size, // 1f
     button_text_align, // 2f
     selectable_text_align, // 2f
     separator_text_border_size, // 1f
     separator_text_align, // 2f
     separator_text_padding, // 2f
+    docking_separator_size, // 1f
 };
 
 const PushStyleVar2f = struct {
@@ -1254,8 +1324,8 @@ const PopStyleVar = struct {
 const BeginChild = struct {
     w: f32 = 0.0,
     h: f32 = 0.0,
-    border: bool = false,
-    flags: WindowFlags = .{},
+    child_flags: ChildFlags = .{},
+    window_flags: WindowFlags = .{},
 };
 
 const Dummy = struct {

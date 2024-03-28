@@ -24,12 +24,12 @@ const Icons = cetech1.coreui.CoreIcons;
 
 const log = std.log.scoped(.coreui);
 
-const _main_font = @embedFile("./fonts/Roboto-Medium.ttf");
-const _fa_solid_font = @embedFile("./fonts/fa-solid-900.ttf");
-const _fa_regular_font = @embedFile("./fonts/fa-regular-400.ttf");
+const _main_font = @embedFile("embed/fonts/Roboto-Medium.ttf");
+const _fa_solid_font = @embedFile("embed/fonts/fa-solid-900.ttf");
+const _fa_regular_font = @embedFile("embed/fonts/fa-regular-400.ttf");
 
 const MODULE_NAME = "coreui";
-const DEFAULT_IMGUI_INI = @embedFile("default/imgui.ini");
+const DEFAULT_IMGUI_INI = @embedFile("embed/imgui.ini");
 
 var _allocator: std.mem.Allocator = undefined;
 var _backed_initialised = false;
@@ -163,7 +163,6 @@ pub var api = public.CoreUIApi{
     .isItemClicked = @ptrCast(&zgui.isItemClicked),
     .isItemActivated = @ptrCast(&zgui.isItemActivated),
     .isWindowFocused = @ptrCast(&zgui.isWindowFocused),
-
     .beginTable = @ptrCast(&zgui.beginTable),
     .endTable = @ptrCast(&zgui.endTable),
     .tableSetupColumn = @ptrCast(&zgui.tableSetupColumn),
@@ -171,7 +170,6 @@ pub var api = public.CoreUIApi{
     .tableNextColumn = @ptrCast(&zgui.tableNextColumn),
     .tableNextRow = @ptrCast(&zgui.tableNextRow),
     .tableSetupScrollFreeze = @ptrCast(&zgui.tableSetupScrollFreeze),
-
     .getItemRectMax = @ptrCast(&zgui.getItemRectMax),
     .getItemRectMin = @ptrCast(&zgui.getItemRectMin),
     .getCursorPosX = @ptrCast(&zgui.getCursorPosX),
@@ -215,12 +213,10 @@ pub var api = public.CoreUIApi{
     .getScrollMaxY = @ptrCast(&zgui.getScrollMaxY),
     .setScrollHereY = @ptrCast(&zgui.setScrollHereY),
     .setScrollHereX = @ptrCast(&zgui.setScrollHereX),
-
     .supportFileDialog = supportFileDialog,
     .openFileDialog = openFileDialog,
     .saveFileDialog = saveFileDialog,
     .openFolderDialog = openFolderDialog,
-
     .uiFilterPass = uiFilterPass,
     .uiFilter = uiFilter,
     .beginDragDropSource = @ptrCast(&zgui.beginDragDropSource),
@@ -242,11 +238,11 @@ pub var api = public.CoreUIApi{
     .handleSelection = handleSelection,
     .removeFromSelection = removeFromSelection,
     .clearSelection = clearSelection,
-
     .pushPropName = pushPropName,
     .getFontSize = @ptrCast(&zgui.getFontSize),
-
     .showTestingWindow = showTestingWindow,
+    .showExternalCredits = showExternalCredits,
+    .showAuthors = showAuthors,
     .registerTestFn = registerTestFn,
     .reloadTests = reloadTests,
     .testRunAll = testRunAll,
@@ -256,7 +252,6 @@ pub var api = public.CoreUIApi{
     .testSetRunSpeed = testSetRunSpeed,
     .testExportJunitResult = testExportJunitResult,
     .testCheck = @ptrCast(&zguite.check),
-
     .testContextSetRef = @ptrCast(&zguite.TestContext.setRef),
     .testContextWindowFocus = @ptrCast(&zguite.TestContext.windowFocus),
     .testItemAction = @ptrCast(&zguite.TestContext.itemAction),
@@ -270,7 +265,13 @@ pub var api = public.CoreUIApi{
     .testKeyUp = @ptrCast(&zguite.TestContext.keyUp),
     .setScaleFactor = setScaleFactor,
     .getScaleFactor = getScaleFactor,
+    .mainDockSpace = mainDockSpace,
 };
+
+fn mainDockSpace(flags: public.DockNodeFlags) zgui.Ident {
+    const f: *zgui.DockNodeFlags = @constCast(@ptrCast(&flags));
+    return zgui.DockSpaceOverViewport(zgui.getMainViewport(), f.*);
+}
 
 fn setScaleFactor(scale_factor: f32) void {
     _new_scale_factor = scale_factor;
@@ -356,6 +357,44 @@ fn registerTestFn(
 fn showTestingWindow(show: *bool) void {
     if (show.*) {
         _te_engine.showTestEngineWindows(show);
+    }
+}
+
+fn showExternalCredits(show: *bool) void {
+    if (show.*) {
+        api.setNextWindowSize(.{ .w = 600, .h = 600, .cond = .first_use_ever });
+        if (api.begin(
+            public.Icons.Externals ++ "  " ++ "External credits###ExternalCredits",
+            .{ .popen = show, .flags = .{ .no_docking = true } },
+        )) {
+            defer api.end();
+
+            _ = zgui.inputTextMultiline("###Credits", .{
+                .buf = @constCast(kernel.api.getExternalsCredit()),
+                .flags = .{ .read_only = true },
+                .w = -1,
+                .h = -1,
+            });
+        }
+    }
+}
+
+fn showAuthors(show: *bool) void {
+    if (show.*) {
+        api.setNextWindowSize(.{ .w = 600, .h = 600, .cond = .first_use_ever });
+        if (api.begin(
+            public.Icons.Authors ++ "  " ++ "Authors###Authors",
+            .{ .popen = show, .flags = .{ .no_docking = true } },
+        )) {
+            defer api.end();
+
+            _ = zgui.inputTextMultiline("###Authors", .{
+                .buf = @constCast(kernel.api.getAuthors()),
+                .flags = .{ .read_only = true },
+                .w = -1,
+                .h = -1,
+            });
+        }
     }
 }
 
@@ -520,14 +559,13 @@ pub fn enableWithWindow(window: *cetech1.system.Window, gpuctx: *cetech1.gpu.Gpu
         break :scale_factor @max(scale[0], scale[1]);
     };
 
-    initFonts(16, _scale_factor.?);
-
     zgui.getStyle().frame_rounding = 8;
 
     zgui.io.setConfigFlags(zgui.ConfigFlags{
         .nav_enable_keyboard = true,
         .nav_enable_gamepad = true,
         .nav_enable_set_mouse_pos = true,
+        .dock_enable = true,
     });
     zgui.io.setConfigWindowsMoveFromTitleBarOnly(true);
 
@@ -537,6 +575,8 @@ pub fn enableWithWindow(window: *cetech1.system.Window, gpuctx: *cetech1.gpu.Gpu
         @intFromEnum(zgpu.GraphicsContext.swapchain_format),
         @intFromEnum(zgpu.wgpu.TextureFormat.undef),
     );
+
+    initFonts(16, _scale_factor.?);
 
     _backed_initialised = true;
 

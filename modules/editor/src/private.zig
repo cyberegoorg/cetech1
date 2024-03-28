@@ -42,6 +42,8 @@ const G = struct {
     main_db: cdb.CdbDb = undefined,
     show_demos: bool = false,
     show_testing_window: bool = false,
+    show_external_credits: bool = false,
+    show_authors: bool = false,
     enable_colors: bool = true,
     tabs: TabsMap = undefined,
     tabids: TabsIds = undefined,
@@ -632,6 +634,12 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
         }
     }
 
+    if (_coreui.beginMenu(allocator, coreui.Icons.Help, true, null)) {
+        defer _coreui.endMenu();
+        _ = _coreui.menuItemPtr(allocator, coreui.Icons.Authors ++ " " ++ "Authors", .{ .selected = &_g.show_authors }, null);
+        _ = _coreui.menuItemPtr(allocator, coreui.Icons.Externals ++ " " ++ "Externals", .{ .selected = &_g.show_external_credits }, null);
+    }
+
     _coreui.endMainMenuBar();
 }
 
@@ -784,14 +792,17 @@ fn doModals(allocator: std.mem.Allocator) void {
 
 var coreui_ui_i = coreui.CoreUII.implement(struct {
     pub fn ui(allocator: std.mem.Allocator) !void {
+        _ = _coreui.mainDockSpace(coreui.DockNodeFlags{ .passthru_central_node = true });
+
         try doMainMenu(allocator);
         try quitSaveModal();
         try doTabs(allocator);
-
         doModals(allocator);
 
         if (_g.show_demos) _coreui.showDemoWindow();
         _coreui.showTestingWindow(&_g.show_testing_window);
+        _coreui.showExternalCredits(&_g.show_external_credits);
+        _coreui.showAuthors(&_g.show_authors);
     }
 });
 

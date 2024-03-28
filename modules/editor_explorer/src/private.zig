@@ -139,9 +139,8 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
         defer _tempalloc.destroyTempArena(tmp_arena);
         const allocator = tmp_arena.allocator();
 
-        if (_coreui.beginChild("Explorer", .{ .border = true })) {
-            defer _coreui.endChild();
-
+        defer _coreui.endChild();
+        if (_coreui.beginChild("Explorer", .{ .child_flags = .{ .border = true } })) {
             _coreui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 15 });
             defer _coreui.popStyleVar(.{});
 
@@ -220,10 +219,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             "should_open_asset_in_explorer",
             @src(),
             struct {
-                pub fn gui(ctx: *coreui.TestContext) !void {
-                    _ = ctx;
-                }
-
                 pub fn run(ctx: *coreui.TestContext) !void {
                     _kernel.openAssetRoot("fixtures/test_asset");
                     ctx.yield(_coreui, 1);

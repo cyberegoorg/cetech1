@@ -30,6 +30,22 @@
     </tab>
 </tabs>
 
+## Repository structure
+
+| Folder                                                                                                | Description                                                         |
+|-------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------|
+| [`Writerside/`](https://github.com/cyberegoorg/cetech1/tree/main/Writerside/)                         | This documentation                                                  |
+| [`zig/`](https://github.com/cyberegoorg/cetech1/tree/main/zig/)                                       | Submodule for prebuilt zig                                          |
+| [`externals/`](https://github.com/cyberegoorg/cetech1/tree/main/externals/)                           | 3rd-party library and tools                                         |
+| [`fixtures/`](https://github.com/cyberegoorg/cetech1/tree/main/fixtures/)                             | Tests fixtures                                                      |
+| [`src/includes/`](https://github.com/cyberegoorg/cetech1/tree/main/src/includes/)                     | C api headers                                                       |
+| [`src/`](https://github.com/cyberegoorg/cetech1/tree/main/src)                                        | Main source code folder                                             |
+| [`src/private`](https://github.com/cyberegoorg/cetech1/tree/main/src/private)                         | Private api. Use only if you extend core                            |
+| [`modules/`](https://github.com/cyberegoorg/cetech1/tree/main/modules/)                               | There is all modules that is possible part of engine                |
+| [`examples/foo`](https://github.com/cyberegoorg/cetech1/tree/main/examples/foo)                       | Simple `foo` module write in zig                                    |
+| [`examples/bar`](https://github.com/cyberegoorg/cetech1/tree/main/examples/bar)                       | Simple `bar` module write in C and use api exported by `foo` module |
+| [`examples/editor_foo_tab`](https://github.com/cyberegoorg/cetech1/tree/main/examples/editor_foo_tab) | Show how to crete new editor tab type                               |
+
 ## Build
 
 <tabs>
@@ -108,11 +124,19 @@ CETech1 has builtin support for tracy profiler.
 
 ## ZLS
 
+CETech provide ZLS as submodule, but you must build it.
+
 <tabs>
     <tab title="MacOS/Linux">
         <code-block lang="bash">
             cd externals/shared/tools/zls
             ../../../../zig/bin/ARCH/zig build
+        </code-block>
+    </tab>
+    <tab title="Windows">
+        <code-block lang="bash">
+            cd externals/shared/tools/zls
+            ../../../../zig/bin/ARCH/zig.exe build
         </code-block>
     </tab>
 </tabs>
@@ -126,15 +150,3 @@ CETech1 has builtin support for tracy profiler.
 3. Set zig path to `<FULL_PATH_TO_CETECH_REPO>/zig/bin/<ARCH>/zig`
 4. Set zls path to `<FULL_PATH_TO_CETECH_REPO>/externals/shared/tools/zls/zig-out/bin/zls`
 
-## Docker compose
-
-> Currently, not usable
-> {style="warning"}
-
-You must fetch valid zig version for container `ARCH` via `./zig/get_zig.sh <ARCH>`
-
-<tabs>
-    <tab title="MacOS/Linux">
-        <code-block lang="bash">docker compose run --service-ports cetech1-linux</code-block>
-    </tab>
-</tabs>

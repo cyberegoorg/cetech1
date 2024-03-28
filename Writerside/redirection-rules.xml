@@ -6,4 +6,8 @@
         <accepts>page.html</accepts>
     </rule>
     -->
+    <rule id="50dc2758">
+        <description><![CDATA[Created after removal of "<repository-structure.md>" from CETech1]]></description>
+        <accepts>repository-structure.html</accepts>
+    </rule>
 </rules>

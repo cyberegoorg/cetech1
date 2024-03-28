@@ -147,6 +147,9 @@ pub const KernelApi = struct {
     getMainWindow: *const fn () ?*system.Window,
     getGpuCtx: *const fn () ?*gpu.GpuContext,
 
+    getExternalsCredit: *const fn () [:0]const u8,
+    getAuthors: *const fn () [:0]const u8,
+
     // TODO: !!!GLOBAL SHIT WARNING !!!
     getDb: *const fn () *cdb.CdbDb,
     //
