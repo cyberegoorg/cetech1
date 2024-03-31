@@ -30,6 +30,7 @@ pub fn build(b: *std.Build) !void {
         l.root_module.addImport("cetech1", cetech1_module);
         l.root_module.addImport("editor", b.dependency("editor", .{}).module("editor"));
         l.addIncludePath(cetech1.path("includes"));
+        l.addIncludePath(.{ .path = "includes" });
         b.installArtifact(l);
     }
 

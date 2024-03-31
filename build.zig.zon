@@ -5,6 +5,7 @@
         "Writerside",
         "includes",
         "src",
+        "public",
         "tests",
         "build.zig",
         "build.zig.zon",
@@ -13,7 +14,7 @@
     },
     .dependencies = .{
         // Public cetech1 API
-        .cetech1 = .{ .path = "src/" },
+        .cetech1 = .{ .path = "public/" },
 
         // CETech1 examples
         .bar = .{ .path = "examples/bar" },

@@ -1,1417 +1,1069 @@
 const std = @import("std");
 
 const c = @import("c.zig").c;
-const cdb = @import("cdb.zig");
-const modules = @import("modules.zig");
-const strid = @import("strid.zig");
 
-const system = @import("system.zig");
-const gpu = @import("gpu.zig");
+const cetech1_options = @import("cetech1_options");
 
-const log = std.log.scoped(.coreui);
+const zgpu = @import("zgpu");
+const zglfw = @import("zglfw");
+const zgui = @import("zgui");
+const zguite = zgui.te;
+const znfde = @import("znfde");
+const zf = @import("zf");
+const tempalloc = @import("tempalloc.zig");
+const kernel = @import("kernel.zig");
 
-pub const CoreIcons = @import("coreui_icons.zig").Icons;
+const apidb = @import("apidb.zig");
 
-pub const ObjSelectionType = cdb.CdbTypeDecl(
-    "ct_obj_selection",
-    enum(u32) {
-        Selection = 0,
+const profiler = @import("profiler.zig");
+const assetdb = @import("assetdb.zig");
+
+const cetech1 = @import("cetech1");
+const public = cetech1.coreui;
+const Icons = public.CoreIcons;
+
+const log = std.log.scoped(module_name);
+
+const _main_font = @embedFile("embed/fonts/Roboto-Medium.ttf");
+const _fa_solid_font = @embedFile("embed/fonts/fa-solid-900.ttf");
+const _fa_regular_font = @embedFile("embed/fonts/fa-regular-400.ttf");
+
+const module_name = .coreui;
+
+const DEFAULT_IMGUI_INI = @embedFile("embed/imgui.ini");
+
+var _allocator: std.mem.Allocator = undefined;
+var _backed_initialised = false;
+var _true_gpuctx: ?*zgpu.GraphicsContext = null;
+var _te_engine: *zguite.TestEngine = undefined;
+var _te_show_window: bool = false;
+var _enabled_ui = false;
+
+var _junit_filename_buff: [1024:0]u8 = undefined;
+var _junit_filename: ?[:0]const u8 = null;
+var _scale_factor: ?f32 = null;
+var _new_scale_factor: ?f32 = null;
+
+const _kernel_hook_i = cetech1.kernel.KernelLoopHookI.implement(struct {
+    pub fn beginLoop() !void {
+        if (!_enabled_ui and kernel.api.getGpuCtx() != null and kernel.api.getMainWindow() != null) {
+            try enableWithWindow(kernel.api.getMainWindow().?, kernel.api.getGpuCtx().?);
+            _enabled_ui = true;
+        }
+
+        if (_true_gpuctx != null) newFrame();
+    }
+
+    pub fn endLoop() !void {
+        afterAll();
+    }
+});
+const _gpu_present_i = cetech1.gpu.GpuPresentI.implement(
+    struct {
+        pub fn present(kernel_tick: u64, dt: f32) !void {
+            const tmp = try tempalloc.api.create();
+            defer tempalloc.api.destroy(tmp);
+            try coreUI(tmp, kernel_tick, dt);
+        }
     },
 );
 
-pub const Colors = struct {
-    pub const Deleted = .{ 0.7, 0.0, 0.0, 1.0 };
-    pub const Remove = .{ 0.7, 0.0, 0.0, 1.0 };
-    pub const Modified = .{ 0.9, 0.9, 0.0, 1.0 };
-};
+var create_types_i = cetech1.cdb.CreateTypesI.implement(struct {
+    pub fn createTypes(db_: *cetech1.cdb.Db) !void {
+        var db = cetech1.cdb.CdbDb.fromDbT(db_, &cdb_private.api);
 
-pub const Icons = struct {
-    pub const Open = CoreIcons.FA_FOLDER_OPEN;
-    pub const OpenProject = CoreIcons.FA_FOLDER_OPEN;
-    pub const Create = CoreIcons.FA_CIRCLE_PLUS;
-
-    pub const OpenTab = CoreIcons.FA_WINDOW_MAXIMIZE;
-    pub const CloseTab = CoreIcons.FA_RECTANGLE_XMARK;
-
-    pub const Save = CoreIcons.FA_FLOPPY_DISK;
-    pub const SaveAll = CoreIcons.FA_FLOPPY_DISK;
-
-    pub const Add = CoreIcons.FA_PLUS;
-    pub const AddFile = CoreIcons.FA_FILE_CIRCLE_PLUS;
-    pub const AddAsset = CoreIcons.FA_FILE_CIRCLE_PLUS;
-    pub const AddFolder = CoreIcons.FA_FOLDER_PLUS;
-    pub const Remove = CoreIcons.FA_MINUS;
-    pub const Close = CoreIcons.FA_XMARK;
-    pub const Delete = CoreIcons.FA_TRASH;
-
-    pub const Restart = CoreIcons.FA_REPEAT;
-
-    pub const CopyToClipboard = CoreIcons.FA_CLIPBOARD;
-
-    pub const Nothing = CoreIcons.FA_FACE_SMILE_WINK;
-    pub const Deleted = CoreIcons.FA_TRASH;
-    pub const Quit = CoreIcons.FA_POWER_OFF;
-
-    pub const Debug = CoreIcons.FA_BUG;
-
-    pub const Revive = CoreIcons.FA_SYRINGE;
-
-    pub const Tag = CoreIcons.FA_TAG;
-    pub const Tags = CoreIcons.FA_TAGS;
-
-    pub const Folder = CoreIcons.FA_FOLDER_CLOSED;
-    pub const Asset = CoreIcons.FA_FILE;
-
-    pub const Move = CoreIcons.FA_ARROWS_UP_DOWN_LEFT_RIGHT;
-    pub const MoveHere = CoreIcons.FA_DOWN_LONG;
-
-    pub const Settings = CoreIcons.FA_SCREWDRIVER_WRENCH;
-    pub const Properties = CoreIcons.FA_SLIDERS;
-    pub const Buffer = CoreIcons.FA_LAYER_GROUP;
-    pub const Windows = CoreIcons.FA_WINDOW_RESTORE;
-    pub const Editor = CoreIcons.FA_HOUSE;
-    pub const Colors = CoreIcons.FA_PALETTE;
-    pub const TickRate = CoreIcons.FA_STOPWATCH_20;
-    pub const ContextMenu = CoreIcons.FA_BARS;
-    pub const Explorer = CoreIcons.FA_TREE;
-    pub const Clear = CoreIcons.FA_BROOM;
-    pub const Select = CoreIcons.FA_HAND_POINTER;
-    pub const Rename = CoreIcons.FA_PENCIL;
-    pub const UITest = CoreIcons.FA_WAND_MAGIC_SPARKLES;
-
-    pub const Help = CoreIcons.FA_CIRCLE_QUESTION;
-    pub const Externals = CoreIcons.FA_THUMBS_UP;
-    pub const Authors = CoreIcons.FA_USER_INJURED;
-};
-
-pub const CoreUII = extern struct {
-    pub const c_name = "ct_coreui_ui_i";
-    pub const name_hash = strid.strId64(@This().c_name);
-
-    ui: *const fn (allocator: *const std.mem.Allocator) callconv(.C) void,
-
-    pub inline fn implement(comptime T: type) CoreUII {
-        if (!std.meta.hasFn(T, "ui")) @compileError("implement me");
-
-        return CoreUII{ .ui = struct {
-            pub fn f(
-                allocator: *const std.mem.Allocator,
-            ) callconv(.C) void {
-                T.ui(allocator.*) catch |err| {
-                    log.err("CoreUII.ui() failed with error {}", .{err});
-                };
-            }
-        }.f };
-    }
-};
-
-pub const color4f = extern struct {
-    c: [4]f32,
-};
-
-// Test
-pub const Actions = enum(c_int) {
-    Unknown = 0,
-    Hover, // Move mouse
-    Click, // Move mouse and click
-    DoubleClick, // Move mouse and double-click
-    Check, // Check item if unchecked (Checkbox, MenuItem or any widget reporting ImGuiItemStatusFlags_Checkable)
-    Uncheck, // Uncheck item if checked
-    Open, // Open item if closed (TreeNode, BeginMenu or any widget reporting ImGuiItemStatusFlags_Openable)
-    Close, // Close item if opened
-    Input, // Start text inputing into a field (e.g. CTRL+Click on Drags/Slider, click on InputText etc.)
-    NavActivate, // Activate item with navigation
-    COUNT,
-};
-
-pub const TestOpFlags = packed struct(c_int) {
-    NoCheckHoveredId: bool = false, // Don't check for HoveredId after aiming for a widget. A few situations may want this: while e.g. dragging or another items prevents hovering, or for items that don't use ItemHoverable()
-    NoError: bool = false, // Don't abort/error e.g. if the item cannot be found or the operation doesn't succeed.
-    NoFocusWindow: bool = false, // Don't focus window when aiming at an item
-    NoAutoUncollapse: bool = false, // Disable automatically uncollapsing windows (useful when specifically testing Collapsing behaviors)
-    NoAutoOpenFullPath: bool = false, // Disable automatically opening intermediaries (e.g. ItemClick("Hello/OK") will automatically first open "Hello" if "OK" isn't found. Only works if ref is a string path.
-    IsSecondAttempt: bool = false, // Used by recursing functions to indicate a second attempt
-    MoveToEdgeL: bool = false, // Simple Dumb aiming helpers to test widget that care about clicking position. May need to replace will better functionalities.
-    MoveToEdgeR: bool = false,
-    MoveToEdgeU: bool = false,
-    MoveToEdgeD: bool = false,
-    _padding: u22 = 0,
-};
-
-pub const ImGuiTestRunSpeed = enum(c_int) {
-    Fast = 0, // Run tests as fast as possible (teleport mouse, skip delays, etc.)
-    Normal = 1, // Run tests at human watchable speed (for debugging)
-    Cinematic = 2, // Run tests with pauses between actions (for e.g. tutorials)
-};
-
-pub const CheckFlags = packed struct(c_int) {
-    silentSuccess: bool = false,
-    _padding: u31 = 0,
-};
-
-pub const ImGuiTestGuiFunc = fn (context: *TestContext) callconv(.C) void;
-pub const ImGuiTestTestFunc = fn (context: *TestContext) callconv(.C) void;
-pub const Test = anyopaque;
-pub const TestContext = opaque {
-    pub fn setRef(ctx: *TestContext, coreui_api: *CoreUIApi, ref: [:0]const u8) void {
-        return coreui_api.testContextSetRef(ctx, ref);
-    }
-
-    pub fn itemAction(ctx: *TestContext, coreui_api: *CoreUIApi, action: Actions, ref: [:0]const u8, flags: TestOpFlags, action_arg: ?*anyopaque) void {
-        return coreui_api.testItemAction(ctx, action, ref, flags, action_arg);
-    }
-
-    pub fn windowFocus(ctx: *TestContext, coreui_api: *CoreUIApi, ref: [:0]const u8) void {
-        return coreui_api.testContextWindowFocus(ctx, ref);
-    }
-
-    pub fn yield(ctx: *TestContext, coreui_api: *CoreUIApi, frame_count: i32) void {
-        return coreui_api.testContextYield(ctx, frame_count);
-    }
-
-    pub fn menuAction(ctx: *TestContext, coreui_api: *CoreUIApi, action: Actions, ref: [:0]const u8) void {
-        return coreui_api.testContextMenuAction(ctx, action, ref);
-    }
-
-    pub fn itemInputStrValue(ctx: *TestContext, coreui_api: *CoreUIApi, ref: [:0]const u8, value: [:0]const u8) void {
-        return coreui_api.testItemInputStrValue(ctx, ref, value);
-    }
-
-    pub fn itemInputIntValue(ctx: *TestContext, coreui_api: *CoreUIApi, ref: [:0]const u8, value: i32) void {
-        return coreui_api.testItemInputIntValue(ctx, ref, value);
-    }
-
-    pub fn itemInputFloatValue(ctx: *TestContext, coreui_api: *CoreUIApi, ref: [:0]const u8, value: f32) void {
-        return coreui_api.testItemInputFloatValue(ctx, ref, value);
-    }
-    pub fn dragAndDrop(ctx: *TestContext, coreui_api: *CoreUIApi, ref_src: [:0]const u8, ref_dst: [:0]const u8, button: MouseButton) void {
-        return coreui_api.testDragAndDrop(ctx, ref_src, ref_dst, button);
-    }
-    pub fn keyDown(ctx: *TestContext, coreui_api: *CoreUIApi, key_chord: Key) void {
-        return coreui_api.testKeyDown(ctx, key_chord);
-    }
-
-    pub fn keyUp(ctx: *TestContext, coreui_api: *CoreUIApi, key_chord: Key) void {
-        return coreui_api.testKeyUp(ctx, key_chord);
-    }
-};
-
-pub const RegisterTestsI = extern struct {
-    pub const c_name = "ct_coreui_register_tests_i";
-    pub const name_hash = strid.strId64(@This().c_name);
-
-    register_tests: *const fn () callconv(.C) void,
-
-    pub inline fn implement(comptime T: type) @This() {
-        if (!std.meta.hasFn(T, "registerTests")) @compileError("implement me");
-
-        return @This(){
-            .register_tests = struct {
-                pub fn f() callconv(.C) void {
-                    T.registerTests() catch |err| {
-                        log.err("RegisterTestsI.registerTests() failed with error {}", .{err});
-                    };
-                }
-            }.f,
-        };
-    }
-};
-
-pub const FilterItem = extern struct {
-    name: [*:0]const u8,
-    spec: [*:0]const u8,
-};
-
-pub const CoreUIApi = struct {
-    pub fn checkTestError(
-        coreui_api: *CoreUIApi,
-        src: std.builtin.SourceLocation,
-        err: anyerror,
-    ) void {
-        var buff: [128:0]u8 = undefined;
-        const msg = std.fmt.bufPrintZ(&buff, "Assert error: {}", .{err}) catch undefined;
-        _ = coreui_api.testCheck(src, .{}, false, msg);
-    }
-
-    pub fn registerTest(
-        self: @This(),
-        category: [:0]const u8,
-        name: [:0]const u8,
-        src: std.builtin.SourceLocation,
-        comptime Callbacks: type,
-    ) *Test {
-        return self.registerTestFn(
-            category.ptr,
-            name.ptr,
-            src.file.ptr,
-            @intCast(src.line),
-            if (std.meta.hasFn(Callbacks, "gui"))
-                struct {
-                    fn f(context: *TestContext) callconv(.C) void {
-                        Callbacks.gui(context) catch undefined;
-                    }
-                }.f
-            else
-                null,
-
-            if (std.meta.hasFn(Callbacks, "run"))
-                struct {
-                    fn f(context: *TestContext) callconv(.C) void {
-                        Callbacks.run(context) catch |err| {
-                            std.log.err("Test failed: {}", .{err});
-                        };
-                    }
-                }.f
-            else
-                null,
+        // Obj selections
+        _ = try db.addType(
+            public.ObjSelection.name,
+            &[_]cetech1.cdb.PropDef{
+                .{ .prop_idx = public.ObjSelection.propIdx(.Selection), .name = "selection", .type = cetech1.cdb.PropType.REFERENCE_SET },
+            },
         );
+        //
     }
+});
 
-    showDemoWindow: *const fn () void,
-    showTestingWindow: *const fn (show: *bool) void,
-    showExternalCredits: *const fn (show: *bool) void,
-    showAuthors: *const fn (show: *bool) void,
+pub fn init(allocator: std.mem.Allocator) !void {
+    _allocator = allocator;
 
-    // Filter
-    uiFilter: *const fn (buf: []u8, filter: ?[:0]const u8) ?[:0]const u8,
-    uiFilterPass: *const fn (allocator: std.mem.Allocator, filter: [:0]const u8, value: [:0]const u8, is_path: bool) ?f64,
+    _backed_initialised = false;
+    _true_gpuctx = null;
+    _te_engine = undefined;
+    _te_show_window = false;
+    _enabled_ui = false;
+    _junit_filename = null;
 
-    // NFD
-    supportFileDialog: *const fn () bool,
-    openFileDialog: *const fn (allocator: std.mem.Allocator, filter: ?[]const FilterItem, default_path: ?[:0]const u8) anyerror!?[:0]const u8,
-    saveFileDialog: *const fn (allocator: std.mem.Allocator, filter: ?[]const FilterItem, default_path: ?[:0]const u8, default_name: ?[:0]const u8) anyerror!?[:0]const u8,
-    openFolderDialog: *const fn (allocator: std.mem.Allocator, default_path: ?[:0]const u8) anyerror!?[:0]const u8,
-
-    // shit from the pointer deep.
-    begin: *const fn (name: [:0]const u8, args: Begin) bool,
-    end: *const fn () void,
-
-    isItemToggledOpen: *const fn () bool,
-    dummy: *const fn (args: Dummy) void,
-    spacing: *const fn () void,
-
-    getScrollX: *const fn () f32,
-    getScrollY: *const fn () f32,
-    getScrollMaxX: *const fn () f32,
-    getScrollMaxY: *const fn () f32,
-    setScrollHereY: *const fn (args: SetScrollHereY) void,
-    setScrollHereX: *const fn (args: SetScrollHereX) void,
-
-    getFontSize: *const fn () f32,
-
-    getStyle: *const fn () *Style,
-    pushStyleVar2f: *const fn (args: PushStyleVar2f) void,
-    pushStyleVar1f: *const fn (args: PushStyleVar1f) void,
-    pushStyleColor4f: *const fn (args: PushStyleColor4f) void,
-    popStyleColor: *const fn (args: PopStyleColor) void,
-    popStyleVar: *const fn (args: PopStyleVar) void,
-
-    isKeyDown: *const fn (key: Key) bool,
-
-    tableSetBgColor: *const fn (args: TableSetBgColor) void,
-
-    colorConvertFloat4ToU32: *const fn (in: [4]f32) u32,
-
-    text: *const fn (txt: []const u8) void,
-    textColored: *const fn (color: [4]f32, txt: []const u8) void,
-
-    colorPicker4: *const fn (label: [:0]const u8, args: ColorPicker4) bool,
-    colorEdit4: *const fn (label: [:0]const u8, args: ColorEdit4) bool,
-
-    beginMainMenuBar: *const fn () void,
-    endMainMenuBar: *const fn () void,
-    beginMenuBar: *const fn () void,
-    endMenuBar: *const fn () void,
-
-    beginMenu: *const fn (allocator: std.mem.Allocator, label: [:0]const u8, enabled: bool, filter: ?[:0]const u8) bool,
-    endMenu: *const fn () void,
-    menuItem: *const fn (allocator: std.mem.Allocator, label: [:0]const u8, args: MenuItem, filter: ?[:0]const u8) bool,
-    menuItemPtr: *const fn (allocator: std.mem.Allocator, label: [:0]const u8, args: MenuItemPtr, filter: ?[:0]const u8) bool,
-
-    beginChild: *const fn (str_id: [:0]const u8, args: BeginChild) bool,
-    endChild: *const fn () void,
-
-    pushPtrId: *const fn (ptr_id: *const anyopaque) void,
-    pushIntId: *const fn (int_id: u32) void,
-    pushObjUUID: *const fn (obj: cdb.ObjId) void,
-    pushPropName: *const fn (db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: u32) void,
-
-    popId: *const fn () void,
-
-    treeNode: *const fn (label: [:0]const u8) bool,
-    treeNodeFlags: *const fn (label: [:0]const u8, flags: TreeNodeFlags) bool,
-    treePop: *const fn () void,
-
-    alignTextToFramePadding: *const fn () void,
-
-    isItemHovered: *const fn (flags: HoveredFlags) bool,
-    isWindowFocused: *const fn (flags: FocusedFlags) bool,
-
-    labelText: *const fn (label: [:0]const u8, text: [:0]const u8) void,
-    button: *const fn (label: [:0]const u8, args: Button) bool,
-    smallButton: *const fn (label: [:0]const u8) bool,
-    invisibleButton: *const fn (label: [:0]const u8, args: InvisibleButton) bool,
-
-    sameLine: *const fn (args: SameLine) void,
-
-    inputText: *const fn (label: [:0]const u8, args: InputText) bool,
-    inputF32: *const fn (label: [:0]const u8, args: InputF32) bool,
-    inputF64: *const fn (label: [:0]const u8, args: InputF64) bool,
-    inputI32: *const fn (label: [:0]const u8, args: InputScalarGen(i32)) bool,
-    inputU32: *const fn (label: [:0]const u8, args: InputScalarGen(u32)) bool,
-    inputI64: *const fn (label: [:0]const u8, args: InputScalarGen(i64)) bool,
-    inputU64: *const fn (label: [:0]const u8, args: InputScalarGen(u64)) bool,
-
-    dragF32: *const fn (label: [:0]const u8, args: DragFloatGen(f32)) bool,
-    dragF64: *const fn (label: [:0]const u8, args: DragScalarGen(f64)) bool,
-    dragI32: *const fn (label: [:0]const u8, args: DragScalarGen(i32)) bool,
-    dragU32: *const fn (label: [:0]const u8, args: DragScalarGen(u32)) bool,
-    dragI64: *const fn (label: [:0]const u8, args: DragScalarGen(i64)) bool,
-    dragU64: *const fn (label: [:0]const u8, args: DragScalarGen(u64)) bool,
-
-    checkbox: *const fn (label: [:0]const u8, args: Checkbox) bool,
-    setClipboardText: *const fn (value: [:0]const u8) void,
-
-    beginPopupContextItem: *const fn () bool,
-    beginPopup: *const fn (str_id: [*:0]const u8, flags: WindowFlags) bool,
-
-    isItemClicked: *const fn (button: MouseButton) bool,
-    isItemActivated: *const fn () bool,
-
-    beginPopupModal: *const fn (name: [:0]const u8, args: Begin) bool,
-    openPopup: *const fn (str_id: [:0]const u8, flags: PopupFlags) void,
-    endPopup: *const fn () void,
-    closeCurrentPopup: *const fn () void,
-
-    beginTooltip: *const fn () void,
-    endTooltip: *const fn () void,
-
-    separator: *const fn () void,
-    separatorText: *const fn (label: [:0]const u8) void,
-
-    setNextItemWidth: *const fn (item_width: f32) void,
-    setNextWindowSize: *const fn (args: SetNextWindowSize) void,
-
-    beginTable: *const fn (name: [:0]const u8, args: BeginTable) bool,
-    endTable: *const fn () void,
-    tableSetupColumn: *const fn (label: [:0]const u8, args: TableSetupColumn) void,
-    tableHeadersRow: *const fn () void,
-    tableNextColumn: *const fn () void,
-    tableNextRow: *const fn (args: TableNextRow) void,
-    tableSetupScrollFreeze: *const fn (cols: i32, rows: i32) void,
-
-    getItemRectMax: *const fn () [2]f32,
-    getItemRectMin: *const fn () [2]f32,
-    getCursorPosX: *const fn () f32,
-    calcTextSize: *const fn (txt: []const u8, args: CalcTextSize) [2]f32,
-    getWindowPos: *const fn () [2]f32,
-    getWindowContentRegionMax: *const fn () [2]f32,
-    getContentRegionMax: *const fn () [2]f32,
-    getContentRegionAvail: *const fn () [2]f32,
-    setCursorPosX: *const fn (x: f32) void,
-
-    beginDragDropSource: *const fn (flags: DragDropFlags) bool,
-    setDragDropPayload: *const fn (payload_type: [*:0]const u8, data: []const u8, cond: Condition) bool,
-    endDragDropSource: *const fn () void,
-    beginDragDropTarget: *const fn () bool,
-    acceptDragDropPayload: *const fn (payload_type: [*:0]const u8, flags: DragDropFlags) ?*Payload,
-    endDragDropTarget: *const fn () void,
-    getDragDropPayload: *const fn () ?*Payload,
-
-    isMouseDoubleClicked: *const fn (mouse_button: MouseButton) bool,
-    isMouseDown: *const fn (mouse_button: MouseButton) bool,
-    isMouseClicked: *const fn (mouse_button: MouseButton) bool,
-
-    // Selection OBJ
-    isSelected: *const fn (db: *cdb.CdbDb, selection: cdb.ObjId, obj: cdb.ObjId) bool,
-    addToSelection: *const fn (db: *cdb.CdbDb, selection: cdb.ObjId, obj: cdb.ObjId) anyerror!void,
-    removeFromSelection: *const fn (db: *cdb.CdbDb, selection: cdb.ObjId, obj: cdb.ObjId) anyerror!void,
-    clearSelection: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, selection: cdb.ObjId) anyerror!void,
-    setSelection: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, selection: cdb.ObjId, obj: cdb.ObjId) anyerror!void,
-    selectedCount: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, selection: cdb.ObjId) u32,
-    getFirstSelected: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, selection: cdb.ObjId) cdb.ObjId,
-    getSelected: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, selection: cdb.ObjId) ?[]const cdb.ObjId,
-    handleSelection: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, selection: cdb.ObjId, obj: cdb.ObjId, multiselect_enabled: bool) anyerror!void,
-
-    // TODO: MOVE?
-    // Tests
-    reloadTests: *const fn () void,
-
-    registerTestFn: *const fn (
-        category: [*]const u8,
-        name: [*]const u8,
-        src: [*]const u8,
-        src_line: c_int,
-        gui_fce: ?*const ImGuiTestGuiFunc,
-        gui_test_fce: ?*const ImGuiTestTestFunc,
-    ) *Test,
-
-    testContextSetRef: *const fn (ctx: *TestContext, ref: [:0]const u8) void,
-    testContextWindowFocus: *const fn (ctx: *TestContext, ref: [:0]const u8) void,
-    testItemAction: *const fn (ctx: *TestContext, action: Actions, ref: [:0]const u8, flags: TestOpFlags, action_arg: ?*anyopaque) void,
-    testItemInputStrValue: *const fn (ctx: *TestContext, ref: [:0]const u8, value: [:0]const u8) void,
-    testItemInputIntValue: *const fn (ctx: *TestContext, ref: [:0]const u8, value: i32) void,
-    testItemInputFloatValue: *const fn (ctx: *TestContext, ref: [:0]const u8, value: f32) void,
-    testContextYield: *const fn (ctx: *TestContext, frame_count: i32) void,
-    testContextMenuAction: *const fn (ctx: *TestContext, action: Actions, ref: [:0]const u8) void,
-    testDragAndDrop: *const fn (ctx: *TestContext, ref_src: [:0]const u8, ref_dst: [:0]const u8, button: MouseButton) void,
-    testKeyDown: *const fn (ctx: *TestContext, key_chord: Key) void,
-    testKeyUp: *const fn (ctx: *TestContext, key_chord: Key) void,
-    testIsRunning: *const fn () bool,
-    testRunAll: *const fn (filter: [:0]const u8) void,
-    testPrintResult: *const fn () void,
-    testGetResult: *const fn () TestResult,
-    testSetRunSpeed: *const fn (speed: ImGuiTestRunSpeed) void,
-    testExportJunitResult: *const fn (filename: [:0]const u8) void,
-    testCheck: *const fn (src: std.builtin.SourceLocation, flags: CheckFlags, resul: bool, expr: [:0]const u8) bool,
-
-    setScaleFactor: *const fn (scale_factor: f32) void,
-    getScaleFactor: *const fn () f32,
-
-    mainDockSpace: *const fn (flags: DockNodeFlags) Ident,
-};
-
-// Copy from zgui (THc a.k.a Temp hack)
-// TODO: Make own abstract types
-pub const DockNodeFlags = packed struct(c_int) {
-    keep_alive_only: bool = false,
-    _reserved: u1 = 0,
-    no_docking_over_central_node: bool = false,
-    passthru_central_node: bool = false,
-    no_docking_split: bool = false,
-    no_resize: bool = false,
-    auto_hide_tab_bar: bool = false,
-    no_undocking: bool = false,
-    _padding: u24 = 0,
-};
-
-pub const Ident = u32;
-
-const SetScrollHereX = struct {
-    center_x_ratio: f32 = 0.5,
-};
-const SetScrollHereY = struct {
-    center_y_ratio: f32 = 0.5,
-};
-
-const SetNextWindowSize = struct {
-    w: f32,
-    h: f32,
-    cond: Condition = .none,
-};
-
-pub const TestResult = struct {
-    count_tested: i32,
-    count_success: i32,
-};
-
-const Begin = struct {
-    popen: ?*bool = null,
-    flags: WindowFlags = .{},
-};
-
-pub const WindowFlags = packed struct(c_int) {
-    no_title_bar: bool = false,
-    no_resize: bool = false,
-    no_move: bool = false,
-    no_scrollbar: bool = false,
-    no_scroll_with_mouse: bool = false,
-    no_collapse: bool = false,
-    always_auto_resize: bool = false,
-    no_background: bool = false,
-    no_saved_settings: bool = false,
-    no_mouse_inputs: bool = false,
-    menu_bar: bool = false,
-    horizontal_scrollbar: bool = false,
-    no_focus_on_appearing: bool = false,
-    no_bring_to_front_on_focus: bool = false,
-    always_vertical_scrollbar: bool = false,
-    always_horizontal_scrollbar: bool = false,
-    no_nav_inputs: bool = false,
-    no_nav_focus: bool = false,
-    unsaved_document: bool = false,
-    no_docking: bool = false,
-    _padding: u12 = 0,
-
-    pub const no_nav = WindowFlags{ .no_nav_inputs = true, .no_nav_focus = true };
-    pub const no_decoration = WindowFlags{
-        .no_title_bar = true,
-        .no_resize = true,
-        .no_scrollbar = true,
-        .no_collapse = true,
+    //TODO: TEMP SHIT
+    _ = std.fs.cwd().statFile("imgui.ini") catch |err| {
+        if (err == error.FileNotFound) {
+            const f = try std.fs.cwd().createFile("imgui.ini", .{});
+            defer f.close();
+            try f.writeAll(DEFAULT_IMGUI_INI);
+        }
     };
-    pub const no_inputs = WindowFlags{
-        .no_mouse_inputs = true,
-        .no_nav_inputs = true,
-        .no_nav_focus = true,
-    };
-};
+    //
 
-pub const ChildFlags = packed struct(c_int) {
-    border: bool = false,
-    no_move: bool = false,
-    always_use_window_padding: bool = false,
-    resize_x: bool = false,
-    resize_y: bool = false,
-    auto_resize_x: bool = false,
-    auto_resize_y: bool = false,
-    always_auto_resize: bool = false,
-    frame_style: bool = false,
-    _padding: u23 = 0,
-};
+    zgui.init(_allocator);
+    zgui.plot.init();
 
-pub const MenuItem = struct {
-    shortcut: ?[:0]const u8 = null,
-    selected: bool = false,
-    enabled: bool = true,
-};
+    if (cetech1_options.enable_nfd) try znfde.init();
 
-pub const MenuItemPtr = struct {
-    shortcut: ?[:0]const u8 = null,
-    selected: *bool,
-    enabled: bool = true,
-};
-
-pub const TreeNodeFlags = packed struct(c_int) {
-    selected: bool = false,
-    framed: bool = false,
-    allow_overlap: bool = false,
-    no_tree_push_on_open: bool = false,
-    no_auto_open_on_log: bool = false,
-    default_open: bool = false,
-    open_on_double_click: bool = false,
-    open_on_arrow: bool = false,
-    leaf: bool = false,
-    bullet: bool = false,
-    frame_padding: bool = false,
-    span_avail_width: bool = false,
-    span_full_width: bool = false,
-    span_all_columns: bool = false,
-    nav_left_jumps_back_here: bool = false,
-    _padding: u17 = 0,
-
-    pub const collapsing_header = TreeNodeFlags{
-        .framed = true,
-        .no_tree_push_on_open = true,
-        .no_auto_open_on_log = true,
-    };
-};
-
-pub const HoveredFlags = packed struct(c_int) {
-    child_windows: bool = false,
-    root_window: bool = false,
-    any_window: bool = false,
-    no_popup_hierarchy: bool = false,
-    dock_hierarchy: bool = false,
-    allow_when_blocked_by_popup: bool = false,
-    _reserved1: bool = false,
-    allow_when_blocked_by_active_item: bool = false,
-    allow_when_overlapped_by_item: bool = false,
-    allow_when_overlapped_by_window: bool = false,
-    allow_when_disabled: bool = false,
-    no_nav_override: bool = false,
-    for_tooltip: bool = false,
-    stationary: bool = false,
-    delay_none: bool = false,
-    delay_normal: bool = false,
-    delay_short: bool = false,
-    no_shared_delay: bool = false,
-    _padding: u14 = 0,
-
-    pub const rect_only = HoveredFlags{
-        .allow_when_blocked_by_popup = true,
-        .allow_when_blocked_by_active_item = true,
-        .allow_when_overlapped_by_item = true,
-        .allow_when_overlapped_by_window = true,
-    };
-    pub const root_and_child_windows = HoveredFlags{ .root_window = true, .child_windows = true };
-};
-
-pub const MouseButton = enum(u32) {
-    left = 0,
-    right = 1,
-    middle = 2,
-};
-
-pub const Key = enum(u32) {
-    none = 0,
-    tab = 512,
-    left_arrow,
-    right_arrow,
-    up_arrow,
-    down_arrow,
-    page_up,
-    page_down,
-    home,
-    end,
-    insert,
-    delete,
-    back_space,
-    space,
-    enter,
-    escape,
-    left_ctrl,
-    left_shift,
-    left_alt,
-    left_super,
-    right_ctrl,
-    right_shift,
-    right_alt,
-    right_super,
-    menu,
-    zero,
-    one,
-    two,
-    three,
-    four,
-    five,
-    six,
-    seven,
-    eight,
-    nine,
-    a,
-    b,
-    c,
-    d,
-    e,
-    f,
-    g,
-    h,
-    i,
-    j,
-    k,
-    l,
-    m,
-    n,
-    o,
-    p,
-    q,
-    r,
-    s,
-    t,
-    u,
-    v,
-    w,
-    x,
-    y,
-    z,
-    f1,
-    f2,
-    f3,
-    f4,
-    f5,
-    f6,
-    f7,
-    f8,
-    f9,
-    f10,
-    f11,
-    f12,
-    f13,
-    f14,
-    f15,
-    f16,
-    f17,
-    f18,
-    f19,
-    f20,
-    f21,
-    f22,
-    f23,
-    f24,
-    apostrophe,
-    comma,
-    minus,
-    period,
-    slash,
-    semicolon,
-    equal,
-    left_bracket,
-    back_slash,
-    right_bracket,
-    grave_accent,
-    caps_lock,
-    scroll_lock,
-    num_lock,
-    print_screen,
-    pause,
-    keypad_0,
-    keypad_1,
-    keypad_2,
-    keypad_3,
-    keypad_4,
-    keypad_5,
-    keypad_6,
-    keypad_7,
-    keypad_8,
-    keypad_9,
-    keypad_decimal,
-    keypad_divide,
-    keypad_multiply,
-    keypad_subtract,
-    keypad_add,
-    keypad_enter,
-    keypad_equal,
-
-    app_back,
-    app_forward,
-
-    gamepad_start,
-    gamepad_back,
-    gamepad_faceleft,
-    gamepad_faceright,
-    gamepad_faceup,
-    gamepad_facedown,
-    gamepad_dpadleft,
-    gamepad_dpadright,
-    gamepad_dpadup,
-    gamepad_dpaddown,
-    gamepad_l1,
-    gamepad_r1,
-    gamepad_l2,
-    gamepad_r2,
-    gamepad_l3,
-    gamepad_r3,
-    gamepad_lstickleft,
-    gamepad_lstickright,
-    gamepad_lstickup,
-    gamepad_lstickdown,
-    gamepad_rstickleft,
-    gamepad_rstickright,
-    gamepad_rstickup,
-    gamepad_rstickdown,
-
-    mouse_left,
-    mouse_right,
-    mouse_middle,
-    mouse_x1,
-    mouse_x2,
-
-    mouse_wheel_x,
-    mouse_wheel_y,
-
-    mod_ctrl = 1 << 12,
-    mod_shift = 1 << 13,
-    mod_alt = 1 << 14,
-    mod_super = 1 << 15,
-    mod_mask_ = 0xf000,
-};
-
-pub const TableBorderFlags = packed struct(u4) {
-    inner_h: bool = false,
-    outer_h: bool = false,
-    inner_v: bool = false,
-    outer_v: bool = false,
-
-    pub const h = TableBorderFlags{
-        .inner_h = true,
-        .outer_h = true,
-    }; // Draw horizontal borders.
-    pub const v = TableBorderFlags{
-        .inner_v = true,
-        .outer_v = true,
-    }; // Draw vertical borders.
-    pub const inner = TableBorderFlags{
-        .inner_v = true,
-        .inner_h = true,
-    }; // Draw inner borders.
-    pub const outer = TableBorderFlags{
-        .outer_v = true,
-        .outer_h = true,
-    }; // Draw outer borders.
-    pub const all = TableBorderFlags{
-        .inner_v = true,
-        .inner_h = true,
-        .outer_v = true,
-        .outer_h = true,
-    }; // Draw all borders.
-};
-pub const TableFlags = packed struct(u32) {
-    resizable: bool = false,
-    reorderable: bool = false,
-    hideable: bool = false,
-    sortable: bool = false,
-    no_saved_settings: bool = false,
-    context_menu_in_body: bool = false,
-    row_bg: bool = false,
-    borders: TableBorderFlags = .{},
-    no_borders_in_body: bool = false,
-    no_borders_in_body_until_resize: bool = false,
-
-    // Sizing Policy
-    sizing: enum(u3) {
-        none = 0,
-        fixed_fit = 1,
-        fixed_same = 2,
-        stretch_prop = 3,
-        stretch_same = 4,
-    } = .none,
-
-    // Sizing Extra Options
-    no_host_extend_x: bool = false,
-    no_host_extend_y: bool = false,
-    no_keep_columns_visible: bool = false,
-    precise_widths: bool = false,
-
-    // Clipping
-    no_clip: bool = false,
-
-    // Padding
-    pad_outer_x: bool = false,
-    no_pad_outer_x: bool = false,
-    no_pad_inner_x: bool = false,
-
-    // Scrolling
-    scroll_x: bool = false,
-    scroll_y: bool = false,
-
-    // Sorting
-    sort_multi: bool = false,
-    sort_tristate: bool = false,
-
-    _padding: u4 = 0,
-};
-
-pub const TableRowFlags = packed struct(u32) {
-    headers: bool = false,
-
-    _padding: u31 = 0,
-};
-
-pub const TableColumnFlags = packed struct(u32) {
-    // Input configuration flags
-    disabled: bool = false,
-    default_hide: bool = false,
-    default_sort: bool = false,
-    width_stretch: bool = false,
-    width_fixed: bool = false,
-    no_resize: bool = false,
-    no_reorder: bool = false,
-    no_hide: bool = false,
-    no_clip: bool = false,
-    no_sort: bool = false,
-    no_sort_ascending: bool = false,
-    no_sort_descending: bool = false,
-    no_header_label: bool = false,
-    no_header_width: bool = false,
-    prefer_sort_ascending: bool = false,
-    prefer_sort_descending: bool = false,
-    indent_enable: bool = false,
-    indent_disable: bool = false,
-
-    _padding0: u6 = 0,
-
-    // Output status flags, read-only via TableGetColumnFlags()
-    is_enabled: bool = false,
-    is_visible: bool = false,
-    is_sorted: bool = false,
-    is_hovered: bool = false,
-
-    _padding1: u4 = 0,
-};
-
-pub const TableColumnSortSpecs = extern struct {
-    user_id: Ident,
-    index: i16,
-    sort_order: i16,
-    sort_direction: enum(u8) {
-        none = 0,
-        ascending = 1, // Ascending = 0->9, A->Z etc.
-        descending = 2, // Descending = 9->0, Z->A etc.
-    },
-};
-
-pub const TableSortSpecs = *extern struct {
-    specs: [*]TableColumnSortSpecs,
-    count: i32,
-    dirty: bool,
-};
-
-pub const TableBgTarget = enum(u32) {
-    none = 0,
-    row_bg0 = 1,
-    row_bg1 = 2,
-    cell_bg = 3,
-};
-
-pub const BeginTable = struct {
-    column: i32,
-    flags: TableFlags = .{},
-    outer_size: [2]f32 = .{ 0, 0 },
-    inner_width: f32 = 0,
-};
-
-pub const TableSetupColumn = struct {
-    flags: TableColumnFlags = .{},
-    init_width_or_height: f32 = 0,
-    user_id: Ident = 0,
-};
-
-pub const InputTextFlags = packed struct(u32) {
-    chars_decimal: bool = false,
-    chars_hexadecimal: bool = false,
-    chars_uppercase: bool = false,
-    chars_no_blank: bool = false,
-    auto_select_all: bool = false,
-    enter_returns_true: bool = false,
-    callback_completion: bool = false,
-    callback_history: bool = false,
-    callback_always: bool = false,
-    callback_char_filter: bool = false,
-    allow_tab_input: bool = false,
-    ctrl_enter_for_new_line: bool = false,
-    no_horizontal_scroll: bool = false,
-    always_overwrite: bool = false,
-    read_only: bool = false,
-    password: bool = false,
-    no_undo_redo: bool = false,
-    chars_scientific: bool = false,
-    callback_resize: bool = false,
-    callback_edit: bool = false,
-    _padding: u12 = 0,
-};
-const InputText = struct {
-    buf: []u8,
-    flags: InputTextFlags = .{},
-    callback: ?*anyopaque = null,
-    user_data: ?*anyopaque = null,
-};
-
-pub const TableNextRow = struct {
-    row_flags: TableRowFlags = .{},
-    min_row_height: f32 = 0,
-};
-
-const InputF32 = struct {
-    v: *f32,
-    step: f32 = 0.0,
-    step_fast: f32 = 0.0,
-    cfmt: [:0]const u8 = "%.3f",
-    flags: InputTextFlags = .{},
-};
-
-const InputF64 = struct {
-    v: *f64,
-    step: f64 = 0.0,
-    step_fast: f64 = 0.0,
-    cfmt: [:0]const u8 = "%.6f",
-    flags: InputTextFlags = .{},
-};
-
-pub fn InputScalarGen(comptime T: type) type {
-    return struct {
-        v: *T,
-        step: ?T = null,
-        step_fast: ?T = null,
-        cfmt: ?[:0]const u8 = null,
-        flags: InputTextFlags = .{},
-    };
+    try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelLoopHookI, &_kernel_hook_i, true);
+    try apidb.api.implOrRemove(module_name, cetech1.gpu.GpuPresentI, &_gpu_present_i, true);
 }
 
-const Checkbox = struct {
-    v: *bool,
-};
-
-pub const PopupFlags = packed struct(c_int) {
-    mouse_button_left: bool = false,
-    mouse_button_right: bool = false,
-    mouse_button_middle: bool = false,
-
-    _reserved0: bool = false,
-    _reserved1: bool = false,
-
-    no_reopen: bool = false,
-    _reserved2: bool = false,
-    no_open_over_existing_popup: bool = false,
-    no_open_over_items: bool = false,
-    any_popup_id: bool = false,
-    any_popup_level: bool = false,
-    _padding: u21 = 0,
-
-    pub const any_popup = PopupFlags{ .any_popup_id = true, .any_popup_level = true };
-};
-
-const Button = struct {
-    w: f32 = 0.0,
-    h: f32 = 0.0,
-};
-
-const SameLine = struct {
-    offset_from_start_x: f32 = 0.0,
-    spacing: f32 = -1.0,
-};
-
-pub const StyleCol = enum(c_int) {
-    text,
-    text_disabled,
-    window_bg,
-    child_bg,
-    popup_bg,
-    border,
-    border_shadow,
-    frame_bg,
-    frame_bg_hovered,
-    frame_bg_active,
-    title_bg,
-    title_bg_active,
-    title_bg_collapsed,
-    menu_bar_bg,
-    scrollbar_bg,
-    scrollbar_grab,
-    scrollbar_grab_hovered,
-    scrollbar_grab_active,
-    check_mark,
-    slider_grab,
-    slider_grab_active,
-    button,
-    button_hovered,
-    button_active,
-    header,
-    header_hovered,
-    header_active,
-    separator,
-    separator_hovered,
-    separator_active,
-    resize_grip,
-    resize_grip_hovered,
-    resize_grip_active,
-    tab,
-    tab_hovered,
-    tab_active,
-    tab_unfocused,
-    tab_unfocused_active,
-    docking_preview,
-    docking_empty_bg,
-    plot_lines,
-    plot_lines_hovered,
-    plot_histogram,
-    plot_histogram_hovered,
-    table_header_bg,
-    table_border_strong,
-    table_border_light,
-    table_row_bg,
-    table_row_bg_alt,
-    text_selected_bg,
-    drag_drop_target,
-    nav_highlight,
-    nav_windowing_highlight,
-    nav_windowing_dim_bg,
-    modal_window_dim_bg,
-};
-const PushStyleColor4f = struct {
-    idx: StyleCol,
-    c: [4]f32,
-};
-
-const PopStyleColor = struct {
-    count: i32 = 1,
-};
-
-pub const FocusedFlags = packed struct(c_int) {
-    child_windows: bool = false,
-    root_window: bool = false,
-    any_window: bool = false,
-    no_popup_hierarchy: bool = false,
-    dock_hierarchy: bool = false,
-    _padding: u27 = 0,
-
-    pub const root_and_child_windows = FocusedFlags{ .root_window = true, .child_windows = true };
-};
-pub const TableSetBgColor = struct {
-    target: TableBgTarget,
-    color: u32,
-    column_n: i32 = -1,
-};
-
-pub const ColorEditFlags = packed struct(c_int) {
-    _reserved0: bool = false,
-    no_alpha: bool = false,
-    no_picker: bool = false,
-    no_options: bool = false,
-    no_small_preview: bool = false,
-    no_inputs: bool = false,
-    no_tooltip: bool = false,
-    no_label: bool = false,
-    no_side_preview: bool = false,
-    no_drag_drop: bool = false,
-    no_border: bool = false,
-
-    _reserved1: bool = false,
-    _reserved2: bool = false,
-    _reserved3: bool = false,
-    _reserved4: bool = false,
-    _reserved5: bool = false,
-
-    alpha_bar: bool = false,
-    alpha_preview: bool = false,
-    alpha_preview_half: bool = false,
-    hdr: bool = false,
-    display_rgb: bool = false,
-    display_hsv: bool = false,
-    display_hex: bool = false,
-    uint8: bool = false,
-    float: bool = false,
-    picker_hue_bar: bool = false,
-    picker_hue_wheel: bool = false,
-    input_rgb: bool = false,
-    input_hsv: bool = false,
-
-    _padding: u3 = 0,
-
-    pub const default_options = ColorEditFlags{
-        .uint8 = true,
-        .display_rgb = true,
-        .input_rgb = true,
-        .picker_hue_bar = true,
-    };
-};
-const ColorPicker4 = struct {
-    col: *[4]f32,
-    flags: ColorEditFlags = .{},
-    ref_col: ?[*]const f32 = null,
-};
-
-const ColorEdit4 = struct {
-    col: *[4]f32,
-    flags: ColorEditFlags = .{},
-};
-
-const CalcTextSize = struct {
-    hide_text_after_double_hash: bool = false,
-    wrap_width: f32 = -1.0,
-};
-
-pub const Direction = enum(c_int) {
-    none = -1,
-    left = 0,
-    right = 1,
-    up = 2,
-    down = 3,
-};
-
-pub const Style = extern struct {
-    alpha: f32,
-    disabled_alpha: f32,
-    window_padding: [2]f32,
-    window_rounding: f32,
-    window_border_size: f32,
-    window_min_size: [2]f32,
-    window_title_align: [2]f32,
-    window_menu_button_position: Direction,
-    child_rounding: f32,
-    child_border_size: f32,
-    popup_rounding: f32,
-    popup_border_size: f32,
-    frame_padding: [2]f32,
-    frame_rounding: f32,
-    frame_border_size: f32,
-    item_spacing: [2]f32,
-    item_inner_spacing: [2]f32,
-    cell_padding: [2]f32,
-    touch_extra_padding: [2]f32,
-    indent_spacing: f32,
-    columns_min_spacing: f32,
-    scrollbar_size: f32,
-    scrollbar_rounding: f32,
-    grab_min_size: f32,
-    grab_rounding: f32,
-    log_slider_deadzone: f32,
-    tab_rounding: f32,
-    tab_border_size: f32,
-    tab_min_width_for_close_button: f32,
-    tab_bar_border_size: f32,
-    table_angled_header_angle: f32,
-    color_button_position: Direction,
-    button_text_align: [2]f32,
-    selectable_text_align: [2]f32,
-    separator_text_border_size: f32,
-    separator_text_align: [2]f32,
-    separator_text_padding: [2]f32,
-    display_window_padding: [2]f32,
-    display_safe_area_padding: [2]f32,
-    docking_separator_size: f32,
-    mouse_cursor_scale: f32,
-    anti_aliased_lines: bool,
-    anti_aliased_lines_use_tex: bool,
-    anti_aliased_fill: bool,
-    curve_tessellation_tol: f32,
-    circle_tessellation_max_error: f32,
-
-    colors: [@typeInfo(StyleCol).Enum.fields.len][4]f32,
-
-    hover_stationary_delay: f32,
-    hover_delay_short: f32,
-    hover_delay_normal: f32,
-
-    hover_flags_for_tooltip_mouse: HoveredFlags,
-    hover_flags_for_tooltip_nav: HoveredFlags,
-
-    /// `pub fn init() Style`
-    pub const init = zguiStyle_Init;
-    extern fn zguiStyle_Init() Style;
-
-    /// `pub fn scaleAllSizes(style: *Style, scale_factor: f32) void`
-    pub const scaleAllSizes = zguiStyle_ScaleAllSizes;
-    extern fn zguiStyle_ScaleAllSizes(style: *Style, scale_factor: f32) void;
-
-    pub fn getColor(style: Style, idx: StyleCol) [4]f32 {
-        return style.colors[@intCast(@intFromEnum(idx))];
+pub fn deinit() void {
+    if (_backed_initialised) {
+        _te_engine.tryAbortEngine();
+        _te_engine.stop();
     }
-    pub fn setColor(style: *Style, idx: StyleCol, color: [4]f32) void {
-        style.colors[@intCast(@intFromEnum(idx))] = color;
+
+    zgui.plot.deinit();
+    if (_backed_initialised) zgui.backend.deinit();
+
+    zgui.deinit();
+
+    if (_backed_initialised) {
+        // TODO: check for mem leak rewrite memory for test engine
+        //zgui_te.zguiTe_DestroyContext(_te_engine);
     }
-};
 
-pub const ButtonFlags = packed struct(u32) {
-    mouse_button_left: bool = false,
-    mouse_button_right: bool = false,
-    mouse_button_middle: bool = false,
-    _padding: u29 = 0,
-};
-const InvisibleButton = struct {
-    w: f32,
-    h: f32,
-    flags: ButtonFlags = .{},
-};
-
-pub const StyleVar = enum(c_int) {
-    alpha, // 1f
-    disabled_alpha, // 1f
-    window_padding, // 2f
-    window_rounding, // 1f
-    window_border_size, // 1f
-    window_min_size, // 2f
-    window_title_align, // 2f
-    child_rounding, // 1f
-    child_border_size, // 1f
-    popup_rounding, // 1f
-    popup_border_size, // 1f
-    frame_padding, // 2f
-    frame_rounding, // 1f
-    frame_border_size, // 1f
-    item_spacing, // 2f
-    item_inner_spacing, // 2f
-    indent_spacing, // 1f
-    cell_padding, // 2f
-    scrollbar_size, // 1f
-    scrollbar_rounding, // 1f
-    grab_min_size, // 1f
-    grab_rounding, // 1f
-    tab_rounding, // 1f
-    tab_bar_border_size, // 1f
-    button_text_align, // 2f
-    selectable_text_align, // 2f
-    separator_text_border_size, // 1f
-    separator_text_align, // 2f
-    separator_text_padding, // 2f
-    docking_separator_size, // 1f
-};
-
-const PushStyleVar2f = struct {
-    idx: StyleVar,
-    v: [2]f32,
-};
-
-const PushStyleVar1f = struct {
-    idx: StyleVar,
-    v: f32,
-};
-
-const PopStyleVar = struct {
-    count: i32 = 1,
-};
-
-const BeginChild = struct {
-    w: f32 = 0.0,
-    h: f32 = 0.0,
-    child_flags: ChildFlags = .{},
-    window_flags: WindowFlags = .{},
-};
-
-const Dummy = struct {
-    w: f32,
-    h: f32,
-};
-
-pub const DragDropFlags = packed struct(c_int) {
-    source_no_preview_tooltip: bool = false,
-    source_no_disable_hover: bool = false,
-    source_no_hold_open_to_others: bool = false,
-    source_allow_null_id: bool = false,
-    source_extern: bool = false,
-    source_auto_expire_payload: bool = false,
-
-    _padding0: u4 = 0,
-
-    accept_before_delivery: bool = false,
-    accept_no_draw_default_rect: bool = false,
-    accept_no_preview_tooltip: bool = false,
-
-    _padding1: u19 = 0,
-
-    pub const accept_peek_only = @This(){ .accept_before_delivery = true, .accept_no_draw_default_rect = true };
-};
-
-pub const Payload = extern struct {
-    data: ?*anyopaque = null,
-    data_size: c_int = 0,
-    source_id: c_uint = 0,
-    source_parent_id: c_uint = 0,
-    data_frame_count: c_int = -1,
-    data_type: [32:0]c_char,
-    preview: bool = false,
-    delivery: bool = false,
-};
-
-pub const Condition = enum(c_int) {
-    none = 0,
-    always = 1,
-    once = 2,
-    first_use_ever = 4,
-    appearing = 8,
-};
-
-pub const SliderFlags = packed struct(c_int) {
-    _reserved0: bool = false,
-    _reserved1: bool = false,
-    _reserved2: bool = false,
-    _reserved3: bool = false,
-    always_clamp: bool = false,
-    logarithmic: bool = false,
-    no_round_to_format: bool = false,
-    no_input: bool = false,
-    _padding: u24 = 0,
-};
-
-pub fn DragFloatGen(comptime T: type) type {
-    return struct {
-        v: *T,
-        speed: f32 = 1.0,
-        min: f32 = 0.0,
-        max: f32 = 0.0,
-        cfmt: [:0]const u8 = "%.3f",
-        flags: SliderFlags = .{},
-    };
+    if (cetech1_options.enable_nfd) znfde.deinit();
+    apidb.api.implOrRemove(module_name, cetech1.kernel.KernelLoopHookI, &_kernel_hook_i, false) catch undefined;
+    apidb.api.implOrRemove(module_name, cetech1.gpu.GpuPresentI, &_gpu_present_i, false) catch undefined;
 }
 
-pub fn DragIntGen(comptime T: type) type {
-    return struct {
-        v: *T,
-        speed: f32 = 1.0,
-        min: i32 = 0.0,
-        max: i32 = 0.0,
-        cfmt: [:0]const u8 = "%d",
-        flags: SliderFlags = .{},
-    };
+pub var api = public.CoreUIApi{
+    .showDemoWindow = showDemoWindow,
+    .begin = @ptrCast(&zgui.begin),
+    .end = @ptrCast(&zgui.end),
+    .beginPopup = @ptrCast(&zgui.beginPopup),
+    .pushStyleColor4f = @ptrCast(&zgui.pushStyleColor4f),
+    .popStyleColor = @ptrCast(&zgui.popStyleColor),
+    .tableSetBgColor = @ptrCast(&zgui.tableSetBgColor),
+    .colorConvertFloat4ToU32 = @ptrCast(&zgui.colorConvertFloat4ToU32),
+    .text = @ptrCast(&zgui.textUnformatted),
+    .textColored = @ptrCast(&zgui.textUnformattedColored),
+    .colorPicker4 = @ptrCast(&zgui.colorPicker4),
+    .colorEdit4 = @ptrCast(&zgui.colorEdit4),
+    .beginMainMenuBar = @ptrCast(&zgui.beginMainMenuBar),
+    .endMainMenuBar = @ptrCast(&zgui.endMainMenuBar),
+    .beginMenuBar = @ptrCast(&zgui.beginMenuBar),
+    .endMenuBar = @ptrCast(&zgui.endMenuBar),
+    .beginMenu = beginMenu,
+    .endMenu = @ptrCast(&zgui.endMenu),
+    .menuItem = menuItem,
+    .menuItemPtr = menuItemPtr,
+    .beginChild = @ptrCast(&zgui.beginChild),
+    .endChild = @ptrCast(&zgui.endChild),
+    .separator = @ptrCast(&zgui.separator),
+    .separatorText = @ptrCast(&zgui.separatorText),
+    .setNextItemWidth = @ptrCast(&zgui.setNextItemWidth),
+    .setNextWindowSize = @ptrCast(&zgui.setNextWindowSize),
+    .pushPtrId = @ptrCast(&zgui.pushPtrId),
+    .pushIntId = @ptrCast(&zgui.pushIntId),
+    .pushObjUUID = pushObjUUID,
+    .popId = @ptrCast(&zgui.popId),
+    .treeNode = @ptrCast(&zgui.treeNode),
+    .treeNodeFlags = @ptrCast(&zgui.treeNodeFlags),
+    .treePop = @ptrCast(&zgui.treePop),
+    .beginTooltip = @ptrCast(&zgui.beginTooltip),
+    .endTooltip = @ptrCast(&zgui.endTooltip),
+    .isItemHovered = @ptrCast(&zgui.isItemHovered),
+    .setClipboardText = @ptrCast(&zgui.setClipboardText),
+    .beginPopupContextItem = @ptrCast(&zgui.beginPopupContextItem),
+    .beginPopupModal = @ptrCast(&zgui.beginPopupModal),
+    .openPopup = @ptrCast(&zgui.openPopup),
+    .endPopup = @ptrCast(&zgui.endPopup),
+    .closeCurrentPopup = @ptrCast(&zgui.closeCurrentPopup),
+    .isItemClicked = @ptrCast(&zgui.isItemClicked),
+    .isItemActivated = @ptrCast(&zgui.isItemActivated),
+    .isWindowFocused = @ptrCast(&zgui.isWindowFocused),
+    .beginTable = @ptrCast(&zgui.beginTable),
+    .endTable = @ptrCast(&zgui.endTable),
+    .tableSetupColumn = @ptrCast(&zgui.tableSetupColumn),
+    .tableHeadersRow = @ptrCast(&zgui.tableHeadersRow),
+    .tableNextColumn = @ptrCast(&zgui.tableNextColumn),
+    .tableNextRow = @ptrCast(&zgui.tableNextRow),
+    .tableSetupScrollFreeze = @ptrCast(&zgui.tableSetupScrollFreeze),
+    .getItemRectMax = @ptrCast(&zgui.getItemRectMax),
+    .getItemRectMin = @ptrCast(&zgui.getItemRectMin),
+    .getCursorPosX = @ptrCast(&zgui.getCursorPosX),
+    .calcTextSize = @ptrCast(&zgui.calcTextSize),
+    .getWindowPos = @ptrCast(&zgui.getWindowPos),
+    .getWindowContentRegionMax = @ptrCast(&zgui.getWindowContentRegionMax),
+    .getContentRegionMax = @ptrCast(&zgui.getContentRegionMax),
+    .getContentRegionAvail = @ptrCast(&zgui.getContentRegionAvail),
+    .setCursorPosX = @ptrCast(&zgui.setCursorPosX),
+    .getStyle = @ptrCast(&zgui.getStyle),
+    .pushStyleVar2f = @ptrCast(&zgui.pushStyleVar2f),
+    .pushStyleVar1f = @ptrCast(&zgui.pushStyleVar1f),
+    .popStyleVar = @ptrCast(&zgui.popStyleVar),
+    .isKeyDown = @ptrCast(&zgui.isKeyDown),
+    .labelText = labelText,
+    .sameLine = @ptrCast(&zgui.sameLine),
+    .button = @ptrCast(&zgui.button),
+    .smallButton = @ptrCast(&zgui.smallButton),
+    .invisibleButton = @ptrCast(&zgui.invisibleButton),
+    .inputText = @ptrCast(&zgui.inputText),
+    .inputF32 = @ptrCast(&zgui.inputFloat),
+    .inputF64 = @ptrCast(&zgui.inputDouble),
+    .inputI32 = inputI32,
+    .inputU32 = inputU32,
+    .inputI64 = inputI64,
+    .inputU64 = inputU64,
+    .dragF32 = @ptrCast(&zgui.dragFloat),
+    .dragF64 = dragDouble,
+    .dragI32 = dragI32,
+    .dragU32 = dragU32,
+    .dragU64 = dragU64,
+    .dragI64 = dragI64,
+    .checkbox = @ptrCast(&zgui.checkbox),
+    .alignTextToFramePadding = @ptrCast(&zgui.alignTextToFramePadding),
+    .isItemToggledOpen = @ptrCast(&zgui.isItemToggledOpen),
+    .dummy = @ptrCast(&zgui.dummy),
+    .spacing = @ptrCast(&zgui.spacing),
+    .getScrollX = @ptrCast(&zgui.getScrollX),
+    .getScrollY = @ptrCast(&zgui.getScrollY),
+    .getScrollMaxX = @ptrCast(&zgui.getScrollMaxX),
+    .getScrollMaxY = @ptrCast(&zgui.getScrollMaxY),
+    .setScrollHereY = @ptrCast(&zgui.setScrollHereY),
+    .setScrollHereX = @ptrCast(&zgui.setScrollHereX),
+    .supportFileDialog = supportFileDialog,
+    .openFileDialog = openFileDialog,
+    .saveFileDialog = saveFileDialog,
+    .openFolderDialog = openFolderDialog,
+    .uiFilterPass = uiFilterPass,
+    .uiFilter = uiFilter,
+    .beginDragDropSource = @ptrCast(&zgui.beginDragDropSource),
+    .setDragDropPayload = @ptrCast(&zgui.setDragDropPayload),
+    .endDragDropSource = @ptrCast(&zgui.endDragDropSource),
+    .beginDragDropTarget = @ptrCast(&zgui.beginDragDropTarget),
+    .acceptDragDropPayload = @ptrCast(&zgui.acceptDragDropPayload),
+    .endDragDropTarget = @ptrCast(&zgui.endDragDropTarget),
+    .getDragDropPayload = @ptrCast(&zgui.getDragDropPayload),
+    .isMouseDoubleClicked = @ptrCast(&zgui.isMouseDoubleClicked),
+    .isMouseDown = @ptrCast(&zgui.isMouseDown),
+    .isMouseClicked = @ptrCast(&zgui.isMouseClicked),
+    .isSelected = isSelected,
+    .addToSelection = addToSelection,
+    .setSelection = setSelection,
+    .selectedCount = selectedCount,
+    .getFirstSelected = getFirstSelected,
+    .getSelected = getSelected,
+    .handleSelection = handleSelection,
+    .removeFromSelection = removeFromSelection,
+    .clearSelection = clearSelection,
+    .pushPropName = pushPropName,
+    .getFontSize = @ptrCast(&zgui.getFontSize),
+    .showTestingWindow = showTestingWindow,
+    .showExternalCredits = showExternalCredits,
+    .showAuthors = showAuthors,
+    .registerTestFn = registerTestFn,
+    .reloadTests = reloadTests,
+    .testRunAll = testRunAll,
+    .testIsRunning = testIsRunning,
+    .testPrintResult = testPrintResult,
+    .testGetResult = testGetResult,
+    .testSetRunSpeed = testSetRunSpeed,
+    .testExportJunitResult = testExportJunitResult,
+    .testCheck = @ptrCast(&zguite.check),
+    .testContextSetRef = @ptrCast(&zguite.TestContext.setRef),
+    .testContextWindowFocus = @ptrCast(&zguite.TestContext.windowFocus),
+    .testItemAction = @ptrCast(&zguite.TestContext.itemAction),
+    .testContextYield = @ptrCast(&zguite.TestContext.yield),
+    .testContextMenuAction = @ptrCast(&zguite.TestContext.menuAction),
+    .testItemInputStrValue = @ptrCast(&zguite.TestContext.itemInputStrValue),
+    .testItemInputIntValue = @ptrCast(&zguite.TestContext.itemInputIntValue),
+    .testItemInputFloatValue = @ptrCast(&zguite.TestContext.itemInputFloatValue),
+    .testDragAndDrop = @ptrCast(&zguite.TestContext.dragAndDrop),
+    .testKeyDown = @ptrCast(&zguite.TestContext.keyDown),
+    .testKeyUp = @ptrCast(&zguite.TestContext.keyUp),
+    .setScaleFactor = setScaleFactor,
+    .getScaleFactor = getScaleFactor,
+    .mainDockSpace = mainDockSpace,
+};
+
+fn mainDockSpace(flags: public.DockNodeFlags) zgui.Ident {
+    const f: *zgui.DockNodeFlags = @constCast(@ptrCast(&flags));
+    return zgui.DockSpaceOverViewport(zgui.getMainViewport(), f.*);
 }
 
-pub fn DragScalarGen(comptime T: type) type {
-    return struct {
-        v: *T,
-        speed: f32 = 1.0,
-        min: ?T = null,
-        max: ?T = null,
-        cfmt: ?[:0]const u8 = null,
-        flags: SliderFlags = .{},
+fn setScaleFactor(scale_factor: f32) void {
+    _new_scale_factor = scale_factor;
+}
+
+fn getScaleFactor() f32 {
+    return _scale_factor.?;
+}
+
+fn supportFileDialog() bool {
+    return cetech1_options.enable_nfd;
+}
+
+fn openFileDialog(allocator: std.mem.Allocator, filter: ?[]const public.FilterItem, default_path: ?[:0]const u8) !?[:0]const u8 {
+    if (cetech1_options.enable_nfd) {
+        return znfde.openFileDialog(allocator, @ptrCast(filter), default_path);
+    }
+    return null;
+}
+
+fn saveFileDialog(allocator: std.mem.Allocator, filter: ?[]const public.FilterItem, default_path: ?[:0]const u8, default_name: ?[:0]const u8) !?[:0]const u8 {
+    if (cetech1_options.enable_nfd) {
+        return znfde.saveFileDialog(allocator, @ptrCast(filter), default_path, default_name);
+    }
+
+    return null;
+}
+
+fn openFolderDialog(allocator: std.mem.Allocator, default_path: ?[:0]const u8) !?[:0]const u8 {
+    if (cetech1_options.enable_nfd) {
+        return znfde.openFolderDialog(allocator, default_path);
+    }
+    return null;
+}
+
+fn pushPropName(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: u32) void {
+    const props_def = db.getTypePropDef(obj.type_idx).?;
+    zgui.pushStrIdZ(props_def[prop_idx].name);
+}
+
+fn testExportJunitResult(filename: [:0]const u8) void {
+    _te_engine.exportJunitResult(filename);
+}
+
+fn testSetRunSpeed(speed: public.ImGuiTestRunSpeed) void {
+    _te_engine.setRunSpeed(@enumFromInt(@intFromEnum(speed)));
+}
+
+fn testGetResult() public.TestResult {
+    var count_tested: c_int = 0;
+    var count_success: c_int = 0;
+    _te_engine.getResult(&count_tested, &count_success);
+    return .{ .count_tested = count_tested, .count_success = count_success };
+}
+
+fn testPrintResult() void {
+    return _te_engine.printResultSummary();
+}
+
+fn testIsRunning() bool {
+    return _backed_initialised and !_te_engine.isTestQueueEmpty();
+}
+
+fn testRunAll(filter: [:0]const u8) void {
+    _te_engine.queueTests(.tests, filter, .{ .command_line = true });
+}
+
+fn reloadTests() void {
+    registerAllTests();
+}
+
+fn registerTestFn(
+    category: [*]const u8,
+    name: [*]const u8,
+    src: [*]const u8,
+    src_line: c_int,
+    gui_fce: ?*const public.ImGuiTestGuiFunc,
+    gui_test_fce: ?*const public.ImGuiTestTestFunc,
+) *public.Test {
+    return zguite.zguiTe_RegisterTest(_te_engine, category, name, src, src_line, @ptrCast(gui_fce), @ptrCast(gui_test_fce));
+}
+
+fn showTestingWindow(show: *bool) void {
+    if (show.*) {
+        _te_engine.showTestEngineWindows(show);
+    }
+}
+
+fn showExternalCredits(show: *bool) void {
+    if (show.*) {
+        api.setNextWindowSize(.{ .w = 600, .h = 600, .cond = .first_use_ever });
+        if (api.begin(
+            public.Icons.Externals ++ "  " ++ "External credits###ExternalCredits",
+            .{ .popen = show, .flags = .{ .no_docking = true } },
+        )) {
+            defer api.end();
+
+            _ = zgui.inputTextMultiline("###Credits", .{
+                .buf = @constCast(kernel.api.getExternalsCredit()),
+                .flags = .{ .read_only = true },
+                .w = -1,
+                .h = -1,
+            });
+        }
+    }
+}
+
+fn showAuthors(show: *bool) void {
+    if (show.*) {
+        api.setNextWindowSize(.{ .w = 600, .h = 600, .cond = .first_use_ever });
+        if (api.begin(
+            public.Icons.Authors ++ "  " ++ "Authors###Authors",
+            .{ .popen = show, .flags = .{ .no_docking = true } },
+        )) {
+            defer api.end();
+
+            _ = zgui.inputTextMultiline("###Authors", .{
+                .buf = @constCast(kernel.api.getAuthors()),
+                .flags = .{ .read_only = true },
+                .w = -1,
+                .h = -1,
+            });
+        }
+    }
+}
+
+fn beginMenu(allocator: std.mem.Allocator, label: [:0]const u8, enabled: bool, filter: ?[:0]const u8) bool {
+    if (filter) |f| {
+        if (null == uiFilterPass(allocator, f, label, false)) return false;
+    }
+
+    return zgui.beginMenu(label, enabled);
+}
+
+fn menuItem(allocator: std.mem.Allocator, label: [:0]const u8, args: public.MenuItem, filter: ?[:0]const u8) bool {
+    if (filter) |f| {
+        if (null == uiFilterPass(allocator, f, label, false)) return false;
+    }
+
+    return zgui.menuItem(label, .{
+        .shortcut = args.shortcut,
+        .selected = args.selected,
+        .enabled = args.enabled,
+    });
+}
+
+fn menuItemPtr(allocator: std.mem.Allocator, label: [:0]const u8, args: public.MenuItemPtr, filter: ?[:0]const u8) bool {
+    if (filter) |f| {
+        if (null == uiFilterPass(allocator, f, label, false)) return false;
+    }
+    return zgui.menuItemPtr(label, .{
+        .shortcut = args.shortcut,
+        .selected = args.selected,
+        .enabled = args.enabled,
+    });
+}
+
+fn clearSelection(
+    allocator: std.mem.Allocator,
+    db: *cetech1.cdb.CdbDb,
+    selection: cetech1.cdb.ObjId,
+) !void {
+    const r = db.readObj(selection).?;
+
+    const w = db.writeObj(selection).?;
+
+    // TODO: clear to cdb
+    if (public.ObjSelection.readRefSet(db, r, .Selection, allocator)) |set| {
+        defer allocator.free(set);
+        for (set) |ref| {
+            try public.ObjSelection.removeFromRefSet(db, w, .Selection, ref);
+        }
+    }
+
+    try db.writeCommit(w);
+}
+
+fn pushObjUUID(obj: cetech1.cdb.ObjId) void {
+    const uuid = assetdb.api.getOrCreateUuid(obj) catch undefined;
+    var buff: [128]u8 = undefined;
+    const uuid_str = std.fmt.bufPrintZ(&buff, "{s}", .{uuid}) catch undefined;
+
+    zgui.pushStrIdZ(uuid_str);
+}
+
+fn uiFilterPass(allocator: std.mem.Allocator, filter: [:0]const u8, value: [:0]const u8, is_path: bool) ?f64 {
+    // Collect token for filter
+    var tokens = std.ArrayList([]const u8).init(allocator);
+    defer tokens.deinit();
+
+    var split = std.mem.split(u8, filter, " ");
+    const first = split.first();
+    var it: ?[]const u8 = first;
+    while (it) |word| : (it = split.next()) {
+        if (word.len == 0) continue;
+        tokens.append(word) catch return null;
+    }
+    //return 0;
+
+    return zf.rank(value, tokens.items, false, !is_path);
+}
+
+fn uiFilter(buf: []u8, filter: ?[:0]const u8) ?[:0]const u8 {
+    api.text(Icons.FA_MAGNIFYING_GLASS);
+    api.sameLine(.{});
+
+    var input_buff: [128:0]u8 = undefined;
+    _ = std.fmt.bufPrintZ(&input_buff, "{s}", .{filter orelse ""}) catch return null;
+
+    api.setNextItemWidth(-std.math.floatMin(f32));
+    if (api.inputText("###filter", .{
+        .buf = &input_buff,
+        .flags = .{
+            .auto_select_all = true,
+            //.enter_returns_true = true,
+        },
+    })) {
+        const input = std.mem.sliceTo(&input_buff, 0);
+        return std.fmt.bufPrintZ(buf, "{s}", .{input}) catch null;
+    }
+
+    if (filter) |f| {
+        const len = f.len;
+        if (len == 0) return null;
+        return std.mem.sliceTo(f, 0);
+    }
+
+    return null;
+}
+
+pub fn labelText(label: [:0]const u8, text: [:0]const u8) void {
+    zgui.labelText(label, "{s}", .{text});
+}
+
+pub fn coreUI(tmp_allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
+    _ = kernel_tick;
+    _ = dt;
+
+    var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "CoreUI");
+    defer update_zone_ctx.End();
+
+    // Headless mode
+    if (_true_gpuctx == null) return;
+
+    var it = apidb.api.getFirstImpl(cetech1.coreui.CoreUII);
+    while (it) |node| : (it = node.next) {
+        const iface = cetech1.apidb.ApiDbAPI.toInterface(cetech1.coreui.CoreUII, node);
+        iface.*.ui(&tmp_allocator);
+    }
+}
+
+pub fn registerToApi() !void {
+    try apidb.api.setZigApi(module_name, public.CoreUIApi, &api);
+    try apidb.api.implOrRemove(.cdb_types, cetech1.cdb.CreateTypesI, &create_types_i, true);
+}
+
+pub fn initFonts(font_size: f32, scale_factor: f32) void {
+    const sized_pixel = std.math.floor(font_size * scale_factor);
+
+    // Load main font
+    var main_cfg = zgui.FontConfig.init();
+    main_cfg.font_data_owned_by_atlas = false;
+    _ = zgui.io.addFontFromMemoryWithConfig(_main_font, sized_pixel, main_cfg, null);
+
+    // Merge Font Awesome
+    var fa_cfg = zgui.FontConfig.init();
+    fa_cfg.font_data_owned_by_atlas = false;
+    fa_cfg.merge_mode = true;
+    _ = zgui.io.addFontFromMemoryWithConfig(
+        if (false) _fa_regular_font else _fa_solid_font,
+        sized_pixel,
+        fa_cfg,
+        &[_]u16{ c.ICON_MIN_FA, c.ICON_MAX_FA, 0 },
+    );
+
+    zgui.getStyle().scaleAllSizes(scale_factor);
+}
+
+pub fn enableWithWindow(window: *cetech1.system.Window, gpuctx: *cetech1.gpu.GpuContext) !void {
+    var true_window: *zglfw.Window = @ptrCast(window);
+    _true_gpuctx = @alignCast(@ptrCast(gpuctx));
+
+    _scale_factor = _scale_factor orelse scale_factor: {
+        const scale = true_window.getContentScale();
+        break :scale_factor @max(scale[0], scale[1]);
     };
+
+    zgui.getStyle().frame_rounding = 8;
+
+    zgui.io.setConfigFlags(zgui.ConfigFlags{
+        .nav_enable_keyboard = true,
+        .nav_enable_gamepad = true,
+        .nav_enable_set_mouse_pos = true,
+        .dock_enable = true,
+    });
+    zgui.io.setConfigWindowsMoveFromTitleBarOnly(true);
+
+    zgui.backend.init(
+        true_window,
+        _true_gpuctx.?.device,
+        @intFromEnum(zgpu.GraphicsContext.swapchain_format),
+        @intFromEnum(zgpu.wgpu.TextureFormat.undef),
+    );
+
+    initFonts(16, _scale_factor.?);
+
+    _backed_initialised = true;
+
+    //TODO:
+    _te_engine = zguite.getTestEngine().?;
+
+    const test_ui = 1 == kernel.getIntArgs("--test-ui") orelse 0;
+    const test_ui_filter = kernel.getStrArgs("--test-ui-filter") orelse "all";
+    const test_ui_speed_value = kernel.getStrArgs("--test-ui-speed") orelse "fast";
+    const test_ui_junit = kernel.getStrArgs("--test-ui-junit");
+    _junit_filename = f: {
+        if (test_ui_junit) |filename| {
+            break :f try std.fmt.bufPrintZ(&_junit_filename_buff, "{s}", .{filename});
+        } else {
+            break :f null;
+        }
+    };
+
+    const test_ui_speed: cetech1.coreui.ImGuiTestRunSpeed = speed: {
+        if (std.mem.eql(u8, test_ui_speed_value, "fast")) {
+            break :speed .Fast;
+        } else if (std.mem.eql(u8, test_ui_speed_value, "normal")) {
+            break :speed .Normal;
+        } else if (std.mem.eql(u8, test_ui_speed_value, "cinematic")) {
+            break :speed .Cinematic;
+        } else {
+            break :speed .Fast;
+        }
+    };
+
+    registerAllTests();
+
+    if (test_ui) {
+        const filter = try std.fmt.allocPrintZ(_allocator, "{s}", .{test_ui_filter});
+        defer _allocator.free(filter);
+        testSetRunSpeed(test_ui_speed);
+
+        if (_junit_filename) |filename| {
+            testExportJunitResult(filename);
+        }
+
+        testRunAll(filter);
+    }
+}
+
+extern fn ImGui_ImplWGPU_NewFrame() void;
+extern fn ImGui_ImplGlfw_NewFrame() void;
+
+fn newFrame() void {
+    if (_new_scale_factor) |nsf| {
+        initFonts(16, nsf);
+        _scale_factor = nsf;
+    }
+
+    ImGui_ImplWGPU_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+
+    zgui.io.setDisplaySize(
+        @as(f32, @floatFromInt(_true_gpuctx.?.swapchain_descriptor.width)),
+        @as(f32, @floatFromInt(_true_gpuctx.?.swapchain_descriptor.height)),
+    );
+    zgui.io.setDisplayFramebufferScale(1.0, 1.0);
+
+    zgui.newFrame();
+}
+
+fn afterAll() void {
+    if (_backed_initialised) {
+        _te_engine.postSwap();
+    }
+}
+
+fn showDemoWindow() void {
+    if (!isCoreUIActive()) return;
+    zgui.showDemoWindow(null);
+    zgui.plot.showDemoWindow(null);
+}
+
+fn isCoreUIActive() bool {
+    return _true_gpuctx != null;
+}
+
+// next shit
+
+fn dragDouble(label: [:0]const u8, args: public.DragScalarGen(f64)) bool {
+    return zgui.dragScalar(
+        label,
+        f64,
+        .{
+            .v = args.v,
+            .speed = args.speed,
+            .min = args.min,
+            .max = args.max,
+            .cfmt = args.cfmt,
+            .flags = .{
+                .always_clamp = args.flags.always_clamp,
+                .logarithmic = args.flags.logarithmic,
+                .no_round_to_format = args.flags.no_round_to_format,
+                .no_input = args.flags.no_input,
+            },
+        },
+    );
+}
+
+fn dragI32(label: [:0]const u8, args: public.DragScalarGen(i32)) bool {
+    return zgui.dragScalar(
+        label,
+        i32,
+        .{
+            .v = args.v,
+            .speed = args.speed,
+            .min = args.min,
+            .max = args.max,
+            .cfmt = "%d",
+            .flags = .{
+                .always_clamp = args.flags.always_clamp,
+                .logarithmic = args.flags.logarithmic,
+                .no_round_to_format = args.flags.no_round_to_format,
+                .no_input = args.flags.no_input,
+            },
+        },
+    );
+}
+
+fn dragU32(label: [:0]const u8, args: public.DragScalarGen(u32)) bool {
+    return zgui.dragScalar(
+        label,
+        u32,
+        .{
+            .v = args.v,
+            .speed = args.speed,
+            .min = args.min,
+            .max = args.max,
+            .cfmt = "%d",
+            .flags = .{
+                .always_clamp = args.flags.always_clamp,
+                .logarithmic = args.flags.logarithmic,
+                .no_round_to_format = args.flags.no_round_to_format,
+                .no_input = args.flags.no_input,
+            },
+        },
+    );
+}
+
+fn dragI64(label: [:0]const u8, args: public.DragScalarGen(i64)) bool {
+    return zgui.dragScalar(
+        label,
+        i64,
+        .{
+            .v = args.v,
+            .speed = args.speed,
+            .min = args.min,
+            .max = args.max,
+            .cfmt = "%lld",
+            .flags = .{
+                .always_clamp = args.flags.always_clamp,
+                .logarithmic = args.flags.logarithmic,
+                .no_round_to_format = args.flags.no_round_to_format,
+                .no_input = args.flags.no_input,
+            },
+        },
+    );
+}
+
+fn dragU64(label: [:0]const u8, args: public.DragScalarGen(u64)) bool {
+    return zgui.dragScalar(
+        label,
+        u64,
+        .{
+            .v = args.v,
+            .speed = args.speed,
+            .min = args.min,
+            .max = args.max,
+            .cfmt = "%llu",
+            .flags = .{
+                .always_clamp = args.flags.always_clamp,
+                .logarithmic = args.flags.logarithmic,
+                .no_round_to_format = args.flags.no_round_to_format,
+                .no_input = args.flags.no_input,
+            },
+        },
+    );
+}
+
+fn inputI32(label: [:0]const u8, args: public.InputScalarGen(i32)) bool {
+    const flags = zgui.InputTextFlags{
+        .chars_decimal = args.flags.chars_decimal,
+        .chars_hexadecimal = args.flags.chars_hexadecimal,
+        .chars_uppercase = args.flags.chars_uppercase,
+        .chars_no_blank = args.flags.chars_no_blank,
+        .auto_select_all = args.flags.auto_select_all,
+        .enter_returns_true = args.flags.enter_returns_true,
+        .callback_completion = args.flags.callback_completion,
+        .callback_history = args.flags.callback_history,
+        .callback_always = args.flags.callback_always,
+        .callback_char_filter = args.flags.callback_char_filter,
+        .allow_tab_input = args.flags.allow_tab_input,
+        .ctrl_enter_for_new_line = args.flags.ctrl_enter_for_new_line,
+        .no_horizontal_scroll = args.flags.no_horizontal_scroll,
+        .always_overwrite = args.flags.always_overwrite,
+        .read_only = args.flags.read_only,
+        .password = args.flags.password,
+        .no_undo_redo = args.flags.no_undo_redo,
+        .chars_scientific = args.flags.chars_scientific,
+        .callback_resize = args.flags.callback_resize,
+        .callback_edit = args.flags.callback_edit,
+    };
+    return zgui.inputScalar(label, i32, .{
+        .v = args.v,
+        .step = args.step,
+        .step_fast = args.step_fast,
+        .cfmt = args.cfmt,
+        .flags = flags,
+    });
+}
+fn inputU32(label: [:0]const u8, args: public.InputScalarGen(u32)) bool {
+    const flags = zgui.InputTextFlags{
+        .chars_decimal = args.flags.chars_decimal,
+        .chars_hexadecimal = args.flags.chars_hexadecimal,
+        .chars_uppercase = args.flags.chars_uppercase,
+        .chars_no_blank = args.flags.chars_no_blank,
+        .auto_select_all = args.flags.auto_select_all,
+        .enter_returns_true = args.flags.enter_returns_true,
+        .callback_completion = args.flags.callback_completion,
+        .callback_history = args.flags.callback_history,
+        .callback_always = args.flags.callback_always,
+        .callback_char_filter = args.flags.callback_char_filter,
+        .allow_tab_input = args.flags.allow_tab_input,
+        .ctrl_enter_for_new_line = args.flags.ctrl_enter_for_new_line,
+        .no_horizontal_scroll = args.flags.no_horizontal_scroll,
+        .always_overwrite = args.flags.always_overwrite,
+        .read_only = args.flags.read_only,
+        .password = args.flags.password,
+        .no_undo_redo = args.flags.no_undo_redo,
+        .chars_scientific = args.flags.chars_scientific,
+        .callback_resize = args.flags.callback_resize,
+        .callback_edit = args.flags.callback_edit,
+    };
+    return zgui.inputScalar(label, u32, .{
+        .v = args.v,
+        .step = args.step,
+        .step_fast = args.step_fast,
+        .cfmt = args.cfmt,
+        .flags = flags,
+    });
+}
+fn inputI64(label: [:0]const u8, args: public.InputScalarGen(i64)) bool {
+    const flags = zgui.InputTextFlags{
+        .chars_decimal = args.flags.chars_decimal,
+        .chars_hexadecimal = args.flags.chars_hexadecimal,
+        .chars_uppercase = args.flags.chars_uppercase,
+        .chars_no_blank = args.flags.chars_no_blank,
+        .auto_select_all = args.flags.auto_select_all,
+        .enter_returns_true = args.flags.enter_returns_true,
+        .callback_completion = args.flags.callback_completion,
+        .callback_history = args.flags.callback_history,
+        .callback_always = args.flags.callback_always,
+        .callback_char_filter = args.flags.callback_char_filter,
+        .allow_tab_input = args.flags.allow_tab_input,
+        .ctrl_enter_for_new_line = args.flags.ctrl_enter_for_new_line,
+        .no_horizontal_scroll = args.flags.no_horizontal_scroll,
+        .always_overwrite = args.flags.always_overwrite,
+        .read_only = args.flags.read_only,
+        .password = args.flags.password,
+        .no_undo_redo = args.flags.no_undo_redo,
+        .chars_scientific = args.flags.chars_scientific,
+        .callback_resize = args.flags.callback_resize,
+        .callback_edit = args.flags.callback_edit,
+    };
+    return zgui.inputScalar(label, i64, .{
+        .v = args.v,
+        .step = args.step,
+        .step_fast = args.step_fast,
+        .cfmt = args.cfmt,
+        .flags = flags,
+    });
+}
+fn inputU64(label: [:0]const u8, args: public.InputScalarGen(u64)) bool {
+    const flags = zgui.InputTextFlags{
+        .chars_decimal = args.flags.chars_decimal,
+        .chars_hexadecimal = args.flags.chars_hexadecimal,
+        .chars_uppercase = args.flags.chars_uppercase,
+        .chars_no_blank = args.flags.chars_no_blank,
+        .auto_select_all = args.flags.auto_select_all,
+        .enter_returns_true = args.flags.enter_returns_true,
+        .callback_completion = args.flags.callback_completion,
+        .callback_history = args.flags.callback_history,
+        .callback_always = args.flags.callback_always,
+        .callback_char_filter = args.flags.callback_char_filter,
+        .allow_tab_input = args.flags.allow_tab_input,
+        .ctrl_enter_for_new_line = args.flags.ctrl_enter_for_new_line,
+        .no_horizontal_scroll = args.flags.no_horizontal_scroll,
+        .always_overwrite = args.flags.always_overwrite,
+        .read_only = args.flags.read_only,
+        .password = args.flags.password,
+        .no_undo_redo = args.flags.no_undo_redo,
+        .chars_scientific = args.flags.chars_scientific,
+        .callback_resize = args.flags.callback_resize,
+        .callback_edit = args.flags.callback_edit,
+    };
+    return zgui.inputScalar(label, u64, .{
+        .v = args.v,
+        .step = args.step,
+        .step_fast = args.step_fast,
+        .cfmt = args.cfmt,
+        .flags = flags,
+    });
+}
+
+fn removeFromSelection(db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) !void {
+    const w = db.writeObj(selection).?;
+    try public.ObjSelection.removeFromRefSet(db, w, .Selection, obj);
+    try db.writeCommit(w);
+}
+
+fn handleSelection(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId, multiselect_enabled: bool) !void {
+    if (multiselect_enabled and api.isKeyDown(.mod_super) or api.isKeyDown(.mod_ctrl)) {
+        if (api.isSelected(db, selection, obj)) {
+            try api.removeFromSelection(db, selection, obj);
+        } else {
+            try api.addToSelection(db, selection, obj);
+        }
+    } else {
+        try api.setSelection(allocator, db, selection, obj);
+    }
+}
+
+fn getSelected(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId) ?[]const cetech1.cdb.ObjId {
+    const r = db.readObj(selection) orelse return null;
+    return public.ObjSelection.readRefSet(db, r, .Selection, allocator);
+}
+
+fn isSelected(db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) bool {
+    return public.ObjSelection.isInSet(db, db.readObj(selection).?, .Selection, obj);
+}
+
+fn addToSelection(db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) !void {
+    const w = db.writeObj(selection).?;
+
+    try public.ObjSelection.addRefToSet(db, w, .Selection, &.{obj});
+    try db.writeCommit(w);
+}
+
+fn setSelection(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) !void {
+    const r = db.readObj(selection).?;
+
+    const w = db.writeObj(selection).?;
+
+    // TODO: clear to cdb
+    if (public.ObjSelection.readRefSet(db, r, .Selection, allocator)) |set| {
+        defer allocator.free(set);
+        for (set) |ref| {
+            try public.ObjSelection.removeFromRefSet(db, w, .Selection, ref);
+        }
+    }
+    try public.ObjSelection.addRefToSet(db, w, .Selection, &.{obj});
+
+    try db.writeCommit(w);
+}
+
+fn selectedCount(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId) u32 {
+    const r = db.readObj(selection) orelse return 0;
+
+    // TODO: count to cdb
+    if (public.ObjSelection.readRefSet(db, r, .Selection, allocator)) |set| {
+        defer allocator.free(set);
+        return @truncate(set.len);
+    }
+    return 0;
+}
+
+fn getFirstSelected(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId) cetech1.cdb.ObjId {
+    const r = db.readObj(selection) orelse return .{};
+
+    // TODO: count to cdb
+    if (public.ObjSelection.readRefSet(db, r, .Selection, allocator)) |set| {
+        defer allocator.free(set);
+        for (set) |s| {
+            return s;
+        }
+    }
+    return .{};
+}
+
+pub fn registerAllTests() void {
+    var it = apidb.api.getFirstImpl(public.RegisterTestsI);
+    while (it) |node| : (it = node.next) {
+        var iface = cetech1.apidb.ApiDbAPI.toInterface(public.RegisterTestsI, node);
+        iface.register_tests();
+    }
+}
+
+const cdb_tests = @import("cdb_test.zig");
+const cdb_private = @import("cdb.zig");
+
+test "coreui: should do basic operatino with selection" {
+    try cdb_tests.testInit();
+    defer cdb_tests.testDeinit();
+
+    try registerToApi();
+
+    var db = try cdb_private.api.createDb("test");
+    defer cdb_private.api.destroyDb(db);
+
+    const asset_type_idx = try cetech1.cdb_types.addBigType(&db, "ct_foo_asset", null);
+    _ = asset_type_idx;
+
+    const obj1 = try cetech1.assetdb.FooAsset.createObject(&db);
+    defer cetech1.assetdb.FooAsset.destroyObject(&db, obj1);
+
+    const obj2 = try cetech1.assetdb.FooAsset.createObject(&db);
+    defer cetech1.assetdb.FooAsset.destroyObject(&db, obj2);
+
+    const obj3 = try cetech1.assetdb.FooAsset.createObject(&db);
+    defer cetech1.assetdb.FooAsset.destroyObject(&db, obj3);
+
+    const obj4 = try cetech1.assetdb.FooAsset.createObject(&db);
+    defer cetech1.assetdb.FooAsset.destroyObject(&db, obj4);
+
+    const selection = try cetech1.coreui.ObjSelection.createObject(&db);
+    defer cetech1.assetdb.FooAsset.destroyObject(&db, selection);
+
+    try api.addToSelection(&db, selection, obj1);
+    try api.addToSelection(&db, selection, obj2);
+    try api.addToSelection(&db, selection, obj3);
+
+    // count
+    {
+        const count = api.selectedCount(std.testing.allocator, &db, selection);
+        try std.testing.expectEqual(3, count);
+    }
+
+    // is selected
+    {
+        try std.testing.expect(api.isSelected(&db, selection, obj1));
+        try std.testing.expect(api.isSelected(&db, selection, obj2));
+        try std.testing.expect(api.isSelected(&db, selection, obj3));
+
+        try std.testing.expect(!api.isSelected(&db, selection, obj4));
+    }
+
+    // Get selected
+    {
+        const selected = api.getSelected(std.testing.allocator, &db, selection);
+        try std.testing.expect(selected != null);
+        defer std.testing.allocator.free(selected.?);
+        try std.testing.expectEqualSlices(cetech1.cdb.ObjId, &.{ obj1, obj2, obj3 }, selected.?);
+    }
+
+    // Set selection
+    {
+        try api.setSelection(std.testing.allocator, &db, selection, obj1);
+
+        const selected = api.getSelected(std.testing.allocator, &db, selection);
+        try std.testing.expect(selected != null);
+        defer std.testing.allocator.free(selected.?);
+        try std.testing.expectEqualSlices(cetech1.cdb.ObjId, &.{obj1}, selected.?);
+    }
+
+    // Clear selection
+    {
+        try api.clearSelection(std.testing.allocator, &db, selection);
+
+        const selected = api.getSelected(std.testing.allocator, &db, selection);
+        try std.testing.expect(selected != null);
+        defer std.testing.allocator.free(selected.?);
+        try std.testing.expectEqualSlices(cetech1.cdb.ObjId, &.{}, selected.?);
+    }
+}
+
+// Assert C api == C api in zig.
+comptime {
+    std.debug.assert(@sizeOf(c.ct_coreui_ui_i) == @sizeOf(public.CoreUII));
 }

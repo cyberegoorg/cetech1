@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-pub const c = @cImport(@cInclude("cetech1/modules/editor_properties/editor_properties.h"));
+pub const c = @cImport(@cInclude("editor_properties.h"));
 
 const public = @import("editor_inspector.zig");
 
@@ -16,11 +16,12 @@ const editor = @import("editor");
 
 const Icons = coreui.CoreIcons;
 
-const MODULE_NAME = "editor_inspector";
+const module_name = .editor_inspector;
+
 pub const std_options = struct {
     pub const logFn = cetech1.log.zigLogFnGen(&_log);
 };
-const log = std.log.scoped(.editor_inspector);
+const log = std.log.scoped(module_name);
 
 const INSPECTOR_TAB_NAME = "ct_editor_inspector_tab";
 const INSPECTOR_TAB_NAME_HASH = strid.strId32(INSPECTOR_TAB_NAME);
@@ -109,7 +110,7 @@ fn uiAssetInput(
 ) !void {
     const obj_r = db.readObj(obj) orelse return;
 
-    const defs = db.getTypePropDef(obj.type_hash).?;
+    const defs = db.getTypePropDef(obj.type_idx).?;
     const prop_def = defs[prop_idx];
 
     var value_obj: cdb.ObjId = .{};
@@ -163,7 +164,7 @@ fn uiAssetInputGeneric(
     in_table: bool,
 ) !void {
     var buff: [128:0]u8 = undefined;
-    var asset_name: []u8 = undefined;
+    var asset_name: [:0]u8 = undefined;
     const value_asset: ?cdb.ObjId = _assetdb.getAssetForObj(value_obj);
 
     if (value_asset) |asset| {
@@ -180,8 +181,8 @@ fn uiAssetInputGeneric(
         asset_name = try std.fmt.bufPrintZ(&buff, "", .{});
     }
 
-    const prop_def = db.getTypePropDef(obj.type_hash).?;
-    const allowed_type = if (is_proto) obj.type_hash else prop_def[prop_idx].type_hash;
+    const prop_def = db.getTypePropDef(obj.type_idx).?;
+    const allowed_type = if (is_proto) obj.type_idx else db.getTypeIdx(prop_def[prop_idx].type_hash) orelse cdb.TypeIdx{};
 
     _coreui.pushObjUUID(obj);
     defer _coreui.popId();
@@ -209,8 +210,8 @@ fn uiAssetInputGeneric(
             }
         }
 
-        if (!_assetdb.isAssetObjTypeOf(obj, assetdb.FolderType.type_hash)) {
-            if (_coreui.menuItem(allocator, coreui.Icons.Clear ++ " " ++ "Clear" ++ "###Clear", .{ .enabled = !read_only and value_asset != null }, null)) {
+        if (!_assetdb.isAssetObjTypeOf(obj, assetdb.Folder.typeIdx(db))) {
+            if (_coreui.menuItem(allocator, coreui.Icons.Clear ++ "  " ++ "Clear" ++ "###Clear", .{ .enabled = !read_only and value_asset != null }, null)) {
                 if (is_proto) {
                     try db.setPrototype(obj, cdb.OBJID_ZERO);
                 } else {
@@ -221,7 +222,7 @@ fn uiAssetInputGeneric(
             }
         }
 
-        if (_coreui.beginMenu(allocator, coreui.Icons.ContextMenu ++ " " ++ "Context", value_asset != null, null)) {
+        if (_coreui.beginMenu(allocator, coreui.Icons.ContextMenu ++ "  " ++ "Context", value_asset != null, null)) {
             defer _coreui.endMenu();
             try _editor.showObjContextMenu(allocator, db, tab, &.{editor.Contexts.open}, value_asset.?, null, null);
         }
@@ -244,17 +245,17 @@ fn uiAssetInputGeneric(
     if (_coreui.beginDragDropTarget()) {
         if (_coreui.acceptDragDropPayload("obj", .{ .source_allow_null_id = true })) |payload| {
             var drag_obj: cdb.ObjId = std.mem.bytesToValue(cdb.ObjId, payload.data.?);
-            if (assetdb.AssetType.isSameType(drag_obj)) {
-                drag_obj = assetdb.AssetType.readSubObj(db, db.readObj(drag_obj).?, .Object).?;
+            if (assetdb.Asset.isSameType(db, drag_obj)) {
+                drag_obj = assetdb.Asset.readSubObj(db, db.readObj(drag_obj).?, .Object).?;
             }
 
             if (is_proto) {
-                if (!drag_obj.eq(obj) and drag_obj.type_hash.id == obj.type_hash.id) {
+                if (!drag_obj.eql(obj)) {
                     try db.setPrototype(obj, drag_obj);
                 }
             } else {
-                const allowed_type_hash = db.getTypePropDef(obj.type_hash).?[prop_idx].type_hash;
-                if (allowed_type_hash.id == 0 or allowed_type_hash.id == drag_obj.type_hash.id) {
+                const allowed_type_hash = db.getTypeIdx(db.getTypePropDef(obj.type_idx).?[prop_idx].type_hash) orelse cdb.TypeIdx{};
+                if (allowed_type_hash.isEmpty() or allowed_type_hash.eql(drag_obj.type_idx)) {
                     const w = db.writeObj(obj).?;
                     try db.setRef(w, prop_idx, drag_obj);
                     try db.writeCommit(w);
@@ -300,10 +301,10 @@ fn endSection(open: bool) void {
     if (open) _coreui.treePop();
 }
 
-fn cdbPropertiesView(allocator: std.mem.Allocator, db: *cdb.CdbDb, tab: *editor.TabO, obj: cdb.ObjId, args: public.cdbPropertiesViewArgs) !void {
+fn cdbPropertiesView(allocator: std.mem.Allocator, db: *cdb.CdbDb, tab: *editor.TabO, obj: cdb.ObjId, depth: u32, args: public.cdbPropertiesViewArgs) !void {
     _coreui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 10 });
     defer _coreui.popStyleVar(.{});
-    try cdbPropertiesObj(allocator, db, tab, obj, args);
+    try cdbPropertiesObj(allocator, db, tab, obj, depth, args);
 }
 const REMOVED_COLOR = .{ 0.7, 0.0, 0.0, 1.0 };
 
@@ -323,10 +324,11 @@ fn cdbPropertiesObj(
     db: *cdb.CdbDb,
     tab: *editor.TabO,
     obj: cdb.ObjId,
+    depth: u32,
     args: public.cdbPropertiesViewArgs,
 ) !void {
     // Find properties asspect for obj type.
-    const ui_aspect = db.getAspect(public.UiPropertiesAspect, obj.type_hash);
+    const ui_aspect = db.getAspect(public.UiPropertiesAspect, obj.type_idx);
     if (ui_aspect) |aspect| {
         aspect.ui_properties.?(&allocator, db.db, tab, obj, args);
         return;
@@ -338,12 +340,12 @@ fn cdbPropertiesObj(
     const obj_r = db.readObj(obj) orelse return;
 
     // Find properties config asspect for obj type.
-    const config_aspect = db.getAspect(public.UiPropertiesConfigAspect, obj.type_hash);
+    const config_aspect = db.getAspect(public.UiPropertiesConfigAspect, obj.type_idx);
 
     const prototype_obj = db.getPrototype(obj_r);
     //const has_prototype = !prototype_obj.isEmpty();
 
-    const prop_defs = db.getTypePropDef(obj.type_hash).?;
+    const prop_defs = db.getTypePropDef(obj.type_idx).?;
 
     var buff: [128:0]u8 = undefined;
     var prop_name_buff: [128:0]u8 = undefined;
@@ -376,7 +378,7 @@ fn cdbPropertiesObj(
             }
             var ui_prop_aspect: ?*public.UiPropertyAspect = null;
             if (prop_def.type != .REFERENCE_SET and prop_def.type != .SUBOBJECT_SET) {
-                ui_prop_aspect = db.getPropertyAspect(public.UiPropertyAspect, obj.type_hash, prop_idx);
+                ui_prop_aspect = db.getPropertyAspect(public.UiPropertyAspect, obj.type_idx, prop_idx);
                 // If exist aspect and is empty hide property.
                 if (ui_prop_aspect) |aspect| {
                     if (aspect.ui_property == null) continue;
@@ -391,7 +393,7 @@ fn cdbPropertiesObj(
 
             switch (prop_def.type) {
                 .REFERENCE_SET, .SUBOBJECT_SET => {
-                    const ui_embed_prop_aspect = db.getPropertyAspect(public.UiEmbedPropertyAspect, obj.type_hash, prop_idx);
+                    const ui_embed_prop_aspect = db.getPropertyAspect(public.UiEmbedPropertyAspect, obj.type_idx, prop_idx);
                     if (ui_embed_prop_aspect) |aspect| {
                         const lbl = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
                         if (uiPropLabel(allocator, lbl, prop_color, args)) {
@@ -403,7 +405,7 @@ fn cdbPropertiesObj(
                 // If subobject type implement UiEmbedPropertiesAspect show it in table
                 .SUBOBJECT => {
                     const subobj = db.readSubObj(obj_r, prop_idx);
-                    const ui_embed_prop_aspect = db.getAspect(public.UiEmbedPropertiesAspect, prop_def.type_hash);
+                    const ui_embed_prop_aspect = db.getAspect(public.UiEmbedPropertiesAspect, db.getTypeIdx(prop_def.type_hash).?);
                     const lbl = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
                     if (ui_embed_prop_aspect) |aspect| {
                         if (uiPropLabel(allocator, lbl, prop_color, args)) {
@@ -472,7 +474,7 @@ fn cdbPropertiesObj(
         const prop_name = try api.formatedPropNameToBuff(&prop_name_buff, prop_def.name);
         const prop_color = _editor.getPropertyColor(db, obj, prop_idx);
 
-        const ui_prop_aspect = db.getPropertyAspect(public.UiPropertyAspect, obj.type_hash, prop_idx);
+        const ui_prop_aspect = db.getPropertyAspect(public.UiPropertyAspect, obj.type_idx, prop_idx);
         // If exist aspect and is empty hide property.
         if (ui_prop_aspect) |aspect| {
             if (aspect.ui_property == null) continue;
@@ -497,9 +499,9 @@ fn cdbPropertiesObj(
 
                 subobj = db.readSubObj(obj_r, prop_idx);
 
-                if (db.getAspect(public.UiEmbedPropertiesAspect, prop_def.type_hash) != null) continue;
+                if (db.getAspect(public.UiEmbedPropertiesAspect, db.getTypeIdx(prop_def.type_hash).?) != null) continue;
 
-                const label = try std.fmt.bufPrintZ(&buff, "{s}{s}", .{ prop_name, if (prop_def.type == .REFERENCE) " " ++ Icons.FA_LINK else "" });
+                const label = try std.fmt.bufPrintZ(&buff, "{s}{s}", .{ prop_name, if (prop_def.type == .REFERENCE) "  " ++ Icons.FA_LINK else "" });
 
                 try objContextMenuBtn(allocator, db, tab, obj, prop_idx, null);
                 _coreui.sameLine(.{});
@@ -507,7 +509,7 @@ fn cdbPropertiesObj(
                 if (prop_color) |color| {
                     _coreui.pushStyleColor4f(.{ .idx = .text, .c = color });
                 }
-                const open = beginSection(label, subobj == null, true);
+                const open = beginSection(label, subobj == null, depth < args.max_autopen_depth);
                 defer endSection(open);
 
                 if (prop_color != null) {
@@ -516,22 +518,22 @@ fn cdbPropertiesObj(
 
                 if (open) {
                     if (subobj != null) {
-                        try cdbPropertiesObj(allocator, db, tab, subobj.?, args);
+                        try cdbPropertiesObj(allocator, db, tab, subobj.?, depth + 1, args);
                     }
                 }
             },
 
             .SUBOBJECT_SET, .REFERENCE_SET => {
-                if (db.getPropertyAspect(public.UiEmbedPropertyAspect, obj.type_hash, prop_idx) != null) {
+                if (db.getPropertyAspect(public.UiEmbedPropertyAspect, obj.type_idx, prop_idx) != null) {
                     continue;
                 }
 
-                const prop_label = try std.fmt.bufPrintZ(&buff, "{s}{s}", .{ prop_name, if (prop_def.type == .REFERENCE_SET) " " ++ Icons.FA_LINK else "" });
+                const prop_label = try std.fmt.bufPrintZ(&buff, "{s}{s}", .{ prop_name, if (prop_def.type == .REFERENCE_SET) "  " ++ Icons.FA_LINK else "" });
 
                 try objContextMenuBtn(allocator, db, tab, obj, prop_idx, null);
                 _coreui.sameLine(.{});
 
-                const open = beginSection(prop_label, false, true);
+                const open = beginSection(prop_label, false, depth < args.max_autopen_depth);
                 defer endSection(open);
 
                 if (open) {
@@ -555,14 +557,14 @@ fn cdbPropertiesObj(
                             _coreui.sameLine(.{});
 
                             _coreui.pushStyleColor4f(.{ .idx = .text, .c = _editor.getObjColor(db, obj, prop_idx, subobj) });
-                            const open_inset = beginSection(label, false, true);
+                            const open_inset = beginSection(label, false, depth < args.max_autopen_depth);
 
                             //_coreui.sameLine(.{});
                             defer endSection(open_inset);
                             _coreui.popStyleColor(.{});
 
                             if (open_inset) {
-                                try cdbPropertiesObj(allocator, db, tab, subobj, args);
+                                try cdbPropertiesObj(allocator, db, tab, subobj, depth + 1, args);
                             }
                         }
                     }
@@ -578,7 +580,7 @@ fn uiInputProtoBtns(db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: u32) !void {
     const proto_obj = db.getPrototype(db.readObj(obj).?);
     if (proto_obj.isEmpty()) return;
 
-    const types = db.getTypePropDef(obj.type_hash).?;
+    const types = db.getTypePropDef(obj.type_idx).?;
     const prop_def = types[prop_idx];
     const is_overided = db.isPropertyOverrided(db.readObj(obj).?, prop_idx);
 
@@ -690,7 +692,7 @@ fn uiPropInputRaw(db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: u32) !void {
 
     const reader = db.readObj(obj) orelse return;
 
-    const prop_defs = db.getTypePropDef(obj.type_hash).?;
+    const prop_defs = db.getTypePropDef(obj.type_idx).?;
     const prop_def = prop_defs[prop_idx];
 
     var buf_label: [128:0]u8 = undefined;
@@ -876,33 +878,33 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
 
             var is_project = false;
             if (_assetdb.getObjForAsset(obj)) |o| {
-                is_project = cetech1.assetdb.ProjectType.isSameType(o);
+                is_project = cetech1.assetdb.Project.isSameType(&db, o);
             }
 
             // Asset name
             if (!is_project and !_assetdb.isRootFolder(&db, obj) and api.uiPropLabel(allocator, "Name", null, args)) {
-                try api.uiPropInput(&db, obj, assetdb.AssetType.propIdx(.Name));
+                try api.uiPropInput(&db, obj, assetdb.Asset.propIdx(.Name));
             }
 
             // Asset name
             if (!_assetdb.isRootFolder(&db, obj) and api.uiPropLabel(allocator, "Description", null, args)) {
-                try uiInputForProperty(&db, obj, assetdb.AssetType.propIdx(.Description));
+                try uiInputForProperty(&db, obj, assetdb.Asset.propIdx(.Description));
             }
 
             // Folder
             if (!is_project and !_assetdb.isRootFolder(&db, obj) and api.uiPropLabel(allocator, "Folder", null, args)) {
-                try uiAssetInput(allocator, &db, tab, obj, assetdb.AssetType.propIdx(.Folder), false, true);
+                try uiAssetInput(allocator, &db, tab, obj, assetdb.Asset.propIdx(.Folder), false, true);
             }
 
             // Tags
             if (!is_project and !_assetdb.isRootFolder(&db, obj)) {
                 // TODO: SHIT HACK
-                const ui_prop_aspect = db.getPropertyAspect(public.UiEmbedPropertyAspect, obj.type_hash, assetdb.AssetType.propIdx(.Tags));
+                const ui_prop_aspect = db.getPropertyAspect(public.UiEmbedPropertyAspect, obj.type_idx, assetdb.Asset.propIdx(.Tags));
                 // If exist aspect and is empty hide property.
                 if (ui_prop_aspect) |aspect| {
                     if (aspect.ui_properties) |ui_prop| {
                         if (api.uiPropLabel(allocator, "Tags", null, args)) {
-                            ui_prop(&allocator, @ptrCast(db.db), obj, assetdb.AssetType.propIdx(.Tags), args);
+                            ui_prop(&allocator, @ptrCast(db.db), obj, assetdb.Asset.propIdx(.Tags), args);
                         }
                     }
                 }
@@ -911,7 +913,7 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
 
         // Asset object
         _coreui.separatorText("Asset object");
-        try api.cdbPropertiesObj(allocator, &db, tab, assetdb.AssetType.readSubObj(&db, obj_r, .Object).?, args);
+        try api.cdbPropertiesObj(allocator, &db, tab, assetdb.Asset.readSubObj(&db, obj_r, .Object).?, 0, args);
     }
 });
 
@@ -932,12 +934,12 @@ var color4f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
         _coreui.pushObjUUID(obj);
         defer _coreui.popId();
 
-        var color = cetech1.cdb_types.color4fToSlice(&db, obj);
+        var color = cetech1.cdb_types.Color4f.f.toSlice(&db, obj);
 
         _coreui.setNextItemWidth(-1);
         if (_coreui.colorEdit4("", .{ .col = &color })) {
             const w = db.writeObj(obj).?;
-            cetech1.cdb_types.color4fFromSlice(&db, w, color);
+            cetech1.cdb_types.Color4f.f.fromSlice(&db, w, color);
             try db.writeCommit(w);
         }
     }
@@ -963,13 +965,13 @@ var inspector_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     .show_sel_obj_in_title = true,
 }, struct {
     pub fn menuName() ![:0]const u8 {
-        return coreui.Icons.Properties ++ " " ++ "Inspector";
+        return coreui.Icons.Properties ++ "  " ++ "Inspector";
     }
 
     // Return tab title
     pub fn title(inst: *editor.TabO) ![:0]const u8 {
         _ = inst;
-        return coreui.Icons.Properties ++ " " ++ "Inspector";
+        return coreui.Icons.Properties ++ "  " ++ "Inspector";
     }
 
     // Can open tab
@@ -1011,13 +1013,12 @@ var inspector_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     pub fn ui(inst: *editor.TabO) !void {
         var tab_o: *PropertyTab = @alignCast(@ptrCast(inst));
 
-        if (tab_o.selected_obj.id == 0 and tab_o.selected_obj.type_hash.id == 0) {
+        if (tab_o.selected_obj.isEmpty()) {
             return;
         }
 
-        var tmp_arena = try _tempalloc.createTempArena();
-        defer _tempalloc.destroyTempArena(tmp_arena);
-        const allocator = tmp_arena.allocator();
+        const allocator = try _tempalloc.create();
+        defer _tempalloc.destroy(allocator);
 
         if (_coreui.uiFilter(&tab_o.filter_buff, tab_o.filter)) |filter| {
             tab_o.filter = filter;
@@ -1034,7 +1035,7 @@ var inspector_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
                 obj = _coreui.getFirstSelected(allocator, &tab_o.db, tab_o.selected_obj);
             }
 
-            try api.cdbPropertiesView(tmp_arena.allocator(), &tab_o.db, tab_o, obj, .{ .filter = if (tab_o.filter) |f| f.ptr else null });
+            try api.cdbPropertiesView(allocator, &tab_o.db, tab_o, obj, 0, .{ .filter = if (tab_o.filter) |f| f.ptr else null });
         }
     }
 
@@ -1059,25 +1060,25 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db_: *cdb.Db) !void {
         var db = cdb.CdbDb.fromDbT(db_, _cdb);
 
-        try assetdb.FolderType.addAspect(
+        try assetdb.Folder.addAspect(
             &db,
             public.UiPropertiesConfigAspect,
             _g.hide_proto_property_config_aspect,
         );
 
-        try assetdb.ProjectType.addAspect(
+        try assetdb.Project.addAspect(
             &db,
             public.UiPropertiesConfigAspect,
             _g.hide_proto_property_config_aspect,
         );
 
-        try assetdb.AssetType.addAspect(
+        try assetdb.Asset.addAspect(
             &db,
             public.UiPropertiesAspect,
             _g.asset_prop_aspect,
         );
 
-        try cetech1.cdb_types.Color4fType.addAspect(
+        try cetech1.cdb_types.Color4f.addAspect(
             &db,
             public.UiEmbedPropertiesAspect,
             _g.color4f_properties_aspec,
@@ -1115,7 +1116,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, bool, obj_r, .Bool);
                         std.testing.expect(value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1126,7 +1127,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, u64, obj_r, .U64);
                         std.testing.expectEqual(666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1137,7 +1138,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value: i64 = assetdb.FooAsset.readValue(db, i64, obj_r, .I64);
                         std.testing.expectEqual(-666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1148,7 +1149,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, u32, obj_r, .U32);
                         std.testing.expectEqual(666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1159,7 +1160,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, i32, obj_r, .I32);
                         std.testing.expectEqual(-666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1170,7 +1171,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, f32, obj_r, .F32);
                         std.testing.expectEqual(-666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1181,7 +1182,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, f64, obj_r, .F64);
                         std.testing.expectEqual(-666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1192,11 +1193,11 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const str = assetdb.FooAsset.readStr(db, obj_r, .Str);
                         std.testing.expect(str != null) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                         std.testing.expectEqualStrings(str.?, "foo") catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1212,7 +1213,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                             _coreui.checkTestError(@src(), err);
                             return;
                         };
-                        std.testing.expect(ref.?.eq(_assetdb.getObjId(_uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?)) catch |err| {
+                        std.testing.expect(ref.?.eql(_assetdb.getObjId(_uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?)) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return;
                         };
@@ -1251,7 +1252,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, bool, obj_r, .Bool);
                         std.testing.expect(!value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1267,7 +1268,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, u64, obj_r, .U64);
                         std.testing.expectEqual(0, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1283,7 +1284,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, i64, obj_r, .I64);
                         std.testing.expectEqual(0, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1299,7 +1300,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, u32, obj_r, .U32);
                         std.testing.expectEqual(0, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1315,7 +1316,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, i32, obj_r, .I32);
                         std.testing.expectEqual(0, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1331,7 +1332,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, f32, obj_r, .F32);
                         std.testing.expectEqual(0, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1347,7 +1348,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, f64, obj_r, .F64);
                         std.testing.expectEqual(0, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1363,7 +1364,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const str = assetdb.FooAsset.readStr(db, obj_r, .Str);
                         std.testing.expect(str == null) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1381,7 +1382,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const ref = assetdb.FooAsset.readRef(db, obj_r, .Reference);
                         std.testing.expect(ref == null) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
                 }
@@ -1418,7 +1419,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, bool, obj_r, .Bool);
                         std.testing.expect(value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1433,7 +1434,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, u64, obj_r, .U64);
                         std.testing.expectEqual(666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1448,7 +1449,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, i64, obj_r, .I64);
                         std.testing.expectEqual(-666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1463,7 +1464,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, u32, obj_r, .U32);
                         std.testing.expectEqual(666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1478,7 +1479,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, i32, obj_r, .I32);
                         std.testing.expectEqual(-666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1493,7 +1494,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, f32, obj_r, .F32);
                         std.testing.expectEqual(-666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1508,7 +1509,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const value = assetdb.FooAsset.readValue(db, f64, obj_r, .F64);
                         std.testing.expectEqual(-666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1523,11 +1524,11 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const str = assetdb.FooAsset.readStr(db, obj_r, .Str);
                         std.testing.expect(str != null) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                         std.testing.expectEqualStrings(str.?, "foo") catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
 
@@ -1544,11 +1545,11 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         const ref = assetdb.FooAsset.readRef(db, obj_r, .Reference);
                         std.testing.expect(ref != null) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
-                        std.testing.expect(ref.?.eq(_assetdb.getObjId(_uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?)) catch |err| {
+                        std.testing.expect(ref.?.eql(_assetdb.getObjId(_uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?)) catch |err| {
                             _coreui.checkTestError(@src(), err);
-                            return;
+                            return err;
                         };
                     }
                 }
@@ -1603,9 +1604,9 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     const obj = _assetdb.getObjId(_uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?;
                     const proto_obj = _assetdb.getObjId(_uuid.fromStr("018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f").?).?;
 
-                    std.testing.expect(proto_obj.eq(db.getPrototype(db.readObj(obj).?))) catch |err| {
+                    std.testing.expect(proto_obj.eql(db.getPrototype(db.readObj(obj).?))) catch |err| {
                         _coreui.checkTestError(@src(), err);
-                        return;
+                        return err;
                     };
                 }
             },
@@ -1634,7 +1635,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
                     std.testing.expect(db.getPrototype(db.readObj(obj).?).isEmpty()) catch |err| {
                         _coreui.checkTestError(@src(), err);
-                        return;
+                        return err;
                     };
                 }
             },
@@ -1690,13 +1691,13 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     const set = try assetdb.FooAsset.readSubObjSet(db, db.readObj(obj).?, .ReferenceSet, _allocator);
                     std.testing.expect(set != null) catch |err| {
                         _coreui.checkTestError(@src(), err);
-                        return;
+                        return err;
                     };
 
                     defer _allocator.free(set.?);
                     std.testing.expect(set.?.len == 1) catch |err| {
                         _coreui.checkTestError(@src(), err);
-                        return;
+                        return err;
                     };
                 }
             },
@@ -1711,41 +1712,41 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     _allocator = allocator;
     _log = log_api;
     _apidb = apidb;
-    _cdb = apidb.getZigApi(cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(cetech1.coreui.CoreUIApi).?;
-    _editor = apidb.getZigApi(editor.EditorAPI).?;
-    _assetdb = apidb.getZigApi(assetdb.AssetDBAPI).?;
-    _kernel = apidb.getZigApi(cetech1.kernel.KernelApi).?;
-    _tempalloc = apidb.getZigApi(cetech1.tempalloc.TempAllocApi).?;
-    _uuid = apidb.getZigApi(cetech1.uuid.UuidAPI).?;
+    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
+    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
+    _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
+    _assetdb = apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
+    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
+    _tempalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
+    _uuid = apidb.getZigApi(module_name, cetech1.uuid.UuidAPI).?;
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, MODULE_NAME, "_g", .{});
+    _g = try apidb.globalVar(G, module_name, "_g", .{});
 
-    _g.tab_vt = try apidb.globalVar(editor.EditorTabTypeI, MODULE_NAME, INSPECTOR_TAB_NAME, .{});
+    _g.tab_vt = try apidb.globalVar(editor.EditorTabTypeI, module_name, INSPECTOR_TAB_NAME, .{});
     _g.tab_vt.* = inspector_tab;
 
-    _g.asset_prop_aspect = try apidb.globalVar(public.UiPropertiesAspect, MODULE_NAME, ASSET_PROPERTIES_ASPECT_NAME, .{});
+    _g.asset_prop_aspect = try apidb.globalVar(public.UiPropertiesAspect, module_name, ASSET_PROPERTIES_ASPECT_NAME, .{});
     _g.asset_prop_aspect.* = asset_properties_aspec;
 
-    _g.color4f_properties_aspec = try apidb.globalVar(public.UiEmbedPropertiesAspect, MODULE_NAME, COLOR4F_PROPERTY_ASPECT_NAME, .{});
+    _g.color4f_properties_aspec = try apidb.globalVar(public.UiEmbedPropertiesAspect, module_name, COLOR4F_PROPERTY_ASPECT_NAME, .{});
     _g.color4f_properties_aspec.* = color4f_properties_aspec;
 
-    _g.hide_proto_property_config_aspect = try apidb.globalVar(public.UiPropertiesConfigAspect, MODULE_NAME, FOLDER_PROPERTY_CONFIG_ASPECT_NAME, .{});
+    _g.hide_proto_property_config_aspect = try apidb.globalVar(public.UiPropertiesConfigAspect, module_name, FOLDER_PROPERTY_CONFIG_ASPECT_NAME, .{});
     _g.hide_proto_property_config_aspect.* = folder_properties_config_aspect;
 
-    try apidb.implOrRemove(cdb.CreateTypesI, &create_cdb_types_i, load);
-    try apidb.implOrRemove(coreui.RegisterTestsI, &register_tests_i, load);
-    try apidb.implOrRemove(editor.EditorTabTypeI, &inspector_tab, load);
+    try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
+    try apidb.implOrRemove(module_name, coreui.RegisterTestsI, &register_tests_i, load);
+    try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &inspector_tab, load);
 
-    try apidb.setOrRemoveZigApi(public.InspectorAPI, &api, load);
+    try apidb.setOrRemoveZigApi(module_name, public.InspectorAPI, &api, load);
 
     return true;
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
 pub export fn ct_load_module_editor_inspector(__apidb: ?*const cetech1.apidb.ct_apidb_api_t, __allocator: ?*const cetech1.apidb.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, __apidb, __allocator, __load, __reload);
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }
 
 // Assert C api == C api in zig.

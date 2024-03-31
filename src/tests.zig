@@ -1,6 +1,6 @@
 const std = @import("std");
 
 test {
-    _ = std.testing.refAllDecls(@import("cetech1.zig"));
-    _ = std.testing.refAllDeclsRecursive(@import("private/private.zig"));
+    _ = std.testing.refAllDecls(@import("cetech1"));
+    _ = std.testing.refAllDeclsRecursive(@import("private.zig"));
 }

@@ -7,7 +7,7 @@ set -e
 
 cd "$(dirname "$0")"
 git lfs pull --include "Writerside/images/**/*"
-git lfs pull --include "src/private/embed/fonts/*"
+git lfs pull --include "src/embed/fonts/*"
 
 # LFS for zig-gamedev
 cd externals/shared/lib/zig-gamedev

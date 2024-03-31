@@ -6,6 +6,6 @@
         "build.zig.zon",
     },
     .dependencies = .{
-        .cetech1 = .{ .path = "../../src/" },
+        .cetech1 = .{ .path = "../../public/" },
     },
 }

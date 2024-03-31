@@ -10,6 +10,8 @@ pub fn build(b: *std.Build) !void {
     const cetech1 = b.dependency("cetech1", .{});
     const cetech1_module = cetech1.module("cetech1");
 
+    const editor = b.dependency("editor", .{});
+
     const lib = b.addSharedLibrary(.{
         .name = "ct_editor_foo_tab",
         .version = version,
@@ -28,7 +30,7 @@ pub fn build(b: *std.Build) !void {
 
     inline for (.{ lib, slib }) |l| {
         l.root_module.addImport("cetech1", cetech1_module);
-        l.root_module.addImport("editor", b.dependency("editor", .{}).module("editor"));
+        l.root_module.addImport("editor", editor.module("editor"));
         l.addIncludePath(cetech1.path("includes"));
         b.installArtifact(l);
     }

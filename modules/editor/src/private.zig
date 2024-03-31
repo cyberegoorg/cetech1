@@ -12,12 +12,12 @@ const strid = cetech1.strid;
 
 const Icons = coreui.CoreIcons;
 
-const MODULE_NAME = "editor";
+const module_name = .editor;
 
 pub const std_options = struct {
     pub const logFn = cetech1.log.zigLogFnGen(&_log);
 };
-const log = std.log.scoped(.editor);
+const log = std.log.scoped(module_name);
 
 var _allocator: Allocator = undefined;
 var _apidb: *apidb.ApiDbAPI = undefined;
@@ -27,19 +27,21 @@ var _kernel: *cetech1.kernel.KernelApi = undefined;
 var _coreui: *coreui.CoreUIApi = undefined;
 var _assetdb: *assetdb.AssetDBAPI = undefined;
 var _tempalloc: *cetech1.tempalloc.TempAllocApi = undefined;
+var _system: *cetech1.system.SystemApi = undefined;
 
 const TabsSelectedObject = std.AutoArrayHashMap(*public.EditorTabI, cdb.ObjId);
 const TabsMap = std.AutoArrayHashMap(*anyopaque, *public.EditorTabI);
 const TabsIdPool = cetech1.mem.IdPool(u32);
 const TabsIds = std.AutoArrayHashMap(strid.StrId32, TabsIdPool);
 
-const ModalInstances = std.AutoArrayHashMap(strid.StrId32, *anyopaque);
-
 const ContextToLabel = std.AutoArrayHashMap(strid.StrId64, [:0]const u8);
+
+const REPO_URL = "https://github.com/cyberegoorg/cetech1";
+const ONLINE_DOCUMENTATION = "https://cyberegoorg.github.io/cetech1/about.html";
 
 // Global state
 const G = struct {
-    main_db: cdb.CdbDb = undefined,
+    main_db: *cdb.CdbDb = undefined,
     show_demos: bool = false,
     show_testing_window: bool = false,
     show_external_credits: bool = false,
@@ -50,7 +52,6 @@ const G = struct {
     last_focused_tab: ?*public.EditorTabI = null,
     tab2selectedobj: TabsSelectedObject = undefined,
     last_selected_obj: cdb.ObjId = undefined,
-    modal_instances: ModalInstances = undefined,
 
     context2label: ContextToLabel = undefined,
 
@@ -62,7 +63,6 @@ var _g: *G = undefined;
 pub var api = public.EditorAPI{
     .propagateSelection = propagateSelection,
     .openTabWithPinnedObj = openTabWithPinnedObj,
-    .openModal = openModal,
     .getAllTabsByType = getAllTabsByType,
     .showObjContextMenu = showObjContextMenu,
     .buffFormatObjLabel = buffFormatObjLabel,
@@ -73,7 +73,7 @@ pub var api = public.EditorAPI{
     .selectObjFromMenu = selectObjFromMenu,
 };
 
-fn selectObjFromMenu(allocator: std.mem.Allocator, db: *cdb.CdbDb, ignored_obj: cdb.ObjId, allowed_type: strid.StrId32) ?cdb.ObjId {
+fn selectObjFromMenu(allocator: std.mem.Allocator, db: *cdb.CdbDb, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) ?cdb.ObjId {
     const tabs = _g.tabs.values();
     for (tabs) |tab| {
         if (tab.vt.select_obj_from_menu) |select_obj_from_menu| {
@@ -93,7 +93,9 @@ const PROTOTYPE_PROPERTY_OVERIDED_COLOR = .{ 0.0, 0.8, 1.0, 1.0 };
 const PROTOTYPE_PROPERTY_COLOR = .{ 0.5, 0.5, 0.5, 1.0 };
 
 fn getPropertyColor(db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: u32) ?[4]f32 {
-    if (!isColorsEnabled()) return .{ 1.0, 1.0, 1.0, 1.0 };
+    if (!isColorsEnabled()) return _coreui.getStyle().getColor(.text);
+
+    const obj_r = db.readObj(obj).?;
 
     const prototype_obj = db.getPrototype(db.readObj(obj).?);
     const has_prototype = !prototype_obj.isEmpty();
@@ -101,8 +103,18 @@ fn getPropertyColor(db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: u32) ?[4]f32 {
     var color: ?[4]f32 = null;
     if (has_prototype) {
         color = PROTOTYPE_PROPERTY_COLOR;
-        if (db.isPropertyOverrided(db.readObj(obj).?, prop_idx)) {
-            color = PROTOTYPE_PROPERTY_OVERIDED_COLOR;
+        if (db.isPropertyOverrided(obj_r, prop_idx)) {
+            const prop_type = db.getTypePropDef(obj.type_idx).?[prop_idx].type;
+
+            if (prop_type == .SUBOBJECT) {
+                const subobj = db.readSubObj(obj_r, prop_idx).?;
+                const subobj_r = db.readObj(subobj).?;
+                if (db.isIinisiated(obj_r, prop_idx, subobj_r)) {
+                    color = INSIATED_COLOR;
+                }
+            } else {
+                color = PROTOTYPE_PROPERTY_OVERIDED_COLOR;
+            }
         }
     }
     return color;
@@ -111,7 +123,7 @@ fn getPropertyColor(db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: u32) ?[4]f32 {
 fn getAssetColor(db: *cdb.CdbDb, obj: cdb.ObjId) [4]f32 {
     if (!_g.enable_colors) return _coreui.getStyle().getColor(.text);
 
-    if (assetdb.AssetType.isSameType(obj)) {
+    if (assetdb.Asset.isSameType(db, obj)) {
         const is_modified = _assetdb.isAssetModified(obj);
         const is_deleted = _assetdb.isToDeleted(obj);
 
@@ -122,12 +134,12 @@ fn getAssetColor(db: *cdb.CdbDb, obj: cdb.ObjId) [4]f32 {
         }
         const r = db.readObj(obj).?;
 
-        if (assetdb.AssetType.readSubObj(db, r, .Object)) |asset_obj| {
+        if (assetdb.Asset.readSubObj(db, r, .Object)) |asset_obj| {
             return getObjColor(db, asset_obj, null, null);
         }
     }
 
-    return .{ 1.0, 1.0, 1.0, 1.0 };
+    return _coreui.getStyle().getColor(.text);
 }
 
 const INSIATED_COLOR = .{ 1.0, 0.6, 0.0, 1.0 };
@@ -142,13 +154,13 @@ fn getObjColor(db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cdb.
     }
 
     if (in_set_obj) |s_obj| {
-        if (db.getAspect(public.UiVisualAspect, s_obj.type_hash)) |aspect| {
+        if (db.getAspect(public.UiVisualAspect, s_obj.type_idx)) |aspect| {
             if (aspect.ui_color) |color| {
                 return color(db.db, s_obj).c;
             }
         }
     } else {
-        if (db.getAspect(public.UiVisualAspect, obj.type_hash)) |aspect| {
+        if (db.getAspect(public.UiVisualAspect, obj.type_idx)) |aspect| {
             if (aspect.ui_color) |color| {
                 return color(db.db, obj).c;
             }
@@ -159,7 +171,7 @@ fn getObjColor(db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cdb.
 
 fn buffFormatObjLabel(allocator: std.mem.Allocator, buff: [:0]u8, db: *cdb.CdbDb, obj: cdb.ObjId, with_id: bool) ?[:0]u8 {
     var label: [:0]u8 = undefined;
-    if (db.getAspect(public.UiVisualAspect, obj.type_hash)) |aspect| {
+    if (db.getAspect(public.UiVisualAspect, obj.type_idx)) |aspect| {
         var name: []const u8 = undefined;
         defer allocator.free(name);
 
@@ -170,7 +182,7 @@ fn buffFormatObjLabel(allocator: std.mem.Allocator, buff: [:0]u8, db: *cdb.CdbDb
             const obj_r = db.readObj(asset_obj).?;
 
             if (_assetdb.isAssetFolder(obj)) {
-                const asset_name = assetdb.AssetType.readStr(db, obj_r, .Name) orelse "ROOT";
+                const asset_name = assetdb.Asset.readStr(db, obj_r, .Name) orelse "ROOT";
                 name = std.fmt.allocPrintZ(
                     allocator,
                     "{s}",
@@ -179,8 +191,8 @@ fn buffFormatObjLabel(allocator: std.mem.Allocator, buff: [:0]u8, db: *cdb.CdbDb
                     },
                 ) catch "";
             } else {
-                const asset_name = assetdb.AssetType.readStr(db, obj_r, .Name) orelse "No NAME =()";
-                const type_name = db.getTypeName(asset_obj.type_hash).?;
+                const asset_name = assetdb.Asset.readStr(db, obj_r, .Name) orelse "No NAME =()";
+                const type_name = db.getTypeName(asset_obj.type_idx).?;
                 name = std.fmt.allocPrintZ(
                     allocator,
                     "{s}.{s}",
@@ -227,17 +239,17 @@ fn showObjContextMenu(
     var selection = obj_or_selection;
     var obj = obj_or_selection;
 
-    if (!coreui.ObjSelectionType.isSameType(obj_or_selection)) {
-        selection = try coreui.ObjSelectionType.createObject(db);
-        const w = coreui.ObjSelectionType.write(db, selection).?;
-        try coreui.ObjSelectionType.addRefToSet(db, w, .Selection, &.{obj_or_selection});
-        try coreui.ObjSelectionType.commit(db, w);
+    if (!coreui.ObjSelection.isSameType(db, obj_or_selection)) {
+        selection = try coreui.ObjSelection.createObject(db);
+        const w = coreui.ObjSelection.write(db, selection).?;
+        try coreui.ObjSelection.addRefToSet(db, w, .Selection, &.{obj_or_selection});
+        try coreui.ObjSelection.commit(db, w);
     } else {
         obj = _coreui.getFirstSelected(allocator, db, selection);
     }
 
     defer {
-        if (!coreui.ObjSelectionType.isSameType(obj_or_selection)) {
+        if (!coreui.ObjSelection.isSameType(db, obj_or_selection)) {
             db.destroyObject(selection);
         }
     }
@@ -246,14 +258,14 @@ fn showObjContextMenu(
 
     // Property based context
     if (prop_idx) |pidx| {
-        const prop_defs = db.getTypePropDef(obj.type_hash).?;
+        const prop_defs = db.getTypePropDef(obj.type_idx).?;
         const prop_def = prop_defs[pidx];
 
         if (in_set_obj) |set_obj| {
             const obj_r = db.readObj(obj) orelse return;
 
             if (db.canIinisiated(obj_r, db.readObj(set_obj).?)) {
-                if (_coreui.menuItem(allocator, coreui.Icons.Add ++ "  " ++ "Inisiate" ++ "###Inisiate", .{}, null)) {
+                if (_coreui.menuItem(allocator, coreui.Icons.Instansiate ++ "  " ++ "Instansiate" ++ "###Inisiate", .{}, null)) {
                     const w = db.writeObj(obj).?;
                     _ = try db.instantiateSubObjFromSet(w, pidx, set_obj);
                     try db.writeCommit(w);
@@ -283,14 +295,19 @@ fn showObjContextMenu(
                 if (_coreui.beginMenu(allocator, coreui.Icons.Add ++ "  " ++ "Add to set" ++ "###AddToSet", true, null)) {
                     defer _coreui.endMenu();
 
-                    const set_menus_aspect = db.getPropertyAspect(public.UiSetMenusAspect, obj.type_hash, pidx);
+                    const set_menus_aspect = db.getPropertyAspect(public.UiSetMenusAspect, obj.type_idx, pidx);
                     if (set_menus_aspect) |aspect| {
                         if (aspect.add_menu) |add_menu| {
                             add_menu(&allocator, db.db, obj, pidx);
                         }
                     } else {
                         if (prop_def.type == .REFERENCE_SET) {
-                            if (selectObjFromMenu(allocator, db, _assetdb.getObjForAsset(obj) orelse obj, prop_def.type_hash)) |selected| {
+                            if (selectObjFromMenu(
+                                allocator,
+                                db,
+                                _assetdb.getObjForAsset(obj) orelse obj,
+                                db.getTypeIdx(prop_def.type_hash) orelse .{},
+                            )) |selected| {
                                 const w = db.writeObj(obj).?;
                                 try db.addRefToSet(w, pidx, &.{selected});
                                 try db.writeCommit(w);
@@ -300,7 +317,7 @@ fn showObjContextMenu(
                                 if (_coreui.menuItem(allocator, coreui.Icons.Add ++ "  " ++ "Add new" ++ "###AddNew", .{}, null)) {
                                     const w = db.writeObj(obj).?;
 
-                                    const new_obj = try db.createObject(prop_def.type_hash);
+                                    const new_obj = try db.createObject(db.getTypeIdx(prop_def.type_hash).?);
                                     const new_obj_w = db.writeObj(new_obj).?;
 
                                     try db.addSubObjToSet(w, pidx, &.{new_obj_w});
@@ -315,13 +332,22 @@ fn showObjContextMenu(
             } else if (prop_def.type == .SUBOBJECT) {
                 const obj_r = db.readObj(obj) orelse return;
 
-                const subobj = db.readSubObj(obj_r, pidx);
-                if (subobj == null) {
+                if (db.readSubObj(obj_r, pidx)) |subobj| {
+                    const subobj_r = db.readObj(subobj).?;
+
+                    if (db.canIinisiated(obj_r, subobj_r)) {
+                        if (_coreui.menuItem(allocator, coreui.Icons.Add ++ "  " ++ "Inisiate" ++ "###Inisiate", .{}, null)) {
+                            const w = db.writeObj(obj).?;
+                            _ = try db.instantiateSubObj(w, pidx);
+                            try db.writeCommit(w);
+                        }
+                    }
+                } else {
                     if (prop_def.type_hash.id != 0) {
                         if (_coreui.menuItem(allocator, coreui.Icons.Add ++ "  " ++ "Add new", .{}, null)) {
                             const w = db.writeObj(obj).?;
 
-                            const new_obj = try db.createObject(prop_def.type_hash);
+                            const new_obj = try db.createObject(db.getTypeIdx(prop_def.type_hash).?);
                             const new_obj_w = db.writeObj(new_obj).?;
 
                             try db.setSubObj(w, pidx, new_obj_w);
@@ -411,26 +437,9 @@ fn getAllTabsByType(allocator: std.mem.Allocator, tab_type_hash: strid.StrId32) 
     return result.toOwnedSlice();
 }
 
-fn openModal(
-    modal_hash: strid.StrId32,
-    on_set: public.UiModalI.OnSetFN,
-    data: public.UiModalI.Data,
-) void {
-    var it = _apidb.getFirstImpl(public.UiModalI);
-    while (it) |node| : (it = node.next) {
-        const iface = apidb.ApiDbAPI.toInterface(public.UiModalI, node);
-        if (iface.modal_hash.id != modal_hash.id) continue;
-        const inst = iface.*.create.?(&_allocator, _g.main_db.db, on_set, data);
-        if (inst) |valid_inst| {
-            _g.modal_instances.put(iface.modal_hash, valid_inst) catch undefined;
-        }
-        break;
-    }
-}
-
 fn openTabWithPinnedObj(db: *cdb.CdbDb, tab_type_hash: strid.StrId32, obj: cdb.ObjId) void {
     if (createNewTab(tab_type_hash)) |new_tab| {
-        const selection = coreui.ObjSelectionType.createObject(db) catch undefined;
+        const selection = coreui.ObjSelection.createObject(db) catch undefined;
         _coreui.addToSelection(db, selection, obj) catch undefined;
         tabSelectObj(db, selection, new_tab);
         new_tab.pinned_obj = selection;
@@ -440,7 +449,7 @@ fn openTabWithPinnedObj(db: *cdb.CdbDb, tab_type_hash: strid.StrId32, obj: cdb.O
 fn tabSelectObj(db: *cdb.CdbDb, obj: cdb.ObjId, tab: *public.EditorTabI) void {
     _g.tab2selectedobj.put(tab, obj) catch undefined;
     if (tab.vt.*.obj_selected) |obj_selected| {
-        obj_selected(tab.inst, @ptrCast(db.db), .{ .id = obj.id, .type_hash = .{ .id = obj.type_hash.id } });
+        obj_selected(tab.inst, @ptrCast(db.db), .{ .id = obj.id, .type_idx = .{ .idx = obj.type_idx.idx } });
     }
 }
 
@@ -515,19 +524,19 @@ fn quitSaveModal() !void {
 
         _coreui.separator();
 
-        if (_coreui.button(coreui.Icons.SaveAll ++ " " ++ coreui.Icons.Quit ++ " " ++ "Save and Quit", .{})) {
+        if (_coreui.button(coreui.Icons.SaveAll ++ "  " ++ coreui.Icons.Quit ++ "  " ++ "Save and Quit", .{})) {
             show_quit_modal = false;
             _coreui.closeCurrentPopup();
 
-            var tmp_arena = _tempalloc.createTempArena() catch undefined;
-            defer _tempalloc.destroyTempArena(tmp_arena);
+            const allocator = _tempalloc.create() catch undefined;
+            defer _tempalloc.destroy(allocator);
 
-            try _assetdb.saveAllModifiedAssets(tmp_arena.allocator());
+            try _assetdb.saveAllModifiedAssets(allocator);
             _kernel.quit();
         }
 
         _coreui.sameLine(.{});
-        if (_coreui.button(coreui.Icons.Quit ++ " " ++ "Quit", .{})) {
+        if (_coreui.button(coreui.Icons.Quit ++ "  " ++ "Quit", .{})) {
             show_quit_modal = false;
             _coreui.closeCurrentPopup();
             _kernel.quit();
@@ -560,10 +569,10 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
             const str = try std.fs.cwd().realpath(".", &buf);
             buf[str.len] = 0;
 
-            if (try _coreui.openFileDialog(allocator, &.{.{ .name = "Project file", .spec = assetdb.ProjectType.name }}, @ptrCast(&buf))) |path| {
+            if (try _coreui.openFileDialog(allocator, &.{.{ .name = "Project file", .spec = assetdb.Project.name }}, @ptrCast(&buf))) |path| {
                 defer allocator.free(path);
                 const dir = std.fs.path.dirname(path).?;
-                propagateSelection(&_g.main_db, cdb.OBJID_ZERO);
+                propagateSelection(_g.main_db, cdb.OBJID_ZERO);
                 _kernel.openAssetRoot(dir);
             }
         }
@@ -598,10 +607,10 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
 
     if (_coreui.beginMenu(allocator, coreui.Icons.Settings, true, null)) {
         defer _coreui.endMenu();
-        _ = _coreui.menuItemPtr(allocator, coreui.Icons.Colors ++ " " ++ "Colors", .{ .selected = &_g.enable_colors }, null);
+        _ = _coreui.menuItemPtr(allocator, coreui.Icons.Colors ++ "  " ++ "Colors", .{ .selected = &_g.enable_colors }, null);
 
         // TODO: but neeed imgui docking
-        // if (_coreui.beginMenu(allocator, coreui.Icons.TickRate ++ " " ++ "Scale factor", true, null)) {
+        // if (_coreui.beginMenu(allocator, coreui.Icons.TickRate ++ "  " ++ "Scale factor", true, null)) {
         //     defer _coreui.endMenu();
         //     var scale_factor = _coreui.getScaleFactor();
         //     if (_coreui.inputF32("###kernel_tick_rate", .{ .v = &scale_factor, .flags = .{ .enter_returns_true = true } })) {
@@ -609,7 +618,7 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
         //     }
         // }
 
-        if (_coreui.beginMenu(allocator, coreui.Icons.TickRate ++ " " ++ "Kernel tick rate", true, null)) {
+        if (_coreui.beginMenu(allocator, coreui.Icons.TickRate ++ "  " ++ "Kernel tick rate", true, null)) {
             defer _coreui.endMenu();
 
             var rate = _kernel.getKernelTickRate();
@@ -622,7 +631,7 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
     if (_coreui.beginMenu(allocator, coreui.Icons.Debug, true, null)) {
         defer _coreui.endMenu();
 
-        _ = _coreui.menuItemPtr(allocator, coreui.Icons.UITest ++ " " ++ "Test UI", .{ .selected = &_g.show_testing_window }, null);
+        _ = _coreui.menuItemPtr(allocator, coreui.Icons.UITest ++ "  " ++ "Test UI", .{ .selected = &_g.show_testing_window }, null);
 
         _coreui.separator();
 
@@ -636,8 +645,19 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
 
     if (_coreui.beginMenu(allocator, coreui.Icons.Help, true, null)) {
         defer _coreui.endMenu();
-        _ = _coreui.menuItemPtr(allocator, coreui.Icons.Authors ++ " " ++ "Authors", .{ .selected = &_g.show_authors }, null);
-        _ = _coreui.menuItemPtr(allocator, coreui.Icons.Externals ++ " " ++ "Externals", .{ .selected = &_g.show_external_credits }, null);
+
+        if (_coreui.menuItem(allocator, coreui.Icons.Link ++ "  " ++ "GitHub", .{}, null)) {
+            try _system.openIn(allocator, .open_url, REPO_URL);
+        }
+
+        if (_coreui.menuItem(allocator, coreui.Icons.Link ++ "  " ++ "Docs (online)", .{}, null)) {
+            try _system.openIn(allocator, .open_url, ONLINE_DOCUMENTATION);
+        }
+
+        _coreui.separator();
+
+        _ = _coreui.menuItemPtr(allocator, coreui.Icons.Authors ++ "  " ++ "Authors", .{ .selected = &_g.show_authors }, null);
+        _ = _coreui.menuItemPtr(allocator, coreui.Icons.Externals ++ "  " ++ "Externals", .{ .selected = &_g.show_external_credits }, null);
     }
 
     _coreui.endMainMenuBar();
@@ -698,11 +718,11 @@ fn doTabs(tmp_allocator: std.mem.Allocator) !void {
         if (tab.vt.*.show_sel_obj_in_title) {
             if (tab_selected_object) |selected_obj| {
                 if (selected_obj.isEmpty()) continue;
-                const fo = _coreui.getFirstSelected(tmp_allocator, &_g.main_db, selected_obj);
+                const fo = _coreui.getFirstSelected(tmp_allocator, _g.main_db, selected_obj);
                 if (!fo.isEmpty()) {
                     if (_assetdb.getAssetForObj(fo)) |asset| {
-                        const type_name = _g.main_db.getTypeName(asset.type_hash).?;
-                        if (assetdb.AssetType.readStr(&_g.main_db, _g.main_db.readObj(asset).?, .Name)) |asset_name_str| {
+                        const type_name = _g.main_db.getTypeName(asset.type_idx).?;
+                        if (assetdb.Asset.readStr(_g.main_db, _g.main_db.readObj(asset).?, .Name)) |asset_name_str| {
                             asset_name = try std.fmt.bufPrint(&asset_name_buf, "- {s}.{s}", .{ asset_name_str, type_name });
                         }
                     }
@@ -752,11 +772,11 @@ fn doTabs(tmp_allocator: std.mem.Allocator) !void {
                         if (!new_pinned) {
                             _g.main_db.destroyObject(tab.pinned_obj);
                             tab.pinned_obj = .{};
-                            tabSelectObj(@ptrCast(&_g.main_db.db), _g.last_selected_obj, tab);
+                            tabSelectObj(_g.main_db, _g.last_selected_obj, tab);
                         } else {
                             const tab_selection = _g.last_selected_obj; //_g.tab2selectedobj.get(tab) orelse continue;
                             const selection = _g.main_db.cloneObject(tab_selection) catch undefined;
-                            tabSelectObj(&_g.main_db, selection, tab);
+                            tabSelectObj(_g.main_db, selection, tab);
                             tab.pinned_obj = selection;
                         }
                     }
@@ -778,18 +798,6 @@ fn doTabs(tmp_allocator: std.mem.Allocator) !void {
     }
 }
 
-fn doModals(allocator: std.mem.Allocator) void {
-    var it = _apidb.getFirstImpl(public.UiModalI);
-    while (it) |node| : (it = node.next) {
-        const iface = apidb.ApiDbAPI.toInterface(public.UiModalI, node);
-        const modal_inst = _g.modal_instances.get(iface.modal_hash) orelse continue;
-        if (!iface.*.ui_modal.?(&allocator, _g.main_db.db, modal_inst)) {
-            iface.*.destroy.?(&_allocator, _g.main_db.db, modal_inst);
-            _ = _g.modal_instances.swapRemove(iface.modal_hash);
-        }
-    }
-}
-
 var coreui_ui_i = coreui.CoreUII.implement(struct {
     pub fn ui(allocator: std.mem.Allocator) !void {
         _ = _coreui.mainDockSpace(coreui.DockNodeFlags{ .passthru_central_node = true });
@@ -797,7 +805,6 @@ var coreui_ui_i = coreui.CoreUII.implement(struct {
         try doMainMenu(allocator);
         try quitSaveModal();
         try doTabs(allocator);
-        doModals(allocator);
 
         if (_g.show_demos) _coreui.showDemoWindow();
         _coreui.showTestingWindow(&_g.show_testing_window);
@@ -810,12 +817,11 @@ var editor_kernel_task = cetech1.kernel.KernelTaskI.implement(
     "Editor",
     &[_]strid.StrId64{},
     struct {
-        pub fn init(main_db: *cdb.Db) !void {
-            _g.main_db = cdb.CdbDb.fromDbT(main_db, _cdb);
+        pub fn init() !void {
+            _g.main_db = _kernel.getDb();
             _g.tabs = TabsMap.init(_allocator);
             _g.tabids = TabsIds.init(_allocator);
             _g.tab2selectedobj = TabsSelectedObject.init(_allocator);
-            _g.modal_instances = ModalInstances.init(_allocator);
             _g.context2label = ContextToLabel.init(_allocator);
 
             // Create tab that has create_on_init == true. Primary for basic toolchain
@@ -850,7 +856,6 @@ var editor_kernel_task = cetech1.kernel.KernelTaskI.implement(
             _g.tabs.deinit();
             _g.tabids.deinit();
             _g.tab2selectedobj.deinit();
-            _g.modal_instances.deinit();
             _g.context2label.deinit();
         }
     },
@@ -963,21 +968,6 @@ var asset_root_opened_i = assetdb.AssetRootOpenedI.implement(struct {
 });
 
 // Cdb
-var create_types_i = cdb.CreateTypesI.implement(struct {
-    pub fn createTypes(db_: *cdb.Db) !void {
-        var db = cdb.CdbDb.fromDbT(db_, _cdb);
-
-        // Obj selections
-        // TODO: move to coreui
-        _ = try db.addType(
-            coreui.ObjSelectionType.name,
-            &[_]cdb.PropDef{
-                .{ .prop_idx = coreui.ObjSelectionType.propIdx(.Selection), .name = "selection", .type = cdb.PropType.REFERENCE_SET },
-            },
-        );
-        //
-    }
-});
 
 // Create types, register api, interfaces etc...
 pub fn load_module_zig(apidb_: *apidb.ApiDbAPI, allocator: Allocator, log_api: *cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
@@ -986,23 +976,22 @@ pub fn load_module_zig(apidb_: *apidb.ApiDbAPI, allocator: Allocator, log_api: *
     _allocator = allocator;
     _log = log_api;
     _apidb = apidb_;
-    _cdb = _apidb.getZigApi(cdb.CdbAPI).?;
-    _coreui = _apidb.getZigApi(coreui.CoreUIApi).?;
-    _kernel = _apidb.getZigApi(cetech1.kernel.KernelApi).?;
-    _assetdb = _apidb.getZigApi(assetdb.AssetDBAPI).?;
-    _tempalloc = _apidb.getZigApi(cetech1.tempalloc.TempAllocApi).?;
+    _cdb = _apidb.getZigApi(module_name, cdb.CdbAPI).?;
+    _coreui = _apidb.getZigApi(module_name, coreui.CoreUIApi).?;
+    _kernel = _apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
+    _assetdb = _apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
+    _tempalloc = _apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
+    _system = _apidb.getZigApi(module_name, cetech1.system.SystemApi).?;
 
     // create global variable that can survive reload
-    _g = try _apidb.globalVar(G, MODULE_NAME, "_g", .{});
+    _g = try _apidb.globalVar(G, module_name, "_g", .{});
 
-    try _apidb.setOrRemoveZigApi(public.EditorAPI, &api, load);
+    try _apidb.setOrRemoveZigApi(module_name, public.EditorAPI, &api, load);
 
-    try _apidb.implOrRemove(cetech1.kernel.KernelTaskI, &editor_kernel_task, load);
-    try _apidb.implOrRemove(coreui.CoreUII, &coreui_ui_i, load);
-    try _apidb.implOrRemove(public.ObjContextMenuI, &open_in_context_menu_i, load);
-
-    try _apidb.implOrRemove(cdb.CreateTypesI, &create_types_i, true);
-    try _apidb.implOrRemove(assetdb.AssetRootOpenedI, &asset_root_opened_i, true);
+    try _apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &editor_kernel_task, load);
+    try _apidb.implOrRemove(module_name, coreui.CoreUII, &coreui_ui_i, load);
+    try _apidb.implOrRemove(module_name, public.ObjContextMenuI, &open_in_context_menu_i, load);
+    try _apidb.implOrRemove(module_name, assetdb.AssetRootOpenedI, &asset_root_opened_i, true);
 
     _kernel.setCanQuit(kernelQuitHandler);
     return true;
@@ -1010,7 +999,7 @@ pub fn load_module_zig(apidb_: *apidb.ApiDbAPI, allocator: Allocator, log_api: *
 
 // This is only one fce that cetech1 need to load/unload/reload module.
 pub export fn ct_load_module_editor(__apidb: ?*const apidb.ct_apidb_api_t, __allocator: ?*const apidb.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, __apidb, __allocator, __load, __reload);
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }
 
 // Assert C api == C api in zig.

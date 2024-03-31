@@ -30,15 +30,17 @@ pub fn main() !void {
     var w = output_file.writer();
 
     try w.print("// GENERATED - DO NOT EDIT\n", .{});
-    try w.print("const cetech1 = @import(\"cetech1.zig\");\n\n", .{});
+    try w.print("const cetech1 = @import(\"cetech1\");\n\n", .{});
 
     for (modules.items) |m| {
+        if (m.len == 0) continue;
         try w.print("extern fn ct_load_module_{s}(?*const cetech1.apidb.ct_apidb_api_t, ?*const cetech1.apidb.ct_allocator_t, u8, u8) callconv(.C) u8;\n", .{m});
     }
 
     try w.print("\npub const descs = [_]cetech1.modules.ct_module_desc_t{{\n", .{});
 
     for (modules.items) |m| {
+        if (m.len == 0) continue;
         try w.print("    .{{ .name = \"{s}\", .module_fce = ct_load_module_{s} }},\n", .{ m, m });
     }
 

@@ -1,0 +1,13 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Unittests" type="ZIGBRAINS_BUILD" factoryName="ZIGBRAINS_BUILD">
+    <ZigBrainsOption name="workingDirectory" value="$PROJECT_DIR$" />
+    <ZigBrainsArrayOption name="buildSteps">
+      <ZigBrainsArrayEntry value="test" />
+    </ZigBrainsArrayOption>
+    <ZigBrainsArrayOption name="extraArgs" />
+    <ZigBrainsOption name="colored" value="true" />
+    <ZigBrainsOption name="exePath" value="" />
+    <ZigBrainsArrayOption name="exeArgs" />
+    <method v="2" />
+  </configuration>
+</component>

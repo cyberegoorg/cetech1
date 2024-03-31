@@ -29,6 +29,7 @@ pub fn build(b: *std.Build) !void {
     inline for (.{ lib, slib }) |l| {
         l.root_module.addImport("cetech1", cetech1_module);
         l.addIncludePath(cetech1.path("includes"));
+        l.addIncludePath(.{ .path = "includes" });
         b.installArtifact(l);
     }
 

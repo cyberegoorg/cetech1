@@ -31,6 +31,7 @@ pub const UiVisualPropertyConfigAspect = extern struct {
 
 pub const cdbPropertiesViewArgs = extern struct {
     filter: ?[*:0]const u8 = null,
+    max_autopen_depth: u32 = 5,
 };
 
 pub const UiEmbedPropertyAspect = extern struct {
@@ -45,7 +46,7 @@ pub const UiEmbedPropertyAspect = extern struct {
         args: cdbPropertiesViewArgs,
     ) callconv(.C) void = null,
 
-    pub inline fn implement(comptime T: type) UiEmbedPropertyAspect {
+    pub fn implement(comptime T: type) UiEmbedPropertyAspect {
         if (!std.meta.hasFn(T, "ui")) @compileError("implement me");
 
         return UiEmbedPropertyAspect{
@@ -77,7 +78,7 @@ pub const UiEmbedPropertiesAspect = extern struct {
         args: cdbPropertiesViewArgs,
     ) callconv(.C) void = null,
 
-    pub inline fn implement(comptime T: type) UiEmbedPropertiesAspect {
+    pub fn implement(comptime T: type) UiEmbedPropertiesAspect {
         if (!std.meta.hasFn(T, "ui")) @compileError("implement me");
 
         return UiEmbedPropertiesAspect{
@@ -111,7 +112,7 @@ pub const UiPropertyAspect = extern struct {
         args: cdbPropertiesViewArgs,
     ) callconv(.C) void = null,
 
-    pub inline fn implement(comptime T: type) UiPropertyAspect {
+    pub fn implement(comptime T: type) UiPropertyAspect {
         if (!std.meta.hasFn(T, "ui")) @compileError("implement me");
 
         return UiPropertyAspect{
@@ -144,7 +145,7 @@ pub const UiPropertiesAspect = extern struct {
         args: cdbPropertiesViewArgs,
     ) callconv(.C) void = null,
 
-    pub inline fn implement(comptime T: type) UiPropertiesAspect {
+    pub fn implement(comptime T: type) UiPropertiesAspect {
         if (!std.meta.hasFn(T, "ui")) @compileError("implement me");
 
         return UiPropertiesAspect{ .ui_properties = struct {
@@ -175,8 +176,8 @@ pub const InspectorAPI = struct {
     formatedPropNameToBuff: *const fn (buf: []u8, prop_name: [:0]const u8) anyerror![]u8,
 
     // Property view
-    cdbPropertiesView: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, tab: *editor.TabO, obj: cdb.ObjId, args: cdbPropertiesViewArgs) anyerror!void,
-    cdbPropertiesObj: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, tab: *editor.TabO, obj: cdb.ObjId, args: cdbPropertiesViewArgs) anyerror!void,
+    cdbPropertiesView: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, tab: *editor.TabO, obj: cdb.ObjId, depth: u32, args: cdbPropertiesViewArgs) anyerror!void,
+    cdbPropertiesObj: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, tab: *editor.TabO, obj: cdb.ObjId, depth: u32, args: cdbPropertiesViewArgs) anyerror!void,
 
     beginSection: *const fn (label: [:0]const u8, leaf: bool, default_open: bool) bool,
     endSection: *const fn (open: bool) void,

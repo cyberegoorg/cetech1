@@ -3,6 +3,10 @@
   "__asset_uuid": "018e7ba1-d63a-7500-8918-23661dbad5cc",
   "__type_name": "ct_foo_asset",
   "__uuid": "018e7ba3-3540-7790-bb65-3e63081a76f7",
+  "subobject": {
+    "__type_name": "ct_foo_asset",
+    "__uuid": "018ea9c3-dd06-76d1-93ed-778bd797c4a3"
+  },
   "subobject_set": [
     {
       "__type_name": "ct_foo_asset",

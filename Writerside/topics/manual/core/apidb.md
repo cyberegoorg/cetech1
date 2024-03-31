@@ -19,3 +19,7 @@ Main mechanism to use/export api and interfaces across app.
 ## API
 
 ## Interface
+
+## .ct_temp/apidb_graph.d2
+
+This file contain module/api dependency graph.

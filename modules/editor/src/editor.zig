@@ -7,8 +7,6 @@ const strid = cetech1.strid;
 
 const log = std.log.scoped(.editor);
 
-pub const c = @cImport(@cInclude("cetech1/modules/editor/editor.h"));
-
 pub const Contexts = struct {
     pub const edit = cetech1.strid.strId64("ct_edit_context");
     pub const create = cetech1.strid.strId64("ct_create_context");
@@ -28,7 +26,7 @@ pub const UiSetMenusAspect = extern struct {
         prop_idx: u32,
     ) callconv(.C) void = null,
 
-    pub inline fn implement(comptime T: type) UiSetMenusAspect {
+    pub fn implement(comptime T: type) UiSetMenusAspect {
         if (!std.meta.hasFn(T, "addMenu")) @compileError("implement me");
         return UiSetMenusAspect{
             .add_menu = struct {
@@ -74,7 +72,7 @@ pub const UiVisualAspect = extern struct {
         obj: cdb.ObjId,
     ) callconv(.C) void = null,
 
-    pub inline fn implement(comptime T: type) UiVisualAspect {
+    pub fn implement(comptime T: type) UiVisualAspect {
         return UiVisualAspect{
             .ui_name = if (std.meta.hasFn(T, "uiName")) struct {
                 pub fn f(
@@ -154,7 +152,7 @@ pub const ObjContextMenuI = extern struct {
         filter: [*:0]const u8,
     ) callconv(.C) void,
 
-    pub inline fn implement(comptime T: type) ObjContextMenuI {
+    pub fn implement(comptime T: type) ObjContextMenuI {
         if (!std.meta.hasFn(T, "isValid")) @compileError("implement me");
         if (!std.meta.hasFn(T, "menu")) @compileError("implement me");
 
@@ -228,7 +226,7 @@ pub const CreateAssetI = extern struct {
         folder: cdb.ObjId,
     ) callconv(.C) void = null,
 
-    pub inline fn implement(cdb_type: strid.StrId32, comptime T: type) CreateAssetI {
+    pub fn implement(cdb_type: strid.StrId32, comptime T: type) CreateAssetI {
         if (!std.meta.hasFn(T, "menuItem")) @compileError("implement me");
         if (!std.meta.hasFn(T, "create")) @compileError("implement me");
 
@@ -275,7 +273,7 @@ pub const UiModalI = extern struct {
         return data;
     }
 
-    pub inline fn implement(modal_hash: strid.StrId32, comptime T: type) UiModalI {
+    pub fn implement(modal_hash: strid.StrId32, comptime T: type) UiModalI {
         if (!std.meta.hasFn(T, "uiModal")) @compileError("implement me");
         if (!std.meta.hasFn(T, "create")) @compileError("implement me");
         if (!std.meta.hasFn(T, "destroy")) @compileError("implement me");
@@ -347,9 +345,9 @@ pub const EditorTabTypeI = extern struct {
     focused: ?*const fn (*TabO) callconv(.C) void = null,
     asset_root_opened: ?*const fn (*TabO) callconv(.C) void = null,
 
-    select_obj_from_menu: ?*const fn (allocator: *const std.mem.Allocator, *TabO, *cdb.Db, ignored_obj: cdb.ObjId, allowed_type: strid.StrId32) callconv(.C) cdb.ObjId = null,
+    select_obj_from_menu: ?*const fn (allocator: *const std.mem.Allocator, *TabO, *cdb.Db, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) callconv(.C) cdb.ObjId = null,
 
-    pub inline fn implement(args: EditorTabTypeIArgs, comptime T: type) EditorTabTypeI {
+    pub fn implement(args: EditorTabTypeIArgs, comptime T: type) EditorTabTypeI {
         if (!std.meta.hasFn(T, "menuName")) @compileError("implement me");
         if (!std.meta.hasFn(T, "title")) @compileError("implement me");
         if (!std.meta.hasFn(T, "create")) @compileError("implement me");
@@ -365,7 +363,7 @@ pub const EditorTabTypeI = extern struct {
             .show_sel_obj_in_title = args.show_sel_obj_in_title,
 
             .select_obj_from_menu = if (std.meta.hasFn(T, "selectObjFromMenu")) struct {
-                pub fn f(allocator: *const std.mem.Allocator, tab: *TabO, db: *cdb.Db, ignored_obj: cdb.ObjId, allowed_type: strid.StrId32) callconv(.C) cdb.ObjId {
+                pub fn f(allocator: *const std.mem.Allocator, tab: *TabO, db: *cdb.Db, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) callconv(.C) cdb.ObjId {
                     return T.selectObjFromMenu(allocator.*, tab, db, ignored_obj, allowed_type) catch |err| {
                         log.err("EditorTabTypeI.selectObjFromMenu() failed with error {}", .{err});
 
@@ -461,9 +459,6 @@ pub const EditorAPI = struct {
     openTabWithPinnedObj: *const fn (db: *cdb.CdbDb, tab_type_hash: strid.StrId32, obj: cdb.ObjId) void,
     getAllTabsByType: *const fn (allocator: std.mem.Allocator, tab_type_hash: strid.StrId32) anyerror![]*EditorTabI,
 
-    // Modal
-    openModal: *const fn (modal_hash: strid.StrId32, on_set: UiModalI.OnSetFN, data: UiModalI.Data) void,
-
     showObjContextMenu: *const fn (
         allocator: std.mem.Allocator,
         db: *cdb.CdbDb,
@@ -480,5 +475,5 @@ pub const EditorAPI = struct {
     getAssetColor: *const fn (db: *cdb.CdbDb, obj: cdb.ObjId) [4]f32,
     getPropertyColor: *const fn (db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: u32) ?[4]f32,
     isColorsEnabled: *const fn () bool,
-    selectObjFromMenu: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, ignored_obj: cdb.ObjId, allowed_type: strid.StrId32) ?cdb.ObjId,
+    selectObjFromMenu: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) ?cdb.ObjId,
 };

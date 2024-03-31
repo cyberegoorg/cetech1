@@ -16,11 +16,12 @@ const editor_tags = @import("editor_tags");
 
 const Icons = cetech1.coreui.CoreIcons;
 
-const MODULE_NAME = "editor_asset_browser";
+const module_name = .editor_asset_browser;
+
 pub const std_options = struct {
     pub const logFn = cetech1.log.zigLogFnGen(&_log);
 };
-const log = std.log.scoped(.editor_asset_browser);
+const log = std.log.scoped(module_name);
 
 const ASSET_BROWSER_NAME = "ct_editor_asset_browser_tab";
 
@@ -94,9 +95,9 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
                 .inst = @ptrCast(tab_inst),
             },
             .db = db,
-            .tags = try assetdb.TagsType.createObject(&db),
-            .selection_obj = try coreui.ObjSelectionType.createObject(&db),
-            .opened_obj = try coreui.ObjSelectionType.createObject(&db),
+            .tags = try assetdb.Tags.createObject(&db),
+            .selection_obj = try coreui.ObjSelection.createObject(&db),
+            .opened_obj = try coreui.ObjSelection.createObject(&db),
         };
         return &tab_inst.tab_i;
     }
@@ -112,9 +113,8 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
     pub fn menu(inst: *editor.TabO) !void {
         var tab_o: *AssetBrowserTab = @alignCast(@ptrCast(inst));
 
-        var tmp_arena = try _tempalloc.createTempArena();
-        defer _tempalloc.destroyTempArena(tmp_arena);
-        const allocator = tmp_arena.allocator();
+        const allocator = try _tempalloc.create();
+        defer _tempalloc.destroy(allocator);
 
         const selected_count = _coreui.selectedCount(allocator, &tab_o.db, tab_o.selection_obj);
 
@@ -156,10 +156,8 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
             return;
         }
 
-        var tmp_arena = try _tempalloc.createTempArena();
-        defer _tempalloc.destroyTempArena(tmp_arena);
-
-        const allocator = tmp_arena.allocator();
+        const allocator = try _tempalloc.create();
+        defer _tempalloc.destroy(allocator);
 
         const r = try uiAssetBrowser(
             allocator,
@@ -190,7 +188,7 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
         tab_o.filter = null;
     }
 
-    pub fn selectObjFromMenu(allocator: std.mem.Allocator, tab: *editor.TabO, _dbc: *cdb.Db, ignored_obj: cdb.ObjId, allowed_type: strid.StrId32) !cdb.ObjId {
+    pub fn selectObjFromMenu(allocator: std.mem.Allocator, tab: *editor.TabO, _dbc: *cdb.Db, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) !cdb.ObjId {
         var db = cdb.CdbDb.fromDbT(_dbc, _cdb);
 
         const tabs = _editor.getAllTabsByType(allocator, _g.tab_vt.tab_hash) catch return .{};
@@ -207,8 +205,8 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
 
         var real_obj = selected_obj;
         if (db.readObj(selected_obj)) |r| {
-            if (assetdb.AssetType.isSameType(selected_obj)) {
-                real_obj = assetdb.AssetType.readSubObj(&db, r, .Object).?;
+            if (assetdb.Asset.isSameType(&db, selected_obj)) {
+                real_obj = assetdb.Asset.readSubObj(&db, r, .Object).?;
 
                 const path = _assetdb.getFilePathForAsset(selected_obj, allocator) catch undefined;
                 defer allocator.free(path);
@@ -219,9 +217,9 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
         } else {
             label = std.fmt.bufPrintZ(&label_buff, "browser {d}" ++ "###{d}", .{ tab_o.tab_i.tabid, tab_o.tab_i.tabid }) catch return .{};
         }
-        valid = selected_n == 1 and !real_obj.eq(ignored_obj) and (allowed_type.id == 0 or real_obj.type_hash.id == allowed_type.id);
+        valid = selected_n == 1 and !real_obj.eql(ignored_obj) and (allowed_type.isEmpty() or real_obj.type_idx.eql(allowed_type));
 
-        if (_coreui.beginMenu(allocator, coreui.Icons.Select ++ " " ++ "From" ++ "###SelectFrom", true, null)) {
+        if (_coreui.beginMenu(allocator, coreui.Icons.Select ++ "  " ++ "From" ++ "###SelectFrom", true, null)) {
             defer _coreui.endMenu();
 
             if (_coreui.menuItem(allocator, label, .{ .enabled = valid }, null)) {
@@ -242,10 +240,10 @@ const UiAssetBrowserResult = struct {
 };
 
 fn getTagColor(db: *cdb.CdbDb, tag_r: *cdb.Obj) [4]f32 {
-    const tag_color_obj = assetdb.TagType.readSubObj(db, tag_r, .Color);
+    const tag_color_obj = assetdb.Tag.readSubObj(db, tag_r, .Color);
     var color: [4]f32 = .{ 1.0, 1.0, 1.0, 1.0 };
     if (tag_color_obj) |color_obj| {
-        color = cetech1.cdb_types.color4fToSlice(db, color_obj);
+        color = cetech1.cdb_types.toSlice(db, color_obj);
     }
 
     return color;
@@ -268,14 +266,13 @@ fn uiAssetBrowser(
     const filter = if (args.filter) |filter| filter[0..std.mem.len(filter) :0] else null;
 
     const new_filter = _coreui.uiFilter(filter_buff, filter);
-    const tag_filter_used = try _tags.tagsInput(allocator, db, tags_filter, assetdb.TagsType.propIdx(.Tags), false, null);
+    const tag_filter_used = try _tags.tagsInput(allocator, db, tags_filter, assetdb.Tags.propIdx(.Tags), false, null);
 
     var buff: [128]u8 = undefined;
     const final_label = try std.fmt.bufPrintZ(
         &buff,
         "AssetBrowser",
         .{},
-        //.{root_folder.toU64()},
     );
 
     defer _coreui.endChild();
@@ -296,6 +293,7 @@ fn uiAssetBrowser(
                             context,
                             asset,
                             selectection,
+                            0,
                             .{ .expand_object = args.expand_object, .multiselect = args.multiselect, .opened_obj = args.opened_obj },
                         ) catch undefined;
                     }
@@ -313,6 +311,7 @@ fn uiAssetBrowser(
                         context,
                         asset.obj,
                         selectection,
+                        0,
                         new_args,
                     ) catch undefined;
                 }
@@ -329,6 +328,7 @@ fn uiAssetBrowser(
                 context,
                 root_folder,
                 selectection,
+                0,
                 args,
             ) catch undefined;
         }
@@ -440,31 +440,31 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     _allocator = allocator;
     _log = log_api;
     _apidb = apidb;
-    _cdb = apidb.getZigApi(cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(cetech1.coreui.CoreUIApi).?;
-    _editor = apidb.getZigApi(editor.EditorAPI).?;
-    _assetdb = apidb.getZigApi(assetdb.AssetDBAPI).?;
-    _kernel = apidb.getZigApi(cetech1.kernel.KernelApi).?;
-    _tempalloc = apidb.getZigApi(cetech1.tempalloc.TempAllocApi).?;
-    _uuid = apidb.getZigApi(cetech1.uuid.UuidAPI).?;
-    _editor_tree = apidb.getZigApi(editor_tree.TreeAPI).?;
-    _tags = apidb.getZigApi(editor_tags.EditorTagsApi).?;
+    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
+    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
+    _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
+    _assetdb = apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
+    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
+    _tempalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
+    _uuid = apidb.getZigApi(module_name, cetech1.uuid.UuidAPI).?;
+    _editor_tree = apidb.getZigApi(module_name, editor_tree.TreeAPI).?;
+    _tags = apidb.getZigApi(module_name, editor_tags.EditorTagsApi).?;
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, MODULE_NAME, "_g", .{});
+    _g = try apidb.globalVar(G, module_name, "_g", .{});
 
-    _g.tab_vt = try apidb.globalVar(editor.EditorTabTypeI, MODULE_NAME, ASSET_BROWSER_NAME, .{});
+    _g.tab_vt = try apidb.globalVar(editor.EditorTabTypeI, module_name, ASSET_BROWSER_NAME, .{});
     _g.tab_vt.* = asset_browser_tab;
 
-    try apidb.implOrRemove(editor.EditorTabTypeI, &asset_browser_tab, load);
-    try apidb.implOrRemove(coreui.RegisterTestsI, &register_tests_i, load);
+    try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &asset_browser_tab, load);
+    try apidb.implOrRemove(module_name, coreui.RegisterTestsI, &register_tests_i, load);
 
-    try apidb.setOrRemoveZigApi(public.AssetBrowserAPI, &api, load);
+    try apidb.setOrRemoveZigApi(module_name, public.AssetBrowserAPI, &api, load);
 
     return true;
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
 pub export fn ct_load_module_editor_asset_browser(__apidb: ?*const cetech1.apidb.ct_apidb_api_t, __allocator: ?*const cetech1.apidb.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, __apidb, __allocator, __load, __reload);
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }

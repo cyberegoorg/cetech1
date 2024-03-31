@@ -7,14 +7,14 @@ const cdb = cetech1.cdb;
 
 const public = @import("module_foo.zig");
 
-const MODULE_NAME = "foo";
+const module_name = .sample_foo;
 
 // Need for logging from std.
 pub const std_options = struct {
     pub const logFn = cetech1.log.zigLogFnGen(&_log);
 };
 // Log for module
-const log = std.log.scoped(.sample_foo);
+const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
@@ -23,7 +23,7 @@ var _cdb: *cdb.CdbAPI = undefined;
 var _coreui: *cetech1.coreui.CoreUIApi = undefined;
 var _kernel: *cetech1.kernel.KernelApi = undefined;
 
-var _db: cdb.CdbDb = undefined;
+var _db: *cdb.CdbDb = undefined;
 
 const spam_log = false;
 const do_cdb = false;
@@ -35,20 +35,21 @@ var c_api = public.c.ct_foo_api_t{ .foo = &public.FooAPI.foo1_c };
 // Global state that can surive hot-reload
 const G = struct {
     var_1: u32 = 0,
-    type_hash: strid.StrId32 = undefined,
-    type_hash2: strid.StrId32 = undefined,
+    type_hash: cdb.TypeIdx = undefined,
+    type_hash2: cdb.TypeIdx = undefined,
     ref_obj1: cdb.ObjId = undefined,
 };
 var _g: *G = undefined;
 
 // Foo cdb type decl
-const FooCDBType = cdb.CdbTypeDecl(
+const FooCDB = cdb.CdbTypeDecl(
     "ct_foo_cdb",
     enum(u32) {
         PROP1 = 0,
         KERNEL_TICK,
         PROP2,
     },
+    struct {},
 );
 
 // Register all cdb stuff in this method
@@ -58,11 +59,11 @@ var create_types_i = cdb.CreateTypesI.implement(struct {
         var db = cdb.CdbDb.fromDbT(db_, _cdb);
 
         _ = try db.addType(
-            FooCDBType.name,
+            FooCDB.name,
             &[_]cdb.PropDef{
-                .{ .prop_idx = FooCDBType.propIdx(.PROP1), .name = "prop1", .type = cdb.PropType.F32 },
-                .{ .prop_idx = FooCDBType.propIdx(.KERNEL_TICK), .name = "kernel_tick", .type = cdb.PropType.U64 },
-                .{ .prop_idx = FooCDBType.propIdx(.PROP2), .name = "prop2", .type = cdb.PropType.REFERENCE_SET },
+                .{ .prop_idx = FooCDB.propIdx(.PROP1), .name = "prop1", .type = cdb.PropType.F32 },
+                .{ .prop_idx = FooCDB.propIdx(.KERNEL_TICK), .name = "kernel_tick", .type = cdb.PropType.U64 },
+                .{ .prop_idx = FooCDB.propIdx(.PROP2), .name = "prop2", .type = cdb.PropType.REFERENCE_SET },
             },
         );
 
@@ -75,8 +76,8 @@ var create_types_i = cdb.CreateTypesI.implement(struct {
 
 // Create simple update kernel task
 const KernelTask = struct {
-    pub fn update(frame_allocator: std.mem.Allocator, main_db: *cdb.Db, kernel_tick: u64, dt: f32) !void {
-        _db = cdb.CdbDb.fromDbT(main_db, _cdb);
+    pub fn update(frame_allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
+        _db = _kernel.getDb();
         _g.var_1 += 1;
 
         if (spam_log) log.info("kernel_tick:{}\tdt:{}\tg_var_1:{}", .{ kernel_tick, dt, _g.var_1 });
@@ -91,14 +92,14 @@ const KernelTask = struct {
         if (do_cdb) {
             try _db.stressIt(_g.type_hash, _g.type_hash2, _g.ref_obj1);
 
-            const obj1 = try FooCDBType.createObject(&_db);
+            const obj1 = try FooCDB.createObject(&_db);
             if (spam_log) log.debug("obj1 id {d}", .{obj1.id});
 
             if (_db.writeObj(obj1)) |writer| {
                 defer _db.writeCommit(writer);
 
-                FooCDBType.setValue(&_db, f32, writer, .PROP1, @floatFromInt(kernel_tick));
-                FooCDBType.setValue(&_db, u64, writer, .KERNEL_TICK, kernel_tick);
+                FooCDB.setValue(&_db, f32, writer, .PROP1, @floatFromInt(kernel_tick));
+                FooCDB.setValue(&_db, u64, writer, .KERNEL_TICK, kernel_tick);
             }
 
             const version = _db.getVersion(obj1);
@@ -114,8 +115,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
     "FooKernelTask",
     &[_]strid.StrId64{},
     struct {
-        pub fn init(main_db: *cdb.Db) !void {
-            _ = main_db;
+        pub fn init() !void {
             log.info("TASK INIT", .{});
             const foo = _allocator.create(public.FooAPI) catch return;
             log.info("alloc {}", .{foo});
@@ -197,33 +197,33 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     // basic
     _allocator = allocator;
     _log = log_api;
-    _cdb = apidb.getZigApi(cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(cetech1.coreui.CoreUIApi).?;
-    _kernel = apidb.getZigApi(cetech1.kernel.KernelApi).?;
+    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
+    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
+    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
 
     // set module api
-    try apidb.setOrRemoveZigApi(public.FooAPI, &zig_api, load);
-    try apidb.setOrRemoveCApi(public.c.ct_foo_api_t, &c_api, load);
+    try apidb.setOrRemoveZigApi(module_name, public.FooAPI, &zig_api, load);
+    try apidb.setOrRemoveCApi(module_name, public.c.ct_foo_api_t, &c_api, load);
 
     // impl interface
-    try apidb.implOrRemove(cdb.CreateTypesI, &create_types_i, load);
-    try apidb.implOrRemove(cetech1.kernel.KernelTaskI, &kernel_task, load);
+    try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_types_i, load);
+    try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
 
     // dont block test with sleeping shit
     if (!_kernel.isTestigMode()) {
-        try apidb.implOrRemove(cetech1.kernel.KernelTaskUpdateI, &update_task, load);
-        try apidb.implOrRemove(cetech1.kernel.KernelTaskUpdateI, &update_task2, load);
-        try apidb.implOrRemove(cetech1.kernel.KernelTaskUpdateI, &update_task3, load);
-        try apidb.implOrRemove(cetech1.kernel.KernelTaskUpdateI, &update_task4, load);
+        try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task, load);
+        try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task2, load);
+        try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task3, load);
+        try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task4, load);
 
-        try apidb.implOrRemove(cetech1.kernel.KernelTaskUpdateI, &update_task5, load);
-        try apidb.implOrRemove(cetech1.kernel.KernelTaskUpdateI, &update_task6, load);
-        try apidb.implOrRemove(cetech1.kernel.KernelTaskUpdateI, &update_task7, load);
-        try apidb.implOrRemove(cetech1.kernel.KernelTaskUpdateI, &update_task8, load);
+        try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task5, load);
+        try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task6, load);
+        try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task7, load);
+        try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task8, load);
     }
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, MODULE_NAME, "_g", .{});
+    _g = try apidb.globalVar(G, module_name, "_g", .{});
 
     if (load) {
         log.info("LOAD", .{});
@@ -244,5 +244,5 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
 
 // This is only one fce that cetech1 need to load/unload/reload module.
 pub export fn ct_load_module_foo(__apidb: ?*const cetech1.apidb.ct_apidb_api_t, __allocator: ?*const cetech1.apidb.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, __apidb, __allocator, __load, __reload);
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }

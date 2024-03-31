@@ -19,6 +19,7 @@ pub const UiTreeAspect = extern struct {
         context_n: usize,
         obj: cdb.ObjId,
         selected_obj: cdb.ObjId,
+        depth: u32,
         args: CdbTreeViewArgs,
     ) callconv(.C) SelectInTreeResult = null,
 
@@ -30,7 +31,7 @@ pub const UiTreeAspect = extern struct {
         drag_obj: cdb.ObjId,
     ) callconv(.C) void = null,
 
-    pub inline fn implement(comptime T: type) UiTreeAspect {
+    pub fn implement(comptime T: type) UiTreeAspect {
         if (!std.meta.hasFn(T, "uiTree")) @compileError("implement me");
 
         return UiTreeAspect{
@@ -43,9 +44,10 @@ pub const UiTreeAspect = extern struct {
                     context_n: usize,
                     obj: cdb.ObjId,
                     selected_obj: cdb.ObjId,
+                    depth: u32,
                     args: CdbTreeViewArgs,
                 ) callconv(.C) SelectInTreeResult {
-                    return T.uiTree(allocator.*, db, tab, context[0..context_n], obj, selected_obj, args) catch |err| {
+                    return T.uiTree(allocator.*, db, tab, context[0..context_n], obj, selected_obj, depth, args) catch |err| {
                         log.err("UiTreeAspect.uiTree() failed with error {}", .{err});
                         return .{};
                     };
@@ -72,11 +74,12 @@ pub const UiTreeAspect = extern struct {
 pub const CdbTreeViewArgs = extern struct {
     expand_object: bool = true,
     ignored_object: cdb.ObjId = .{},
-    only_types: strid.StrId32 = .{},
+    only_types: cdb.TypeIdx = .{},
     opened_obj: cdb.ObjId = .{},
     filter: ?[*:0]const u8 = null,
     multiselect: bool = false,
     sr: SelectInTreeResult = .{},
+    max_autopen_depth: u32 = 5,
 };
 
 pub const SelectInTreeResult = extern struct {
@@ -93,7 +96,17 @@ pub const SelectInTreeResult = extern struct {
 // TODO: need unshit api
 pub const TreeAPI = struct {
     // Tree view
-    cdbTreeView: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, tab: *editor.TabO, []const strid.StrId64, obj: cdb.ObjId, selection: cdb.ObjId, args: CdbTreeViewArgs) anyerror!SelectInTreeResult,
+    cdbTreeView: *const fn (
+        allocator: std.mem.Allocator,
+        db: *cdb.CdbDb,
+        tab: *editor.TabO,
+        []const strid.StrId64,
+        obj: cdb.ObjId,
+        selection: cdb.ObjId,
+        depth: u32,
+        args: CdbTreeViewArgs,
+    ) anyerror!SelectInTreeResult,
+
     cdbTreeNode: *const fn (label: [:0]const u8, default_open: bool, no_push: bool, selected: bool, leaf: bool, args: CdbTreeViewArgs) bool,
     cdbTreePop: *const fn () void,
     cdbObjTreeNode: *const fn (

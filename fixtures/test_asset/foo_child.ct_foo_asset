@@ -1,0 +1,12 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "018ea971-6679-7ff3-b8f3-a3aac5fe2915",
+  "__type_name": "ct_foo_asset",
+  "__uuid": "018ea971-6d67-7d7b-8cda-7076b95b2ac5",
+  "__prototype_uuid": "018b5846-c2d5-712f-bb12-9d9d15321ecb",
+  "subobject": {
+    "__type_name": "ct_foo_asset",
+    "__uuid": "018ea971-85ba-7557-af2f-5999d50595e5",
+    "__prototype_uuid": "018b5846-c2d5-7c82-82b4-525348222242"
+  }
+}

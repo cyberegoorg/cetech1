@@ -9,11 +9,12 @@ const editor_tree = @import("editor_tree");
 const public = @import("editor_obj_buffer.zig");
 const Icons = cetech1.coreui.CoreIcons;
 
-const MODULE_NAME = "editor_obj_buffer";
+const module_name = .editor_obj_buffer;
+
 pub const std_options = struct {
     pub const logFn = cetech1.log.zigLogFnGen(&_log);
 };
-const log = std.log.scoped(.editor_obj_buffer);
+const log = std.log.scoped(module_name);
 
 const TAB_NAME = "ct_editor_obj_buffer_tab";
 
@@ -54,7 +55,7 @@ fn addToFirst(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech1
 
     if (tab) |tab_o| {
         const w = db.writeObj(tab_o.obj_buffer).?;
-        try coreui.ObjSelectionType.addRefToSet(db, w, .Selection, &.{obj});
+        try coreui.ObjSelection.addRefToSet(db, w, .Selection, &.{obj});
         try _coreui.setSelection(allocator, db, tab_o.inter_selection, obj);
         _editor.propagateSelection(&tab_o.db, tab_o.inter_selection);
         try db.writeCommit(w);
@@ -100,8 +101,8 @@ var obj_buffer_tab = editor.EditorTabTypeI.implement(
                     .inst = @ptrCast(tab_inst),
                 },
                 .db = db,
-                .inter_selection = try coreui.ObjSelectionType.createObject(&db),
-                .obj_buffer = try coreui.ObjSelectionType.createObject(&db),
+                .inter_selection = try coreui.ObjSelection.createObject(&db),
+                .obj_buffer = try coreui.ObjSelection.createObject(&db),
             };
             return &tab_inst.tab_i;
         }
@@ -132,9 +133,8 @@ var obj_buffer_tab = editor.EditorTabTypeI.implement(
 
             if (_coreui.beginMenu(_allocator, coreui.Icons.ContextMenu, !tab_o.inter_selection.isEmpty(), null)) {
                 defer _coreui.endMenu();
-                var tmp_arena = try _tempalloc.createTempArena();
-                defer _tempalloc.destroyTempArena(tmp_arena);
-                const allocator = tmp_arena.allocator();
+                const allocator = try _tempalloc.create();
+                defer _tempalloc.destroy(allocator);
 
                 try _editor.showObjContextMenu(allocator, &tab_o.db, tab_o, &.{public.objectBufferContext}, tab_o.inter_selection, null, null);
             }
@@ -144,9 +144,8 @@ var obj_buffer_tab = editor.EditorTabTypeI.implement(
         pub fn ui(inst: *editor.TabO) !void {
             var tab_o: *ObjBufferTab = @alignCast(@ptrCast(inst));
 
-            var tmp_arena = try _tempalloc.createTempArena();
-            defer _tempalloc.destroyTempArena(tmp_arena);
-            const allocator = tmp_arena.allocator();
+            const allocator = try _tempalloc.create();
+            defer _tempalloc.destroy(allocator);
 
             const obj_buffer = tab_o.obj_buffer;
 
@@ -165,6 +164,7 @@ var obj_buffer_tab = editor.EditorTabTypeI.implement(
                             &.{ public.objectBufferContext, editor.Contexts.open },
                             obj,
                             tab_o.inter_selection,
+                            0,
                             .{
                                 .multiselect = true,
                                 .expand_object = false,
@@ -337,7 +337,7 @@ var add_to_buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
                     const w = db.writeObj(tab_o.obj_buffer).?;
 
                     for (selected_objs, 0..) |obj, idx| {
-                        coreui.ObjSelectionType.addRefToSet(&db, w, .Selection, &.{obj}) catch undefined;
+                        coreui.ObjSelection.addRefToSet(&db, w, .Selection, &.{obj}) catch undefined;
                         if (idx == 0) {
                             _coreui.setSelection(allocator, &db, tab_o.inter_selection, obj) catch undefined;
                         } else {
@@ -413,31 +413,31 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     _allocator = allocator;
     _log = log_api;
     _apidb = apidb;
-    _cdb = apidb.getZigApi(cetech1.cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(cetech1.coreui.CoreUIApi).?;
-    _editor = apidb.getZigApi(editor.EditorAPI).?;
-    _assetdb = apidb.getZigApi(cetech1.assetdb.AssetDBAPI).?;
-    _kernel = apidb.getZigApi(cetech1.kernel.KernelApi).?;
-    _tempalloc = apidb.getZigApi(cetech1.tempalloc.TempAllocApi).?;
-    _editortree = apidb.getZigApi(editor_tree.TreeAPI).?;
+    _cdb = apidb.getZigApi(module_name, cetech1.cdb.CdbAPI).?;
+    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
+    _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
+    _assetdb = apidb.getZigApi(module_name, cetech1.assetdb.AssetDBAPI).?;
+    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
+    _tempalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
+    _editortree = apidb.getZigApi(module_name, editor_tree.TreeAPI).?;
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, MODULE_NAME, "_g", .{});
+    _g = try apidb.globalVar(G, module_name, "_g", .{});
 
-    _g.tab_vt = try apidb.globalVar(editor.EditorTabTypeI, MODULE_NAME, TAB_NAME, .{});
+    _g.tab_vt = try apidb.globalVar(editor.EditorTabTypeI, module_name, TAB_NAME, .{});
     _g.tab_vt.* = obj_buffer_tab;
 
-    try apidb.implOrRemove(editor.EditorTabTypeI, &obj_buffer_tab, load);
-    try apidb.implOrRemove(editor.ObjContextMenuI, &buffer_context_menu_i, load);
-    try apidb.implOrRemove(editor.ObjContextMenuI, &add_to_buffer_context_menu_i, load);
-    try apidb.implOrRemove(coreui.RegisterTestsI, &register_tests_i, load);
+    try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &obj_buffer_tab, load);
+    try apidb.implOrRemove(module_name, editor.ObjContextMenuI, &buffer_context_menu_i, load);
+    try apidb.implOrRemove(module_name, editor.ObjContextMenuI, &add_to_buffer_context_menu_i, load);
+    try apidb.implOrRemove(module_name, coreui.RegisterTestsI, &register_tests_i, load);
 
-    try apidb.setOrRemoveZigApi(public.EditorObjBufferAPI, &api, load);
+    try apidb.setOrRemoveZigApi(module_name, public.EditorObjBufferAPI, &api, load);
 
     return true;
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
 pub export fn ct_load_module_editor_obj_buffer(__apidb: ?*const cetech1.apidb.ct_apidb_api_t, __allocator: ?*const cetech1.apidb.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, __apidb, __allocator, __load, __reload);
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }

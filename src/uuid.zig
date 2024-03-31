@@ -1,43 +1,49 @@
 const std = @import("std");
 
-/// UUID types
-pub const Uuid = struct {
-    bytes: [16]u8 = .{0} ** 16,
+const apidb = @import("apidb.zig");
+const Uuid = @import("Uuid");
+const cetech1 = @import("cetech1");
+const public = cetech1.uuid;
+const profiler = @import("profiler.zig");
 
-    /// support for zig std fmt
-    pub fn format(self: Uuid, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) (@TypeOf(writer).Error)!void {
-        try std.fmt.format(writer, "{}-{}-{}-{}-{}", .{
-            std.fmt.fmtSliceHexLower(self.bytes[0..4]),
-            std.fmt.fmtSliceHexLower(self.bytes[4..6]),
-            std.fmt.fmtSliceHexLower(self.bytes[6..8]),
-            std.fmt.fmtSliceHexLower(self.bytes[8..10]),
-            std.fmt.fmtSliceHexLower(self.bytes[10..16]),
-        });
-    }
+const module_name = .uuid;
+
+pub var api = public.UuidAPI{
+    .newUUID7Fn = newUUID7,
+    .fromIntFn = fromInt,
+    .fromStrFn = fromStr,
 };
 
-/// Main UUID API
-pub const UuidAPI = struct {
-    const Self = @This();
+pub fn registerToApi() !void {
+    try apidb.api.setZigApi(module_name, public.UuidAPI, &api);
+}
 
-    /// Create new UUIDv7
-    pub fn newUUID7(self: Self) Uuid {
-        return self.newUUID7Fn();
-    }
+pub fn newUUID7() public.Uuid {
+    var zone_ctx = profiler.ztracy.Zone(@src());
+    defer zone_ctx.End();
+    return .{ .bytes = Uuid.V7.new().bytes };
+}
 
-    /// Create new UUID from int
-    pub fn fromInt(self: Self, int: u128) Uuid {
-        return self.fromIntFn(int);
-    }
+pub fn fromInt(int: u128) public.Uuid {
+    return .{ .bytes = Uuid.fromInt(int).bytes };
+}
 
-    /// Create new UUID from str
-    pub fn fromStr(self: Self, str: []const u8) ?Uuid {
-        return self.fromStrFn(str);
-    }
+pub fn fromStr(str: []const u8) ?public.Uuid {
+    const u = Uuid.fromString(str) catch return null;
+    return .{ .bytes = u.bytes };
+}
 
-    //#region Pointers to implementation
-    newUUID7Fn: *const fn () Uuid,
-    fromIntFn: *const fn (int: u128) Uuid,
-    fromStrFn: *const fn (str: []const u8) ?Uuid,
-    //#endregion
-};
+test "uuid: Can create uuid7" {
+    const uuid1 = api.newUUID7();
+    const uuid2 = api.newUUID7();
+
+    try std.testing.expect(!std.mem.eql(u8, uuid1.bytes[0..], uuid2.bytes[0..]));
+}
+
+test "uuid: Can format uuid to string" {
+    const uuid1 = api.newUUID7();
+    _ = uuid1;
+
+    const uuid = api.fromInt(0x0123456789ABCDEF0123456789ABCDEF);
+    try std.testing.expectFmt("01234567-89ab-cdef-0123-456789abcdef", "{s}", .{uuid});
+}

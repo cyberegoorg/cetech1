@@ -8,14 +8,14 @@ const coreui = cetech1.coreui;
 const editor = @import("editor");
 const Icons = coreui.CoreIcons;
 
-const MODULE_NAME = "editor_foo_tab";
+const module_name = .editor_foo_tab;
 
 // Need for logging from std.
 pub const std_options = struct {
     pub const logFn = cetech1.log.zigLogFnGen(&_log);
 };
 // Log for module
-const log = std.log.scoped(.editor_foo_tab);
+const log = std.log.scoped(module_name);
 
 const TAB_NAME = "ct_editor_foo_tab";
 
@@ -99,25 +99,25 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     // basic
     _allocator = allocator;
     _log = log_api;
-    _cdb = apidb.getZigApi(cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(coreui.CoreUIApi).?;
+    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
+    _coreui = apidb.getZigApi(module_name, coreui.CoreUIApi).?;
     _apidb = apidb;
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, MODULE_NAME, "_g", .{});
+    _g = try apidb.globalVar(G, module_name, "_g", .{});
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.test_tab_vt_ptr = try apidb.globalVar(editor.EditorTabTypeI, MODULE_NAME, TAB_NAME, .{});
+    _g.test_tab_vt_ptr = try apidb.globalVar(editor.EditorTabTypeI, module_name, TAB_NAME, .{});
     // Patch vt pointer to new.
     _g.test_tab_vt_ptr.* = foo_tab;
 
-    try apidb.implOrRemove(editor.EditorTabTypeI, &foo_tab, load);
+    try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &foo_tab, load);
 
     return true;
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
 pub export fn ct_load_module_editor_foo_tab(__apidb: ?*const cetech1.apidb.ct_apidb_api_t, __allocator: ?*const cetech1.apidb.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, __apidb, __allocator, __load, __reload);
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }

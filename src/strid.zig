@@ -1,43 +1,41 @@
-//! StrId{32, 64} is main hashing type for simple str->int hash.
-
 const std = @import("std");
 
-const Murmur2_32 = std.hash.murmur.Murmur2_32;
-const Murmur2_64 = std.hash.murmur.Murmur2_64;
+const c = @import("c.zig").c;
+const apidb = @import("./apidb.zig");
 
-pub const StrId32 = extern struct {
-    id: u32 = 0,
+const cetech1 = @import("cetech1");
+const strid = cetech1.strid;
+const public = cetech1;
+
+const module_name = .strid;
+
+pub var api = c.ct_strid_api_t{
+    .strid32 = ct_strid32,
+    .strid64 = ct_strid64,
 };
 
-pub const StrId64 = extern struct {
-    id: u64 = 0,
-
-    pub inline fn to(self: *const StrId64, comptime T: type) T {
-        return .{ .id = self.id };
-    }
-
-    pub inline fn from(comptime T: type, obj: T) StrId64 {
-        return .{ .id = obj.id };
-    }
-
-    pub inline fn fromCArray(comptime T: type, array: [*]const T, n: usize) []StrId64 {
-        var a: []StrId64 = undefined;
-        a.ptr = @ptrFromInt(@intFromPtr(array));
-        a.len = n;
-        return a;
-    }
-};
-
-/// Create StrId32 from string/data
-pub inline fn strId32(str: []const u8) StrId32 {
-    return .{
-        .id = Murmur2_32.hash(str),
-    };
+pub fn registerToApi() !void {
+    try apidb.api.setOrRemoveCApi(module_name, c.ct_strid_api_t, &api, true);
 }
 
-/// Create StrId64 from string/data
-pub inline fn strId64(str: []const u8) StrId64 {
-    return .{
-        .id = Murmur2_64.hash(str),
-    };
+fn ct_strid32(str: [*c]const u8) callconv(.C) c.ct_strid32_t {
+    return .{ .id = strid.strId32(public.fromCstr(str)).id };
+}
+
+fn ct_strid64(str: [*c]const u8) callconv(.C) c.ct_strid64_t {
+    return .{ .id = strid.strId64(public.fromCstr(str)).id };
+}
+
+test "strid: should use ct_strid32" {
+    try std.testing.expectEqual(strid.strId32("foo").id, ct_strid32("foo").id);
+}
+
+test "strid: should use ct_strid64" {
+    try std.testing.expectEqual(strid.strId64("foo").id, ct_strid64("foo").id);
+}
+
+// Assert C api == C api in zig.
+comptime {
+    std.debug.assert(@sizeOf(c.ct_strid32_t) == @sizeOf(public.strid.StrId32));
+    std.debug.assert(@sizeOf(c.ct_strid64_t) == @sizeOf(public.strid.StrId64));
 }

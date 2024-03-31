@@ -10,11 +10,12 @@ const editor_asset_browser = @import("editor_asset_browser");
 
 const Icons = cetech1.coreui.CoreIcons;
 
-const MODULE_NAME = "editor_fixtures";
+const module_name = .editor_fixtures;
+
 pub const std_options = struct {
     pub const logFn = cetech1.log.zigLogFnGen(&_log);
 };
-const log = std.log.scoped(.editor_fixtures);
+const log = std.log.scoped(module_name);
 
 var _allocator: Allocator = undefined;
 var _apidb: *cetech1.apidb.ApiDbAPI = undefined;
@@ -47,7 +48,7 @@ var create_foo_asset_i = editor.CreateAssetI.implement(
                 &buff,
                 &db,
                 folder,
-                cetech1.assetdb.FooAsset.type_hash,
+                db.getTypeIdx(cetech1.assetdb.FooAsset.type_hash).?,
                 "NewFooAsset",
             );
             const new_obj = try cetech1.assetdb.FooAsset.createObject(&db);
@@ -97,22 +98,22 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     _allocator = allocator;
     _log = log_api;
     _apidb = apidb;
-    _cdb = apidb.getZigApi(cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(cetech1.coreui.CoreUIApi).?;
-    _editor = apidb.getZigApi(editor.EditorAPI).?;
-    _assetdb = apidb.getZigApi(cetech1.assetdb.AssetDBAPI).?;
-    _kernel = apidb.getZigApi(cetech1.kernel.KernelApi).?;
-    _tempalloc = apidb.getZigApi(cetech1.tempalloc.TempAllocApi).?;
+    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
+    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
+    _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
+    _assetdb = apidb.getZigApi(module_name, cetech1.assetdb.AssetDBAPI).?;
+    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
+    _tempalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, MODULE_NAME, "_g", .{});
+    _g = try apidb.globalVar(G, module_name, "_g", .{});
 
-    try apidb.implOrRemove(cdb.CreateTypesI, &create_cdb_types_i, load);
-    try apidb.implOrRemove(editor.CreateAssetI, &create_foo_asset_i, load);
+    try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
+    try apidb.implOrRemove(module_name, editor.CreateAssetI, &create_foo_asset_i, load);
     return true;
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
 pub export fn ct_load_module_editor_fixtures(__apidb: ?*const cetech1.apidb.ct_apidb_api_t, __allocator: ?*const cetech1.apidb.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, __apidb, __allocator, __load, __reload);
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }

@@ -1,40 +1,92 @@
 const std = @import("std");
-const system = @import("system.zig");
-const strid = @import("strid.zig");
-const cdb = @import("cdb.zig");
 
-const log = std.log.scoped(.gpu);
+const zgpu = @import("zgpu");
+const zgui = @import("zgui");
+const zglfw = @import("zglfw");
 
-pub const GpuContext = opaque {};
+const apidb = @import("apidb.zig");
+const profiler = @import("profiler.zig");
 
-// TODO: TEMP SHIT
-pub const GpuPresentI = extern struct {
-    pub const c_name = "ct_gpu_present_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+const cetech1 = @import("cetech1");
+const public = cetech1.gpu;
 
-    present: *const fn (db: *cdb.Db, kernel_tick: u64, dt: f32) callconv(.C) void,
+pub var api = public.GpuApi{
+    .createContext = createContext,
+    .destroyContext = destroyContext,
+    .shitTempRender = shitTempRender,
+};
 
-    pub inline fn implement(
-        comptime T: type,
-    ) GpuPresentI {
-        if (!std.meta.hasFn(T, "present")) @compileError("implement me");
+const module_name = .gpu;
 
-        return GpuPresentI{
-            .present = struct {
-                pub fn f(db: *cdb.Db, kernel_tick: u64, dt: f32) callconv(.C) void {
-                    T.present(db, kernel_tick, dt) catch |err| {
-                        log.err("GpuPresentI.present() failed with error {}", .{err});
-                    };
+var _allocator: std.mem.Allocator = undefined;
+
+pub fn init(allocator: std.mem.Allocator) !void {
+    _allocator = allocator;
+}
+
+pub fn deinit() void {}
+
+pub fn registerToApi() !void {
+    try apidb.api.setZigApi(module_name, public.GpuApi, &api);
+}
+
+fn createContext(window: *cetech1.system.Window, vsync: bool) !*public.GpuContext {
+    const gctx = try zgpu.GraphicsContext.create(
+        _allocator,
+        .{
+            .window = window,
+            .fn_getTime = @ptrCast(&zglfw.getTime),
+            .fn_getFramebufferSize = @ptrCast(&zglfw.Window.getFramebufferSize),
+
+            .fn_getWin32Window = @ptrCast(&zglfw.getWin32Window),
+            .fn_getX11Display = @ptrCast(&zglfw.getX11Display),
+            .fn_getX11Window = @ptrCast(&zglfw.getX11Window),
+            .fn_getCocoaWindow = @ptrCast(&zglfw.getCocoaWindow),
+        },
+        .{ .present_mode = if (vsync) .fifo else .immediate },
+    );
+    return @ptrCast(gctx);
+}
+
+fn destroyContext(ctx: *public.GpuContext) void {
+    var gctx: *zgpu.GraphicsContext = @alignCast(@ptrCast(ctx));
+    gctx.destroy(_allocator);
+}
+
+fn shitTempRender(ctx: *public.GpuContext, kernel_tick: u64, dt: f32) void {
+    var zone_ctx = profiler.ztracy.ZoneN(@src(), "Render");
+    defer zone_ctx.End();
+
+    var gctx: *zgpu.GraphicsContext = @alignCast(@ptrCast(ctx));
+
+    const swapchain_texv = gctx.swapchain.getCurrentTextureView();
+    defer swapchain_texv.release();
+
+    const commands = commands: {
+        const encoder = gctx.device.createCommandEncoder(null);
+        defer encoder.release();
+
+        // GUI pass
+        {
+            const pass = zgpu.beginRenderPassSimple(encoder, .load, swapchain_texv, null, null, null);
+            defer zgpu.endReleasePass(pass);
+
+            {
+                var it = apidb.api.getFirstImpl(public.GpuPresentI);
+                while (it) |node| : (it = node.next) {
+                    var iface = cetech1.apidb.ApiDbAPI.toInterface(public.GpuPresentI, node);
+                    iface.present(kernel_tick, dt);
                 }
-            }.f,
-        };
-    }
-};
+            }
 
-pub const GpuApi = struct {
-    createContext: *const fn (window: *system.Window, vsync: bool) anyerror!*GpuContext,
-    destroyContext: *const fn (ctx: *GpuContext) void,
+            zgui.backend.draw(pass);
+        }
 
-    // For now because ther is not HL rederer but....
-    shitTempRender: *const fn (ctx: *GpuContext, db: *cdb.CdbDb, kernel_tick: u64, dt: f32) void,
-};
+        break :commands encoder.finish(null);
+    };
+    defer commands.release();
+
+    gctx.submit(&.{commands});
+    _ = gctx.present();
+    // profiler.ztracy.FrameImage( , width: u16, height: u16, offset: u8, flip: c_int);
+}

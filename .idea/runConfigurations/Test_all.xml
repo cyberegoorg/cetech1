@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Test all" type="CompoundRunConfigurationType">
+    <toRun name="Test UI (headless)" type="ZIGBRAINS_BUILD" />
+    <toRun name="Unittests" type="ZIGBRAINS_BUILD" />
+    <method v="2" />
+  </configuration>
+</component>

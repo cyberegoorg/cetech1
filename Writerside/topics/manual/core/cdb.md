@@ -103,3 +103,9 @@ Obj3: {
 Obj3 -> Obj2
 Obj2 -> Obj1
 ```
+
+
+## .ct_temp/cdb.md
+
+This file contain description for all registered cdb types
+

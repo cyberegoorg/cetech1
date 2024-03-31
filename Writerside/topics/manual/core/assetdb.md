@@ -77,9 +77,38 @@ Reference UUID is in format `cdb_type_name:UUID`.
 |---------------------------|-----------------------------------|-----------------------------------------------------------------------------------------------------------------------|
 | `__version`               | Yes                               | File format version in semver format                                                                                  |
 | `__asset_uuid`            | Only for top-level                | UUID for asset wrapper not asset object                                                                               |
-| `__description`           | No and allowed only for top-level | Descritption for asset                                                                                                |
+| `__description`           | No and allowed only for top-level | Description for asset                                                                                                 |
 | `__type_name`             | Yes                               | CDB type name as string                                                                                               |
 | `__uuid`                  | Yes                               | UUID of asset object                                                                                                  |
 | `__prototype_uuid`        | No                                | If object is based on prototype must have this filed                                                                  |
 | `<PROPNAME>__instantiate` | No                                | This create subobject instance from prototype, and replace it in set. Valid only for `SUBOBJECT_SET` base properties. |
 | `<PROPNAME>__removed`     | No                                | This remove subobject from set. Valid only for `_SET` base properties.                                                |
+
+## .ct_temp/assetdb_graph.d2
+
+This file contain asset dependency graph.
+
+.ex: for ``fixtures/test_asset/.ct_temp/assetdb_graph.d2``
+
+```d2
+vars: {d2-config: {layout-engine: elk}}
+
+018b5c74-06f7-740e-be81-d727adec5fb4: core/core_subfolder/foo_subcore.ct_foo_asset
+018b5846-c2d5-7b88-95f9-a7538a00e76b: foo.ct_foo_asset
+93db3ce1-39b6-4027-832a-4ed6283bcf3b: core/foo_core2.ct_foo_asset
+018e0344-53ff-7d71-baa6-baf98f25d41c: tags/red.ct_tag
+018e03bf-6831-7a0f-87a4-00717fef276e: tags/yellow.ct_tag
+018e0346-a847-7b65-89b5-9fa496b06e1f: tags/blue.ct_tag
+018b5c72-5350-7f9e-a806-ae87e360ff12: core/foo_core.ct_foo_asset
+018b7c93-ea84-7760-9abd-e63d6373eac1: project.ct_project
+018e0346-137d-72eb-bfc8-87ac012a55ee: tags/green.ct_tag
+
+018b5c74-06f7-740e-be81-d727adec5fb4->018b5846-c2d5-7b88-95f9-a7538a00e76b
+018b5c74-06f7-740e-be81-d727adec5fb4->018e0344-53ff-7d71-baa6-baf98f25d41c
+018b5c74-06f7-740e-be81-d727adec5fb4->018e0346-137d-72eb-bfc8-87ac012a55ee
+018b5c74-06f7-740e-be81-d727adec5fb4->018e0346-a847-7b65-89b5-9fa496b06e1f
+018b5846-c2d5-7b88-95f9-a7538a00e76b->018e0346-a847-7b65-89b5-9fa496b06e1f
+018b5846-c2d5-7b88-95f9-a7538a00e76b->018b5c72-5350-7f9e-a806-ae87e360ff12
+018b5846-c2d5-7b88-95f9-a7538a00e76b->93db3ce1-39b6-4027-832a-4ed6283bcf3b
+93db3ce1-39b6-4027-832a-4ed6283bcf3b->018e0346-a847-7b65-89b5-9fa496b06e1f
+```

@@ -8,6 +8,7 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     const cetech1 = b.dependency("cetech1", .{});
+    const foo = b.dependency("foo", .{});
 
     const lib = b.addSharedLibrary(.{
         .name = "ct_bar",
@@ -27,6 +28,7 @@ pub fn build(b: *std.Build) !void {
         l.linkLibC();
         l.addCSourceFile(.{ .file = .{ .path = "module_bar.c" }, .flags = &.{} });
         l.addIncludePath(cetech1.path("includes"));
+        l.addIncludePath(foo.path("includes"));
         b.installArtifact(l);
     }
 }

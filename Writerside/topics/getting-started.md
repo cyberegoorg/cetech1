@@ -38,9 +38,9 @@
 | [`zig/`](https://github.com/cyberegoorg/cetech1/tree/main/zig/)                                       | Submodule for prebuilt zig                                          |
 | [`externals/`](https://github.com/cyberegoorg/cetech1/tree/main/externals/)                           | 3rd-party library and tools                                         |
 | [`fixtures/`](https://github.com/cyberegoorg/cetech1/tree/main/fixtures/)                             | Tests fixtures                                                      |
-| [`src/includes/`](https://github.com/cyberegoorg/cetech1/tree/main/src/includes/)                     | C api headers                                                       |
-| [`src/`](https://github.com/cyberegoorg/cetech1/tree/main/src)                                        | Main source code folder                                             |
-| [`src/private`](https://github.com/cyberegoorg/cetech1/tree/main/src/private)                         | Private api. Use only if you extend core                            |
+| [`public/`](https://github.com/cyberegoorg/cetech1/tree/main/public/)                                 | Public API for modules                                              |
+| [`public/includes/`](https://github.com/cyberegoorg/cetech1/tree/main/public/includes/)               | C api headers                                                       |
+| [`src/`](https://github.com/cyberegoorg/cetech1/tree/main/src/)                                       | Main source code folder                                             |
 | [`modules/`](https://github.com/cyberegoorg/cetech1/tree/main/modules/)                               | There is all modules that is possible part of engine                |
 | [`examples/foo`](https://github.com/cyberegoorg/cetech1/tree/main/examples/foo)                       | Simple `foo` module write in zig                                    |
 | [`examples/bar`](https://github.com/cyberegoorg/cetech1/tree/main/examples/bar)                       | Simple `bar` module write in C and use api exported by `foo` module |
@@ -60,12 +60,19 @@
     </tab>
 </tabs>
 
-| Args                | Value             | Default | Description                                                                 |
-|---------------------|-------------------|---------|-----------------------------------------------------------------------------|
-| `-Dstatic-modules=` | `true` or `false` | `false` | Embed modules to executable.                                                |
-| `-Dwith-tracy=`     | `true` or `false` | `true`  | Build with [tracy](#tracy-profiler) support?                                |
-| `-Dwith-nfd=`       | `true` or `false` | `true`  | Build with NFD (native file dialog)                                         |
-| `-Dnfd-portal=`     | `true` or `false` | `true`  | Build NFD with xdg-desktop-portal instead of GTK. Linux, nice for SteamDeck |
+> Currently, there is a problem with one library on linux.
+> If you see something like `'...libdawn.a' is neither ET_REL nor LLVM bitcode` try build again.
+> {style="warning"}
+
+| Args                 | Value             | Default | Description                                                                 |
+|----------------------|-------------------|---------|-----------------------------------------------------------------------------|
+| `-Ddynamic-modules=` | `true` or `false` | `true`  | Build all modules in dynamic mode.                                          |
+| `-Dstatic-modules=`  | `true` or `false` | `false` | Build all modules in static mode.                                           |
+| `-Dwith-samples=`    | `true` or `false` | `true`  | Build with sample modules.                                                  |
+| `-Dwith-editor=`     | `true` or `false` | `true`  | Build with editor modules.                                                  |
+| `-Dwith-tracy=`      | `true` or `false` | `true`  | Build with [tracy](#tracy-profiler) support.                                |
+| `-Dwith-nfd=`        | `true` or `false` | `true`  | Build with NFD (native file dialog)                                         |
+| `-Dnfd-portal=`      | `true` or `false` | `true`  | Build NFD with xdg-desktop-portal instead of GTK. Linux, nice for SteamDeck |
 
 ## Run
 

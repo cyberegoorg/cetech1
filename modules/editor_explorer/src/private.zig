@@ -12,11 +12,12 @@ const editor_tree = @import("editor_tree");
 
 const Icons = cetech1.coreui.CoreIcons;
 
-const MODULE_NAME = "editor_explorer";
+const module_name = .editor_explorer;
+
 pub const std_options = struct {
     pub const logFn = cetech1.log.zigLogFnGen(&_log);
 };
-const log = std.log.scoped(.editor_explorer);
+const log = std.log.scoped(module_name);
 
 const EXPLORER_TAB_NAME = "ct_editor_explorer_tab";
 
@@ -84,7 +85,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
                 .inst = @ptrCast(tab_inst),
             },
             .db = db,
-            .inter_selection = try coreui.ObjSelectionType.createObject(&db),
+            .inter_selection = try coreui.ObjSelection.createObject(&db),
         };
         return &tab_inst.tab_i;
     }
@@ -108,9 +109,8 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
         if (_coreui.beginMenu(_allocator, coreui.Icons.ContextMenu ++ "###ObjContextMenu", !tab_o.selection.isEmpty(), null)) {
             defer _coreui.endMenu();
 
-            var tmp_arena = try _tempalloc.createTempArena();
-            defer _tempalloc.destroyTempArena(tmp_arena);
-            const allocator = tmp_arena.allocator();
+            const allocator = try _tempalloc.create();
+            defer _tempalloc.destroy(allocator);
 
             try _editor.showObjContextMenu(
                 allocator,
@@ -131,13 +131,12 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     pub fn ui(inst: *editor.TabO) !void {
         var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
 
-        if (tab_o.selection.id == 0 and tab_o.selection.type_hash.id == 0) {
+        if (tab_o.selection.isEmpty()) {
             return;
         }
 
-        var tmp_arena = try _tempalloc.createTempArena();
-        defer _tempalloc.destroyTempArena(tmp_arena);
-        const allocator = tmp_arena.allocator();
+        var allocator = try _tempalloc.create();
+        defer _tempalloc.destroy(allocator);
 
         defer _coreui.endChild();
         if (_coreui.beginChild("Explorer", .{ .child_flags = .{ .border = true } })) {
@@ -149,7 +148,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
                 defer allocator.free(selected_objs);
 
                 for (selected_objs) |obj| {
-                    if (!assetdb.AssetType.isSameType(obj)) continue;
+                    if (!assetdb.Asset.isSameType(&tab_o.db, obj)) continue;
 
                     // Draw asset_object
                     const r = try _editortree.cdbTreeView(
@@ -162,6 +161,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
                         },
                         obj,
                         tab_o.inter_selection,
+                        0,
                         .{
                             .expand_object = true,
                             .multiselect = true,
@@ -186,7 +186,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
         _ = db;
 
         var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
-        if (tab_o.inter_selection.eq(selection)) return;
+        if (tab_o.inter_selection.eql(selection)) return;
         tab_o.selection = selection;
     }
 });
@@ -263,13 +263,13 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     const set = try assetdb.FooAsset.readSubObjSet(db, db.readObj(obj).?, .SubobjectSet, _allocator);
                     std.testing.expect(set != null) catch |err| {
                         _coreui.checkTestError(@src(), err);
-                        return;
+                        return err;
                     };
 
                     defer _allocator.free(set.?);
                     std.testing.expect(set.?.len == 1) catch |err| {
                         _coreui.checkTestError(@src(), err);
-                        return;
+                        return err;
                     };
                 }
             },
@@ -300,13 +300,13 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     const set = try assetdb.FooAsset.readSubObjSet(db, db.readObj(obj).?, .SubobjectSet, _allocator);
                     std.testing.expect(set != null) catch |err| {
                         _coreui.checkTestError(@src(), err);
-                        return;
+                        return err;
                     };
                     defer _allocator.free(set.?);
 
                     std.testing.expect(set.?.len == 1) catch |err| {
                         _coreui.checkTestError(@src(), err);
-                        return;
+                        return err;
                     };
                     const inisiated_obj = set.?[0];
                     const inisiated_obj_r = assetdb.FooAsset.read(db, inisiated_obj).?;
@@ -314,7 +314,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     const is_inisiated = db.isIinisiated(obj_r, assetdb.FooAsset.propIdx(.SubobjectSet), inisiated_obj_r);
                     std.testing.expect(is_inisiated) catch |err| {
                         _coreui.checkTestError(@src(), err);
-                        return;
+                        return err;
                     };
                 }
             },
@@ -345,13 +345,53 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     const set = try assetdb.FooAsset.readSubObjSet(db, db.readObj(obj).?, .SubobjectSet, _allocator);
                     std.testing.expect(set != null) catch |err| {
                         _coreui.checkTestError(@src(), err);
-                        return;
+                        return err;
                     };
 
                     defer _allocator.free(set.?);
                     std.testing.expect(set.?.len == 0) catch |err| {
                         _coreui.checkTestError(@src(), err);
-                        return;
+                        return err;
+                    };
+                }
+            },
+        );
+
+        _ = _coreui.registerTest(
+            "ContextMenu",
+            "should_inisiate_subobject",
+            @src(),
+            struct {
+                pub fn run(ctx: *coreui.TestContext) !void {
+                    _kernel.openAssetRoot("fixtures/test_explorer");
+                    ctx.yield(_coreui, 1);
+
+                    ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
+                    ctx.windowFocus(_coreui, "");
+                    ctx.itemAction(_coreui, .DoubleClick, "**/###ROOT/###child_asset.ct_foo_asset", .{}, null);
+
+                    ctx.setRef(_coreui, "###ct_editor_explorer_tab_1");
+                    ctx.windowFocus(_coreui, "");
+
+                    ctx.itemAction(_coreui, .Click, "**/###child_asset.ct_foo_asset/018e7ba2-d04a-7176-8374-c38cca68b3ab/Subobject", .{}, null);
+                    ctx.menuAction(_coreui, .Click, "###ObjContextMenu/###Inisiate");
+
+                    const db = _kernel.getDb();
+                    const obj = _assetdb.getObjId(_uuid.fromStr("018e7ba2-d04a-7176-8374-c38cca68b3ab").?).?;
+
+                    const subobj = assetdb.FooAsset.readSubObj(db, db.readObj(obj).?, .Subobject);
+                    std.testing.expect(subobj != null) catch |err| {
+                        _coreui.checkTestError(@src(), err);
+                        return err;
+                    };
+
+                    const inisiated_obj = subobj.?;
+                    const inisiated_obj_r = assetdb.FooAsset.read(db, inisiated_obj).?;
+                    const obj_r = assetdb.FooAsset.read(db, obj).?;
+                    const is_inisiated = db.isIinisiated(obj_r, assetdb.FooAsset.propIdx(.Subobject), inisiated_obj_r);
+                    std.testing.expect(is_inisiated) catch |err| {
+                        _coreui.checkTestError(@src(), err);
+                        return err;
                     };
                 }
             },
@@ -373,29 +413,29 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
     _allocator = allocator;
     _log = log_api;
     _apidb = apidb;
-    _cdb = apidb.getZigApi(cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(cetech1.coreui.CoreUIApi).?;
-    _editor = apidb.getZigApi(editor.EditorAPI).?;
-    _assetdb = apidb.getZigApi(assetdb.AssetDBAPI).?;
-    _kernel = apidb.getZigApi(cetech1.kernel.KernelApi).?;
-    _tempalloc = apidb.getZigApi(cetech1.tempalloc.TempAllocApi).?;
-    _editortree = apidb.getZigApi(editor_tree.TreeAPI).?;
-    _uuid = apidb.getZigApi(cetech1.uuid.UuidAPI).?;
+    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
+    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
+    _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
+    _assetdb = apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
+    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
+    _tempalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
+    _editortree = apidb.getZigApi(module_name, editor_tree.TreeAPI).?;
+    _uuid = apidb.getZigApi(module_name, cetech1.uuid.UuidAPI).?;
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, MODULE_NAME, "_g", .{});
+    _g = try apidb.globalVar(G, module_name, "_g", .{});
 
-    _g.tab_vt = try apidb.globalVar(editor.EditorTabTypeI, MODULE_NAME, EXPLORER_TAB_NAME, .{});
+    _g.tab_vt = try apidb.globalVar(editor.EditorTabTypeI, module_name, EXPLORER_TAB_NAME, .{});
     _g.tab_vt.* = explorer_tab;
 
-    try apidb.implOrRemove(cdb.CreateTypesI, &create_cdb_types_i, load);
-    try apidb.implOrRemove(editor.EditorTabTypeI, &explorer_tab, load);
-    try apidb.implOrRemove(coreui.RegisterTestsI, &register_tests_i, load);
+    try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
+    try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &explorer_tab, load);
+    try apidb.implOrRemove(module_name, coreui.RegisterTestsI, &register_tests_i, load);
 
     return true;
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
 pub export fn ct_load_module_editor_explorer(__apidb: ?*const cetech1.apidb.ct_apidb_api_t, __allocator: ?*const cetech1.apidb.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, __apidb, __allocator, __load, __reload);
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }
