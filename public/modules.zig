@@ -7,24 +7,24 @@ const LogAPI = @import("log.zig").LogAPI;
 
 pub const ct_module_desc_t = c.c.ct_module_desc_t;
 
-pub const LoadModuleFn = fn (apidb: ?*const c.c.ct_apidb_api_t, _allocator: ?*const c.c.ct_allocator_t, load: u8, reload: u8) callconv(.C) u8;
+pub const LoadModuleFn = fn (apidb: *const c.c.ct_apidb_api_t, _allocator: *const c.c.ct_allocator_t, load: bool, reload: bool) callconv(.C) bool;
 pub const LoadModuleZigFn = fn (apidb: *apidb.ApiDbAPI, allocator: std.mem.Allocator, _log: *LogAPI, load: bool, reload: bool) anyerror!bool;
 
 const module_name = .modules;
 const log = std.log.scoped(module_name);
 
 /// Helper for using in Zig base modules.
-pub fn loadModuleZigHelper(comptime load_module_zig: LoadModuleZigFn, comptime _module_name: @Type(.EnumLiteral), _apidb: ?*const c.c.ct_apidb_api_t, _allocator: ?*const c.c.ct_allocator_t, load: u8, reload: u8) u8 {
-    var apidb_api = apiFromCApi(_module_name, _apidb.?);
-    const allocator = allocFromCApi(_allocator.?);
+pub fn loadModuleZigHelper(comptime load_module_zig: LoadModuleZigFn, comptime _module_name: @Type(.EnumLiteral), _apidb: *const c.c.ct_apidb_api_t, _allocator: *const c.c.ct_allocator_t, load: bool, reload: bool) bool {
+    var apidb_api = apiFromCApi(_module_name, _apidb);
+    const allocator = allocFromCApi(_allocator);
     const log_api = apidb_api.getZigApi(_module_name, LogAPI).?;
 
-    const r = load_module_zig(apidb_api, allocator, log_api, load == 1, reload == 1) catch |err| {
+    const r = load_module_zig(apidb_api, allocator, log_api, load, reload) catch |err| {
         log.err("Could not load module {}", .{err});
-        return 0;
+        return false;
     };
 
-    return @intFromBool(r);
+    return r;
 }
 
 pub fn allocFromCApi(allocator: *const c.c.ct_allocator_t) std.mem.Allocator {

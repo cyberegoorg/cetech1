@@ -6,7 +6,7 @@ const modules = @import("modules.zig");
 const strid = @import("strid.zig");
 
 const system = @import("system.zig");
-const gpu = @import("gpu.zig");
+const gfx = @import("gfx.zig");
 
 const log = std.log.scoped(.coreui);
 
@@ -478,7 +478,20 @@ pub const CoreUIApi = struct {
     setScaleFactor: *const fn (scale_factor: f32) void,
     getScaleFactor: *const fn () f32,
 
+    image: *const fn (texture: gfx.TextureHandle, args: Image) void,
+
     mainDockSpace: *const fn (flags: DockNodeFlags) Ident,
+};
+
+pub const Image = struct {
+    flags: u8,
+    mip: u8,
+    w: f32,
+    h: f32,
+    uv0: [2]f32 = .{ 0.0, 0.0 },
+    uv1: [2]f32 = .{ 1.0, 1.0 },
+    tint_col: [4]f32 = .{ 1.0, 1.0, 1.0, 1.0 },
+    border_col: [4]f32 = .{ 0.0, 0.0, 0.0, 0.0 },
 };
 
 // Copy from zgui (THc a.k.a Temp hack)

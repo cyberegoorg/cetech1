@@ -148,8 +148,8 @@ test "asset: Should save asset to json" {
         \\  "bool": true,
         \\  "u32": 10,
         \\  "i32": 20,
-        \\  "f32": 3.0e+01,
-        \\  "f64": 2.0e+01,
+        \\  "f32": 3e1,
+        \\  "f64": 2e1,
         \\  "str": "foo",
         \\  "blob": "{x}d667a6af",
         \\  "subobject": {{
@@ -272,8 +272,8 @@ test "asset: Should read asset from json reader" {
         \\  "bool": true,
         \\  "u32": 10,
         \\  "i32": 20,
-        \\  "f32": 3.0e+01,
-        \\  "f64": 2.0e+01,
+        \\  "f32": 3e1,
+        \\  "f64": 2e1,
         \\  "str": "foo",
         \\  "subobject": {
         \\    "__type_name": "ct_foo_asset",

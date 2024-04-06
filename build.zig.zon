@@ -13,15 +13,22 @@
         "README.md",
     },
     .dependencies = .{
+        //
         // Public cetech1 API
+        //
         .cetech1 = .{ .path = "public/" },
 
+        //
         // CETech1 examples
+        //
         .bar = .{ .path = "examples/bar" },
         .foo = .{ .path = "examples/foo" },
         .editor_foo_tab = .{ .path = "examples/editor_foo_tab" },
+        .editor_foo_viewport_tab = .{ .path = "examples/editor_foo_viewport_tab" },
 
+        //
         // CETech1 bundled modules
+        //
         .editor = .{ .path = "modules/editor" },
         .editor_asset = .{ .path = "modules/editor_asset" },
         .editor_asset_browser = .{ .path = "modules/editor_asset_browser" },
@@ -32,44 +39,24 @@
         .editor_tags = .{ .path = "modules/editor_tags" },
         .editor_tree = .{ .path = "modules/editor_tree" },
         .editor_log = .{ .path = "modules/editor_log" },
-        //
 
+        //
         // Externals
+        //
         .zf = .{ .path = "externals/shared/lib/zf" },
         .uuid = .{ .path = "externals/shared/lib/zig-uuid/" },
-        .mach_gamemode = .{ .path = "externals/shared/lib/mach-gamemode" },
         .znfde = .{ .path = "externals/shared/lib/znfde" },
+        .zbgfx = .{ .path = "externals/shared/lib/zbgfx" },
 
         // zig-gamedev
         .system_sdk = .{ .path = "externals/shared/lib/zig-gamedev/libs/system-sdk" },
         .zglfw = .{ .path = "externals/shared/lib/zig-gamedev/libs/zglfw" },
         .zpool = .{ .path = "externals/shared/lib/zig-gamedev/libs/zpool" },
-        .zjobs = .{ .path = "externals/shared/lib/zig-gamedev/libs/zjobs" },
+        //.zjobs = .{ .path = "externals/shared/lib/zig-gamedev/libs/zjobs" },
+        .zjobs = .{ .path = "externals/shared/lib/workarounds/zjobs" },
         .ztracy = .{ .path = "externals/shared/lib/zig-gamedev/libs/ztracy" },
         .zgui = .{ .path = "externals/shared/lib/zig-gamedev/libs/zgui" },
-        .zgpu = .{ .path = "externals/shared/lib/zig-gamedev/libs/zgpu" },
         //.znfde = .{ .path = "externals/shared/lib/zig-gamedev/libs/znfde" },
 
-        // zgpu dependencies
-        .dawn_x86_64_windows_gnu = .{
-            .url = "https://github.com/michal-z/webgpu_dawn-x86_64-windows-gnu/archive/d3a68014e6b6b53fd330a0ccba99e4dcfffddae5.tar.gz",
-            .hash = "1220f9448cde02ef3cd51bde2e0850d4489daa0541571d748154e89c6eb46c76a267",
-        },
-        .dawn_x86_64_linux_gnu = .{
-            .url = "https://github.com/michal-z/webgpu_dawn-x86_64-linux-gnu/archive/7d70db023bf254546024629cbec5ee6113e12a42.tar.gz",
-            .hash = "12204a3519efd49ea2d7cf63b544492a3a771d37eda320f86380813376801e4cfa73",
-        },
-        .dawn_aarch64_linux_gnu = .{
-            .url = "https://github.com/michal-z/webgpu_dawn-aarch64-linux-gnu/archive/c1f55e740a62f6942ff046e709ecd509a005dbeb.tar.gz",
-            .hash = "12205cd13f6849f94ef7688ee88c6b74c7918a5dfb514f8a403fcc2929a0aa342627",
-        },
-        .dawn_aarch64_macos = .{
-            .url = "https://github.com/michal-z/webgpu_dawn-aarch64-macos/archive/d2360cdfff0cf4a780cb77aa47c57aca03cc6dfe.tar.gz",
-            .hash = "12201fe677e9c7cfb8984a36446b329d5af23d03dc1e4f79a853399529e523a007fa",
-        },
-        .dawn_x86_64_macos = .{
-            .url = "https://github.com/michal-z/webgpu_dawn-x86_64-macos/archive/901716b10b31ce3e0d3fe479326b41e91d59c661.tar.gz",
-            .hash = "1220b1f02f2f7edd98a078c64e3100907d90311d94880a3cc5927e1ac009d002667a",
-        },
     },
 }

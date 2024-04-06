@@ -12,7 +12,7 @@ OPTIMIZE=$2
 function build() {
     WITH_TRACY=$1
     WITH_NFD=$2
-    zig/bin/${ZIG_ARCH}/zig build -Doptimize=${OPTIMIZE} -Dwith-tracy=${WITH_TRACY} -Dwith-nfd=${WITH_NFD}
+    zig/bin/${ZIG_ARCH}/zig build -Doptimize=${OPTIMIZE} -Dwith_tracy=${WITH_TRACY} -Dwith_nfd=${WITH_NFD}
 }
 
 build false true

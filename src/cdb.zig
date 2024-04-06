@@ -402,11 +402,11 @@ pub const TypeStorage = struct {
     }
 
     pub fn increaseVersion(self: *Self, obj: public.ObjId) void {
-        _ = self.objid_version.items[obj.id].fetchAdd(1, .Monotonic);
+        _ = self.objid_version.items[obj.id].fetchAdd(1, .monotonic);
     }
 
     pub fn increaseReference(self: *Self, obj: public.ObjId) void {
-        _ = self.objid_ref_count.items[obj.id].fetchAdd(1, .Release);
+        _ = self.objid_ref_count.items[obj.id].fetchAdd(1, .release);
     }
 
     pub fn decreaseReferenceToFree(self: *Self, object: *Object) !void {
@@ -415,8 +415,8 @@ pub const TypeStorage = struct {
         if (ref_count.raw == 0) return; // TODO: need this?
         //std.debug.assert(ref_count.value != 0);
 
-        if (1 == ref_count.fetchSub(1, .Release)) {
-            ref_count.fence(.Acquire);
+        if (1 == ref_count.fetchSub(1, .release)) {
+            ref_count.fence(.acquire);
             try self.addToFreeQueue(object);
         }
     }
@@ -431,8 +431,8 @@ pub const TypeStorage = struct {
         //     return try self.freeObject(object, destroyed_objid, tmp_allocator);
         // }
 
-        if (1 == ref_count.fetchSub(1, .Release)) {
-            ref_count.fence(.Acquire);
+        if (1 == ref_count.fetchSub(1, .release)) {
+            ref_count.fence(.acquire);
             return try self.freeObject(object, destroyed_objid, tmp_allocator);
         }
         return 0;
@@ -1386,7 +1386,7 @@ pub const Db = struct {
     pub fn writerObj(self: *Self, obj: public.ObjId) ?*public.Obj {
         const true_obj = self.getObjectPtr(obj);
         var storage = self.getTypeStorage(obj) orelse return null;
-        _ = storage.writers_created_count.fetchAdd(1, .Monotonic);
+        _ = storage.writers_created_count.fetchAdd(1, .monotonic);
 
         storage.increaseReference(obj);
         const new_obj = storage.cloneObjectRaw(true_obj.?, false, false, false) catch |err| {
@@ -1447,7 +1447,7 @@ pub const Db = struct {
         const new_obj = toObjFromObjO(writer);
 
         var storage = self.getTypeStorage(new_obj.objid).?;
-        _ = storage.write_commit_count.fetchAdd(1, .Monotonic);
+        _ = storage.write_commit_count.fetchAdd(1, .monotonic);
 
         _ = try storage.decreaseReferenceToFree(new_obj);
 
@@ -1485,7 +1485,7 @@ pub const Db = struct {
     pub fn readObj(self: *Self, obj: public.ObjId) ?*public.Obj {
         const true_obj = self.getObjectPtr(obj);
         const storage = self.getTypeStorage(obj) orelse return null;
-        _ = storage.read_obj_count.fetchAdd(1, .Monotonic);
+        _ = storage.read_obj_count.fetchAdd(1, .monotonic);
         return @ptrCast(true_obj);
     }
 

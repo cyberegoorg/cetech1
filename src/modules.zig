@@ -135,7 +135,7 @@ pub fn loadAll() !void {
             alloc_item = _modules_allocator_map.getPtr(cetech1.fromCstr(module_desc.desc.name));
         }
 
-        if (0 == module_desc.desc.module_fce.?(&apidb.apidb_global_c, @ptrCast(@alignCast(&alloc_item.?.*.allocator)), 1, 0)) {
+        if (!module_desc.desc.module_fce.?(&apidb.apidb_global_c, @ptrCast(@alignCast(&alloc_item.?.*.allocator)), true, false)) {
             log.err("Problem with load module {s}", .{module_desc.desc.name});
         }
     }
@@ -145,7 +145,7 @@ pub fn unloadAll() !void {
     for (_modules_map.values()) |*it| {
         const alloc_item = _modules_allocator_map.getPtr(cetech1.fromCstr(it.desc.name)).?;
 
-        if (0 == it.desc.module_fce.?(&apidb.apidb_global_c, @ptrCast(&alloc_item.*.allocator), 0, 0)) {
+        if (!it.desc.module_fce.?(&apidb.apidb_global_c, @ptrCast(&alloc_item.*.allocator), false, false)) {
             log.err("Problem with unload module {s}", .{it.desc.name});
         }
     }
@@ -232,7 +232,7 @@ pub fn loadDynModules() !void {
 
         const full_path = try std.fs.path.joinZ(tmp_allocator, &[_][]const u8{ module_dir_relat, path.name });
 
-        log.info("Loading module from {s}", .{full_path});
+        log.warn("Loading dynamic module from {s}", .{full_path});
 
         const dyn_lib_info = _loadDynLib(full_path) catch continue;
 
@@ -282,7 +282,7 @@ pub fn reloadAllIfNeeded(allocator: std.mem.Allocator) !bool {
 
             const alloc_item = _modules_allocator_map.getPtr(cetech1.fromCstr(old_module_desc.desc.name)).?;
 
-            if (0 == old_module_desc.desc.module_fce.?(&apidb.apidb_global_c, @ptrCast(&alloc_item.*.allocator), 0, 1)) {
+            if (!old_module_desc.desc.module_fce.?(&apidb.apidb_global_c, @ptrCast(&alloc_item.*.allocator), false, true)) {
                 log.err("Problem with unload old module {s}", .{k});
                 continue;
             }
@@ -292,7 +292,7 @@ pub fn reloadAllIfNeeded(allocator: std.mem.Allocator) !bool {
 
             //load new
             var new_dyn_lib_info = _loadDynLib(k) catch continue;
-            if (0 == new_dyn_lib_info.symbol(&apidb.apidb_global_c, @ptrCast(&alloc_item.*.allocator), 1, 1)) {
+            if (!new_dyn_lib_info.symbol(&apidb.apidb_global_c, @ptrCast(&alloc_item.*.allocator), true, true)) {
                 log.err("Problem with load new module {s}", .{k});
                 continue;
             }
@@ -311,13 +311,13 @@ pub fn reloadAllIfNeeded(allocator: std.mem.Allocator) !bool {
 }
 
 pub fn dumpModules() void {
-    log.info("LOADED MODULES", .{});
+    log.info("Loaded modules:", .{});
 
     for (_modules_map.values()) |*it| {
         if (it.full_path) |module_path| {
-            log.info(" +- {s} [{s}]", .{ it.desc.name, module_path });
+            log.info("\t- {s} [{s}]", .{ it.desc.name, module_path });
         } else {
-            log.info(" +- {s} [static]", .{it.desc.name});
+            log.info("\t- {s} [static]", .{it.desc.name});
         }
     }
 }
@@ -331,14 +331,14 @@ test "Can register module" {
     const Module1 = struct {
         var called: bool = false;
 
-        fn load_module(_apidb: ?*const c.ct_apidb_api_t, _a: ?*const c.ct_allocator_t, load: u8, reload: u8) callconv(.C) u8 {
+        fn load_module(_apidb: [*c]const c.ct_apidb_api_t, _a: [*c]const c.ct_allocator_t, load: bool, reload: bool) callconv(.C) bool {
             _ = _apidb;
             _ = _a;
             _ = reload;
             _ = load;
             _ = _a;
             called = true;
-            return 1;
+            return true;
         }
     };
 

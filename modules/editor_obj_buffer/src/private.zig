@@ -11,8 +11,8 @@ const Icons = cetech1.coreui.CoreIcons;
 
 const module_name = .editor_obj_buffer;
 
-pub const std_options = struct {
-    pub const logFn = cetech1.log.zigLogFnGen(&_log);
+pub const std_options: std.Options = .{
+    .logFn = cetech1.log.zigLogFnGen(&_log),
 };
 const log = std.log.scoped(module_name);
 
@@ -289,7 +289,7 @@ var add_to_buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
         _ = prop_idx;
         _ = in_set_obj;
 
-        if (contexts.id != editor.Contexts.edit.id) return false;
+        if (contexts.id != editor.Contexts.open.id) return false;
 
         const tabs = _editor.getAllTabsByType(allocator, _g.tab_vt.tab_hash) catch undefined;
         defer allocator.free(tabs);
@@ -438,6 +438,6 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_obj_buffer(__apidb: ?*const cetech1.apidb.ct_apidb_api_t, __allocator: ?*const cetech1.apidb.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
+pub export fn ct_load_module_editor_obj_buffer(__apidb: *const cetech1.apidb.ct_apidb_api_t, __allocator: *const cetech1.apidb.ct_allocator_t, __load: bool, __reload: bool) callconv(.C) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }

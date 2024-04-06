@@ -1,8 +1,5 @@
 const std = @import("std");
 
-const zgpu = @import("zgpu");
-const zgui = @import("zgui");
-
 const apidb = @import("apidb.zig");
 const cdb = @import("cdb.zig");
 

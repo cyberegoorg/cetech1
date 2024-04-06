@@ -11,5 +11,7 @@
         "build.zig.zon",
     },
 
-    .dependencies = .{},
+    .dependencies = .{
+        .zmath = .{ .path = "../externals/shared/lib/zig-gamedev/libs/zmath" },
+    },
 }

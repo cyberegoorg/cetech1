@@ -1,6 +1,7 @@
 {
     "version": "0.2.0",
     "configurations": [
+
         {
             "type": "lldb",
             "request": "launch",
@@ -8,7 +9,20 @@
             "program": "${workspaceFolder}/zig-out/bin/cetech1",
             "args": [
                 "--asset-root",
-                "fixtures/test_asset/"
+                "fixtures/test_asset/",
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "CETech1 (Vulkan)",
+            "program": "${workspaceFolder}/zig-out/bin/cetech1",
+            "args": [
+                "--asset-root",
+                "fixtures/test_asset/",
+                "--renderer",
+                "vulkan",
             ],
             "cwd": "${workspaceFolder}"
         },

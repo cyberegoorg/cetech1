@@ -21,8 +21,15 @@ pub const cdb_types = @import("cdb_types.zig");
 pub const tempalloc = @import("tempalloc.zig");
 
 pub const system = @import("system.zig");
+
 pub const gpu = @import("gpu.zig");
+pub const gfx = @import("gfx.zig");
+pub const gfxdd = @import("gfxdd.zig");
+pub const gfxrg = @import("gfxrg.zig");
+
 pub const coreui = @import("coreui.zig");
+
+pub const zm = @import("zmath");
 
 test {
     // TODO: SHIT

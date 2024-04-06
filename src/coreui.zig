@@ -4,7 +4,6 @@ const c = @import("c.zig").c;
 
 const cetech1_options = @import("cetech1_options");
 
-const zgpu = @import("zgpu");
 const zglfw = @import("zglfw");
 const zgui = @import("zgui");
 const zguite = zgui.te;
@@ -12,6 +11,10 @@ const znfde = @import("znfde");
 const zf = @import("zf");
 const tempalloc = @import("tempalloc.zig");
 const kernel = @import("kernel.zig");
+const gpu = @import("gpu.zig");
+
+const zbgfx = @import("zbgfx");
+const backend = @import("backend_glfw_bgfx.zig");
 
 const apidb = @import("apidb.zig");
 
@@ -21,6 +24,7 @@ const assetdb = @import("assetdb.zig");
 const cetech1 = @import("cetech1");
 const public = cetech1.coreui;
 const Icons = public.CoreIcons;
+const gfx = cetech1.gfx;
 
 const log = std.log.scoped(module_name);
 
@@ -34,7 +38,6 @@ const DEFAULT_IMGUI_INI = @embedFile("embed/imgui.ini");
 
 var _allocator: std.mem.Allocator = undefined;
 var _backed_initialised = false;
-var _true_gpuctx: ?*zgpu.GraphicsContext = null;
 var _te_engine: *zguite.TestEngine = undefined;
 var _te_show_window: bool = false;
 var _enabled_ui = false;
@@ -44,29 +47,50 @@ var _junit_filename: ?[:0]const u8 = null;
 var _scale_factor: ?f32 = null;
 var _new_scale_factor: ?f32 = null;
 
+const KernelTask = struct {
+    pub fn update(frame_allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
+        _ = frame_allocator; // autofix
+        const tmp = try tempalloc.api.create();
+        defer tempalloc.api.destroy(tmp);
+        const ctx = kernel.api.getGpuCtx();
+        if (_enabled_ui and ctx != null) {
+            try coreUI(tmp, kernel_tick, dt);
+        }
+    }
+};
+
+var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
+    cetech1.kernel.PreStore,
+    "CoreUI",
+    &[_]cetech1.strid.StrId64{},
+    KernelTask.update,
+);
+
 const _kernel_hook_i = cetech1.kernel.KernelLoopHookI.implement(struct {
     pub fn beginLoop() !void {
-        if (!_enabled_ui and kernel.api.getGpuCtx() != null and kernel.api.getMainWindow() != null) {
-            try enableWithWindow(kernel.api.getMainWindow().?, kernel.api.getGpuCtx().?);
+        const ctx = kernel.api.getGpuCtx();
+
+        if (!_enabled_ui and ctx != null) {
+            try enableWithWindow(ctx.?);
             _enabled_ui = true;
         }
 
-        if (_true_gpuctx != null) newFrame();
+        if (_enabled_ui and ctx != null) {
+            var size = [2]i32{ 0, 0 };
+
+            if (gpu.api.getWindow(ctx.?)) |w| {
+                var true_window: *zglfw.Window = @ptrCast(w);
+                size = true_window.getFramebufferSize();
+            }
+
+            newFrame(@intCast(size[0]), @intCast(size[1]));
+        }
     }
 
     pub fn endLoop() !void {
         afterAll();
     }
 });
-const _gpu_present_i = cetech1.gpu.GpuPresentI.implement(
-    struct {
-        pub fn present(kernel_tick: u64, dt: f32) !void {
-            const tmp = try tempalloc.api.create();
-            defer tempalloc.api.destroy(tmp);
-            try coreUI(tmp, kernel_tick, dt);
-        }
-    },
-);
 
 var create_types_i = cetech1.cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db_: *cetech1.cdb.Db) !void {
@@ -87,7 +111,6 @@ pub fn init(allocator: std.mem.Allocator) !void {
     _allocator = allocator;
 
     _backed_initialised = false;
-    _true_gpuctx = null;
     _te_engine = undefined;
     _te_show_window = false;
     _enabled_ui = false;
@@ -109,7 +132,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
     if (cetech1_options.enable_nfd) try znfde.init();
 
     try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelLoopHookI, &_kernel_hook_i, true);
-    try apidb.api.implOrRemove(module_name, cetech1.gpu.GpuPresentI, &_gpu_present_i, true);
+    try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task, true);
 }
 
 pub fn deinit() void {
@@ -119,18 +142,11 @@ pub fn deinit() void {
     }
 
     zgui.plot.deinit();
-    if (_backed_initialised) zgui.backend.deinit();
-
+    if (_backed_initialised) backend.deinit();
     zgui.deinit();
-
-    if (_backed_initialised) {
-        // TODO: check for mem leak rewrite memory for test engine
-        //zgui_te.zguiTe_DestroyContext(_te_engine);
-    }
 
     if (cetech1_options.enable_nfd) znfde.deinit();
     apidb.api.implOrRemove(module_name, cetech1.kernel.KernelLoopHookI, &_kernel_hook_i, false) catch undefined;
-    apidb.api.implOrRemove(module_name, cetech1.gpu.GpuPresentI, &_gpu_present_i, false) catch undefined;
 }
 
 pub var api = public.CoreUIApi{
@@ -282,7 +298,35 @@ pub var api = public.CoreUIApi{
     .setScaleFactor = setScaleFactor,
     .getScaleFactor = getScaleFactor,
     .mainDockSpace = mainDockSpace,
+    .image = image,
 };
+
+const BgfxImage = struct {
+    handle: gfx.TextureHandle,
+    flags: u8,
+    mip: u8,
+
+    pub fn toTextureIdent(self: *const BgfxImage) zgui.TextureIdent {
+        return std.mem.bytesToValue(zgui.TextureIdent, std.mem.asBytes(self));
+    }
+};
+
+fn image(texture: gfx.TextureHandle, args: public.Image) void {
+    const tt = BgfxImage{
+        .handle = texture,
+        .flags = args.flags,
+        .mip = args.mip,
+    };
+
+    zgui.image(tt.toTextureIdent(), .{
+        .w = args.w,
+        .h = args.h,
+        .uv0 = args.uv0,
+        .uv1 = args.uv1,
+        .tint_col = args.tint_col,
+        .border_col = args.border_col,
+    });
+}
 
 fn mainDockSpace(flags: public.DockNodeFlags) zgui.Ident {
     const f: *zgui.DockNodeFlags = @constCast(@ptrCast(&flags));
@@ -529,14 +573,13 @@ pub fn coreUI(tmp_allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void
     var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "CoreUI");
     defer update_zone_ctx.End();
 
-    // Headless mode
-    if (_true_gpuctx == null) return;
-
     var it = apidb.api.getFirstImpl(cetech1.coreui.CoreUII);
     while (it) |node| : (it = node.next) {
         const iface = cetech1.apidb.ApiDbAPI.toInterface(cetech1.coreui.CoreUII, node);
         iface.*.ui(&tmp_allocator);
     }
+
+    backend.draw();
 }
 
 pub fn registerToApi() !void {
@@ -566,12 +609,9 @@ pub fn initFonts(font_size: f32, scale_factor: f32) void {
     zgui.getStyle().scaleAllSizes(scale_factor);
 }
 
-pub fn enableWithWindow(window: *cetech1.system.Window, gpuctx: *cetech1.gpu.GpuContext) !void {
-    var true_window: *zglfw.Window = @ptrCast(window);
-    _true_gpuctx = @alignCast(@ptrCast(gpuctx));
-
+pub fn enableWithWindow(gpuctx: *cetech1.gpu.GpuContext) !void {
     _scale_factor = _scale_factor orelse scale_factor: {
-        const scale = true_window.getContentScale();
+        const scale = gpu.api.getContentScale(gpuctx);
         break :scale_factor @max(scale[0], scale[1]);
     };
 
@@ -585,16 +625,10 @@ pub fn enableWithWindow(window: *cetech1.system.Window, gpuctx: *cetech1.gpu.Gpu
     });
     zgui.io.setConfigWindowsMoveFromTitleBarOnly(true);
 
-    zgui.backend.init(
-        true_window,
-        _true_gpuctx.?.device,
-        @intFromEnum(zgpu.GraphicsContext.swapchain_format),
-        @intFromEnum(zgpu.wgpu.TextureFormat.undef),
-    );
+    _backed_initialised = true;
 
     initFonts(16, _scale_factor.?);
-
-    _backed_initialised = true;
+    backend.init(gpu.api.getWindow(gpuctx));
 
     //TODO:
     _te_engine = zguite.getTestEngine().?;
@@ -638,25 +672,12 @@ pub fn enableWithWindow(window: *cetech1.system.Window, gpuctx: *cetech1.gpu.Gpu
     }
 }
 
-extern fn ImGui_ImplWGPU_NewFrame() void;
-extern fn ImGui_ImplGlfw_NewFrame() void;
-
-fn newFrame() void {
+fn newFrame(fb_width: u32, fb_height: u32) void {
     if (_new_scale_factor) |nsf| {
         initFonts(16, nsf);
         _scale_factor = nsf;
     }
-
-    ImGui_ImplWGPU_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
-
-    zgui.io.setDisplaySize(
-        @as(f32, @floatFromInt(_true_gpuctx.?.swapchain_descriptor.width)),
-        @as(f32, @floatFromInt(_true_gpuctx.?.swapchain_descriptor.height)),
-    );
-    zgui.io.setDisplayFramebufferScale(1.0, 1.0);
-
-    zgui.newFrame();
+    backend.newFrame(fb_width, fb_height);
 }
 
 fn afterAll() void {
@@ -672,7 +693,7 @@ fn showDemoWindow() void {
 }
 
 fn isCoreUIActive() bool {
-    return _true_gpuctx != null;
+    return _backed_initialised;
 }
 
 // next shit

@@ -60,7 +60,7 @@ pub fn PoolWithLock(comptime T: type) type {
         pub fn destroy(self: *Self, item: *T) void {
             self.lock.lock();
             defer self.lock.unlock();
-            self.pool.destroy(item);
+            self.pool.destroy(@alignCast(item));
         }
     };
 }
@@ -95,7 +95,7 @@ pub fn IdPool(comptime T: type) type {
                 return new_obj_id;
             } else {
                 if (is_new != null) is_new.?.* = true;
-                return self.count.fetchAdd(1, .Release);
+                return self.count.fetchAdd(1, .release);
             }
         }
 
@@ -138,13 +138,12 @@ pub fn VirtualArray(comptime T: type) type {
                         new.reservation.len = max_size;
                     },
                     else => {
-                        const PROT = std.os.PROT;
-                        const MAP = std.os.MAP;
-                        new.reservation = try std.os.mmap(
+                        const PROT = std.posix.PROT;
+                        new.reservation = try std.posix.mmap(
                             null,
                             max_size,
                             PROT.READ | PROT.WRITE,
-                            MAP.PRIVATE | MAP.ANONYMOUS | MAP.NORESERVE,
+                            .{ .TYPE = .PRIVATE, .ANONYMOUS = true, .NORESERVE = true },
                             -1,
                             0,
                         );
@@ -165,7 +164,7 @@ pub fn VirtualArray(comptime T: type) type {
                         std.os.windows.VirtualFree(self.reservation.ptr, 0, windows.MEM_RELEASE);
                     },
                     else => {
-                        std.os.munmap(self.reservation);
+                        std.posix.munmap(self.reservation);
                     },
                 }
             }
@@ -228,7 +227,7 @@ pub fn VirtualPool(comptime T: type) type {
                 return &self.mem.items[new_obj_idx];
             } else {
                 if (is_new != null) is_new.?.* = true;
-                const idx = self.alocated_items.fetchAdd(1, .Release);
+                const idx = self.alocated_items.fetchAdd(1, .release);
                 self.mem.notifyAlloc(1) catch undefined;
                 return &self.mem.items[idx];
             }

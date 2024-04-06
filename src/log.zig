@@ -100,8 +100,9 @@ pub fn zigLogFn(
     };
 
     var message: [:0]u8 = formated_msg;
-    if (std.mem.endsWith(u8, &msg, "\n")) {
-        message = formated_msg[0 .. formated_msg.len - 1 :0];
+    if (std.mem.endsWith(u8, formated_msg, "\n")) {
+        message[message.len - 1] = 0;
+        message = message[0 .. message.len - 1 :0];
     }
 
     logFn(cetech1.log.LogAPI.Level.fromStdLevel(level), @tagName(scope), message);

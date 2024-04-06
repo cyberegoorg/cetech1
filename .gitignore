@@ -16,6 +16,7 @@ zig-out
 # MacOS
 *.DS_Store
 .DS_Store
+*.dylib
 
 kcov-output/
 

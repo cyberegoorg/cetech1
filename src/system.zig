@@ -7,7 +7,7 @@ const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");
 const kernel = @import("kernel.zig");
 
-const gamemode = @import("mach-gamemode");
+//const gamemode = @import("mach-gamemode");
 
 const cetech1 = @import("cetech1");
 const public = cetech1.system;
@@ -33,11 +33,10 @@ var _main_window: ?*public.Window = null;
 pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     _allocator = allocator;
 
-    gamemode.start();
-
-    if (gamemode.isActive()) {
-        log.info("Gamemode is active", .{});
-    }
+    // gamemode.start();
+    // if (gamemode.isActive()) {
+    //    log.info("Gamemode is active", .{});
+    // }
 
     zglfw.init() catch |err| {
         log.warn("System init error {}", .{err});
@@ -49,7 +48,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
         zglfw.windowHintTyped(.visible, false);
     }
 
-    zglfw.windowHintTyped(.scale_to_monitor, true);
+    //zglfw.windowHintTyped(.scale_to_monitor, true);
 
     const success = zglfw.Gamepad.updateMappings(@embedFile("gamecontrollerdb"));
     if (!success) {
@@ -59,7 +58,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
 
 pub fn deinit() void {
     zglfw.terminate();
-    gamemode.stop();
+    //gamemode.stop();
 }
 
 pub fn registerToApi() !void {
@@ -118,7 +117,7 @@ fn openIn(allocator: std.mem.Allocator, open_type: public.OpenInType, url: []con
 
     switch (builtin.os.tag) {
         .windows => {
-            // use wxplorer or start
+            // use explorer or start
             switch (open_type) {
                 .reveal => {
                     try args.append("explorer");

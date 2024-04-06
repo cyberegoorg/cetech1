@@ -29,7 +29,7 @@ const ApiHashMap = std.AutoArrayHashMap(strid.StrId64, ApiItem);
 const ApiHashMapPool = std.heap.MemoryPool(ApiHashMap);
 const LanguagesApiHashMap = std.AutoArrayHashMap(strid.StrId64, *ApiHashMap);
 
-const InterfaceImplList = std.DoublyLinkedList(c.c.ct_apidb_impl_iter_t);
+const InterfaceImplList = std.DoublyLinkedList(public.ImplIter);
 const InterfaceImplNode = InterfaceImplList.Node;
 const IterfaceImplNodePool = std.heap.MemoryPool(InterfaceImplList.Node);
 const InterfaceHashMap = std.AutoArrayHashMap(strid.StrId64, InterfaceImplList);
@@ -290,13 +290,13 @@ fn implInterface(module: []const u8, interface_name: strid.StrId64, impl_ptr: *c
 
     var impl_list = _interafce_map.getPtr(interface_name).?;
     var last = impl_list.last;
-    var prev: ?*c.c.ct_apidb_impl_iter_t = null;
+    var prev: ?*public.ImplIter = null;
 
     if (last != null) {
         prev = &last.?.data;
     }
 
-    const c_iter = c.c.ct_apidb_impl_iter_t{ .interface = impl_ptr, .next = null, .prev = prev };
+    const c_iter = public.ImplIter{ .interface = impl_ptr, .next = null, .prev = prev };
 
     var node = try _interface_node_pool.create();
     node.* = InterfaceImplNode{ .data = c_iter };
@@ -326,7 +326,7 @@ fn getImpl(comptime T: type, interface_name: []const u8) ?*T {
     return @ptrFromInt(@intFromPtr(first.?.data.interface));
 }
 
-fn getFirstImpl(interface_name: strid.StrId64) ?*const c.c.ct_apidb_impl_iter_t {
+fn getFirstImpl(interface_name: strid.StrId64) ?*const public.ImplIter {
     var impl_list = _interafce_map.getPtr(interface_name);
 
     if (impl_list == null) {
@@ -340,7 +340,7 @@ fn getFirstImpl(interface_name: strid.StrId64) ?*const c.c.ct_apidb_impl_iter_t 
     return &impl_list.?.first.?.data;
 }
 
-fn getLastImpl(interface_name: strid.StrId64) ?*const c.c.ct_apidb_impl_iter_t {
+fn getLastImpl(interface_name: strid.StrId64) ?*const public.ImplIter {
     var impl_list = _interafce_map.getPtr(interface_name);
 
     if (impl_list == null) {
@@ -369,11 +369,11 @@ fn removeImpl(module: []const u8, interface_name: strid.StrId64, impl_ptr: *cons
         }
 
         if (node.data.next != null) {
-            node.data.next.*.prev = node.data.prev;
+            node.data.next.?.*.prev = node.data.prev;
         }
 
         if (node.data.prev != null) {
-            node.data.prev.*.next = node.data.next;
+            node.data.prev.?.*.next = node.data.next;
         }
 
         impl_list.?.remove(node);
@@ -417,8 +417,9 @@ pub fn writeApiGraphD2(out_path: []const u8) !void {
         try writer.print("}}\n", .{});
 
         for (module_info.need_api.keys()) |api_str| {
-            const api_module_name = _api2module.get(strid.strId64(api_str)).?;
-            try writer.print("{s}->{s}: {s}\n", .{ name, api_module_name, api_str });
+            if (_api2module.get(strid.strId64(api_str))) |api_module_name| {
+                try writer.print("{s}->{s}: {s}\n", .{ name, api_module_name, api_str });
+            }
         }
     }
 }
@@ -467,7 +468,7 @@ pub const apidb_global_c = blk: {
             return removeImpl(cetech1.fromCstr(module), strid.StrId64.from(c.c.ct_strid64_t, interface_name), api_ptr.?);
         }
         pub fn get_first_impl(interface_name: c.c.ct_strid64_t) callconv(.C) ?*const c.c.ct_apidb_impl_iter_t {
-            return getFirstImpl(strid.StrId64.from(c.c.ct_strid64_t, interface_name));
+            return @ptrCast(getFirstImpl(strid.StrId64.from(c.c.ct_strid64_t, interface_name)));
         }
     };
     break :blk c.c.ct_apidb_api_t{

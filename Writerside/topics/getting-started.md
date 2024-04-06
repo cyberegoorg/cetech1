@@ -60,19 +60,15 @@
     </tab>
 </tabs>
 
-> Currently, there is a problem with one library on linux.
-> If you see something like `'...libdawn.a' is neither ET_REL nor LLVM bitcode` try build again.
-> {style="warning"}
-
 | Args                 | Value             | Default | Description                                                                 |
 |----------------------|-------------------|---------|-----------------------------------------------------------------------------|
-| `-Ddynamic-modules=` | `true` or `false` | `true`  | Build all modules in dynamic mode.                                          |
-| `-Dstatic-modules=`  | `true` or `false` | `false` | Build all modules in static mode.                                           |
-| `-Dwith-samples=`    | `true` or `false` | `true`  | Build with sample modules.                                                  |
-| `-Dwith-editor=`     | `true` or `false` | `true`  | Build with editor modules.                                                  |
-| `-Dwith-tracy=`      | `true` or `false` | `true`  | Build with [tracy](#tracy-profiler) support.                                |
-| `-Dwith-nfd=`        | `true` or `false` | `true`  | Build with NFD (native file dialog)                                         |
-| `-Dnfd-portal=`      | `true` or `false` | `true`  | Build NFD with xdg-desktop-portal instead of GTK. Linux, nice for SteamDeck |
+| `-Ddynamic_modules=` | `true` or `false` | `true`  | Build all modules in dynamic mode.                                          |
+| `-Dstatic_modules=`  | `true` or `false` | `false` | Build all modules in static mode.                                           |
+| `-Dwith_samples=`    | `true` or `false` | `true`  | Build with sample modules.                                                  |
+| `-Dwith_editor=`     | `true` or `false` | `true`  | Build with editor modules.                                                  |
+| `-Dwith_tracy=`      | `true` or `false` | `true`  | Build with [tracy](#tracy-profiler) support.                                |
+| `-Dwith_nfd=`        | `true` or `false` | `true`  | Build with NFD (native file dialog)                                         |
+| `-Dnfd_portal=`      | `true` or `false` | `true`  | Build NFD with xdg-desktop-portal instead of GTK. Linux, nice for SteamDeck |
 
 ## Run
 

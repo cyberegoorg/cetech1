@@ -30,8 +30,8 @@ const externals = .{
     // nativefiledialog-extended
     .{ .name = "nativefiledialog-extended", .file = "externals/shared/lib/znfde/nativefiledialog/LICENSE" },
 
-    // mach-gamemode
-    .{ .name = "mach-gamemode", .file = "externals/shared/lib/mach-gamemode/LICENSE" },
+    // BGFX
+    .{ .name = "bgfx", .file = "externals/shared/lib/zbgfx/libs/bgfx/LICENSE" },
 };
 
 const editor_modules = [_][]const u8{
@@ -56,6 +56,9 @@ const samples_modules = [_][]const u8{
 
     // Zig editor tab sample
     "editor_foo_tab",
+
+    // Zig editor viewport tab sample
+    "editor_foo_viewport_tab",
 };
 
 pub fn build(b: *std.Build) !void {
@@ -67,20 +70,20 @@ pub fn build(b: *std.Build) !void {
 
     const options = .{
         // Modules
-        .enable_samples = b.option(bool, "with-samples", "build with sample modules.") orelse true,
-        .enable_editor = b.option(bool, "with-editor", "build with editor modules.") orelse true,
+        .enable_samples = b.option(bool, "with_samples", "build with sample modules.") orelse true,
+        .enable_editor = b.option(bool, "with_editor", "build with editor modules.") orelse true,
 
-        .modules = b.option([]const []const u8, "with-module", "build with this modules."),
-        .static_modules = b.option(bool, "static-modules", "build all modules in static mode.") orelse false,
-        .dynamic_modules = b.option(bool, "dynamic-modules", "build all modules in dynamic mode.") orelse true,
+        .modules = b.option([]const []const u8, "with_module", "build with this modules."),
+        .static_modules = b.option(bool, "static_modules", "build all modules in static mode.") orelse false,
+        .dynamic_modules = b.option(bool, "dynamic_modules", "build all modules in dynamic mode.") orelse true,
 
         // Tracy options
-        .enable_tracy = b.option(bool, "with-tracy", "build with tracy.") orelse true,
-        .tracy_on_demand = b.option(bool, "tracy-on-demand", "build tracy with TRACY_ON_DEMAND") orelse true,
+        .enable_tracy = b.option(bool, "with_tracy", "build with tracy.") orelse true,
+        .tracy_on_demand = b.option(bool, "tracy_on_demand", "build tracy with TRACY_ON_DEMAND") orelse true,
 
         // NFD options
-        .enable_nfd = b.option(bool, "with-nfd", "build with NFD (Native File Dialog).") orelse true,
-        .nfd_portal = b.option(bool, "nfd-portal", "build NFD with xdg-desktop-portal instead of GTK. ( Linux, nice for steamdeck;) )") orelse true,
+        .enable_nfd = b.option(bool, "with_nfd", "build with NFD (Native File Dialog).") orelse true,
+        .nfd_portal = b.option(bool, "nfd_portal", "build NFD with xdg-desktop-portal instead of GTK. ( Linux, nice for steamdeck;) )") orelse true,
     };
 
     const options_step = b.addOptions();
@@ -125,15 +128,6 @@ pub fn build(b: *std.Build) !void {
         },
     );
 
-    // Mach gamemode
-    const mach_gamemode = b.dependency(
-        "mach_gamemode",
-        .{
-            .target = target,
-            .optimize = optimize,
-        },
-    );
-
     // Tracy
     const ztracy = b.dependency(
         "ztracy",
@@ -161,7 +155,7 @@ pub fn build(b: *std.Build) !void {
         .{
             .target = target,
             .optimize = optimize,
-            .backend = .glfw_wgpu,
+            .backend = .glfw,
             .with_te = true,
         },
     );
@@ -184,14 +178,18 @@ pub fn build(b: *std.Build) !void {
         },
     );
 
-    // ZGPU
-    const zgpu = b.dependency(
-        "zgpu",
+    // ZBGFX
+    const zbgfx = b.dependency(
+        "zbgfx",
         .{
             .target = target,
             .optimize = optimize,
+            .imgui_include = zgui.path("libs").getPath(b),
         },
     );
+
+    // System sdk
+    // const system_sdk = b.dependency("system_sdk", .{});
 
     //
     // TOOLS
@@ -312,7 +310,6 @@ pub fn build(b: *std.Build) !void {
     const executables = [_]*std.Build.Step.Compile{ exe, tests };
     inline for (executables) |e| {
         @import("system_sdk").addLibraryPathsTo(e);
-        @import("zgpu").addLibraryPathsTo(e);
 
         // Make exe depends on generated files.
         e.step.dependOn(&generated_files.step);
@@ -345,16 +342,15 @@ pub fn build(b: *std.Build) !void {
         e.root_module.addImport("zjobs", zjobs.module("root"));
         e.root_module.addImport("zpool", zpool.module("root"));
         e.root_module.addImport("zglfw", zglfw.module("root"));
-        e.root_module.addImport("zgpu", zgpu.module("root"));
         e.root_module.addImport("zgui", zgui.module("root"));
         e.root_module.addImport("zf", zf.module("zf"));
         e.root_module.addImport("Uuid", uuid.module("Uuid"));
-        e.root_module.addImport("mach-gamemode", mach_gamemode.module("mach-gamemode"));
+        e.root_module.addImport("zbgfx", zbgfx.module("zbgfx"));
 
         e.linkLibrary(ztracy.artifact("tracy"));
         e.linkLibrary(zglfw.artifact("glfw"));
-        e.linkLibrary(zgpu.artifact("zdawn"));
         e.linkLibrary(zgui.artifact("imgui"));
+        e.linkLibrary(zbgfx.artifact("bgfx"));
 
         if (options.enable_nfd) {
             e.root_module.addImport("znfde", znfde.module("root"));
@@ -367,6 +363,8 @@ pub fn build(b: *std.Build) !void {
             }
         }
     }
+
+    //b.installArtifact(zbgfx.artifact("shaderc"));
 
     if (options.dynamic_modules) {
         var buff: [256:0]u8 = undefined;

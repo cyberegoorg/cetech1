@@ -1,8 +1,35 @@
 {
     "files.associations": {
         "*.ct_*": "json",
+        "vs_*.sc": "glsl",
+        "fs_*.sc": "glsl",
+        "cs_*.sc": "glsl",
+        "varying.def.sc": "glsl",
         "*.inc": "c",
-        "*.h": "c"
+        "*.h": "c",
+        "*.cpp": "cpp",
+        "limits": "cpp",
+        "ratio": "cpp",
+        "valarray": "cpp",
+        "algorithm": "cpp",
+        "__bit_reference": "cpp",
+        "__hash_table": "cpp",
+        "__split_buffer": "cpp",
+        "__tree": "cpp",
+        "array": "cpp",
+        "deque": "cpp",
+        "initializer_list": "cpp",
+        "list": "cpp",
+        "map": "cpp",
+        "set": "cpp",
+        "span": "cpp",
+        "string": "cpp",
+        "string_view": "cpp",
+        "unordered_map": "cpp",
+        "unordered_set": "cpp",
+        "vector": "cpp",
+        "ios": "cpp",
+        "regex": "cpp"
     },
     "[json]": {
         "editor.insertSpaces": true,
@@ -76,4 +103,5 @@
     "lldb.showDisassembly": "auto",
     "lldb.dereferencePointers": true,
     "lldb.consoleMode": "evaluate",
+    "dotnet.defaultSolution": "disable",
 }

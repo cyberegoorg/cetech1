@@ -6,6 +6,12 @@ const strid = @import("strid.zig");
 pub const ct_apidb_api_t = c.ct_apidb_api_t;
 pub const ct_allocator_t = c.ct_allocator_t;
 
+pub const ImplIter = extern struct {
+    interface: *const anyopaque,
+    next: ?*ImplIter,
+    prev: ?*ImplIter,
+};
+
 /// ApiDbAPI is main api db and purpose is shared api/interafce across all part of enfine+language
 /// API is struct with pointers to functions.
 /// Interaface is similiar to API but Interaface can have multiple implementation and must be valid C struct because he is shared across langugage.
@@ -103,17 +109,17 @@ pub const ApiDbAPI = struct {
     }
 
     // Cast generic interface to true type
-    pub fn toInterface(comptime T: type, iter: *const c.ct_apidb_impl_iter_t) *T {
+    pub fn toInterface(comptime T: type, iter: *const ImplIter) *T {
         return @ptrFromInt(@intFromPtr(iter.interface));
     }
 
     // Get first interface that implement given interface
-    pub fn getFirstImpl(self: Self, comptime T: type) ?*const c.ct_apidb_impl_iter_t {
+    pub fn getFirstImpl(self: Self, comptime T: type) ?*const ImplIter {
         return self.getFirstImplFn(T.name_hash);
     }
 
     // Get last interface that implement given interface
-    pub fn getLastImpl(self: Self, comptime T: type) ?*const c.ct_apidb_impl_iter_t {
+    pub fn getLastImpl(self: Self, comptime T: type) ?*const ImplIter {
         return self.getLastImplFn(T.name_hash);
     }
 
@@ -134,8 +140,8 @@ pub const ApiDbAPI = struct {
     getApiOpaaqueFn: *const fn (module: []const u8, language: []const u8, api_name: []const u8, api_size: usize) ?*anyopaque,
     removeApiFn: *const fn (module: []const u8, language: []const u8, api_name: []const u8) void,
     implInterfaceFn: *const fn (module: []const u8, interface_name: strid.StrId64, impl_ptr: *const anyopaque) anyerror!void,
-    getFirstImplFn: *const fn (interface_name: strid.StrId64) ?*const c.ct_apidb_impl_iter_t,
-    getLastImplFn: *const fn (interface_name: strid.StrId64) ?*const c.ct_apidb_impl_iter_t,
+    getFirstImplFn: *const fn (interface_name: strid.StrId64) ?*const ImplIter,
+    getLastImplFn: *const fn (interface_name: strid.StrId64) ?*const ImplIter,
     removeImplFn: *const fn (module: []const u8, interface_name: strid.StrId64, impl_ptr: *const anyopaque) void,
     getInterafcesVersionFn: *const fn (interface_name: strid.StrId64) u64,
     //#endregion

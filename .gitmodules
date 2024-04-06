@@ -10,12 +10,12 @@
 [submodule "externals/shared/tools/zls"]
 	path = externals/shared/tools/zls
 	url = https://github.com/zigtools/zls.git
-[submodule "externals/shared/lib/mach-gamemode"]
-	path = externals/shared/lib/mach-gamemode
-	url = https://github.com/hexops/mach-gamemode.git
 [submodule "externals/shared/lib/SDL_GameControllerDB"]
 	path = externals/shared/lib/SDL_GameControllerDB
 	url = https://github.com/mdqinc/SDL_GameControllerDB.git
 [submodule "zig"]
 	path = zig
 	url = https://github.com/cyberegoorg/cetech1-zig.git
+[submodule "externals/shared/lib/zbgfx"]
+	path = externals/shared/lib/zbgfx
+	url = https://github.com/cyberegoorg/zbgfx.git

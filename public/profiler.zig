@@ -6,42 +6,77 @@ const Src = std.builtin.SourceLocation;
 pub const AllocatorProfiler = struct {
     const Self = @This();
     name: ?[:0]const u8,
-    parent_allocator: std.mem.Allocator,
+    child_allocator: std.mem.Allocator,
     profiler_api: *ProfilerAPI,
 
-    pub fn init(profiler_api: *ProfilerAPI, parent_allocator: std.mem.Allocator, name: ?[:0]const u8) AllocatorProfiler {
-        return AllocatorProfiler{ .parent_allocator = parent_allocator, .name = name, .profiler_api = profiler_api };
+    pub fn init(profiler_api: *ProfilerAPI, child_allocator: std.mem.Allocator, name: ?[:0]const u8) AllocatorProfiler {
+        return AllocatorProfiler{ .child_allocator = child_allocator, .name = name, .profiler_api = profiler_api };
     }
 
     pub fn allocator(self: *AllocatorProfiler) std.mem.Allocator {
         return .{ .ptr = self, .vtable = &.{ .alloc = Self.alloc, .resize = Self.resize, .free = Self.free } };
     }
 
-    fn alloc(ctx: *anyopaque, n: usize, log2_ptr_align: u8, ra: usize) ?[*]u8 {
+    fn alloc(
+        ctx: *anyopaque,
+        len: usize,
+        log2_ptr_align: u8,
+        ra: usize,
+    ) ?[*]u8 {
         const self: *AllocatorProfiler = @ptrCast(@alignCast(ctx));
-        const ptr = self.parent_allocator.rawAlloc(n, log2_ptr_align, ra);
-        if (self.name != null) {
-            self.profiler_api.allocNamed(self.name.?, ptr, n);
+        const result = self.child_allocator.rawAlloc(len, log2_ptr_align, ra);
+        if (result) |addr| {
+            if (self.name != null) {
+                self.profiler_api.allocNamed(self.name.?, addr, len);
+            } else {
+                self.profiler_api.alloc(addr, len);
+            }
         } else {
-            self.profiler_api.alloc(ptr, n);
+            var buffer: [128]u8 = undefined;
+            const msg = std.fmt.bufPrint(&buffer, "alloc failed requesting {d}", .{len}) catch return result;
+            self.profiler_api.msgWithColor(msg, 0xFF0000);
         }
-        return ptr;
+        return result;
     }
 
-    fn resize(ctx: *anyopaque, buf: []u8, log2_buf_align: u8, new_size: usize, return_address: usize) bool {
+    fn resize(
+        ctx: *anyopaque,
+        buf: []u8,
+        log2_ptr_align: u8,
+        new_len: usize,
+        ra: usize,
+    ) bool {
         const self: *AllocatorProfiler = @ptrCast(@alignCast(ctx));
-        return self.parent_allocator.rawResize(buf, log2_buf_align, new_size, return_address);
+        const result = self.child_allocator.rawResize(buf, log2_ptr_align, new_len, ra);
+        if (result) {
+            if (self.name != null) {
+                self.profiler_api.freeNamed(self.name.?, buf.ptr);
+                self.profiler_api.allocNamed(self.name.?, buf.ptr, new_len);
+            } else {
+                self.profiler_api.free(buf.ptr);
+                self.profiler_api.alloc(buf.ptr, new_len);
+            }
+        } else {
+            var buffer: [128]u8 = undefined;
+            const msg = std.fmt.bufPrint(&buffer, "resize failed requesting {d} -> {d}", .{ buf.len, new_len }) catch return result;
+            self.profiler_api.msgWithColor(msg, 0xFF0000);
+        }
+        return result;
     }
 
-    fn free(ctx: *anyopaque, buf: []u8, log2_buf_align: u8, return_address: usize) void {
+    fn free(
+        ctx: *anyopaque,
+        buf: []u8,
+        log2_ptr_align: u8,
+        ra: usize,
+    ) void {
         const self: *AllocatorProfiler = @ptrCast(@alignCast(ctx));
-
+        self.child_allocator.rawFree(buf, log2_ptr_align, ra);
         if (self.name != null) {
             self.profiler_api.freeNamed(self.name.?, buf.ptr);
         } else {
             self.profiler_api.free(buf.ptr);
         }
-        return self.parent_allocator.rawFree(buf, log2_buf_align, return_address);
     }
 };
 

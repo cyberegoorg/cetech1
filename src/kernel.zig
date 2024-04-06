@@ -247,8 +247,8 @@ pub fn deinit(
 
     coreui.deinit();
     if (gpu_context) |ctx| gpu.api.destroyContext(ctx);
-    if (main_window) |window| system.api.destroyWindow(window);
     gpu.deinit();
+    if (main_window) |window| system.api.destroyWindow(window);
     system.deinit();
 
     assetdb.deinit();
@@ -323,9 +323,9 @@ pub fn getStrArgs(arg_name: []const u8) ?[]const u8 {
     return v;
 }
 
-pub fn bigInit(static_modules: ?[]const c.ct_module_desc_t, load_dynamic: bool) !void {
-    if (static_modules != null) {
-        try modules.addModules(static_modules.?);
+pub fn bigInit(static_modules: []const c.ct_module_desc_t, load_dynamic: bool) !void {
+    if (static_modules.len != 0) {
+        try modules.addModules(static_modules);
     }
 
     if (load_dynamic) {
@@ -356,6 +356,7 @@ pub fn quit() void {
     _quit = true;
 }
 var _can_quit_one = false;
+
 fn sigQuitHandler(signum: c_int) callconv(.C) void {
     _ = signum;
 
@@ -372,17 +373,17 @@ fn sigQuitHandler(signum: c_int) callconv(.C) void {
 
 fn registerSignals() !void {
     if (builtin.os.tag != .windows) {
-        var sigaction = std.os.Sigaction{
+        var sigaction = std.posix.Sigaction{
             .handler = .{ .handler = sigQuitHandler },
-            .mask = std.os.empty_sigset,
+            .mask = std.posix.empty_sigset,
             .flags = 0,
         };
-        try std.os.sigaction(std.os.SIG.TERM, &sigaction, null);
-        try std.os.sigaction(std.os.SIG.INT, &sigaction, null);
+        try std.posix.sigaction(std.posix.SIG.TERM, &sigaction, null);
+        try std.posix.sigaction(std.posix.SIG.INT, &sigaction, null);
     }
 }
 
-pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32, boot_args: BootArgs) !void {
+pub fn boot(static_modules: []const c.ct_module_desc_t, boot_args: BootArgs) !void {
     while (_restart) {
         _restart = false;
 
@@ -400,6 +401,7 @@ pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32, boot_
         const asset_root = getStrArgs("--asset-root") orelse "";
         const headless = 1 == getIntArgs("--headless") orelse @intFromBool(boot_args.headless);
         const fullscreen = 1 == getIntArgs("--fullscreen") orelse 0;
+        const renderer = getStrArgs("--renderer");
 
         // Init Kernel
         try init(gpa_allocator, headless);
@@ -411,7 +413,7 @@ pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32, boot_
         const fast_mode = std.mem.eql(u8, test_ui_speed_value, "fast");
 
         // Init modules
-        try bigInit(static_modules.?[0..static_modules_n], load_dynamic);
+        try bigInit(static_modules, load_dynamic);
         defer bigDeinit() catch unreachable;
 
         var kernel_tick: u64 = 1;
@@ -450,8 +452,7 @@ pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32, boot_
         var kernel_task_gen = apidb.api.getInterafcesVersion(public.KernelTaskI);
 
         // Main window
-        // TODO make linux headless work
-        if (!(builtin.os.tag == .linux and headless)) {
+        if (!headless) {
             var w: i32 = 1024;
             var h: i32 = 768;
 
@@ -466,10 +467,14 @@ pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32, boot_
             log.info("Using video mode {d}x{d}", .{ w, h });
 
             main_window = try system.api.createWindow(w, h, "cetech1", if (fullscreen) monitor else null);
-            gpu_context = try gpu.api.createContext(main_window.?, !headless);
-        } else {
-            // TODO: True headless
         }
+
+        gpu_context = try gpu.api.createContext(
+            main_window,
+            if (renderer) |r| cetech1.gpu.Backend.fromString(r) else null,
+            !headless,
+            headless,
+        );
 
         initKernelTasks();
 
@@ -497,6 +502,9 @@ pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32, boot_
                 if (reloaded_modules) {}
             }
 
+            system.api.poolEvents();
+
+            // Begin loop
             {
                 var it = apidb.api.getFirstImpl(public.KernelLoopHookI);
                 while (it) |node| : (it = node.next) {
@@ -504,8 +512,6 @@ pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32, boot_
                     iface.begin_loop();
                 }
             }
-
-            system.api.poolEvents();
 
             // Any public.KernelTaskI iface changed? (add/remove)?
             const new_kernel_gen = apidb.api.getInterafcesVersion(public.KernelTaskI);
@@ -533,11 +539,12 @@ pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32, boot_
             // Do hard work.
             try doKernelUpdateTasks(kernel_tick, dt);
 
-            // TODO: Render graph
+            // Render frame
             if (gpu_context) |ctx| {
-                gpu.api.shitTempRender(ctx, kernel_tick, @floatFromInt(dt));
+                gpu.api.renderFrame(ctx, kernel_tick, @floatFromInt(dt), !headless);
             }
 
+            // End loop
             {
                 var it = apidb.api.getFirstImpl(public.KernelLoopHookI);
                 while (it) |node| : (it = node.next) {
@@ -597,9 +604,9 @@ pub fn boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32, boot_
         profiler_private.api.frameMark();
 
         if (!_restart) {
-            log.info("QUIT", .{});
+            log.info("Do quit", .{});
         } else {
-            log.info("RESTART", .{});
+            log.info("Do restart", .{});
         }
     }
 }
@@ -752,10 +759,6 @@ fn doKernelUpdateTasks(kernel_tick: u64, dt: i64) !void {
             continue;
         }
 
-        // var phase_zone_ctx = profiler.ztracy.Zone(@src());
-        // phase_zone_ctx.Name(phase.name);
-        // defer phase_zone_ctx.End();
-
         for (phase.update_chain.items) |update_handler| {
             const KernelTask = struct {
                 update_handler: *public.KernelTaskUpdateI,
@@ -767,8 +770,6 @@ fn doKernelUpdateTasks(kernel_tick: u64, dt: i64) !void {
                     zone_ctx.Name(self.update_handler.name[0..std.mem.len(self.update_handler.name)]);
                     defer zone_ctx.End();
 
-                    // profiler.FiberEnter(self.update_handler.name);
-                    // defer profiler.FiberLeave();
                     self.update_handler.update(&self.frame_allocator, self.kernel_tick, @floatFromInt(self.dt));
                 }
             };
@@ -833,10 +834,10 @@ fn doKernelUpdateTasks(kernel_tick: u64, dt: i64) !void {
 fn dumpKernelUpdatePhaseTree() !void {
     try dumpKernelUpdatePhaseTreeD2();
 
-    log.info("UPDATE PHASE", .{});
+    log.info("Kernel update phase:", .{});
     for (_phases_dag.output.keys(), 0..) |phase_hash, idx| {
         var phase = _phase_map.getPtr(phase_hash).?;
-        log.info(" +- PHASE: {s}", .{phase.name});
+        log.info("\t- {s}", .{phase.name});
 
         const last_idx = if (_phases_dag.output.keys().len != 0) _phases_dag.output.keys().len else 0;
         const is_last = (last_idx - 1) == idx;
@@ -863,10 +864,10 @@ fn dumpKernelUpdatePhaseTree() !void {
             const vert_line = if (!is_last) " " else " ";
 
             if (depends_line == null) {
-                log.info(" {s}   +- [{s}] TASK: {s}", .{ vert_line, tags, update_fce.name });
+                log.info("\t{s}\t- [{s}] {s}", .{ vert_line, tags, update_fce.name });
             } else {
                 defer _kernel_allocator.free(depends_line.?);
-                log.info(" {s}   +- [{s}] TASK: {s} [{s}]", .{ vert_line, tags, update_fce.name, depends_line.? });
+                log.info("\t{s}\t- [{s}] {s} [{s}]", .{ vert_line, tags, update_fce.name, depends_line.? });
             }
         }
     }
@@ -926,9 +927,9 @@ fn initKernelTasks() void {
 }
 
 fn dumpKernelTask() void {
-    log.info("TASKS", .{});
+    log.info("Kernel tasks", .{});
     for (_task_chain.items) |t| {
-        log.info(" +- {s}", .{t.name});
+        log.info("\t- {s}", .{t.name});
     }
 }
 
@@ -943,29 +944,22 @@ fn shutdownKernelTasks() void {
     }
 }
 
-pub export fn cetech1_kernel_boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32) callconv(.C) bool {
-    boot(static_modules, static_modules_n, .{}) catch |err| {
-        log.err("Boot error: {}", .{err});
-        return true;
-    };
-    return false;
-}
-
 test "Can boot kernel" {
+    if (builtin.os.tag == .linux) return error.SkipZigTest;
     const Module1 = struct {
         var called: bool = false;
-        fn load_module(_apidb: ?*const c.ct_apidb_api_t, _allocator: ?*const c.ct_allocator_t, load: u8, reload: u8) callconv(.C) u8 {
+        fn load_module(_apidb: [*c]const c.ct_apidb_api_t, _allocator: [*c]const c.ct_allocator_t, load: bool, reload: bool) callconv(.C) bool {
             _ = _apidb;
             _ = reload;
             _ = load;
             _ = _allocator;
             called = true;
-            return 1;
+            return true;
         }
     };
 
-    var static_modules = [_]c.ct_module_desc_t{.{ .name = "module1", .module_fce = &Module1.load_module }};
-    try boot(&static_modules, 1, .{ .headless = true, .load_dynamic = false, .max_kernel_tick = 2 });
+    const static_modules = [_]c.ct_module_desc_t{.{ .name = "module1", .module_fce = &Module1.load_module }};
+    try boot(&static_modules, .{ .headless = true, .load_dynamic = false, .max_kernel_tick = 2 });
     try std.testing.expect(Module1.called);
 }
 

@@ -18,8 +18,8 @@ const Icons = cetech1.coreui.CoreIcons;
 
 const module_name = .editor_asset_browser;
 
-pub const std_options = struct {
-    pub const logFn = cetech1.log.zigLogFnGen(&_log);
+pub const std_options: std.Options = .{
+    .logFn = cetech1.log.zigLogFnGen(&_log),
 };
 const log = std.log.scoped(module_name);
 
@@ -465,6 +465,6 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_asset_browser(__apidb: ?*const cetech1.apidb.ct_apidb_api_t, __allocator: ?*const cetech1.apidb.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
+pub export fn ct_load_module_editor_asset_browser(__apidb: *const cetech1.apidb.ct_apidb_api_t, __allocator: *const cetech1.apidb.ct_allocator_t, __load: bool, __reload: bool) callconv(.C) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }

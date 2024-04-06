@@ -14,8 +14,8 @@ const Icons = coreui.CoreIcons;
 
 const module_name = .editor;
 
-pub const std_options = struct {
-    pub const logFn = cetech1.log.zigLogFnGen(&_log);
+pub const std_options: std.Options = .{
+    .logFn = cetech1.log.zigLogFnGen(&_log),
 };
 const log = std.log.scoped(module_name);
 
@@ -560,7 +560,7 @@ fn tryQuit() void {
 
 fn doMainMenu(allocator: std.mem.Allocator) !void {
     _coreui.beginMainMenuBar();
-
+    defer _coreui.endMainMenuBar();
     if (_coreui.beginMenu(allocator, coreui.Icons.Editor, true, null)) {
         defer _coreui.endMenu();
 
@@ -659,8 +659,6 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
         _ = _coreui.menuItemPtr(allocator, coreui.Icons.Authors ++ "  " ++ "Authors", .{ .selected = &_g.show_authors }, null);
         _ = _coreui.menuItemPtr(allocator, coreui.Icons.Externals ++ "  " ++ "Externals", .{ .selected = &_g.show_external_credits }, null);
     }
-
-    _coreui.endMainMenuBar();
 }
 
 fn doTabMainMenu(allocator: std.mem.Allocator) !void {
@@ -998,7 +996,7 @@ pub fn load_module_zig(apidb_: *apidb.ApiDbAPI, allocator: Allocator, log_api: *
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor(__apidb: ?*const apidb.ct_apidb_api_t, __allocator: ?*const apidb.ct_allocator_t, __load: u8, __reload: u8) callconv(.C) u8 {
+pub export fn ct_load_module_editor(__apidb: *const apidb.ct_apidb_api_t, __allocator: *const apidb.ct_allocator_t, __load: bool, __reload: bool) callconv(.C) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }
 
