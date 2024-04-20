@@ -37,21 +37,19 @@ var create_foo_asset_i = editor.CreateAssetI.implement(
     struct {
         pub fn create(
             allocator: std.mem.Allocator,
-            dbc: *cdb.Db,
+            db: cdb.Db,
             folder: cdb.ObjId,
         ) !void {
-            var db = cdb.CdbDb.fromDbT(dbc, _cdb);
-
             var buff: [256:0]u8 = undefined;
             const name = try _assetdb.buffGetValidName(
                 allocator,
                 &buff,
-                &db,
+                db,
                 folder,
                 db.getTypeIdx(cetech1.assetdb.FooAsset.type_hash).?,
                 "NewFooAsset",
             );
-            const new_obj = try cetech1.assetdb.FooAsset.createObject(&db);
+            const new_obj = try cetech1.assetdb.FooAsset.createObject(db);
 
             _ = _assetdb.createAsset(name, folder, new_obj);
         }
@@ -66,10 +64,10 @@ var create_foo_asset_i = editor.CreateAssetI.implement(
 var folder_visual_aspect = editor.UiVisualAspect.implement(struct {
     pub fn uiIcons(
         allocator: std.mem.Allocator,
-        dbc: *cdb.Db,
+        db: cdb.Db,
         obj: cdb.ObjId,
     ) ![:0]const u8 {
-        _ = dbc;
+        _ = db; // autofix
         _ = obj;
 
         return try std.fmt.allocPrintZ(
@@ -84,10 +82,8 @@ var folder_visual_aspect = editor.UiVisualAspect.implement(struct {
 
 // Create cdb types
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
-    pub fn createTypes(db_: *cdb.Db) !void {
-        var db = cdb.CdbDb.fromDbT(db_, _cdb);
-
-        try cetech1.assetdb.FooAsset.addAspect(&db, editor.UiVisualAspect, &folder_visual_aspect);
+    pub fn createTypes(db: cdb.Db) !void {
+        try cetech1.assetdb.FooAsset.addAspect(db, editor.UiVisualAspect, &folder_visual_aspect);
     }
 });
 

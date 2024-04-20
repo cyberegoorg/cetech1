@@ -87,14 +87,14 @@ pub const AssetIOI = struct {
     canImport: ?*const fn (extension: []const u8) bool,
 
     /// Can reimport asset?
-    canReimport: ?*const fn (db: *cdb.CdbDb, asset: cdb.ObjId) bool, //TODO
+    canReimport: ?*const fn (db: cdb.Db, asset: cdb.ObjId) bool, //TODO
 
     /// Can export asset with this extension?
-    canExport: ?*const fn (db: *cdb.CdbDb, asset: cdb.ObjId, extension: []const u8) bool,
+    canExport: ?*const fn (db: cdb.Db, asset: cdb.ObjId, extension: []const u8) bool,
 
     ///Crete import asset task.
     importAsset: ?*const fn (
-        db: *cdb.CdbDb,
+        db: cdb.Db,
         prereq: task.TaskID,
         dir: std.fs.Dir,
         folder: cdb.ObjId,
@@ -104,7 +104,7 @@ pub const AssetIOI = struct {
 
     /// Crete export asset task.
     exportAsset: ?*const fn (
-        db: *cdb.CdbDb,
+        db: cdb.Db,
         root_path: []const u8,
         sub_path: []const u8,
         asset: cdb.ObjId,
@@ -228,7 +228,7 @@ pub const AssetDBAPI = struct {
         return self.saveAssetFn(tmp_allocator, asset);
     }
 
-    isAssetNameValid: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, folder: cdb.ObjId, type_idx: cdb.TypeIdx, base_name: [:0]const u8) anyerror!bool,
+    isAssetNameValid: *const fn (allocator: std.mem.Allocator, db: cdb.Db, folder: cdb.ObjId, type_idx: cdb.TypeIdx, base_name: [:0]const u8) anyerror!bool,
 
     getAssetForObj: *const fn (obj: cdb.ObjId) ?cdb.ObjId,
     getObjForAsset: *const fn (obj: cdb.ObjId) ?cdb.ObjId,
@@ -236,11 +236,11 @@ pub const AssetDBAPI = struct {
     getFilePathForAsset: *const fn (asset: cdb.ObjId, tmp_allocator: std.mem.Allocator) anyerror![]u8,
     getPathForFolder: *const fn (asset: cdb.ObjId, tmp_allocator: std.mem.Allocator) anyerror![]u8,
 
-    createNewFolder: *const fn (db: *cdb.CdbDb, parent_folder: cdb.ObjId, name: [:0]const u8) anyerror!cdb.ObjId,
+    createNewFolder: *const fn (db: cdb.Db, parent_folder: cdb.ObjId, name: [:0]const u8) anyerror!cdb.ObjId,
     filerAsset: *const fn (tmp_allocator: std.mem.Allocator, filter: [:0]const u8, tags_filter: cdb.ObjId) anyerror!FilteredAssets,
     saveAsAllAssets: *const fn (tmp_allocator: std.mem.Allocator, path: []const u8) anyerror!void,
-    deleteAsset: *const fn (db: *cdb.CdbDb, asset: cdb.ObjId) anyerror!void,
-    deleteFolder: *const fn (db: *cdb.CdbDb, folder: cdb.ObjId) anyerror!void,
+    deleteAsset: *const fn (db: cdb.Db, asset: cdb.ObjId) anyerror!void,
+    deleteFolder: *const fn (db: cdb.Db, folder: cdb.ObjId) anyerror!void,
     isToDeleted: *const fn (asset_or_folder: cdb.ObjId) bool,
     reviveDeleted: *const fn (asset_or_folder: cdb.ObjId) void,
     isProjectOpened: *const fn () bool,
@@ -250,13 +250,13 @@ pub const AssetDBAPI = struct {
 
     openInOs: *const fn (allocator: std.mem.Allocator, open_type: system.OpenInType, asset: cdb.ObjId) anyerror!void,
 
-    isRootFolder: *const fn (db: *cdb.CdbDb, asset: cdb.ObjId) bool,
+    isRootFolder: *const fn (db: cdb.Db, asset: cdb.ObjId) bool,
     isAssetObjTypeOf: *const fn (asset: cdb.ObjId, type_idx: cdb.TypeIdx) bool,
 
     buffGetValidName: *const fn (
         allocator: std.mem.Allocator,
         buf: [:0]u8,
-        db: *cdb.CdbDb,
+        db: cdb.Db,
         folder: cdb.ObjId,
         type_idx: cdb.TypeIdx,
         base_name: [:0]const u8,

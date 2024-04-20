@@ -41,7 +41,7 @@ var _g: *G = undefined;
 
 const ExplorerTab = struct {
     tab_i: editor.EditorTabI,
-    db: cdb.CdbDb,
+    db: cdb.Db,
     selection: cdb.ObjId = .{},
     inter_selection: cdb.ObjId,
     tv_result: editor_tree.SelectInTreeResult = .{ .is_changed = false },
@@ -58,7 +58,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
 }, struct {
 
     // Can open tab
-    pub fn canOpen(db: *cdb.Db, selection: cdb.ObjId) !bool {
+    pub fn canOpen(db: cdb.Db, selection: cdb.ObjId) !bool {
         _ = db;
         _ = selection;
 
@@ -76,16 +76,16 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Create new FooTab instantce
-    pub fn create(dbc: *cdb.Db) !?*editor.EditorTabI {
+    pub fn create(db: cdb.Db) !?*editor.EditorTabI {
         var tab_inst = try _allocator.create(ExplorerTab);
-        var db = cdb.CdbDb.fromDbT(dbc, _cdb);
+
         tab_inst.* = ExplorerTab{
             .tab_i = .{
                 .vt = _g.tab_vt,
                 .inst = @ptrCast(tab_inst),
             },
             .db = db,
-            .inter_selection = try coreui.ObjSelection.createObject(&db),
+            .inter_selection = try coreui.ObjSelection.createObject(db),
         };
         return &tab_inst.tab_i;
     }
@@ -98,8 +98,8 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     pub fn focused(inst: *editor.TabO) !void {
-        var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
-        _editor.propagateSelection(&tab_o.db, tab_o.inter_selection);
+        const tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
+        _editor.propagateSelection(tab_o.db, tab_o.inter_selection);
     }
 
     // Draw tab menu
@@ -114,7 +114,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
 
             try _editor.showObjContextMenu(
                 allocator,
-                &tab_o.db,
+                tab_o.db,
                 tab_o,
                 &.{
                     editor.Contexts.open,
@@ -144,16 +144,16 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
             defer _coreui.popStyleVar(.{});
 
             // Draw only asset content
-            if (_coreui.getSelected(allocator, &tab_o.db, tab_o.selection)) |selected_objs| {
+            if (_coreui.getSelected(allocator, tab_o.db, tab_o.selection)) |selected_objs| {
                 defer allocator.free(selected_objs);
 
                 for (selected_objs) |obj| {
-                    if (!assetdb.Asset.isSameType(&tab_o.db, obj)) continue;
+                    if (!assetdb.Asset.isSameType(tab_o.db, obj)) continue;
 
                     // Draw asset_object
                     const r = try _editortree.cdbTreeView(
                         allocator,
-                        &tab_o.db,
+                        tab_o.db,
                         tab_o,
                         &.{
                             editor.Contexts.open,
@@ -174,7 +174,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
 
                     const selection_version = tab_o.db.getVersion(tab_o.inter_selection);
                     if (selection_version != tab_o.db.getVersion(tab_o.inter_selection)) {
-                        _editor.propagateSelection(&tab_o.db, tab_o.inter_selection);
+                        _editor.propagateSelection(tab_o.db, tab_o.inter_selection);
                     }
                 }
             }
@@ -182,7 +182,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, db: *cdb.Db, selection: cdb.ObjId) !void {
+    pub fn objSelected(inst: *editor.TabO, db: cdb.Db, selection: cdb.ObjId) !void {
         _ = db;
 
         var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
@@ -401,7 +401,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
 // Create cdb types
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
-    pub fn createTypes(db_: ?*cdb.Db) !void {
+    pub fn createTypes(db_: cdb.Db) !void {
         _ = db_;
     }
 });

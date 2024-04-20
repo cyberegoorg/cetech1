@@ -344,7 +344,7 @@ pub const CoreUIApi = struct {
     pushPtrId: *const fn (ptr_id: *const anyopaque) void,
     pushIntId: *const fn (int_id: u32) void,
     pushObjUUID: *const fn (obj: cdb.ObjId) void,
-    pushPropName: *const fn (db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: u32) void,
+    pushPropName: *const fn (db: cdb.Db, obj: cdb.ObjId, prop_idx: u32) void,
 
     popId: *const fn () void,
 
@@ -433,15 +433,15 @@ pub const CoreUIApi = struct {
     isMouseClicked: *const fn (mouse_button: MouseButton) bool,
 
     // Selection OBJ
-    isSelected: *const fn (db: *cdb.CdbDb, selection: cdb.ObjId, obj: cdb.ObjId) bool,
-    addToSelection: *const fn (db: *cdb.CdbDb, selection: cdb.ObjId, obj: cdb.ObjId) anyerror!void,
-    removeFromSelection: *const fn (db: *cdb.CdbDb, selection: cdb.ObjId, obj: cdb.ObjId) anyerror!void,
-    clearSelection: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, selection: cdb.ObjId) anyerror!void,
-    setSelection: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, selection: cdb.ObjId, obj: cdb.ObjId) anyerror!void,
-    selectedCount: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, selection: cdb.ObjId) u32,
-    getFirstSelected: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, selection: cdb.ObjId) cdb.ObjId,
-    getSelected: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, selection: cdb.ObjId) ?[]const cdb.ObjId,
-    handleSelection: *const fn (allocator: std.mem.Allocator, db: *cdb.CdbDb, selection: cdb.ObjId, obj: cdb.ObjId, multiselect_enabled: bool) anyerror!void,
+    isSelected: *const fn (db: cdb.Db, selection: cdb.ObjId, obj: cdb.ObjId) bool,
+    addToSelection: *const fn (db: cdb.Db, selection: cdb.ObjId, obj: cdb.ObjId) anyerror!void,
+    removeFromSelection: *const fn (db: cdb.Db, selection: cdb.ObjId, obj: cdb.ObjId) anyerror!void,
+    clearSelection: *const fn (allocator: std.mem.Allocator, db: cdb.Db, selection: cdb.ObjId) anyerror!void,
+    setSelection: *const fn (allocator: std.mem.Allocator, db: cdb.Db, selection: cdb.ObjId, obj: cdb.ObjId) anyerror!void,
+    selectedCount: *const fn (allocator: std.mem.Allocator, db: cdb.Db, selection: cdb.ObjId) u32,
+    getFirstSelected: *const fn (allocator: std.mem.Allocator, db: cdb.Db, selection: cdb.ObjId) cdb.ObjId,
+    getSelected: *const fn (allocator: std.mem.Allocator, db: cdb.Db, selection: cdb.ObjId) ?[]const cdb.ObjId,
+    handleSelection: *const fn (allocator: std.mem.Allocator, db: cdb.Db, selection: cdb.ObjId, obj: cdb.ObjId, multiselect_enabled: bool) anyerror!void,
 
     // TODO: MOVE?
     // Tests

@@ -24,7 +24,7 @@ var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 
-var _db: *cdb.CdbDb = undefined;
+var _db: cdb.Db = undefined;
 
 const spam_log = false;
 const do_cdb = false;
@@ -55,9 +55,7 @@ const FooCDB = cdb.CdbTypeDecl(
 // Register all cdb stuff in this method
 
 var create_types_i = cdb.CreateTypesI.implement(struct {
-    pub fn createTypes(db_: *cdb.Db) !void {
-        var db = cdb.CdbDb.fromDbT(db_, _cdb);
-
+    pub fn createTypes(db: cdb.Db) !void {
         _ = try db.addType(
             FooCDB.name,
             &[_]cdb.PropDef{
@@ -67,8 +65,8 @@ var create_types_i = cdb.CreateTypesI.implement(struct {
             },
         );
 
-        _g.type_hash = cetech1.cdb_types.addBigType(&db, "stress_foo_1", null) catch unreachable;
-        _g.type_hash2 = cetech1.cdb_types.addBigType(&db, "stress_foo_2", null) catch unreachable;
+        _g.type_hash = cetech1.cdb_types.addBigType(db, "stress_foo_1", null) catch unreachable;
+        _g.type_hash2 = cetech1.cdb_types.addBigType(db, "stress_foo_2", null) catch unreachable;
 
         _g.ref_obj1 = db.createObject(_g.type_hash2) catch undefined;
     }
@@ -95,14 +93,14 @@ const KernelTask = struct {
         if (do_cdb) {
             try _db.stressIt(_g.type_hash, _g.type_hash2, _g.ref_obj1);
 
-            const obj1 = try FooCDB.createObject(&_db);
+            const obj1 = try FooCDB.createObject(_db);
             if (spam_log) log.debug("obj1 id {d}", .{obj1.id});
 
             if (_db.writeObj(obj1)) |writer| {
                 defer _db.writeCommit(writer);
 
-                FooCDB.setValue(&_db, f32, writer, .PROP1, @floatFromInt(kernel_tick));
-                FooCDB.setValue(&_db, u64, writer, .KERNEL_TICK, kernel_tick);
+                FooCDB.setValue(_db, f32, writer, .PROP1, @floatFromInt(kernel_tick));
+                FooCDB.setValue(_db, u64, writer, .KERNEL_TICK, kernel_tick);
             }
 
             const version = _db.getVersion(obj1);

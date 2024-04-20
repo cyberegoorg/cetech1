@@ -1176,7 +1176,7 @@ pub const Db = struct {
 
     pub fn callOnObjIdDestroyed(self: *Self, objects: []public.ObjId) void {
         for (self.on_obj_destroy_map.keys()) |fce| {
-            fce(@ptrCast(self), objects);
+            fce(public.Db{ .ptr = @ptrCast(self), .vtable = &db_vt }, objects);
         }
     }
 
@@ -1352,7 +1352,7 @@ pub const Db = struct {
         var it = apidb.api.getFirstImpl(public.CreateTypesI);
         while (it) |node| : (it = node.next) {
             var iface = cetech1.apidb.ApiDbAPI.toInterface(public.CreateTypesI, node);
-            iface.create_types(@ptrCast(self));
+            iface.create_types(public.Db{ .ptr = self, .vtable = &db_vt });
         }
     }
 
@@ -2094,8 +2094,8 @@ pub fn init(allocator: std.mem.Allocator) !void {
 
 pub fn deinit() void {}
 
-pub fn toDbFromDbT(db: *public.Db) *Db {
-    return @alignCast(@ptrCast(db));
+pub fn toDbFromDbT(db: public.Db) *Db {
+    return @alignCast(@ptrCast(db.ptr));
 }
 
 pub fn registerToApi() !void {
@@ -2109,7 +2109,7 @@ pub fn registerAllTypes() void {
 
         var db_it = _first_db;
         while (db_it) |db_node| : (db_it = db_node.next) {
-            iface.create_types(@ptrCast(db_node));
+            iface.create_types(.{ .ptr = @ptrCast(db_node), .vtable = &db_vt });
         }
     }
 }
@@ -2117,6 +2117,10 @@ pub fn registerAllTypes() void {
 pub var api = public.CdbAPI{
     .createDbFn = createDb,
     .destroyDbFn = destroyDb,
+};
+
+const db_vt = public.Db.VTable{
+    .dump = @ptrCast(&dump),
     .addTypeFn = @ptrCast(&Db.addType),
     .getTypePropDefFn = @ptrCast(&Db.getTypePropDef),
     .getTypeNameFn = @ptrCast(&Db.getTypeName),
@@ -2173,7 +2177,6 @@ pub var api = public.CdbAPI{
     .restoreDeletedInSetFn = @ptrCast(&Db.restoreDeletedInSet),
     .setPrototypeFn = @ptrCast(&Db.setPrototype),
     .getDefaultObjectFn = @ptrCast(&Db.getDefaultObject),
-    .dump = dump,
     .getFirstObjectFn = @ptrCast(&Db.getFirstObject),
     .getAllObjectByTypeFn = @ptrCast(&Db.getAllObjectByType),
     .hasTypeSetFn = @ptrCast(&Db.hasTypeSet),
@@ -2181,7 +2184,7 @@ pub var api = public.CdbAPI{
     .getTypeIdxFn = @ptrCast(&Db.getTypeIdx),
 };
 
-fn createDb(name: [:0]const u8) !*public.Db {
+fn createDb(name: [:0]const u8) !public.Db {
     var db = try _allocator.create(Db);
     db.* = try Db.init(_allocator, name);
 
@@ -2194,11 +2197,11 @@ fn createDb(name: [:0]const u8) !*public.Db {
 
     db.registerAllTypes();
 
-    return @ptrCast(db);
+    return public.Db{ .ptr = db, .vtable = &db_vt };
 }
 
-fn destroyDb(db_: *public.Db) void {
-    var db = toDbFromDbT(db_);
+fn destroyDb(db_: public.Db) void {
+    var db: *Db = @alignCast(@ptrCast(db_.ptr));
 
     db.deinit();
 
@@ -2215,9 +2218,7 @@ fn destroyDb(db_: *public.Db) void {
     _allocator.destroy(db);
 }
 
-fn dump(db_: *public.Db) !void {
-    var db = toDbFromDbT(db_);
-
+fn dump(db: *Db) !void {
     var path_buff: [1024]u8 = undefined;
     var file_path_buff: [1024]u8 = undefined;
     // only if asset root is set.
@@ -2298,7 +2299,7 @@ test "cdb: Test alocate/free id" {
     );
     _ = type_hash;
 
-    var _db = toDbFromDbT(db.db);
+    var _db = toDbFromDbT(db);
     var storage = _db.getTypeStorageByTypeHash(strId32("foo")).?;
 
     // Allocate two IDs
@@ -2332,7 +2333,7 @@ test "cdb: Test alocate/free idset" {
     );
     _ = type_hash;
 
-    var _db = toDbFromDbT(db.db);
+    var _db = toDbFromDbT(db);
     var storage = _db.getTypeStorageByTypeHash(strId32("foo")).?;
 
     var array = try storage.allocateObjIdSet();

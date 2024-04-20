@@ -92,8 +92,7 @@ const _kernel_hook_i = cetech1.kernel.KernelLoopHookI.implement(struct {
 });
 
 var create_types_i = cetech1.cdb.CreateTypesI.implement(struct {
-    pub fn createTypes(db_: *cetech1.cdb.Db) !void {
-        var db = cetech1.cdb.CdbDb.fromDbT(db_, &cdb_private.api);
+    pub fn createTypes(db: cetech1.cdb.Db) !void {
 
         // Obj selections
         _ = try db.addType(
@@ -366,7 +365,7 @@ fn openFolderDialog(allocator: std.mem.Allocator, default_path: ?[:0]const u8) !
     return null;
 }
 
-fn pushPropName(db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId, prop_idx: u32) void {
+fn pushPropName(db: cetech1.cdb.Db, obj: cetech1.cdb.ObjId, prop_idx: u32) void {
     const props_def = db.getTypePropDef(obj.type_idx).?;
     zgui.pushStrIdZ(props_def[prop_idx].name);
 }
@@ -490,7 +489,7 @@ fn menuItemPtr(allocator: std.mem.Allocator, label: [:0]const u8, args: public.M
 
 fn clearSelection(
     allocator: std.mem.Allocator,
-    db: *cetech1.cdb.CdbDb,
+    db: cetech1.cdb.Db,
     selection: cetech1.cdb.ObjId,
 ) !void {
     const r = db.readObj(selection).?;
@@ -922,13 +921,13 @@ fn inputU64(label: [:0]const u8, args: public.InputScalarGen(u64)) bool {
     });
 }
 
-fn removeFromSelection(db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) !void {
+fn removeFromSelection(db: cetech1.cdb.Db, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) !void {
     const w = db.writeObj(selection).?;
     try public.ObjSelection.removeFromRefSet(db, w, .Selection, obj);
     try db.writeCommit(w);
 }
 
-fn handleSelection(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId, multiselect_enabled: bool) !void {
+fn handleSelection(allocator: std.mem.Allocator, db: cetech1.cdb.Db, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId, multiselect_enabled: bool) !void {
     if (multiselect_enabled and api.isKeyDown(.mod_super) or api.isKeyDown(.mod_ctrl)) {
         if (api.isSelected(db, selection, obj)) {
             try api.removeFromSelection(db, selection, obj);
@@ -940,23 +939,23 @@ fn handleSelection(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selecti
     }
 }
 
-fn getSelected(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId) ?[]const cetech1.cdb.ObjId {
+fn getSelected(allocator: std.mem.Allocator, db: cetech1.cdb.Db, selection: cetech1.cdb.ObjId) ?[]const cetech1.cdb.ObjId {
     const r = db.readObj(selection) orelse return null;
     return public.ObjSelection.readRefSet(db, r, .Selection, allocator);
 }
 
-fn isSelected(db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) bool {
+fn isSelected(db: cetech1.cdb.Db, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) bool {
     return public.ObjSelection.isInSet(db, db.readObj(selection).?, .Selection, obj);
 }
 
-fn addToSelection(db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) !void {
+fn addToSelection(db: cetech1.cdb.Db, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) !void {
     const w = db.writeObj(selection).?;
 
     try public.ObjSelection.addRefToSet(db, w, .Selection, &.{obj});
     try db.writeCommit(w);
 }
 
-fn setSelection(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) !void {
+fn setSelection(allocator: std.mem.Allocator, db: cetech1.cdb.Db, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) !void {
     const r = db.readObj(selection).?;
 
     const w = db.writeObj(selection).?;
@@ -973,7 +972,7 @@ fn setSelection(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection:
     try db.writeCommit(w);
 }
 
-fn selectedCount(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId) u32 {
+fn selectedCount(allocator: std.mem.Allocator, db: cetech1.cdb.Db, selection: cetech1.cdb.ObjId) u32 {
     const r = db.readObj(selection) orelse return 0;
 
     // TODO: count to cdb
@@ -984,7 +983,7 @@ fn selectedCount(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection
     return 0;
 }
 
-fn getFirstSelected(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, selection: cetech1.cdb.ObjId) cetech1.cdb.ObjId {
+fn getFirstSelected(allocator: std.mem.Allocator, db: cetech1.cdb.Db, selection: cetech1.cdb.ObjId) cetech1.cdb.ObjId {
     const r = db.readObj(selection) orelse return .{};
 
     // TODO: count to cdb
@@ -1014,49 +1013,49 @@ test "coreui: should do basic operatino with selection" {
 
     try registerToApi();
 
-    var db = try cdb_private.api.createDb("test");
+    const db = try cdb_private.api.createDb("test");
     defer cdb_private.api.destroyDb(db);
 
-    const asset_type_idx = try cetech1.cdb_types.addBigType(&db, "ct_foo_asset", null);
+    const asset_type_idx = try cetech1.cdb_types.addBigType(db, "ct_foo_asset", null);
     _ = asset_type_idx;
 
-    const obj1 = try cetech1.assetdb.FooAsset.createObject(&db);
-    defer cetech1.assetdb.FooAsset.destroyObject(&db, obj1);
+    const obj1 = try cetech1.assetdb.FooAsset.createObject(db);
+    defer cetech1.assetdb.FooAsset.destroyObject(db, obj1);
 
-    const obj2 = try cetech1.assetdb.FooAsset.createObject(&db);
-    defer cetech1.assetdb.FooAsset.destroyObject(&db, obj2);
+    const obj2 = try cetech1.assetdb.FooAsset.createObject(db);
+    defer cetech1.assetdb.FooAsset.destroyObject(db, obj2);
 
-    const obj3 = try cetech1.assetdb.FooAsset.createObject(&db);
-    defer cetech1.assetdb.FooAsset.destroyObject(&db, obj3);
+    const obj3 = try cetech1.assetdb.FooAsset.createObject(db);
+    defer cetech1.assetdb.FooAsset.destroyObject(db, obj3);
 
-    const obj4 = try cetech1.assetdb.FooAsset.createObject(&db);
-    defer cetech1.assetdb.FooAsset.destroyObject(&db, obj4);
+    const obj4 = try cetech1.assetdb.FooAsset.createObject(db);
+    defer cetech1.assetdb.FooAsset.destroyObject(db, obj4);
 
-    const selection = try cetech1.coreui.ObjSelection.createObject(&db);
-    defer cetech1.assetdb.FooAsset.destroyObject(&db, selection);
+    const selection = try cetech1.coreui.ObjSelection.createObject(db);
+    defer cetech1.assetdb.FooAsset.destroyObject(db, selection);
 
-    try api.addToSelection(&db, selection, obj1);
-    try api.addToSelection(&db, selection, obj2);
-    try api.addToSelection(&db, selection, obj3);
+    try api.addToSelection(db, selection, obj1);
+    try api.addToSelection(db, selection, obj2);
+    try api.addToSelection(db, selection, obj3);
 
     // count
     {
-        const count = api.selectedCount(std.testing.allocator, &db, selection);
+        const count = api.selectedCount(std.testing.allocator, db, selection);
         try std.testing.expectEqual(3, count);
     }
 
     // is selected
     {
-        try std.testing.expect(api.isSelected(&db, selection, obj1));
-        try std.testing.expect(api.isSelected(&db, selection, obj2));
-        try std.testing.expect(api.isSelected(&db, selection, obj3));
+        try std.testing.expect(api.isSelected(db, selection, obj1));
+        try std.testing.expect(api.isSelected(db, selection, obj2));
+        try std.testing.expect(api.isSelected(db, selection, obj3));
 
-        try std.testing.expect(!api.isSelected(&db, selection, obj4));
+        try std.testing.expect(!api.isSelected(db, selection, obj4));
     }
 
     // Get selected
     {
-        const selected = api.getSelected(std.testing.allocator, &db, selection);
+        const selected = api.getSelected(std.testing.allocator, db, selection);
         try std.testing.expect(selected != null);
         defer std.testing.allocator.free(selected.?);
         try std.testing.expectEqualSlices(cetech1.cdb.ObjId, &.{ obj1, obj2, obj3 }, selected.?);
@@ -1064,9 +1063,9 @@ test "coreui: should do basic operatino with selection" {
 
     // Set selection
     {
-        try api.setSelection(std.testing.allocator, &db, selection, obj1);
+        try api.setSelection(std.testing.allocator, db, selection, obj1);
 
-        const selected = api.getSelected(std.testing.allocator, &db, selection);
+        const selected = api.getSelected(std.testing.allocator, db, selection);
         try std.testing.expect(selected != null);
         defer std.testing.allocator.free(selected.?);
         try std.testing.expectEqualSlices(cetech1.cdb.ObjId, &.{obj1}, selected.?);
@@ -1074,9 +1073,9 @@ test "coreui: should do basic operatino with selection" {
 
     // Clear selection
     {
-        try api.clearSelection(std.testing.allocator, &db, selection);
+        try api.clearSelection(std.testing.allocator, db, selection);
 
-        const selected = api.getSelected(std.testing.allocator, &db, selection);
+        const selected = api.getSelected(std.testing.allocator, db, selection);
         try std.testing.expect(selected != null);
         defer std.testing.allocator.free(selected.?);
         try std.testing.expectEqualSlices(cetech1.cdb.ObjId, &.{}, selected.?);

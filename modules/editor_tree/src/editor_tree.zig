@@ -13,7 +13,7 @@ pub const UiTreeAspect = struct {
 
     ui_tree: *const fn (
         allocator: std.mem.Allocator,
-        db: *cdb.Db,
+        db: cdb.Db,
         tab: *editor.TabO,
         context: []const strid.StrId64,
         obj: cdb.ObjId,
@@ -24,7 +24,7 @@ pub const UiTreeAspect = struct {
 
     ui_drop_obj: ?*const fn (
         allocator: std.mem.Allocator,
-        db: *cdb.Db,
+        db: cdb.Db,
         tab: *editor.TabO,
         obj: cdb.ObjId,
         drag_obj: cdb.ObjId,
@@ -67,7 +67,7 @@ pub const TreeAPI = struct {
     // Tree view
     cdbTreeView: *const fn (
         allocator: std.mem.Allocator,
-        db: *cdb.CdbDb,
+        db: cdb.Db,
         tab: *editor.TabO,
         []const strid.StrId64,
         obj: cdb.ObjId,
@@ -80,7 +80,7 @@ pub const TreeAPI = struct {
     cdbTreePop: *const fn () void,
     cdbObjTreeNode: *const fn (
         allocator: std.mem.Allocator,
-        db: *cdb.CdbDb,
+        db: cdb.Db,
         tab: *editor.TabO,
         contexts: []const strid.StrId64,
         selection: cdb.ObjId,

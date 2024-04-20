@@ -40,7 +40,7 @@ pub var api = public.EditorObjBufferAPI{
     .addToFirst = addToFirst,
 };
 
-fn addToFirst(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech1.cdb.ObjId) !void {
+fn addToFirst(allocator: std.mem.Allocator, db: cetech1.cdb.Db, obj: cetech1.cdb.ObjId) !void {
     var tab: ?*ObjBufferTab = null;
     if (_g.last_focused) |lf| {
         tab = lf;
@@ -57,14 +57,14 @@ fn addToFirst(allocator: std.mem.Allocator, db: *cetech1.cdb.CdbDb, obj: cetech1
         const w = db.writeObj(tab_o.obj_buffer).?;
         try coreui.ObjSelection.addRefToSet(db, w, .Selection, &.{obj});
         try _coreui.setSelection(allocator, db, tab_o.inter_selection, obj);
-        _editor.propagateSelection(&tab_o.db, tab_o.inter_selection);
+        _editor.propagateSelection(tab_o.db, tab_o.inter_selection);
         try db.writeCommit(w);
     }
 }
 
 const ObjBufferTab = struct {
     tab_i: editor.EditorTabI,
-    db: cetech1.cdb.CdbDb,
+    db: cetech1.cdb.Db,
     selection: cetech1.cdb.ObjId = .{},
     inter_selection: cetech1.cdb.ObjId,
     obj_buffer: cetech1.cdb.ObjId,
@@ -92,17 +92,16 @@ var obj_buffer_tab = editor.EditorTabTypeI.implement(
         }
 
         // Create new ObjBufferTab instantce
-        pub fn create(dbc: *cetech1.cdb.Db) !?*editor.EditorTabI {
+        pub fn create(db: cetech1.cdb.Db) !?*editor.EditorTabI {
             var tab_inst = try _allocator.create(ObjBufferTab);
-            var db = cetech1.cdb.CdbDb.fromDbT(dbc, _cdb);
             tab_inst.* = ObjBufferTab{
                 .tab_i = .{
                     .vt = _g.tab_vt,
                     .inst = @ptrCast(tab_inst),
                 },
                 .db = db,
-                .inter_selection = try coreui.ObjSelection.createObject(&db),
-                .obj_buffer = try coreui.ObjSelection.createObject(&db),
+                .inter_selection = try coreui.ObjSelection.createObject(db),
+                .obj_buffer = try coreui.ObjSelection.createObject(db),
             };
             return &tab_inst.tab_i;
         }
@@ -112,7 +111,7 @@ var obj_buffer_tab = editor.EditorTabTypeI.implement(
             const tab_o: *ObjBufferTab = @alignCast(@ptrCast(tab_inst.inst));
             tab_o.db.destroyObject(tab_o.obj_buffer);
             tab_o.db.destroyObject(tab_o.inter_selection);
-            _editor.propagateSelection(&tab_o.db, cetech1.cdb.OBJID_ZERO);
+            _editor.propagateSelection(tab_o.db, cetech1.cdb.OBJID_ZERO);
 
             if (_g.last_focused == tab_o) {
                 _g.last_focused = null;
@@ -123,7 +122,7 @@ var obj_buffer_tab = editor.EditorTabTypeI.implement(
 
         pub fn focused(inst: *editor.TabO) !void {
             const tab_o: *ObjBufferTab = @alignCast(@ptrCast(inst));
-            _editor.propagateSelection(&tab_o.db, tab_o.inter_selection);
+            _editor.propagateSelection(tab_o.db, tab_o.inter_selection);
             _g.last_focused = tab_o;
         }
 
@@ -136,13 +135,13 @@ var obj_buffer_tab = editor.EditorTabTypeI.implement(
                 const allocator = try _tempalloc.create();
                 defer _tempalloc.destroy(allocator);
 
-                try _editor.showObjContextMenu(allocator, &tab_o.db, tab_o, &.{public.objectBufferContext}, tab_o.inter_selection, null, null);
+                try _editor.showObjContextMenu(allocator, tab_o.db, tab_o, &.{public.objectBufferContext}, tab_o.inter_selection, null, null);
             }
         }
 
         // Draw tab content
         pub fn ui(inst: *editor.TabO) !void {
-            var tab_o: *ObjBufferTab = @alignCast(@ptrCast(inst));
+            const tab_o: *ObjBufferTab = @alignCast(@ptrCast(inst));
 
             const allocator = try _tempalloc.create();
             defer _tempalloc.destroy(allocator);
@@ -154,12 +153,12 @@ var obj_buffer_tab = editor.EditorTabTypeI.implement(
                 _coreui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 15 });
                 defer _coreui.popStyleVar(.{});
 
-                if (_coreui.getSelected(allocator, &tab_o.db, obj_buffer)) |selected_objs| {
+                if (_coreui.getSelected(allocator, tab_o.db, obj_buffer)) |selected_objs| {
                     defer allocator.free(selected_objs);
                     for (selected_objs) |obj| {
                         _ = try _editortree.cdbTreeView(
                             allocator,
-                            &tab_o.db,
+                            tab_o.db,
                             tab_o,
                             &.{ public.objectBufferContext, editor.Contexts.open },
                             obj,
@@ -175,7 +174,7 @@ var obj_buffer_tab = editor.EditorTabTypeI.implement(
             }
         }
 
-        pub fn objSelected(inst: *editor.TabO, cdb: *cetech1.cdb.Db, selection: cetech1.cdb.ObjId) !void {
+        pub fn objSelected(inst: *editor.TabO, cdb: cetech1.cdb.Db, selection: cetech1.cdb.ObjId) !void {
             _ = cdb;
             _ = inst;
             _ = selection;
@@ -185,7 +184,7 @@ var obj_buffer_tab = editor.EditorTabTypeI.implement(
 
 fn objContextMenu(
     allocator: std.mem.Allocator,
-    db: *cetech1.cdb.CdbDb,
+    db: cetech1.cdb.Db,
     obj_buffer: cetech1.cdb.ObjId,
     selection: cetech1.cdb.ObjId,
     filter: ?[:0]const u8,
@@ -225,7 +224,7 @@ const ASSET_ICON = Icons.FA_FILE;
 var buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn isValid(
         allocator: std.mem.Allocator,
-        dbc: *cetech1.cdb.Db,
+        db: cetech1.cdb.Db,
         tab: *editor.TabO,
         contexts: cetech1.strid.StrId64,
         selection: cetech1.cdb.ObjId,
@@ -233,7 +232,7 @@ var buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
         in_set_obj: ?cetech1.cdb.ObjId,
         filter: ?[:0]const u8,
     ) !bool {
-        _ = dbc;
+        _ = db; // autofix
         _ = tab;
         _ = selection;
         _ = prop_idx;
@@ -252,7 +251,7 @@ var buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
 
     pub fn menu(
         allocator: std.mem.Allocator,
-        dbc: *cetech1.cdb.Db,
+        db: cetech1.cdb.Db,
         tab: *editor.TabO,
         contexts: cetech1.strid.StrId64,
         selection: cetech1.cdb.ObjId,
@@ -263,19 +262,17 @@ var buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
         _ = contexts;
         _ = prop_idx;
         _ = in_set_obj;
-
-        var db = cetech1.cdb.CdbDb.fromDbT(dbc, _cdb);
         const tab_o: *ObjBufferTab = @alignCast(@ptrCast(tab));
 
         _coreui.separatorText("Obj buffer");
-        objContextMenu(allocator, &db, tab_o.obj_buffer, selection, filter) catch undefined;
+        objContextMenu(allocator, db, tab_o.obj_buffer, selection, filter) catch undefined;
     }
 });
 
 var add_to_buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn isValid(
         allocator: std.mem.Allocator,
-        dbc: *cetech1.cdb.Db,
+        db: cetech1.cdb.Db,
         tab: *editor.TabO,
         contexts: cetech1.strid.StrId64,
         selection: cetech1.cdb.ObjId,
@@ -283,7 +280,7 @@ var add_to_buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
         in_set_obj: ?cetech1.cdb.ObjId,
         filter: ?[:0]const u8,
     ) !bool {
-        _ = dbc;
+        _ = db; // autofix
         _ = tab;
         _ = selection;
         _ = prop_idx;
@@ -307,7 +304,7 @@ var add_to_buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
 
     pub fn menu(
         allocator: std.mem.Allocator,
-        dbc: *cetech1.cdb.Db,
+        db: cetech1.cdb.Db,
         tab_: *editor.TabO,
         contexts: cetech1.strid.StrId64,
         selection: cetech1.cdb.ObjId,
@@ -320,8 +317,6 @@ var add_to_buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
         _ = prop_idx;
         _ = in_set_obj;
 
-        var db = cetech1.cdb.CdbDb.fromDbT(dbc, _cdb);
-
         const tabs = _editor.getAllTabsByType(allocator, _g.tab_vt.tab_hash) catch undefined;
         defer allocator.free(tabs);
 
@@ -330,22 +325,22 @@ var add_to_buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
             const label = std.fmt.bufPrintZ(&label_buff, coreui.Icons.Buffer ++ "  " ++ "In buffer {d}" ++ "###EditInObjBuffer{d}", .{ tab.tabid, tab.tabid }) catch undefined;
 
             if (_coreui.menuItem(allocator, label, .{}, filter)) {
-                if (_coreui.getSelected(allocator, &db, selection)) |selected_objs| {
+                if (_coreui.getSelected(allocator, db, selection)) |selected_objs| {
                     defer allocator.free(selected_objs);
 
                     const tab_o: *ObjBufferTab = @alignCast(@ptrCast(tab.inst));
                     const w = db.writeObj(tab_o.obj_buffer).?;
 
                     for (selected_objs, 0..) |obj, idx| {
-                        coreui.ObjSelection.addRefToSet(&db, w, .Selection, &.{obj}) catch undefined;
+                        coreui.ObjSelection.addRefToSet(db, w, .Selection, &.{obj}) catch undefined;
                         if (idx == 0) {
-                            _coreui.setSelection(allocator, &db, tab_o.inter_selection, obj) catch undefined;
+                            _coreui.setSelection(allocator, db, tab_o.inter_selection, obj) catch undefined;
                         } else {
-                            _coreui.addToSelection(&db, tab_o.inter_selection, obj) catch undefined;
+                            _coreui.addToSelection(db, tab_o.inter_selection, obj) catch undefined;
                         }
                     }
                     db.writeCommit(w) catch undefined;
-                    _editor.propagateSelection(&tab_o.db, tab_o.inter_selection);
+                    _editor.propagateSelection(tab_o.db, tab_o.inter_selection);
                 }
             }
         }

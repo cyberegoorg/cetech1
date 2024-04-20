@@ -131,14 +131,3 @@ pub const ApiDbAPI = struct {
     getInterafcesVersionFn: *const fn (interface_name: strid.StrId64) u64,
     //#endregion
 };
-
-// get type name and return only last name withou struct_ prefix for c structs.
-fn _sanitizeApiName(comptime T: type) []const u8 {
-    const struct_len = "struct_".len;
-    const type_str = @typeName(T);
-    var name_iter = std.mem.splitBackwardsAny(u8, type_str, ".");
-    const first = name_iter.first();
-    const is_struct = std.mem.startsWith(u8, first, "struct_");
-    const api_name = if (is_struct) first[struct_len..] else first;
-    return api_name;
-}

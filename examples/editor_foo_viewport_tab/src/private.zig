@@ -64,7 +64,7 @@ var foo_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Create new tab instantce
-    pub fn create(db: *cdb.Db) !?*editor.EditorTabI {
+    pub fn create(db: cdb.Db) !?*editor.EditorTabI {
         _ = db;
         var tab_inst = _allocator.create(FooViewportTab) catch undefined;
         tab_inst.tab_i = .{

@@ -145,6 +145,6 @@ pub const KernelApi = struct {
     getAuthors: *const fn () [:0]const u8,
 
     // TODO: !!!GLOBAL SHIT WARNING !!!
-    getDb: *const fn () *cdb.CdbDb,
+    getDb: *const fn () cdb.Db,
     //
 };

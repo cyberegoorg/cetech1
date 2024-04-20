@@ -50,7 +50,7 @@ var api = public.EditorTagsApi{
     .tagsInput = tagsInput,
 };
 
-fn tagButton(db: *cdb.CdbDb, filter: ?[:0]const u8, tag: cdb.ObjId, wrap: bool) bool {
+fn tagButton(db: cdb.Db, filter: ?[:0]const u8, tag: cdb.ObjId, wrap: bool) bool {
     var buff: [128:0]u8 = undefined;
     const tag_r = db.readObj(tag) orelse return false;
     const tag_name = Tag.readStr(db, tag_r, .Name) orelse "NO NAME =(";
@@ -94,7 +94,7 @@ fn tagButton(db: *cdb.CdbDb, filter: ?[:0]const u8, tag: cdb.ObjId, wrap: bool) 
 
 fn tagsInput(
     allocator: std.mem.Allocator,
-    db: *cdb.CdbDb,
+    db: cdb.Db,
     obj: cdb.ObjId,
     prop_idx: u32,
     in_table: bool,
@@ -152,24 +152,22 @@ var create_tag_asset_i = editor.CreateAssetI.implement(
     struct {
         pub fn create(
             allocator: std.mem.Allocator,
-            dbc: *cdb.Db,
+            db: cdb.Db,
             folder: cdb.ObjId,
         ) !void {
-            var db = cdb.CdbDb.fromDbT(dbc, _cdb);
-
             var buff: [256:0]u8 = undefined;
             const name = try _assetdb.buffGetValidName(
                 allocator,
                 &buff,
-                &db,
+                db,
                 folder,
                 db.getTypeIdx(assetdb.Tag.type_hash).?,
                 "NewTag",
             );
-            const new_obj = try assetdb.Tag.createObject(&db);
+            const new_obj = try assetdb.Tag.createObject(db);
             {
                 const w = db.writeObj(new_obj).?;
-                try assetdb.Tag.setStr(&db, w, .Name, name);
+                try assetdb.Tag.setStr(db, w, .Name, name);
                 try db.writeCommit(w);
             }
 
@@ -186,19 +184,18 @@ var create_tag_asset_i = editor.CreateAssetI.implement(
 var tag_prop_aspect = editor_inspector.UiEmbedPropertyAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
-        dbc: *cdb.Db,
+        db: cdb.Db,
         obj: cdb.ObjId,
         prop_idx: u32,
         args: editor_inspector.cdbPropertiesViewArgs,
     ) !void {
-        var db = cdb.CdbDb.fromDbT(dbc, _cdb);
-        _ = try tagsInput(allocator, &db, obj, prop_idx, true, args.filter);
+        _ = try tagsInput(allocator, db, obj, prop_idx, true, args.filter);
     }
 });
 
 //
 
-fn getTagColor(db: *cdb.CdbDb, tag_r: *cdb.Obj) [4]f32 {
+fn getTagColor(db: cdb.Db, tag_r: *cdb.Obj) [4]f32 {
     if (!_editor.isColorsEnabled()) return .{ 1.0, 1.0, 1.0, 1.0 };
 
     const tag_color_obj = Tag.readSubObj(db, tag_r, .Color);
@@ -213,34 +210,32 @@ fn getTagColor(db: *cdb.CdbDb, tag_r: *cdb.Obj) [4]f32 {
 var tag_visual_aspect = editor.UiVisualAspect.implement(struct {
     pub fn uiName(
         allocator: std.mem.Allocator,
-        dbc: *cdb.Db,
+        db: cdb.Db,
         obj: cdb.ObjId,
     ) ![:0]const u8 {
-        var db = cdb.CdbDb.fromDbT(dbc, _cdb);
         const obj_r = db.readObj(obj).?;
         return std.fmt.allocPrintZ(allocator, "{s}", .{
-            Tag.readStr(&db, obj_r, .Name) orelse "No NAME =()",
+            Tag.readStr(db, obj_r, .Name) orelse "No NAME =()",
         });
     }
 
     pub fn uiIcons(
         allocator: std.mem.Allocator,
-        dbc: *cdb.Db,
+        db: cdb.Db,
         obj: cdb.ObjId,
     ) ![:0]const u8 {
-        _ = dbc;
+        _ = db; // autofix
+
         _ = obj;
         return std.fmt.allocPrintZ(allocator, "{s}", .{coreui.Icons.Tag});
     }
 
     pub fn uiColor(
-        dbc: *cdb.Db,
+        db: cdb.Db,
         obj: cdb.ObjId,
     ) ![4]f32 {
-        var db = cdb.CdbDb.fromDbT(dbc, _cdb);
-
-        if (Tag.readSubObj(&db, db.readObj(obj).?, .Color)) |color_obj| {
-            return cetech1.cdb_types.Color4f.f.toSlice(&db, color_obj);
+        if (Tag.readSubObj(db, db.readObj(obj).?, .Color)) |color_obj| {
+            return cetech1.cdb_types.Color4f.f.toSlice(db, color_obj);
         }
         return .{ 1.0, 1.0, 1.0, 1.0 };
     }
@@ -250,23 +245,21 @@ var tag_visual_aspect = editor.UiVisualAspect.implement(struct {
 
 // Create cdb types
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
-    pub fn createTypes(db_: *cdb.Db) !void {
-        var db = cdb.CdbDb.fromDbT(db_, _cdb);
-
+    pub fn createTypes(db: cdb.Db) !void {
         try assetdb.Tag.addAspect(
-            &db,
+            db,
             editor_inspector.UiPropertiesConfigAspect,
             _g.noproto_config_aspect,
         );
 
         try assetdb.Tag.addAspect(
-            &db,
+            db,
             editor.UiVisualAspect,
             _g.tag_visual_aspect,
         );
 
         try assetdb.Asset.addPropertyAspect(
-            &db,
+            db,
             editor_inspector.UiEmbedPropertyAspect,
             .Tags,
             _g.tag_prop_aspect,

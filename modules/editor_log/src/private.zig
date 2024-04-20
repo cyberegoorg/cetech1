@@ -113,7 +113,7 @@ var log_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Create new tab instantce
-    pub fn create(db: *cdb.Db) !?*editor.EditorTabI {
+    pub fn create(db: cdb.Db) !?*editor.EditorTabI {
         _ = db;
         var tab_inst = _allocator.create(LogTab) catch undefined;
         tab_inst.* = .{

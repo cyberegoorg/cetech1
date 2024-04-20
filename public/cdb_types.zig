@@ -12,7 +12,7 @@ pub const Color4f = cdb.CdbTypeDecl(
         A,
     },
     struct {
-        pub fn toSlice(db: *cdb.CdbDb, color_obj: cdb.ObjId) [4]f32 {
+        pub fn toSlice(db: cdb.Db, color_obj: cdb.ObjId) [4]f32 {
             const r = db.readObj(color_obj) orelse return .{ 1.0, 1.0, 1.0, 1.0 };
             return .{
                 Color4f.readValue(db, f32, r, .R),
@@ -22,7 +22,7 @@ pub const Color4f = cdb.CdbTypeDecl(
             };
         }
 
-        pub fn fromSlice(db: *cdb.CdbDb, color_obj_w: *cdb.Obj, color: [4]f32) void {
+        pub fn fromSlice(db: cdb.Db, color_obj_w: *cdb.Obj, color: [4]f32) void {
             Color4f.setValue(db, f32, color_obj_w, .R, color[0]);
             Color4f.setValue(db, f32, color_obj_w, .G, color[1]);
             Color4f.setValue(db, f32, color_obj_w, .B, color[2]);
@@ -55,7 +55,7 @@ pub fn BigTypeDecl(comptime type_name: [:0]const u8) type {
 }
 
 /// Add BigType db
-pub fn addBigType(db: *cdb.CdbDb, name: []const u8, force_subobj_type: ?strid.StrId32) !cdb.TypeIdx {
+pub fn addBigType(db: cdb.Db, name: []const u8, force_subobj_type: ?strid.StrId32) !cdb.TypeIdx {
     return db.addType(
         name,
         &.{

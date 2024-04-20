@@ -68,7 +68,7 @@ var api = public.InspectorAPI{
     .endPropTabel = endPropTabel,
 };
 
-fn openNewInspectorForObj(db: *cdb.CdbDb, obj: cdb.ObjId) void {
+fn openNewInspectorForObj(db: cdb.Db, obj: cdb.ObjId) void {
     _editor.openTabWithPinnedObj(db, INSPECTOR_TAB_NAME_HASH, obj);
 }
 
@@ -99,7 +99,7 @@ fn formatedPropNameToBuff(buf: []u8, prop_name: [:0]const u8) ![]u8 {
 
 fn uiAssetInput(
     allocator: std.mem.Allocator,
-    db: *cdb.CdbDb,
+    db: cdb.Db,
     tab: *editor.TabO,
     obj: cdb.ObjId,
     prop_idx: u32,
@@ -136,7 +136,7 @@ fn uiAssetInput(
     );
 }
 
-fn uiAssetInputProto(allocator: std.mem.Allocator, db: *cdb.CdbDb, tab: *editor.TabO, obj: cdb.ObjId, value_obj: cdb.ObjId, read_only: bool) !void {
+fn uiAssetInputProto(allocator: std.mem.Allocator, db: cdb.Db, tab: *editor.TabO, obj: cdb.ObjId, value_obj: cdb.ObjId, read_only: bool) !void {
     return uiAssetInputGeneric(
         allocator,
         db,
@@ -152,7 +152,7 @@ fn uiAssetInputProto(allocator: std.mem.Allocator, db: *cdb.CdbDb, tab: *editor.
 
 fn uiAssetInputGeneric(
     allocator: std.mem.Allocator,
-    db: *cdb.CdbDb,
+    db: cdb.Db,
     tab: *editor.TabO,
     obj: cdb.ObjId,
     value_obj: cdb.ObjId,
@@ -299,14 +299,14 @@ fn endSection(open: bool) void {
     if (open) _coreui.treePop();
 }
 
-fn cdbPropertiesView(allocator: std.mem.Allocator, db: *cdb.CdbDb, tab: *editor.TabO, obj: cdb.ObjId, depth: u32, args: public.cdbPropertiesViewArgs) !void {
+fn cdbPropertiesView(allocator: std.mem.Allocator, db: cdb.Db, tab: *editor.TabO, obj: cdb.ObjId, depth: u32, args: public.cdbPropertiesViewArgs) !void {
     _coreui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 10 });
     defer _coreui.popStyleVar(.{});
     try cdbPropertiesObj(allocator, db, tab, obj, depth, args);
 }
 const REMOVED_COLOR = .{ 0.7, 0.0, 0.0, 1.0 };
 
-fn objContextMenuBtn(allocator: std.mem.Allocator, db: *cdb.CdbDb, tab: *editor.TabO, obj: cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cdb.ObjId) !void {
+fn objContextMenuBtn(allocator: std.mem.Allocator, db: cdb.Db, tab: *editor.TabO, obj: cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cdb.ObjId) !void {
     if (_coreui.beginPopup("property_obj_menu", .{})) {
         try _editor.showObjContextMenu(allocator, db, tab, &.{editor.Contexts.open}, obj, prop_idx, in_set_obj);
         _coreui.endPopup();
@@ -319,7 +319,7 @@ fn objContextMenuBtn(allocator: std.mem.Allocator, db: *cdb.CdbDb, tab: *editor.
 
 fn cdbPropertiesObj(
     allocator: std.mem.Allocator,
-    db: *cdb.CdbDb,
+    db: cdb.Db,
     tab: *editor.TabO,
     obj: cdb.ObjId,
     depth: u32,
@@ -328,7 +328,7 @@ fn cdbPropertiesObj(
     // Find properties asspect for obj type.
     const ui_aspect = db.getAspect(public.UiPropertiesAspect, obj.type_idx);
     if (ui_aspect) |aspect| {
-        try aspect.ui_properties(allocator, db.db, tab, obj, args);
+        try aspect.ui_properties(allocator, db, tab, obj, args);
         return;
     }
 
@@ -379,7 +379,7 @@ fn cdbPropertiesObj(
                 ui_prop_aspect = db.getPropertyAspect(public.UiPropertyAspect, obj.type_idx, prop_idx);
                 // If exist aspect and is empty hide property.
                 if (ui_prop_aspect) |aspect| {
-                    aspect.ui_property(allocator, @ptrCast(db.db), obj, prop_idx, args) catch continue;
+                    aspect.ui_property(allocator, db, obj, prop_idx, args) catch continue;
                 }
             }
 
@@ -389,7 +389,7 @@ fn cdbPropertiesObj(
                     if (ui_embed_prop_aspect) |aspect| {
                         const lbl = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
                         if (uiPropLabel(allocator, lbl, prop_color, args)) {
-                            try aspect.ui_properties(allocator, db.db, obj, prop_idx, args);
+                            try aspect.ui_properties(allocator, db, obj, prop_idx, args);
                             continue;
                         }
                     }
@@ -406,7 +406,7 @@ fn cdbPropertiesObj(
                             if (subobj == null) {
                                 try objContextMenuBtn(allocator, db, tab, obj, prop_idx, null);
                             } else {
-                                try aspect.ui_properties(allocator, db.db, subobj.?, args);
+                                try aspect.ui_properties(allocator, db, subobj.?, args);
                             }
                         }
                     }
@@ -440,7 +440,7 @@ fn cdbPropertiesObj(
                     const label = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
                     if (api.uiPropLabel(allocator, label, prop_color, args)) {
                         if (ui_prop_aspect) |aspect| {
-                            try aspect.ui_property(allocator, @ptrCast(db.db), obj, prop_idx, args);
+                            try aspect.ui_property(allocator, db, obj, prop_idx, args);
                         } else {
                             try api.uiPropInput(db, obj, prop_idx);
                         }
@@ -468,7 +468,7 @@ fn cdbPropertiesObj(
         const ui_prop_aspect = db.getPropertyAspect(public.UiPropertyAspect, obj.type_idx, prop_idx);
         // If exist aspect and is empty hide property.
         if (ui_prop_aspect) |aspect| {
-            try aspect.ui_property(allocator, @ptrCast(db.db), obj, prop_idx, args);
+            try aspect.ui_property(allocator, db, obj, prop_idx, args);
             continue;
         }
 
@@ -561,7 +561,7 @@ fn cdbPropertiesObj(
     }
 }
 
-fn uiInputProtoBtns(db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: u32) !void {
+fn uiInputProtoBtns(db: cdb.Db, obj: cdb.ObjId, prop_idx: u32) !void {
     const proto_obj = db.getPrototype(db.readObj(obj).?);
     if (proto_obj.isEmpty()) return;
 
@@ -649,7 +649,7 @@ fn uiInputProtoBtns(db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: u32) !void {
     _coreui.sameLine(.{});
 }
 
-fn uiPropInputBegin(db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: u32) !void {
+fn uiPropInputBegin(db: cdb.Db, obj: cdb.ObjId, prop_idx: u32) !void {
     _coreui.tableNextColumn();
 
     _coreui.pushObjUUID(obj);
@@ -665,13 +665,13 @@ fn uiPropInputEnd() void {
     _coreui.popId();
 }
 
-fn uiInputForProperty(db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: u32) !void {
+fn uiInputForProperty(db: cdb.Db, obj: cdb.ObjId, prop_idx: u32) !void {
     try uiPropInputBegin(db, obj, prop_idx);
     defer uiPropInputEnd();
     try uiPropInputRaw(db, obj, prop_idx);
 }
 
-fn uiPropInputRaw(db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: u32) !void {
+fn uiPropInputRaw(db: cdb.Db, obj: cdb.ObjId, prop_idx: u32) !void {
     var buf: [128:0]u8 = undefined;
     @memset(&buf, 0);
 
@@ -829,13 +829,11 @@ fn uiPropLabel(allocator: std.mem.Allocator, name: [:0]const u8, color: ?[4]f32,
 var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
-        dbc: *cdb.Db,
+        db: cdb.Db,
         tab: *editor.TabO,
         obj: cdb.ObjId,
         args: public.cdbPropertiesViewArgs,
     ) !void {
-        var db = cdb.CdbDb.fromDbT(dbc, _cdb);
-
         const obj_r = db.readObj(obj) orelse return;
 
         var buf: [128:0]u8 = undefined;
@@ -863,32 +861,32 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
 
             var is_project = false;
             if (_assetdb.getObjForAsset(obj)) |o| {
-                is_project = cetech1.assetdb.Project.isSameType(&db, o);
+                is_project = cetech1.assetdb.Project.isSameType(db, o);
             }
 
             // Asset name
-            if (!is_project and !_assetdb.isRootFolder(&db, obj) and api.uiPropLabel(allocator, "Name", null, args)) {
-                try api.uiPropInput(&db, obj, assetdb.Asset.propIdx(.Name));
+            if (!is_project and !_assetdb.isRootFolder(db, obj) and api.uiPropLabel(allocator, "Name", null, args)) {
+                try api.uiPropInput(db, obj, assetdb.Asset.propIdx(.Name));
             }
 
             // Asset name
-            if (!_assetdb.isRootFolder(&db, obj) and api.uiPropLabel(allocator, "Description", null, args)) {
-                try uiInputForProperty(&db, obj, assetdb.Asset.propIdx(.Description));
+            if (!_assetdb.isRootFolder(db, obj) and api.uiPropLabel(allocator, "Description", null, args)) {
+                try uiInputForProperty(db, obj, assetdb.Asset.propIdx(.Description));
             }
 
             // Folder
-            if (!is_project and !_assetdb.isRootFolder(&db, obj) and api.uiPropLabel(allocator, "Folder", null, args)) {
-                try uiAssetInput(allocator, &db, tab, obj, assetdb.Asset.propIdx(.Folder), false, true);
+            if (!is_project and !_assetdb.isRootFolder(db, obj) and api.uiPropLabel(allocator, "Folder", null, args)) {
+                try uiAssetInput(allocator, db, tab, obj, assetdb.Asset.propIdx(.Folder), false, true);
             }
 
             // Tags
-            if (!is_project and !_assetdb.isRootFolder(&db, obj)) {
+            if (!is_project and !_assetdb.isRootFolder(db, obj)) {
                 // TODO: SHIT HACK
                 const ui_prop_aspect = db.getPropertyAspect(public.UiEmbedPropertyAspect, obj.type_idx, assetdb.Asset.propIdx(.Tags));
                 // If exist aspect and is empty hide property.
                 if (ui_prop_aspect) |aspect| {
                     if (api.uiPropLabel(allocator, "Tags", null, args)) {
-                        try aspect.ui_properties(allocator, @ptrCast(db.db), obj, assetdb.Asset.propIdx(.Tags), args);
+                        try aspect.ui_properties(allocator, db, obj, assetdb.Asset.propIdx(.Tags), args);
                     }
                 }
             }
@@ -896,7 +894,7 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
 
         // Asset object
         _coreui.separatorText("Asset object");
-        try api.cdbPropertiesObj(allocator, &db, tab, assetdb.Asset.readSubObj(&db, obj_r, .Object).?, 0, args);
+        try api.cdbPropertiesObj(allocator, db, tab, assetdb.Asset.readSubObj(db, obj_r, .Object).?, 0, args);
     }
 });
 
@@ -906,23 +904,22 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
 var color4f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
-        dbc: *cdb.Db,
+        db: cdb.Db,
         obj: cdb.ObjId,
         args: public.cdbPropertiesViewArgs,
     ) !void {
-        var db = cdb.CdbDb.fromDbT(dbc, _cdb);
         _ = allocator;
         _ = args;
 
         _coreui.pushObjUUID(obj);
         defer _coreui.popId();
 
-        var color = cetech1.cdb_types.Color4f.f.toSlice(&db, obj);
+        var color = cetech1.cdb_types.Color4f.f.toSlice(db, obj);
 
         _coreui.setNextItemWidth(-1);
         if (_coreui.colorEdit4("", .{ .col = &color })) {
             const w = db.writeObj(obj).?;
-            cetech1.cdb_types.Color4f.f.fromSlice(&db, w, color);
+            cetech1.cdb_types.Color4f.f.fromSlice(db, w, color);
             try db.writeCommit(w);
         }
     }
@@ -932,7 +929,7 @@ var color4f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
 
 const PropertyTab = struct {
     tab_i: editor.EditorTabI,
-    db: cdb.CdbDb,
+    db: cdb.Db,
     selected_obj: cdb.ObjId,
     filter_buff: [256:0]u8 = std.mem.zeroes([256:0]u8),
     filter: ?[:0]const u8 = null,
@@ -958,7 +955,7 @@ var inspector_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Can open tab
-    pub fn canOpen(db: *cdb.Db, selection: cdb.ObjId) !bool {
+    pub fn canOpen(db: cdb.Db, selection: cdb.ObjId) !bool {
         _ = db;
         _ = selection;
 
@@ -966,14 +963,14 @@ var inspector_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Create new FooTab instantce
-    pub fn create(db: *cdb.Db) !?*editor.EditorTabI {
+    pub fn create(db: cdb.Db) !?*editor.EditorTabI {
         var tab_inst = try _allocator.create(PropertyTab);
         tab_inst.* = PropertyTab{
             .tab_i = .{
                 .vt = _g.tab_vt,
                 .inst = @ptrCast(tab_inst),
             },
-            .db = cdb.CdbDb.fromDbT(db, _cdb),
+            .db = db,
             .selected_obj = .{},
         };
 
@@ -1009,21 +1006,21 @@ var inspector_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
 
         defer _coreui.endChild();
         if (_coreui.beginChild("Inspector", .{ .child_flags = .{ .border = true } })) {
-            const selectected_count = _coreui.selectedCount(allocator, &tab_o.db, tab_o.selected_obj);
+            const selectected_count = _coreui.selectedCount(allocator, tab_o.db, tab_o.selected_obj);
             if (selectected_count == 0) return;
 
             var obj: cdb.ObjId = tab_o.selected_obj;
 
             if (selectected_count == 1) {
-                obj = _coreui.getFirstSelected(allocator, &tab_o.db, tab_o.selected_obj);
+                obj = _coreui.getFirstSelected(allocator, tab_o.db, tab_o.selected_obj);
             }
 
-            try api.cdbPropertiesView(allocator, &tab_o.db, tab_o, obj, 0, .{ .filter = tab_o.filter });
+            try api.cdbPropertiesView(allocator, tab_o.db, tab_o, obj, 0, .{ .filter = tab_o.filter });
         }
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, db: ?*cdb.Db, obj: cdb.ObjId) !void {
+    pub fn objSelected(inst: *editor.TabO, db: cdb.Db, obj: cdb.ObjId) !void {
         _ = db;
         var tab_o: *PropertyTab = @alignCast(@ptrCast(inst));
         tab_o.selected_obj = obj;
@@ -1040,29 +1037,27 @@ var folder_properties_config_aspect = public.UiPropertiesConfigAspect{
 };
 
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
-    pub fn createTypes(db_: *cdb.Db) !void {
-        var db = cdb.CdbDb.fromDbT(db_, _cdb);
-
+    pub fn createTypes(db: cdb.Db) !void {
         try assetdb.Folder.addAspect(
-            &db,
+            db,
             public.UiPropertiesConfigAspect,
             _g.hide_proto_property_config_aspect,
         );
 
         try assetdb.Project.addAspect(
-            &db,
+            db,
             public.UiPropertiesConfigAspect,
             _g.hide_proto_property_config_aspect,
         );
 
         try assetdb.Asset.addAspect(
-            &db,
+            db,
             public.UiPropertiesAspect,
             _g.asset_prop_aspect,
         );
 
         try cetech1.cdb_types.Color4f.addAspect(
-            &db,
+            db,
             public.UiEmbedPropertiesAspect,
             _g.color4f_properties_aspec,
         );

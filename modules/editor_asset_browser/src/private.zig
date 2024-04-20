@@ -59,7 +59,7 @@ var api = public.AssetBrowserAPI{};
 
 const AssetBrowserTab = struct {
     tab_i: editor.EditorTabI,
-    db: cdb.CdbDb,
+    db: cdb.Db,
     selection_obj: cdb.ObjId,
     opened_obj: cdb.ObjId,
     filter_buff: [256:0]u8 = std.mem.zeroes([256:0]u8),
@@ -85,9 +85,8 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
     }
 
     // Create new FooTab instantce
-    pub fn create(dbc: *cdb.Db) !?*editor.EditorTabI {
+    pub fn create(db: cdb.Db) !?*editor.EditorTabI {
         var tab_inst = try _allocator.create(AssetBrowserTab);
-        var db = cdb.CdbDb.fromDbT(dbc, _cdb);
 
         tab_inst.* = AssetBrowserTab{
             .tab_i = .{
@@ -95,9 +94,9 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
                 .inst = @ptrCast(tab_inst),
             },
             .db = db,
-            .tags = try assetdb.Tags.createObject(&db),
-            .selection_obj = try coreui.ObjSelection.createObject(&db),
-            .opened_obj = try coreui.ObjSelection.createObject(&db),
+            .tags = try assetdb.Tags.createObject(db),
+            .selection_obj = try coreui.ObjSelection.createObject(db),
+            .opened_obj = try coreui.ObjSelection.createObject(db),
         };
         return &tab_inst.tab_i;
     }
@@ -111,18 +110,18 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
     }
 
     pub fn menu(inst: *editor.TabO) !void {
-        var tab_o: *AssetBrowserTab = @alignCast(@ptrCast(inst));
+        const tab_o: *AssetBrowserTab = @alignCast(@ptrCast(inst));
 
         const allocator = try _tempalloc.create();
         defer _tempalloc.destroy(allocator);
 
-        const selected_count = _coreui.selectedCount(allocator, &tab_o.db, tab_o.selection_obj);
+        const selected_count = _coreui.selectedCount(allocator, tab_o.db, tab_o.selection_obj);
 
         if (_coreui.beginMenu(allocator, coreui.Icons.ContextMenu ++ "###ObjContextMenu", selected_count != 0, null)) {
             defer _coreui.endMenu();
             _editor.showObjContextMenu(
                 allocator,
-                &tab_o.db,
+                tab_o.db,
                 tab_o,
                 MAIN_CONTEXTS,
                 tab_o.selection_obj,
@@ -136,7 +135,7 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
 
             try _editor.showObjContextMenu(
                 allocator,
-                &tab_o.db,
+                tab_o.db,
                 tab_o,
                 &.{editor.Contexts.create},
                 tab_o.selection_obj,
@@ -161,7 +160,7 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
 
         const r = try uiAssetBrowser(
             allocator,
-            &tab_o.db,
+            tab_o.db,
             tab_o,
             MAIN_CONTEXTS,
             root_folder,
@@ -188,25 +187,23 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
         tab_o.filter = null;
     }
 
-    pub fn selectObjFromMenu(allocator: std.mem.Allocator, tab: *editor.TabO, _dbc: *cdb.Db, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) !cdb.ObjId {
-        var db = cdb.CdbDb.fromDbT(_dbc, _cdb);
-
+    pub fn selectObjFromMenu(allocator: std.mem.Allocator, tab: *editor.TabO, db: cdb.Db, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) !cdb.ObjId {
         const tabs = _editor.getAllTabsByType(allocator, _g.tab_vt.tab_hash) catch return .{};
         defer allocator.free(tabs);
 
         var label_buff: [1024]u8 = undefined;
         const tab_o: *AssetBrowserTab = @alignCast(@ptrCast(tab));
-        const selected_n = _coreui.selectedCount(allocator, &db, tab_o.selection_obj);
+        const selected_n = _coreui.selectedCount(allocator, db, tab_o.selection_obj);
 
-        const selected_obj = _coreui.getFirstSelected(allocator, &db, tab_o.selection_obj);
+        const selected_obj = _coreui.getFirstSelected(allocator, db, tab_o.selection_obj);
 
         var valid = false;
         var label: [:0]u8 = undefined;
 
         var real_obj = selected_obj;
         if (db.readObj(selected_obj)) |r| {
-            if (assetdb.Asset.isSameType(&db, selected_obj)) {
-                real_obj = assetdb.Asset.readSubObj(&db, r, .Object).?;
+            if (assetdb.Asset.isSameType(db, selected_obj)) {
+                real_obj = assetdb.Asset.readSubObj(db, r, .Object).?;
 
                 const path = _assetdb.getFilePathForAsset(selected_obj, allocator) catch undefined;
                 defer allocator.free(path);
@@ -239,7 +236,7 @@ const UiAssetBrowserResult = struct {
     filter: ?[:0]const u8 = null,
 };
 
-fn getTagColor(db: *cdb.CdbDb, tag_r: *cdb.Obj) [4]f32 {
+fn getTagColor(db: cdb.Db, tag_r: *cdb.Obj) [4]f32 {
     const tag_color_obj = assetdb.Tag.readSubObj(db, tag_r, .Color);
     var color: [4]f32 = .{ 1.0, 1.0, 1.0, 1.0 };
     if (tag_color_obj) |color_obj| {
@@ -251,7 +248,7 @@ fn getTagColor(db: *cdb.CdbDb, tag_r: *cdb.Obj) [4]f32 {
 
 fn uiAssetBrowser(
     allocator: std.mem.Allocator,
-    db: *cdb.CdbDb,
+    db: cdb.Db,
     tab: *editor.TabO,
     context: []const strid.StrId64,
     root_folder: cdb.ObjId,

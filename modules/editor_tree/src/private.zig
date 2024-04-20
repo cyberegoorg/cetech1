@@ -67,7 +67,7 @@ fn cdbTreeNode(
 
 fn cdbObjTreeNode(
     allocator: std.mem.Allocator,
-    db: *cdb.CdbDb,
+    db: cdb.Db,
     tab: *editor.TabO,
     contexts: []const strid.StrId64,
     selection: cdb.ObjId,
@@ -98,7 +98,7 @@ fn cdbObjTreeNode(
             if (_coreui.isItemHovered(.{})) {
                 _coreui.beginTooltip();
                 defer _coreui.endTooltip();
-                tooltip(allocator, db.db, obj) catch undefined;
+                tooltip(allocator, db, obj) catch undefined;
             }
         }
     }
@@ -134,7 +134,7 @@ fn cdbObjTreeNode(
 
             if (db.getAspect(public.UiTreeAspect, obj.type_idx)) |aspect| {
                 if (aspect.ui_drop_obj) |ui_drop_obj| {
-                    ui_drop_obj(allocator, db.db, tab, obj, drag_obj) catch undefined;
+                    ui_drop_obj(allocator, db, tab, obj, drag_obj) catch undefined;
                 }
             }
         }
@@ -171,7 +171,7 @@ fn formatedPropNameToBuff(buf: []u8, prop_name: [:0]const u8) ![]u8 {
     return writen[0 .. writen.len - 1];
 }
 
-fn isLeaf(db: *cdb.CdbDb, obj: cdb.ObjId) bool {
+fn isLeaf(db: cdb.Db, obj: cdb.ObjId) bool {
     if (db.getTypePropDef(obj.type_idx)) |prop_defs| {
         for (prop_defs) |prop| {
             switch (prop.type) {
@@ -191,7 +191,7 @@ fn isLeaf(db: *cdb.CdbDb, obj: cdb.ObjId) bool {
 
 fn cdbTreeView(
     allocator: std.mem.Allocator,
-    db: *cdb.CdbDb,
+    db: cdb.Db,
     tab: *editor.TabO,
     context: []const strid.StrId64,
     obj: cdb.ObjId,
@@ -206,7 +206,7 @@ fn cdbTreeView(
 
     if (ui_aspect) |aspect| {
         //_ = aspect;
-        return aspect.ui_tree(allocator, db.db, tab, context, obj, selection, depth, args);
+        return aspect.ui_tree(allocator, db, tab, context, obj, selection, depth, args);
     }
 
     if (!args.ignored_object.isEmpty() and args.ignored_object.eql(obj)) {
@@ -424,7 +424,7 @@ fn cdbTreeView(
 }
 
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
-    pub fn createTypes(db_: ?*cdb.Db) !void {
+    pub fn createTypes(db_: cdb.Db) !void {
         _ = db_;
     }
 });

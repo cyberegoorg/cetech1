@@ -28,8 +28,8 @@ pub fn testDeinit() void {
     task.deinit();
 }
 
-pub fn expectGCStats(db: *cetech1.cdb.CdbDb, alocated_objids: u32, free_object: u32) !void {
-    const true_db = cdb.toDbFromDbT(db.db);
+pub fn expectGCStats(db: cetech1.cdb.Db, alocated_objids: u32, free_object: u32) !void {
+    const true_db = cdb.toDbFromDbT(db);
     try std.testing.expectEqual(alocated_objids, true_db.objids_alocated);
     try std.testing.expectEqual(@as(u32, free_object), true_db.free_objects);
 }
@@ -69,9 +69,7 @@ test "cdb: Should register create types handler " {
     defer testDeinit();
 
     var create_types_i = public.CreateTypesI.implement(struct {
-        pub fn createTypes(db_: *cetech1.cdb.Db) !void {
-            var db = public.CdbDb.fromDbT(db_, &cdb.api);
-
+        pub fn createTypes(db: cetech1.cdb.Db) !void {
             const type_hash = db.addType(
                 "foo",
                 &.{
@@ -104,14 +102,13 @@ test "cdb: Should register aspect" {
         pub const name_hash = cetech1.strid.strId32("foo_aspect");
 
         const Self = @This();
-        barFn: *const fn (db_: ?*public.Db) callconv(.C) void,
+        barFn: *const fn (db_: public.Db) void,
 
-        pub fn barImpl(db_: ?*public.Db) callconv(.C) void {
-            const db = public.CdbDb.fromDbT(@ptrCast(db_), &cdb.api);
-            _ = db;
+        pub fn barImpl(db_: public.Db) void {
+            _ = db_;
         }
 
-        pub fn bar(self: *Self, db_: ?*public.Db) void {
+        pub fn bar(self: *Self, db_: public.Db) void {
             return self.barFn(db_);
         }
     };
@@ -119,9 +116,7 @@ test "cdb: Should register aspect" {
     var foo_aspect = FooAspect{ .barFn = &FooAspect.barImpl };
 
     var create_types_i = public.CreateTypesI.implement(struct {
-        pub fn createTypes(db_: *cetech1.cdb.Db) !void {
-            var db = public.CdbDb.fromDbT(db_, &cdb.api);
-
+        pub fn createTypes(db: cetech1.cdb.Db) !void {
             const type_hash = db.addType(
                 "foo",
                 &.{
@@ -150,7 +145,7 @@ test "cdb: Should register aspect" {
     try std.testing.expect(aspect != null);
     try std.testing.expectEqual(&foo_aspect, aspect.?);
 
-    aspect.?.bar(db.db);
+    aspect.?.bar(db);
 }
 
 test "cdb: Should register property aspect" {
@@ -162,14 +157,14 @@ test "cdb: Should register property aspect" {
         pub const name_hash = cetech1.strid.strId32("foo_aspect");
 
         const Self = @This();
-        barFn: *const fn (db_: ?*public.Db) callconv(.C) void,
+        barFn: *const fn (db_: public.Db) void,
 
-        pub fn barImpl(db_: ?*public.Db) callconv(.C) void {
-            const db = public.CdbDb.fromDbT(@ptrCast(db_), &cdb.api);
-            _ = db;
+        pub fn barImpl(db_: public.Db) void {
+            _ = db_; // autofix
+
         }
 
-        pub fn bar(self: *Self, db_: ?*public.Db) void {
+        pub fn bar(self: *Self, db_: public.Db) void {
             return self.barFn(db_);
         }
     };
@@ -177,9 +172,7 @@ test "cdb: Should register property aspect" {
     var foo_aspect = FooAspect{ .barFn = &FooAspect.barImpl };
 
     var create_types_i = public.CreateTypesI.implement(struct {
-        pub fn createTypes(db_: *cetech1.cdb.Db) !void {
-            var db = public.CdbDb.fromDbT(db_, &cdb.api);
-
+        pub fn createTypes(db: cetech1.cdb.Db) !void {
             const type_hash = db.addType(
                 "foo",
                 &.{
@@ -212,7 +205,7 @@ test "cdb: Should register property aspect" {
     try std.testing.expect(aspect != null);
     try std.testing.expectEqual(&foo_aspect, aspect.?);
 
-    aspect.?.bar(db.db);
+    aspect.?.bar(db);
 }
 
 test "cdb: Should create object from type" {
@@ -238,7 +231,7 @@ test "cdb: Should create object from type" {
     db.destroyObject(obj2);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 2, 2);
+    try expectGCStats(db, 2, 2);
 }
 
 // test "cdb: Should create object from type with uuid" {
@@ -323,7 +316,7 @@ test "cdb: Should create object from default obj" {
     db.destroyObject(obj2);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 2, 3);
+    try expectGCStats(db, 2, 3);
 }
 
 test "cdb: Should clone object" {
@@ -414,7 +407,7 @@ test "cdb: Should clone object" {
     db.destroyObject(ref_obj2);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 10, 15);
+    try expectGCStats(db, 10, 15);
 }
 
 test "cdb: Should create retarget write" {
@@ -455,12 +448,12 @@ test "cdb: Should create retarget write" {
     db.destroyObject(obj2);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 2, 5);
+    try expectGCStats(db, 2, 5);
 }
 
 fn testNumericValues(
     comptime T: type,
-    db: *cetech1.cdb.CdbDb,
+    db: cetech1.cdb.Db,
     type_hash: cetech1.cdb.TypeIdx,
 ) !void {
     const obj1 = try db.createObject(type_hash);
@@ -525,7 +518,7 @@ test "cdb: Should read/write U64 property " {
         },
     );
 
-    try testNumericValues(u64, &db, type_hash);
+    try testNumericValues(u64, db, type_hash);
 }
 
 test "cdb: Should read/write I64 property " {
@@ -543,7 +536,7 @@ test "cdb: Should read/write I64 property " {
         },
     );
 
-    try testNumericValues(i64, &db, type_hash);
+    try testNumericValues(i64, db, type_hash);
 }
 
 test "cdb: Should read/write F64 property " {
@@ -561,7 +554,7 @@ test "cdb: Should read/write F64 property " {
         },
     );
 
-    try testNumericValues(f64, &db, type_hash);
+    try testNumericValues(f64, db, type_hash);
 }
 
 test "cdb: Should read/write U32 property " {
@@ -579,7 +572,7 @@ test "cdb: Should read/write U32 property " {
         },
     );
 
-    try testNumericValues(u32, &db, type_hash);
+    try testNumericValues(u32, db, type_hash);
 }
 test "cdb: Should read/write I32 property " {
     try testInit();
@@ -596,7 +589,7 @@ test "cdb: Should read/write I32 property " {
         },
     );
 
-    try testNumericValues(i32, &db, type_hash);
+    try testNumericValues(i32, db, type_hash);
 }
 
 test "cdb: Should read/write F32 property " {
@@ -614,7 +607,7 @@ test "cdb: Should read/write F32 property " {
         },
     );
 
-    try testNumericValues(f32, &db, type_hash);
+    try testNumericValues(f32, db, type_hash);
 }
 
 test "cdb: Should read/write string property " {
@@ -656,7 +649,7 @@ test "cdb: Should read/write string property " {
     db.destroyObject(obj1);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 1, 2);
+    try expectGCStats(db, 1, 2);
 }
 
 test "cdb: Should read/write bool property " {
@@ -697,7 +690,7 @@ test "cdb: Should read/write bool property " {
     db.destroyObject(obj1);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 1, 2);
+    try expectGCStats(db, 1, 2);
 }
 
 test "cdb: Should get object version" {
@@ -730,7 +723,7 @@ test "cdb: Should get object version" {
 
     db.destroyObject(obj1);
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 1, 2);
+    try expectGCStats(db, 1, 2);
 }
 
 test "cdb: Should read/write subobject property " {
@@ -785,7 +778,7 @@ test "cdb: Should read/write subobject property " {
     db.destroyObject(obj1);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 2, 4);
+    try expectGCStats(db, 2, 4);
 
     obj_reader = db.readObj(obj1);
     try std.testing.expectEqual(@as(?*public.Obj, null), obj_reader);
@@ -834,7 +827,7 @@ test "cdb: Should delete subobject" {
     db.destroyObject(sub_obj1);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 2, 3);
+    try expectGCStats(db, 2, 3);
 
     const obj_reader = db.readObj(obj1).?;
     const sub_obj1_read = db.readSubObj(obj_reader, 0);
@@ -842,7 +835,7 @@ test "cdb: Should delete subobject" {
 
     db.destroyObject(obj1);
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 2, 1);
+    try expectGCStats(db, 2, 1);
 }
 
 test "cdb: Should read/write subobj set property " {
@@ -922,7 +915,7 @@ test "cdb: Should read/write subobj set property " {
 
     // object is removed from parent after gc
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 3, 7);
+    try expectGCStats(db, 3, 7);
 
     obj_reader = db.readObj(obj1);
     set = try db.readSubObjSet(obj_reader.?, 0, std.testing.allocator);
@@ -937,7 +930,7 @@ test "cdb: Should read/write subobj set property " {
 
     db.destroyObject(obj1);
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 3, 1);
+    try expectGCStats(db, 3, 1);
 }
 
 test "cdb: Should read/write reference property" {
@@ -1005,13 +998,13 @@ test "cdb: Should read/write reference property" {
     // if refcounter work good we can delete object. if not shit hapends and you have bad day.
     db.destroyObject(ref_obj1);
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 2, 1);
+    try expectGCStats(db, 2, 1);
 
     obj_reader = db.readObj(ref_obj1);
     try std.testing.expect(obj_reader == null);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 2, 0);
+    try expectGCStats(db, 2, 0);
 }
 
 test "cdb: Should read/write reference set property " {
@@ -1108,7 +1101,7 @@ test "cdb: Should read/write reference set property " {
 
     db.destroyObject(ref_obj2);
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 3, 3);
+    try expectGCStats(db, 3, 3);
 
     obj_reader = db.readObj(obj1);
     set = db.readRefSet(obj_reader.?, 0, std.testing.allocator);
@@ -1124,7 +1117,7 @@ test "cdb: Should read/write reference set property " {
     db.destroyObject(obj1);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 3, 2);
+    try expectGCStats(db, 3, 2);
 }
 
 test "cdb: Should read/write blob property " {
@@ -1221,7 +1214,7 @@ test "cdb: Should use prototype" {
     db.destroyObject(obj2);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 2, 6);
+    try expectGCStats(db, 2, 6);
 }
 
 test "cdb: Should use prototype on sets" {
@@ -1319,7 +1312,7 @@ test "cdb: Should use prototype on sets" {
     db.destroyObject(obj4);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 5, 9);
+    try expectGCStats(db, 5, 9);
 }
 
 test "cdb: Should instantiate subobject" {
@@ -1386,7 +1379,7 @@ test "cdb: Should instantiate subobject" {
     db.destroyObject(obj2);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 4, 8);
+    try expectGCStats(db, 4, 8);
 }
 
 test "cdb: Should specify type_hash for ref/subobj base properties" {
@@ -1453,22 +1446,22 @@ test "cdb: Should specify type_hash for ref/subobj base properties" {
     db.destroyObject(sub_obj2);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, 3, 5);
+    try expectGCStats(db, 3, 5);
 }
 
 fn stressTest(comptime task_count: u32, task_based: bool) !void {
     var db = try cdb.api.createDb("Test");
     defer cdb.api.destroyDb(db);
 
-    const type_hash = try cetech1.cdb_types.addBigType(&db, "foo", null);
-    const type_hash2 = try cetech1.cdb_types.addBigType(&db, "foo2", null);
+    const type_hash = try cetech1.cdb_types.addBigType(db, "foo", null);
+    const type_hash2 = try cetech1.cdb_types.addBigType(db, "foo2", null);
 
     const ref_obj1 = try db.createObject(type_hash2);
     if (task_based) {
         var tasks: [task_count]cetech1.task.TaskID = undefined;
 
         const Task = struct {
-            db: cetech1.cdb.CdbDb,
+            db: cetech1.cdb.Db,
             ref_obj1: cetech1.cdb.ObjId,
             type_hash: cetech1.cdb.TypeIdx,
             type_hash2: cetech1.cdb.TypeIdx,
@@ -1506,7 +1499,7 @@ fn stressTest(comptime task_count: u32, task_based: bool) !void {
 
     db.destroyObject(ref_obj1);
 
-    var true_db = cdb.toDbFromDbT(db.db);
+    var true_db = cdb.toDbFromDbT(db);
     const storage = true_db.getTypeStorageByTypeIdx(type_hash).?;
     try std.testing.expectEqual(@as(u32, task_count + 1), storage.objid_pool.count.raw);
     try std.testing.expectEqual(@as(u32, task_count * 3), true_db.writersCount());
@@ -1515,7 +1508,7 @@ fn stressTest(comptime task_count: u32, task_based: bool) !void {
     db.destroyObject(ref_obj1);
 
     try db.gc(std.testing.allocator);
-    try expectGCStats(&db, (task_count * 3) + 1, (task_count * 3) * 2 + 1);
+    try expectGCStats(db, (task_count * 3) + 1, (task_count * 3) * 2 + 1);
 }
 
 test "cdb: stress test single thread" {

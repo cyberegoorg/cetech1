@@ -149,7 +149,7 @@ fn restart() void {
     _restart = true;
 }
 
-fn getDb() *cetech1.cdb.CdbDb {
+fn getDb() cetech1.cdb.Db {
     return assetdb.getDb();
 }
 
@@ -437,7 +437,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             _next_asset_root = null;
         }
 
-        try cdb.api.dump(assetdb.getDb().db);
+        try assetdb.getDb().dump();
 
         var buf: [256]u8 = undefined;
         if (try assetdb.getTmpPath(&buf)) |path| {
