@@ -5,8 +5,6 @@ const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");
 const task = @import("task.zig");
 
-const c = @import("c.zig").c;
-
 pub var api = cetech1.log.LogAPI{
     .logFn = logFn,
 };
@@ -60,7 +58,7 @@ pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]cons
     var it = apidb.api.getFirstImpl(cetech1.log.LogHandlerI);
     while (it) |node| : (it = node.next) {
         var iface = cetech1.apidb.ApiDbAPI.toInterface(cetech1.log.LogHandlerI, node);
-        iface.log(@intFromEnum(level), scope.ptr, msg.ptr);
+        iface.log(level, scope, msg) catch continue;
     }
 }
 

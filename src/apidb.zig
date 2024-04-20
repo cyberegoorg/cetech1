@@ -10,7 +10,6 @@ const cetech1 = @import("cetech1");
 const strid = cetech1.strid;
 
 const public = cetech1.apidb;
-const c = @import("c.zig");
 
 test {
     _ = std.testing.refAllDecls(@import("apidb_test.zig"));

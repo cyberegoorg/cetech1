@@ -1,6 +1,10 @@
-const c = @import("c.zig").c;
+pub const c = @cImport({
+    @cInclude("cetech1/core/faicons.h");
+});
 
 pub const Icons = struct {
+    pub const ICON_MIN_FA = c.ICON_MIN_FA;
+    pub const ICON_MAX_FA = c.ICON_MAX_FA;
     pub const FA_0 = c.ICON_FA_0;
     pub const FA_1 = c.ICON_FA_1;
     pub const FA_2 = c.ICON_FA_2;

@@ -1,7 +1,5 @@
 const std = @import("std");
 
-const c = @import("c.zig").c;
-
 const cetech1_options = @import("cetech1_options");
 
 const zglfw = @import("zglfw");
@@ -397,8 +395,8 @@ fn testRunAll(filter: [:0]const u8) void {
     _te_engine.queueTests(.tests, filter, .{ .command_line = true });
 }
 
-fn reloadTests() void {
-    registerAllTests();
+fn reloadTests() !void {
+    try registerAllTests();
 }
 
 fn registerTestFn(
@@ -574,7 +572,7 @@ pub fn coreUI(tmp_allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void
     var it = apidb.api.getFirstImpl(cetech1.coreui.CoreUII);
     while (it) |node| : (it = node.next) {
         const iface = cetech1.apidb.ApiDbAPI.toInterface(cetech1.coreui.CoreUII, node);
-        iface.*.ui(&tmp_allocator);
+        try iface.*.ui(tmp_allocator);
     }
 
     backend.draw();
@@ -601,7 +599,7 @@ pub fn initFonts(font_size: f32, scale_factor: f32) void {
         if (false) _fa_regular_font else _fa_solid_font,
         sized_pixel,
         fa_cfg,
-        &[_]u16{ c.ICON_MIN_FA, c.ICON_MAX_FA, 0 },
+        &[_]u16{ public.CoreIcons.ICON_MIN_FA, public.CoreIcons.ICON_MAX_FA, 0 },
     );
 
     zgui.getStyle().scaleAllSizes(scale_factor);
@@ -655,7 +653,7 @@ pub fn enableWithWindow(gpuctx: *cetech1.gpu.GpuContext) !void {
         }
     };
 
-    registerAllTests();
+    try registerAllTests();
 
     if (test_ui) {
         const filter = try std.fmt.allocPrintZ(_allocator, "{s}", .{test_ui_filter});
@@ -996,11 +994,11 @@ fn getFirstSelected(allocator: std.mem.Allocator, db: cetech1.cdb.Db, selection:
     return .{};
 }
 
-pub fn registerAllTests() void {
+pub fn registerAllTests() !void {
     var it = apidb.api.getFirstImpl(public.RegisterTestsI);
     while (it) |node| : (it = node.next) {
         var iface = cetech1.apidb.ApiDbAPI.toInterface(public.RegisterTestsI, node);
-        iface.register_tests();
+        try iface.register_tests();
     }
 }
 

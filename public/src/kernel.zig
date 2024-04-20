@@ -3,7 +3,6 @@
 const std = @import("std");
 const ztracy = @import("ztracy");
 
-const c = @import("c.zig").c;
 const strid = @import("strid.zig");
 const cdb = @import("cdb.zig");
 const modules = @import("modules.zig");
@@ -23,18 +22,17 @@ pub const OnStore = strid.strId64("OnStore");
 
 // Create Kernel task interface.
 // You can implement init andor shutdown that is call only on main init/shutdown
-pub const KernelTaskI = extern struct {
+pub const KernelTaskI = struct {
     pub const c_name = "ct_kernel_task_i";
     pub const name_hash = strid.strId64(@This().c_name);
 
-    name: [*:0]const u8,
-    depends: [*]const strid.StrId64,
-    depends_n: u64,
-    init: ?*const fn () callconv(.C) void,
-    shutdown: ?*const fn () callconv(.C) void,
+    name: [:0]const u8,
+    depends: []const strid.StrId64,
+    init: *const fn () anyerror!void,
+    shutdown: *const fn () anyerror!void,
 
     pub inline fn implement(
-        name: [*c]const u8,
+        name: [:0]const u8,
         depends: []const strid.StrId64,
         comptime T: type,
     ) KernelTaskI {
@@ -43,24 +41,11 @@ pub const KernelTaskI = extern struct {
 
         return KernelTaskI{
             .name = name,
-            .depends = depends.ptr,
-            .depends_n = depends.len,
+            .depends = depends,
 
-            .init = struct {
-                pub fn f() callconv(.C) void {
-                    T.init() catch |err| {
-                        log.err("KernelTaskI.init() failed with error {}", .{err});
-                    };
-                }
-            }.f,
+            .init = T.init,
 
-            .shutdown = struct {
-                pub fn f() callconv(.C) void {
-                    T.shutdown() catch |err| {
-                        log.err("KernelTaskI.shutdown() failed with error {}", .{err});
-                    };
-                }
-            }.f,
+            .shutdown = T.shutdown,
         };
     }
 };
@@ -92,12 +77,12 @@ pub const KernelTaskUpdateI = struct {
 };
 
 // TODO: TEMP SHIT
-pub const KernelLoopHookI = extern struct {
+pub const KernelLoopHookI = struct {
     pub const c_name = "ct_kernel_loop_hook_i";
     pub const name_hash = strid.strId64(@This().c_name);
 
-    begin_loop: *const fn () callconv(.C) void,
-    end_loop: *const fn () callconv(.C) void,
+    begin_loop: *const fn () anyerror!void,
+    end_loop: *const fn () anyerror!void,
 
     pub inline fn implement(
         comptime T: type,
@@ -106,28 +91,11 @@ pub const KernelLoopHookI = extern struct {
         if (!std.meta.hasFn(T, "endLoop")) @compileError("implement me");
 
         return KernelLoopHookI{
-            .begin_loop = struct {
-                pub fn f() callconv(.C) void {
-                    T.beginLoop() catch |err| {
-                        log.err("KernelLoopHookI.beginLoop() failed with error {}", .{err});
-                    };
-                }
-            }.f,
-
-            .end_loop = struct {
-                pub fn f() callconv(.C) void {
-                    T.endLoop() catch |err| {
-                        log.err("KernelLoopHookI.endLoop() failed with error {}", .{err});
-                    };
-                }
-            }.f,
+            .begin_loop = T.beginLoop,
+            .end_loop = T.endLoop,
         };
     }
 };
-
-/// Main cetech entry point.
-/// Boot the cetech and start main loop.
-pub extern fn cetech1_kernel_boot(static_modules: ?[*]c.ct_module_desc_t, static_modules_n: u32) u8;
 
 pub const KernelApi = struct {
     quit: *const fn () void,

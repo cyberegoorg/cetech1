@@ -63,19 +63,13 @@ pub const AssetRootOpenedI = extern struct {
     pub const c_name = "ct_cdb_assetroot_opened_i";
     pub const name_hash = strid.strId64(@This().c_name);
 
-    opened: ?*const fn () callconv(.C) void,
+    opened: ?*const fn () anyerror!void,
 
     pub inline fn implement(comptime T: type) @This() {
         if (!std.meta.hasFn(T, "opened")) @compileError("implement me");
 
         return @This(){
-            .opened = struct {
-                pub fn f() callconv(.C) void {
-                    T.opened() catch |err| {
-                        log.err("AssetRootOpenedI.opened() failed with error {}", .{err});
-                    };
-                }
-            }.f,
+            .opened = T.opened,
         };
     }
 };

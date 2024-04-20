@@ -1,7 +1,5 @@
 const std = @import("std");
 
-pub const c = @import("c.zig").c;
-
 pub const mem = @import("mem.zig");
 pub const strid = @import("strid.zig");
 pub const dag = @import("dag.zig");

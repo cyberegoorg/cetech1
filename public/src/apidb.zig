@@ -1,5 +1,4 @@
 const std = @import("std");
-const c = @import("c.zig").c;
 
 const strid = @import("strid.zig");
 

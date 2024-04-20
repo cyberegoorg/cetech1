@@ -1,7 +1,6 @@
 const std = @import("std");
 const strid = @import("strid.zig");
 const uuid = @import("uuid.zig");
-const c = @import("c.zig").c;
 
 const log = std.log.scoped(.assetdb);
 

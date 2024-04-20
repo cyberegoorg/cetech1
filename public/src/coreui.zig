@@ -1,6 +1,5 @@
 const std = @import("std");
 
-const c = @import("c.zig").c;
 const cdb = @import("cdb.zig");
 const modules = @import("modules.zig");
 const strid = @import("strid.zig");
@@ -94,29 +93,17 @@ pub const Icons = struct {
     pub const Link = CoreIcons.FA_LINK;
 };
 
-pub const CoreUII = extern struct {
+pub const CoreUII = struct {
     pub const c_name = "ct_coreui_ui_i";
     pub const name_hash = strid.strId64(@This().c_name);
 
-    ui: *const fn (allocator: *const std.mem.Allocator) callconv(.C) void,
+    ui: *const fn (allocator: std.mem.Allocator) anyerror!void,
 
     pub inline fn implement(comptime T: type) CoreUII {
         if (!std.meta.hasFn(T, "ui")) @compileError("implement me");
 
-        return CoreUII{ .ui = struct {
-            pub fn f(
-                allocator: *const std.mem.Allocator,
-            ) callconv(.C) void {
-                T.ui(allocator.*) catch |err| {
-                    log.err("CoreUII.ui() failed with error {}", .{err});
-                };
-            }
-        }.f };
+        return CoreUII{ .ui = T.ui };
     }
-};
-
-pub const color4f = extern struct {
-    c: [4]f32,
 };
 
 // Test
@@ -206,23 +193,17 @@ pub const TestContext = opaque {
     }
 };
 
-pub const RegisterTestsI = extern struct {
+pub const RegisterTestsI = struct {
     pub const c_name = "ct_coreui_register_tests_i";
     pub const name_hash = strid.strId64(@This().c_name);
 
-    register_tests: *const fn () callconv(.C) void,
+    register_tests: *const fn () anyerror!void,
 
     pub inline fn implement(comptime T: type) @This() {
         if (!std.meta.hasFn(T, "registerTests")) @compileError("implement me");
 
         return @This(){
-            .register_tests = struct {
-                pub fn f() callconv(.C) void {
-                    T.registerTests() catch |err| {
-                        log.err("RegisterTestsI.registerTests() failed with error {}", .{err});
-                    };
-                }
-            }.f,
+            .register_tests = T.registerTests,
         };
     }
 };
@@ -445,7 +426,7 @@ pub const CoreUIApi = struct {
 
     // TODO: MOVE?
     // Tests
-    reloadTests: *const fn () void,
+    reloadTests: *const fn () anyerror!void,
 
     registerTestFn: *const fn (
         category: [*]const u8,

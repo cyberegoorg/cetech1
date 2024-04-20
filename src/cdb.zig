@@ -5,7 +5,6 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-const c = @import("c.zig").c;
 const assetdb = @import("assetdb.zig");
 const cetech1 = @import("cetech1");
 const public = cetech1.cdb;

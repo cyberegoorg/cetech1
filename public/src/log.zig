@@ -10,19 +10,14 @@ const LogFn = fn (comptime std.log.Level, comptime @TypeOf(.enum_literal), compt
 pub const LogHandlerI = struct {
     pub const c_name = "ct_log_handler_i";
     pub const name_hash = strid.strId64(@This().c_name);
-    log: *const fn (level: u32, scope: [*:0]const u8, log_msg: [*:0]const u8) callconv(.C) void,
+
+    log: *const fn (level: LogAPI.Level, scope: [:0]const u8, log_msg: [:0]const u8) anyerror!void,
 
     pub inline fn implement(comptime T: type) @This() {
         if (!std.meta.hasFn(T, "logFn")) @compileError("implement me");
 
         return @This(){
-            .log = struct {
-                pub fn f(level: u32, scope: [*:0]const u8, log_msg: [*:0]const u8) callconv(.C) void {
-                    T.logFn(@enumFromInt(level), std.mem.span(scope), std.mem.span(log_msg)) catch |err| {
-                        std.log.err("LogHandlerI.logFn() failed with error {}", .{err});
-                    };
-                }
-            }.f,
+            .log = T.logFn,
         };
     }
 };

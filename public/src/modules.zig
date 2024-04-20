@@ -1,7 +1,7 @@
 //! Module is main plugin like part of engine.
 
 const std = @import("std");
-const c = @import("c.zig");
+
 const apidb = @import("apidb.zig");
 const LogAPI = @import("log.zig").LogAPI;
 
@@ -26,14 +26,4 @@ pub fn loadModuleZigHelper(comptime load_module_zig: LoadModuleZigFn, comptime _
     };
 
     return r;
-}
-
-pub fn allocFromCApi(allocator: *const c.c.ct_allocator_t) std.mem.Allocator {
-    const _a: *std.mem.Allocator = @ptrFromInt(@intFromPtr(allocator));
-    return _a.*;
-}
-
-pub fn apiFromCApi(comptime _module_name: @Type(.EnumLiteral), _apidb: *const c.c.ct_apidb_api_t) *apidb.ApiDbAPI {
-    _ = _module_name; // autofix
-    return @ptrFromInt(@intFromPtr(_apidb));
 }

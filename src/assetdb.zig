@@ -845,7 +845,7 @@ const AssetRootFS = struct {
         while (it) |node| : (it = node.next) {
             const iface = cetech1.apidb.ApiDbAPI.toInterface(public.AssetRootOpenedI, node);
             if (iface.*.opened) |opened| {
-                opened();
+                try opened();
             }
         }
     }

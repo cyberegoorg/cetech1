@@ -65,9 +65,9 @@ test "Can remove api" {
     defer apidb.deinit();
 
     const FooAPI = struct {
-        bar: ?*const fn () callconv(.C) f32,
+        bar: ?*const fn () f32,
 
-        pub fn barImpl() callconv(.C) f32 {
+        pub fn barImpl() f32 {
             return 3.14;
         }
     };
@@ -87,11 +87,11 @@ test "Can implement and use interface" {
     defer apidb.deinit();
 
     const FooInterace = struct {
-        bar: *const fn () callconv(.C) f32,
+        bar: *const fn () f32,
     };
 
     const FooInteraceImpl = struct {
-        fn barImpl() callconv(.C) f32 {
+        fn barImpl() f32 {
             return 3.14;
         }
     };
@@ -115,17 +115,17 @@ test "Interface should have multiple implementation" {
         pub const c_name = "ct_foo_i";
         pub const name_hash = strid.strId64(@This().c_name);
 
-        bar: *const fn () callconv(.C) i32,
+        bar: *const fn () i32,
     };
 
     const FooInteraceImpl = struct {
-        fn barImpl() callconv(.C) i32 {
+        fn barImpl() i32 {
             return 1;
         }
     };
 
     const FooInteraceImplOther = struct {
-        fn barImpl() callconv(.C) i32 {
+        fn barImpl() i32 {
             return 2;
         }
     };
@@ -154,17 +154,17 @@ test "Interface implementation can be removed" {
     const ct_foo_i = struct {
         pub const c_name = "ct_foo_i";
         pub const name_hash = strid.strId64(@This().c_name);
-        bar: *const fn () callconv(.C) i32,
+        bar: *const fn () i32,
     };
 
     const FooInteraceImpl = struct {
-        fn barImpl() callconv(.C) i32 {
+        fn barImpl() i32 {
             return 1;
         }
     };
 
     const FooInteraceImplOther = struct {
-        fn barImpl() callconv(.C) i32 {
+        fn barImpl() i32 {
             return 2;
         }
     };

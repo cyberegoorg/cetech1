@@ -17,7 +17,6 @@ const system = @import("system.zig");
 const gpu = @import("gpu.zig");
 const coreui = @import("coreui.zig");
 
-const c = @import("c.zig").c;
 const cetech1 = @import("cetech1");
 const public = cetech1.kernel;
 const profiler = cetech1.profiler;
@@ -241,8 +240,8 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
 
 pub fn deinit(
     allocator: std.mem.Allocator,
-) void {
-    shutdownKernelTasks();
+) !void {
+    try shutdownKernelTasks();
     try modules.unloadAll();
 
     coreui.deinit();
@@ -405,7 +404,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
         // Init Kernel
         try init(gpa_allocator, headless);
-        defer deinit(gpa_allocator);
+        defer deinit(gpa_allocator) catch undefined;
 
         // Test args
         const test_ui = 1 == getIntArgs("--test-ui") orelse 0;
@@ -476,7 +475,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             headless,
         );
 
-        initKernelTasks();
+        try initKernelTasks();
 
         var checkfs_timer: i64 = 0;
         while (_running and !_quit and !_restart) : (kernel_tick += 1) {
@@ -509,7 +508,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                 var it = apidb.api.getFirstImpl(public.KernelLoopHookI);
                 while (it) |node| : (it = node.next) {
                     var iface = cetech1.apidb.ApiDbAPI.toInterface(public.KernelLoopHookI, node);
-                    iface.begin_loop();
+                    try iface.begin_loop();
                 }
             }
 
@@ -549,7 +548,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                 var it = apidb.api.getFirstImpl(public.KernelLoopHookI);
                 while (it) |node| : (it = node.next) {
                     var iface = cetech1.apidb.ApiDbAPI.toInterface(public.KernelLoopHookI, node);
-                    iface.end_loop();
+                    try iface.end_loop();
                 }
             }
 
@@ -679,11 +678,11 @@ fn generateKernelTaskChain() !void {
 
     var it = apidb.api.getFirstImpl(public.KernelTaskI);
     while (it) |node| : (it = node.next) {
-        var iface = cetech1.apidb.ApiDbAPI.toInterface(public.KernelTaskI, node);
+        const iface = cetech1.apidb.ApiDbAPI.toInterface(public.KernelTaskI, node);
 
-        const depends = if (iface.depends_n != 0) iface.depends[0..iface.depends_n] else &[_]strid.StrId64{};
+        const depends = iface.depends;
 
-        const name_hash = strid.strId64(iface.name[0..std.mem.len(iface.name)]);
+        const name_hash = strid.strId64(iface.name);
 
         try _task_dag.add(name_hash, depends);
         try iface_map.put(name_hash, iface);
@@ -918,9 +917,9 @@ fn dumpKernelUpdatePhaseTreeD2() !void {
     }
 }
 
-fn initKernelTasks() void {
+fn initKernelTasks() !void {
     for (_task_chain.items) |iface| {
-        iface.init.?();
+        try iface.init();
     }
 }
 
@@ -931,14 +930,10 @@ fn dumpKernelTask() void {
     }
 }
 
-fn shutdownKernelTasks() void {
+fn shutdownKernelTasks() !void {
     for (0.._task_chain.items.len) |idx| {
         const iface = _task_chain.items[_task_chain.items.len - 1 - idx];
-        if (iface.shutdown) |shutdown| {
-            shutdown();
-        } else {
-            //logger.err(MODULE_NAME, "Kernel task {s} has empty shutdown.", .{iface.name});
-        }
+        try iface.shutdown();
     }
 }
 

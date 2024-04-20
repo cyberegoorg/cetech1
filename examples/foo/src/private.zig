@@ -30,7 +30,7 @@ const spam_log = false;
 const do_cdb = false;
 
 // Create c and zig api
-var zig_api = public.FooAPI{};
+const api = public.FooAPI{};
 
 // Global state that can surive hot-reload
 const G = struct {
@@ -204,7 +204,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
 
     // set module api
-    try apidb.setOrRemoveZigApi(module_name, public.FooAPI, &zig_api, load);
+    try apidb.setOrRemoveZigApi(module_name, public.FooAPI, &api, load);
 
     // impl interface
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_types_i, load);

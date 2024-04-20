@@ -9,7 +9,7 @@ const StringHashMap = std.StringHashMap;
 
 const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");
-const c = @import("c.zig").c;
+
 const cetech1 = @import("cetech1");
 const public = cetech1.modules;
 

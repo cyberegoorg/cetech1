@@ -16,7 +16,7 @@ pub fn build(b: *std.Build) !void {
     const cetech1_module = b.addModule(
         "cetech1",
         .{
-            .root_source_file = .{ .path = "root.zig" },
+            .root_source_file = .{ .path = "src/root.zig" },
         },
     );
     cetech1_module.addIncludePath(.{ .path = "includes" });
