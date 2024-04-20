@@ -9,158 +9,113 @@ const log = std.log.scoped(.editor_inspector);
 
 const editor = @import("editor");
 
-pub const UiPropertiesConfigAspect = extern struct {
+pub const UiPropertiesConfigAspect = struct {
     pub const c_name = "ct_properties_config_aspect";
     pub const name_hash = strid.strId32(@This().c_name);
     hide_prototype: bool = false,
 };
 
-pub const UiPropertyConfigAspect = extern struct {
+pub const UiPropertyConfigAspect = struct {
     pub const c_name = "ct_ui_property_config_aspect";
     pub const name_hash = strid.strId32(@This().c_name);
 
     hide_prototype: bool = false,
 };
 
-pub const UiVisualPropertyConfigAspect = extern struct {
+pub const UiVisualPropertyConfigAspect = struct {
     pub const c_name = "ct_ui_visual_property_aspect";
     pub const name_hash = strid.strId32(@This().c_name);
 
     no_subtree: bool = false,
 };
 
-pub const cdbPropertiesViewArgs = extern struct {
-    filter: ?[*:0]const u8 = null,
+pub const cdbPropertiesViewArgs = struct {
+    filter: ?[:0]const u8 = null,
     max_autopen_depth: u32 = 5,
 };
 
-pub const UiEmbedPropertyAspect = extern struct {
+pub const UiEmbedPropertyAspect = struct {
     pub const c_name = "ct_ui_embed_property_aspect";
     pub const name_hash = strid.strId32(@This().c_name);
 
-    ui_properties: ?*const fn (
-        allocator: *const std.mem.Allocator,
+    ui_properties: *const fn (
+        allocator: std.mem.Allocator,
         db: *cdb.Db,
         obj: cdb.ObjId,
         prop_idx: u32,
         args: cdbPropertiesViewArgs,
-    ) callconv(.C) void = null,
+    ) anyerror!void = undefined,
 
     pub fn implement(comptime T: type) UiEmbedPropertyAspect {
         if (!std.meta.hasFn(T, "ui")) @compileError("implement me");
 
         return UiEmbedPropertyAspect{
-            .ui_properties = struct {
-                pub fn f(
-                    allocator: *const std.mem.Allocator,
-                    db: *cdb.Db,
-                    obj: cdb.ObjId,
-                    prop_idx: u32,
-                    args: cdbPropertiesViewArgs,
-                ) callconv(.C) void {
-                    T.ui(allocator.*, db, obj, prop_idx, args) catch |err| {
-                        log.err("UiEmbedPropertyAspect.ui() failed with error {}", .{err});
-                    };
-                }
-            }.f,
+            .ui_properties = T.ui,
         };
     }
 };
 
-pub const UiEmbedPropertiesAspect = extern struct {
+pub const UiEmbedPropertiesAspect = struct {
     pub const c_name = "ct_ui_embed_properties_aspect";
-    pub const name_hash = strid.strId32(UiEmbedPropertiesAspect.c_name);
+    pub const name_hash = strid.strId32(@This().c_name);
 
-    ui_properties: ?*const fn (
-        allocator: *const std.mem.Allocator,
+    ui_properties: *const fn (
+        allocator: std.mem.Allocator,
         db: *cdb.Db,
         obj: cdb.ObjId,
         args: cdbPropertiesViewArgs,
-    ) callconv(.C) void = null,
+    ) anyerror!void = undefined,
 
     pub fn implement(comptime T: type) UiEmbedPropertiesAspect {
         if (!std.meta.hasFn(T, "ui")) @compileError("implement me");
 
         return UiEmbedPropertiesAspect{
-            .ui_properties = struct {
-                pub fn f(
-                    allocator: *const std.mem.Allocator,
-                    db: *cdb.Db,
-                    obj: cdb.ObjId,
-                    args: cdbPropertiesViewArgs,
-                ) callconv(.C) void {
-                    T.ui(allocator.*, db, obj, args) catch |err| {
-                        log.err("UiEmbedPropertiesAspect.ui() failed with error {}", .{err});
-                    };
-                }
-            }.f,
+            .ui_properties = T.ui,
         };
     }
 };
 
 pub const hidePropertyAspect = UiPropertyAspect{};
 
-pub const UiPropertyAspect = extern struct {
+pub const UiPropertyAspect = struct {
     pub const c_name = "ct_ui_property_aspect";
     pub const name_hash = strid.strId32(@This().c_name);
 
-    ui_property: ?*const fn (
-        allocator: *const std.mem.Allocator,
+    ui_property: *const fn (
+        allocator: std.mem.Allocator,
         db: *cdb.Db,
         cdb.ObjId,
         prop_idx: u32,
         args: cdbPropertiesViewArgs,
-    ) callconv(.C) void = null,
+    ) anyerror!void = undefined,
 
     pub fn implement(comptime T: type) UiPropertyAspect {
         if (!std.meta.hasFn(T, "ui")) @compileError("implement me");
 
         return UiPropertyAspect{
-            .ui_property = struct {
-                pub fn f(
-                    allocator: *const std.mem.Allocator,
-                    db: *cdb.Db,
-                    obj: cdb.ObjId,
-                    prop_idx: u32,
-                    args: cdbPropertiesViewArgs,
-                ) callconv(.C) void {
-                    T.ui(allocator.*, db, obj, prop_idx, args) catch |err| {
-                        log.err("UiPropertyAspect.ui() failed with error {}", .{err});
-                    };
-                }
-            }.f,
+            .ui_property = T.ui,
         };
     }
 };
 
-pub const UiPropertiesAspect = extern struct {
+pub const UiPropertiesAspect = struct {
     pub const c_name = "ct_ui_properties_aspect";
     pub const name_hash = strid.strId32(@This().c_name);
 
-    ui_properties: ?*const fn (
-        allocator: *const std.mem.Allocator,
+    ui_properties: *const fn (
+        allocator: std.mem.Allocator,
         db: *cdb.Db,
         tab: *editor.TabO,
         obj: cdb.ObjId,
         args: cdbPropertiesViewArgs,
-    ) callconv(.C) void = null,
+    ) anyerror!void = undefined,
 
     pub fn implement(comptime T: type) UiPropertiesAspect {
         if (!std.meta.hasFn(T, "ui")) @compileError("implement me");
 
-        return UiPropertiesAspect{ .ui_properties = struct {
-            pub fn f(
-                allocator: *const std.mem.Allocator,
-                db: *cdb.Db,
-                tab: *editor.TabO,
-                obj: cdb.ObjId,
-                args: cdbPropertiesViewArgs,
-            ) callconv(.C) void {
-                T.ui(allocator.*, db, tab, obj, args) catch |err| {
-                    log.err("UiPropertiesAspect.ui() failed with error {}", .{err});
-                };
-            }
-        }.f };
+        return UiPropertiesAspect{
+            .ui_properties = T.ui,
+        };
     }
 };
 

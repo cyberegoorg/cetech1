@@ -2283,22 +2283,7 @@ fn dump(db_: *public.Db) !void {
 }
 
 // Assert C and Zig Enums
-comptime {
-    std.debug.assert(c.CT_CDB_TYPE_NONE == @intFromEnum(public.PropType.NONE));
-    std.debug.assert(c.CT_CDB_TYPE_BOOL == @intFromEnum(public.PropType.BOOL));
-    std.debug.assert(c.CT_CDB_TYPE_U64 == @intFromEnum(public.PropType.U64));
-    std.debug.assert(c.CT_CDB_TYPE_I64 == @intFromEnum(public.PropType.I64));
-    std.debug.assert(c.CT_CDB_TYPE_U32 == @intFromEnum(public.PropType.U32));
-    std.debug.assert(c.CT_CDB_TYPE_I32 == @intFromEnum(public.PropType.I32));
-    std.debug.assert(c.CT_CDB_TYPE_F32 == @intFromEnum(public.PropType.F32));
-    std.debug.assert(c.CT_CDB_TYPE_F64 == @intFromEnum(public.PropType.F64));
-    std.debug.assert(c.CT_CDB_TYPE_STR == @intFromEnum(public.PropType.STR));
-    std.debug.assert(c.CT_CDB_TYPE_BLOB == @intFromEnum(public.PropType.BLOB));
-    std.debug.assert(c.CT_CDB_TYPE_SUBOBJECT == @intFromEnum(public.PropType.SUBOBJECT));
-    std.debug.assert(c.CT_CDB_TYPE_REFERENCE == @intFromEnum(public.PropType.REFERENCE));
-    std.debug.assert(c.CT_CDB_TYPE_SUBOBJECT_SET == @intFromEnum(public.PropType.SUBOBJECT_SET));
-    std.debug.assert(c.CT_CDB_TYPE_REFERENCE_SET == @intFromEnum(public.PropType.REFERENCE_SET));
-}
+comptime {}
 
 test "cdb: Test alocate/free id" {
     try cdb_test.testInit();
@@ -2364,6 +2349,4 @@ test "cdb: Test alocate/free idset" {
 }
 
 // Assert C api == C api in zig.
-comptime {
-    std.debug.assert(@sizeOf(c.ct_cdb_create_types_i) == @sizeOf(public.CreateTypesI));
-}
+comptime {}

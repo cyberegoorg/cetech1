@@ -48,9 +48,6 @@ const editor_modules = [_][]const u8{
 };
 
 const samples_modules = [_][]const u8{
-    // C based module
-    "bar",
-
     // Zig based module
     "foo",
 
@@ -259,7 +256,6 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     core_lib_static.addIncludePath(cetech1.path("includes"));
-    core_lib_static.addCSourceFile(.{ .file = .{ .path = "src/log.c" }, .flags = &.{} });
     core_lib_static.linkLibC();
 
     // cetech1 standalone exe

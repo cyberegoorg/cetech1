@@ -20,14 +20,14 @@ pub const std_options: std.Options = .{
 const log = std.log.scoped(module_name);
 
 var _allocator: Allocator = undefined;
-var _apidb: *apidb.ApiDbAPI = undefined;
-var _log: *cetech1.log.LogAPI = undefined;
-var _cdb: *cdb.CdbAPI = undefined;
-var _kernel: *cetech1.kernel.KernelApi = undefined;
-var _coreui: *coreui.CoreUIApi = undefined;
-var _assetdb: *assetdb.AssetDBAPI = undefined;
-var _tempalloc: *cetech1.tempalloc.TempAllocApi = undefined;
-var _system: *cetech1.system.SystemApi = undefined;
+var _apidb: *const apidb.ApiDbAPI = undefined;
+var _log: *const cetech1.log.LogAPI = undefined;
+var _cdb: *const cdb.CdbAPI = undefined;
+var _kernel: *const cetech1.kernel.KernelApi = undefined;
+var _coreui: *const coreui.CoreUIApi = undefined;
+var _assetdb: *const assetdb.AssetDBAPI = undefined;
+var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
+var _system: *const cetech1.system.SystemApi = undefined;
 
 const TabsSelectedObject = std.AutoArrayHashMap(*public.EditorTabI, cdb.ObjId);
 const TabsMap = std.AutoArrayHashMap(*anyopaque, *public.EditorTabI);
@@ -77,7 +77,7 @@ fn selectObjFromMenu(allocator: std.mem.Allocator, db: *cdb.CdbDb, ignored_obj: 
     const tabs = _g.tabs.values();
     for (tabs) |tab| {
         if (tab.vt.select_obj_from_menu) |select_obj_from_menu| {
-            const result = select_obj_from_menu(&allocator, tab.inst, db.db, ignored_obj, allowed_type);
+            const result = select_obj_from_menu(allocator, tab.inst, db.db, ignored_obj, allowed_type) catch return null;
             if (!result.isEmpty()) return result;
         }
     }
@@ -156,13 +156,13 @@ fn getObjColor(db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cdb.
     if (in_set_obj) |s_obj| {
         if (db.getAspect(public.UiVisualAspect, s_obj.type_idx)) |aspect| {
             if (aspect.ui_color) |color| {
-                return color(db.db, s_obj).c;
+                return color(db.db, s_obj) catch _coreui.getStyle().getColor(.text);
             }
         }
     } else {
         if (db.getAspect(public.UiVisualAspect, obj.type_idx)) |aspect| {
             if (aspect.ui_color) |color| {
-                return color(db.db, obj).c;
+                return color(db.db, obj) catch _coreui.getStyle().getColor(.text);
             }
         }
     }
@@ -176,7 +176,7 @@ fn buffFormatObjLabel(allocator: std.mem.Allocator, buff: [:0]u8, db: *cdb.CdbDb
         defer allocator.free(name);
 
         if (aspect.ui_name) |ui_name| {
-            name = std.mem.span(ui_name(&allocator, db.db, obj));
+            name = ui_name(allocator, db.db, obj) catch return null;
         } else {
             const asset_obj = _assetdb.getAssetForObj(obj).?;
             const obj_r = db.readObj(asset_obj).?;
@@ -205,7 +205,7 @@ fn buffFormatObjLabel(allocator: std.mem.Allocator, buff: [:0]u8, db: *cdb.CdbDb
         }
 
         if (aspect.ui_icons) |icons| {
-            const icon = std.mem.span(icons(&allocator, db.db, obj));
+            const icon = icons(allocator, db.db, obj) catch return null;
             defer allocator.free(icon);
 
             if (with_id) {
@@ -297,9 +297,7 @@ fn showObjContextMenu(
 
                     const set_menus_aspect = db.getPropertyAspect(public.UiSetMenusAspect, obj.type_idx, pidx);
                     if (set_menus_aspect) |aspect| {
-                        if (aspect.add_menu) |add_menu| {
-                            add_menu(&allocator, db.db, obj, pidx);
-                        }
+                        aspect.add_menu(&allocator, db.db, obj, pidx);
                     } else {
                         if (prop_def.type == .REFERENCE_SET) {
                             if (selectObjFromMenu(
@@ -362,7 +360,7 @@ fn showObjContextMenu(
 
         // Obj based context
     } else {
-        var context_counter = std.AutoArrayHashMap(strid.StrId64, std.ArrayList(*public.ObjContextMenuI)).init(allocator);
+        var context_counter = std.AutoArrayHashMap(strid.StrId64, std.ArrayList(*const public.ObjContextMenuI)).init(allocator);
         defer {
             for (context_counter.values()) |*v| {
                 v.deinit();
@@ -376,17 +374,17 @@ fn showObjContextMenu(
             if (iface.*.is_valid) |is_valid| {
                 for (contexts) |context| {
                     if (is_valid(
-                        &allocator,
+                        allocator,
                         db.db,
                         tab,
                         context,
                         selection,
-                        if (prop_idx != null) &prop_idx.? else null,
-                        if (in_set_obj != null) &in_set_obj.? else null,
-                        if (_g.filter) |f| f else "",
-                    )) {
+                        prop_idx,
+                        in_set_obj,
+                        _g.filter,
+                    ) catch false) {
                         if (!context_counter.contains(context)) {
-                            try context_counter.put(context, std.ArrayList(*public.ObjContextMenuI).init(allocator));
+                            try context_counter.put(context, std.ArrayList(*const public.ObjContextMenuI).init(allocator));
                         }
                         var array = context_counter.getPtr(context).?;
                         try array.append(iface);
@@ -406,15 +404,15 @@ fn showObjContextMenu(
 
                 for (iface_list.items) |iface| {
                     if (iface.*.menu) |menu| {
-                        menu(
-                            &allocator,
+                        try menu(
+                            allocator,
                             db.db,
                             tab,
                             context,
                             selection,
-                            if (prop_idx != null) &prop_idx.? else null,
-                            if (in_set_obj != null) &in_set_obj.? else null,
-                            if (_g.filter) |f| f else "",
+                            prop_idx,
+                            in_set_obj,
+                            _g.filter,
                         );
                     }
                 }
@@ -449,7 +447,7 @@ fn openTabWithPinnedObj(db: *cdb.CdbDb, tab_type_hash: strid.StrId32, obj: cdb.O
 fn tabSelectObj(db: *cdb.CdbDb, obj: cdb.ObjId, tab: *public.EditorTabI) void {
     _g.tab2selectedobj.put(tab, obj) catch undefined;
     if (tab.vt.*.obj_selected) |obj_selected| {
-        obj_selected(tab.inst, @ptrCast(db.db), .{ .id = obj.id, .type_idx = .{ .idx = obj.type_idx.idx } });
+        obj_selected(tab.inst, @ptrCast(db.db), .{ .id = obj.id, .type_idx = .{ .idx = obj.type_idx.idx } }) catch undefined;
     }
 }
 
@@ -482,7 +480,7 @@ fn createNewTab(tab_hash: strid.StrId32) ?*public.EditorTabI {
         const iface = apidb.ApiDbAPI.toInterface(public.EditorTabTypeI, node);
         if (iface.tab_hash.id != tab_hash.id) continue;
 
-        const tab_inst = iface.*.create.?(_g.main_db.db) orelse continue;
+        const tab_inst = (iface.*.create(_g.main_db.db) catch null) orelse continue;
         _g.tabs.put(tab_inst.*.inst, tab_inst) catch undefined;
         tab_inst.*.tabid = alocateTabId(.{ .id = tab_inst.*.vt.*.tab_hash.id }) catch undefined;
         return tab_inst;
@@ -501,7 +499,7 @@ fn destroyTab(tab: *public.EditorTabI) void {
 
     dealocateTabId(.{ .id = tab.vt.*.tab_hash.id }, tab.tabid) catch undefined;
     _ = _g.tabs.swapRemove(tab.inst);
-    tab.vt.destroy.?(tab);
+    tab.vt.destroy(tab) catch undefined;
 }
 
 const modal_quit = "Quit?###quit_unsaved_modal";
@@ -671,9 +669,9 @@ fn doTabMainMenu(allocator: std.mem.Allocator) !void {
             var it = _apidb.getFirstImpl(public.EditorTabTypeI);
             while (it) |node| : (it = node.next) {
                 const iface = apidb.ApiDbAPI.toInterface(public.EditorTabTypeI, node);
-                const menu_name = iface.menu_name.?();
+                const menu_name = try iface.menu_name();
 
-                const tab_type_menu_name = cetech1.fromCstrZ(menu_name);
+                const tab_type_menu_name = menu_name;
                 if (_coreui.menuItem(allocator, tab_type_menu_name, .{}, null)) {
                     const tab_inst = createNewTab(.{ .id = iface.tab_hash.id });
                     _ = tab_inst;
@@ -690,7 +688,7 @@ fn doTabMainMenu(allocator: std.mem.Allocator) !void {
 
             for (tabs.items) |tab| {
                 var buf: [128]u8 = undefined;
-                const tab_title_full = try std.fmt.bufPrintZ(&buf, "{s} {d}", .{ cetech1.fromCstrZ(tab.vt.*.menu_name.?()), tab.tabid });
+                const tab_title_full = try std.fmt.bufPrintZ(&buf, "{s} {d}", .{ try tab.vt.*.menu_name(), tab.tabid });
                 if (_coreui.menuItem(allocator, tab_title_full, .{}, null)) {
                     destroyTab(tab);
                 }
@@ -707,7 +705,7 @@ fn doTabs(tmp_allocator: std.mem.Allocator) !void {
     for (tabs.items) |tab| {
         var tab_open = true;
 
-        const tab_title = tab.vt.title.?(tab.inst);
+        const tab_title = try tab.vt.title(tab.inst);
 
         const tab_selected_object = _g.tab2selectedobj.get(tab);
         var asset_name_buf: [128]u8 = undefined;
@@ -734,7 +732,7 @@ fn doTabs(tmp_allocator: std.mem.Allocator) !void {
             &buf,
             "{s} {d} " ++ "{s}" ++ "###{s}_{d}",
             .{
-                cetech1.fromCstrZ(tab_title),
+                tab_title,
                 tab.tabid,
                 if (asset_name) |n| n else "",
                 tab.vt.tab_name,
@@ -752,7 +750,7 @@ fn doTabs(tmp_allocator: std.mem.Allocator) !void {
                 if (_g.last_focused_tab != tab) {
                     _g.last_focused_tab = tab;
                     if (tab.vt.*.focused) |focused| {
-                        focused(tab.inst);
+                        try focused(tab.inst);
                     }
                 }
             }
@@ -780,13 +778,12 @@ fn doTabs(tmp_allocator: std.mem.Allocator) !void {
                     }
                 }
 
-                tab_menu(tab.inst);
+                try tab_menu(tab.inst);
             }
 
             // Draw content if needed.
-            if (tab.vt.*.ui) |tab_ui| {
-                tab_ui(tab.inst);
-            }
+
+            try tab.vt.*.ui(tab.inst);
         }
         _coreui.end();
 
@@ -890,8 +887,8 @@ var open_in_context_menu_i = public.ObjContextMenuI.implement(struct {
                 const iface = apidb.ApiDbAPI.toInterface(public.EditorTabTypeI, node);
 
                 if (iface.can_open) |can_open| {
-                    if (can_open(db.db, selection)) {
-                        const name = std.mem.span(iface.menu_name.?());
+                    if (try can_open(db.db, selection)) {
+                        const name = try iface.menu_name();
                         if (_coreui.uiFilterPass(allocator, f, name, false) != null) {
                             pass = true;
                         }
@@ -925,8 +922,8 @@ var open_in_context_menu_i = public.ObjContextMenuI.implement(struct {
             const iface = apidb.ApiDbAPI.toInterface(public.EditorTabTypeI, node);
 
             if (iface.can_open) |can_open| {
-                if (can_open(db.db, selection)) {
-                    const name = std.mem.span(iface.menu_name.?());
+                if (try can_open(db.db, selection)) {
+                    const name = try iface.menu_name();
 
                     var buff: [128]u8 = undefined;
                     const label = std.fmt.bufPrintZ(&buff, "{s}###OpenIn_{s}", .{ name, iface.tab_name }) catch undefined;
@@ -955,7 +952,7 @@ var asset_root_opened_i = assetdb.AssetRootOpenedI.implement(struct {
         for (tabs.items) |tab| {
             if (tab.vt.*.create_on_init and tab.tabid == 1) {
                 if (tab.vt.*.asset_root_opened) |asset_root_opened| {
-                    asset_root_opened(tab.inst);
+                    try asset_root_opened(tab.inst);
                 }
                 continue;
             }
@@ -968,7 +965,7 @@ var asset_root_opened_i = assetdb.AssetRootOpenedI.implement(struct {
 // Cdb
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb_: *apidb.ApiDbAPI, allocator: Allocator, log_api: *cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(apidb_: *const apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
     _ = reload;
     // basic
     _allocator = allocator;
@@ -996,7 +993,7 @@ pub fn load_module_zig(apidb_: *apidb.ApiDbAPI, allocator: Allocator, log_api: *
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor(__apidb: *const apidb.ct_apidb_api_t, __allocator: *const apidb.ct_allocator_t, __load: bool, __reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor(__apidb: *const apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.C) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }
 

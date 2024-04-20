@@ -37,8 +37,8 @@ const BootArgs = struct {
     load_dynamic: bool = true,
 };
 
-const UpdateArray = std.ArrayList(*public.KernelTaskUpdateI);
-const KernelTaskArray = std.ArrayList(*public.KernelTaskI);
+const UpdateArray = std.ArrayList(*const public.KernelTaskUpdateI);
+const KernelTaskArray = std.ArrayList(*const public.KernelTaskI);
 const PhaseMap = std.AutoArrayHashMap(strid.StrId64, Phase);
 
 const Phase = struct {
@@ -96,7 +96,7 @@ var _args_map: std.StringArrayHashMap([]const u8) = undefined;
 var _tmp_depend_array: std.ArrayList(cetech1.task.TaskID) = undefined;
 var _tmp_taskid_map: std.AutoArrayHashMap(strid.StrId64, cetech1.task.TaskID) = undefined;
 
-var _iface_map: std.AutoArrayHashMap(strid.StrId64, *public.KernelTaskUpdateI) = undefined;
+var _iface_map: std.AutoArrayHashMap(strid.StrId64, *const public.KernelTaskUpdateI) = undefined;
 
 var _running: bool = false;
 var _quit: bool = false;
@@ -201,7 +201,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     _tmp_depend_array = std.ArrayList(cetech1.task.TaskID).init(_kernel_allocator);
     _tmp_taskid_map = std.AutoArrayHashMap(strid.StrId64, cetech1.task.TaskID).init(_kernel_allocator);
 
-    _iface_map = std.AutoArrayHashMap(strid.StrId64, *public.KernelTaskUpdateI).init(_kernel_allocator);
+    _iface_map = std.AutoArrayHashMap(strid.StrId64, *const public.KernelTaskUpdateI).init(_kernel_allocator);
 
     try tempalloc.init(_tmp_alocator_pool_allocator.allocator(), 256);
 
@@ -227,14 +227,14 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try gpu.registerToApi();
     try coreui.registerToApi();
 
-    try addPhase(c.CT_KERNEL_PHASE_ONLOAD, &[_]strid.StrId64{});
-    try addPhase(c.CT_KERNEL_PHASE_POSTLOAD, &[_]strid.StrId64{cetech1.kernel.OnLoad});
-    try addPhase(c.CT_KERNEL_PHASE_PREUPDATE, &[_]strid.StrId64{cetech1.kernel.PostLoad});
-    try addPhase(c.CT_KERNEL_PHASE_ONUPDATE, &[_]strid.StrId64{cetech1.kernel.PreUpdate});
-    try addPhase(c.CT_KERNEL_PHASE_ONVALIDATE, &[_]strid.StrId64{cetech1.kernel.OnUpdate});
-    try addPhase(c.CT_KERNEL_PHASE_POSTUPDATE, &[_]strid.StrId64{cetech1.kernel.OnValidate});
-    try addPhase(c.CT_KERNEL_PHASE_PRESTORE, &[_]strid.StrId64{cetech1.kernel.PostUpdate});
-    try addPhase(c.CT_KERNEL_PHASE_ONSTORE, &[_]strid.StrId64{cetech1.kernel.PreStore});
+    try addPhase("OnLoad", &[_]strid.StrId64{});
+    try addPhase("PostLoad", &[_]strid.StrId64{cetech1.kernel.OnLoad});
+    try addPhase("PreUpdate", &[_]strid.StrId64{cetech1.kernel.PostLoad});
+    try addPhase("OnUpdate", &[_]strid.StrId64{cetech1.kernel.PreUpdate});
+    try addPhase("OnValidate", &[_]strid.StrId64{cetech1.kernel.OnUpdate});
+    try addPhase("PostUpdate", &[_]strid.StrId64{cetech1.kernel.OnValidate});
+    try addPhase("PreStore", &[_]strid.StrId64{cetech1.kernel.PostUpdate});
+    try addPhase("OnStore", &[_]strid.StrId64{cetech1.kernel.PreStore});
 
     log.info("version: {}", .{cetech1_options.version});
 }
@@ -323,7 +323,7 @@ pub fn getStrArgs(arg_name: []const u8) ?[]const u8 {
     return v;
 }
 
-pub fn bigInit(static_modules: []const c.ct_module_desc_t, load_dynamic: bool) !void {
+pub fn bigInit(static_modules: []const cetech1.modules.ModuleDesc, load_dynamic: bool) !void {
     if (static_modules.len != 0) {
         try modules.addModules(static_modules);
     }
@@ -383,7 +383,7 @@ fn registerSignals() !void {
     }
 }
 
-pub fn boot(static_modules: []const c.ct_module_desc_t, boot_args: BootArgs) !void {
+pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootArgs) !void {
     while (_restart) {
         _restart = false;
 
@@ -674,7 +674,7 @@ fn generateKernelTaskChain() !void {
     try _task_dag.reset();
     _task_chain.clearRetainingCapacity();
 
-    var iface_map = std.AutoArrayHashMap(strid.StrId64, *public.KernelTaskI).init(_kernel_allocator);
+    var iface_map = std.AutoArrayHashMap(strid.StrId64, *const public.KernelTaskI).init(_kernel_allocator);
     defer iface_map.deinit();
 
     var it = apidb.api.getFirstImpl(public.KernelTaskI);
@@ -712,11 +712,11 @@ fn generateTaskUpdateChain() !void {
 
     var it = apidb.api.getFirstImpl(public.KernelTaskUpdateI);
     while (it) |node| : (it = node.next) {
-        var iface = cetech1.apidb.ApiDbAPI.toInterface(public.KernelTaskUpdateI, node);
+        const iface = cetech1.apidb.ApiDbAPI.toInterface(public.KernelTaskUpdateI, node);
 
-        const depends = if (iface.depends_n != 0) iface.depends[0..iface.depends_n] else &[_]strid.StrId64{};
+        const depends = iface.depends;
 
-        const name_hash = strid.strId64(iface.name[0..std.mem.len(iface.name)]);
+        const name_hash = strid.strId64(iface.name);
 
         var phase = _phase_map.getPtr(iface.phase).?;
         try phase.update_dag.add(name_hash, depends);
@@ -761,20 +761,19 @@ fn doKernelUpdateTasks(kernel_tick: u64, dt: i64) !void {
 
         for (phase.update_chain.items) |update_handler| {
             const KernelTask = struct {
-                update_handler: *public.KernelTaskUpdateI,
+                update_handler: *const public.KernelTaskUpdateI,
                 kernel_tick: u64,
-                frame_allocator: std.mem.Allocator,
                 dt: i64,
                 pub fn exec(self: *@This()) !void {
                     var zone_ctx = profiler_private.ztracy.Zone(@src());
-                    zone_ctx.Name(self.update_handler.name[0..std.mem.len(self.update_handler.name)]);
+                    zone_ctx.Name(self.update_handler.name);
                     defer zone_ctx.End();
 
-                    self.update_handler.update(&self.frame_allocator, self.kernel_tick, @floatFromInt(self.dt));
+                    try self.update_handler.update(self.kernel_tick, @floatFromInt(self.dt));
                 }
             };
 
-            const task_strid = strid.strId64(cetech1.fromCstr(update_handler.name));
+            const task_strid = strid.strId64(update_handler.name);
 
             var prereq = cetech1.task.TaskID.none;
 
@@ -804,7 +803,6 @@ fn doKernelUpdateTasks(kernel_tick: u64, dt: i64) !void {
                 KernelTask{
                     .update_handler = update_handler,
                     .kernel_tick = kernel_tick,
-                    .frame_allocator = task_alloc,
                     .dt = dt,
                 },
             );
@@ -842,7 +840,7 @@ fn dumpKernelUpdatePhaseTree() !void {
         const last_idx = if (_phases_dag.output.keys().len != 0) _phases_dag.output.keys().len else 0;
         const is_last = (last_idx - 1) == idx;
         for (phase.update_chain.items) |update_fce| {
-            const task_name_strid = strid.strId64(cetech1.fromCstr(update_fce.name));
+            const task_name_strid = strid.strId64(update_fce.name);
             const dep_arr = phase.update_dag.dependList(task_name_strid);
             const is_root = dep_arr == null;
             const tags = if (is_root) "R" else " ";
@@ -855,7 +853,7 @@ fn dumpKernelUpdatePhaseTree() !void {
 
                 for (dep_arr.?) |dep_id| {
                     const dep_iface = _iface_map.getPtr(dep_id).?;
-                    try depends_name.append(cetech1.fromCstr(dep_iface.*.name));
+                    try depends_name.append(dep_iface.*.name);
                 }
 
                 depends_line = try std.mem.join(_kernel_allocator, ", ", depends_name.items);
@@ -902,7 +900,7 @@ fn dumpKernelUpdatePhaseTreeD2() !void {
         try writer.print("{s}: {{\n", .{phase.name});
 
         for (phase.update_chain.items) |update_fce| {
-            const task_name_strid = strid.strId64(cetech1.fromCstr(update_fce.name));
+            const task_name_strid = strid.strId64(update_fce.name);
             const dep_arr = phase.update_dag.dependList(task_name_strid);
             const is_root = dep_arr == null;
             const iface = _iface_map.getPtr(task_name_strid).?;
@@ -948,7 +946,7 @@ test "Can boot kernel" {
     if (builtin.os.tag == .linux) return error.SkipZigTest;
     const Module1 = struct {
         var called: bool = false;
-        fn load_module(_apidb: [*c]const c.ct_apidb_api_t, _allocator: [*c]const c.ct_allocator_t, load: bool, reload: bool) callconv(.C) bool {
+        fn load_module(_apidb: *const cetech1.apidb.ApiDbAPI, _allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
             _ = _apidb;
             _ = reload;
             _ = load;
@@ -958,13 +956,10 @@ test "Can boot kernel" {
         }
     };
 
-    const static_modules = [_]c.ct_module_desc_t{.{ .name = "module1", .module_fce = &Module1.load_module }};
+    const static_modules = [_]cetech1.modules.ModuleDesc{.{ .name = "module1", .module_fce = @ptrCast(&Module1.load_module) }};
     try boot(&static_modules, .{ .headless = true, .load_dynamic = false, .max_kernel_tick = 2 });
     try std.testing.expect(Module1.called);
 }
 
 // Assert C api == C api in zig.
-comptime {
-    std.debug.assert(@sizeOf(c.ct_kernel_task_update_i) == @sizeOf(public.KernelTaskUpdateI));
-    std.debug.assert(@sizeOf(c.ct_kernel_task_i) == @sizeOf(public.KernelTaskI));
-}
+comptime {}

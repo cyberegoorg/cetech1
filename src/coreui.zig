@@ -48,8 +48,7 @@ var _scale_factor: ?f32 = null;
 var _new_scale_factor: ?f32 = null;
 
 const KernelTask = struct {
-    pub fn update(frame_allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
-        _ = frame_allocator; // autofix
+    pub fn update(kernel_tick: u64, dt: f32) !void {
         const tmp = try tempalloc.api.create();
         defer tempalloc.api.destroy(tmp);
         const ctx = kernel.api.getGpuCtx();
@@ -1085,6 +1084,4 @@ test "coreui: should do basic operatino with selection" {
 }
 
 // Assert C api == C api in zig.
-comptime {
-    std.debug.assert(@sizeOf(c.ct_coreui_ui_i) == @sizeOf(public.CoreUII));
-}
+comptime {}

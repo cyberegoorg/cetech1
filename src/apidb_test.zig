@@ -27,7 +27,7 @@ test "Can registr and use zig API" {
     defer apidb.deinit();
 
     const FooAPI = struct {
-        pub fn bar(self: *@This()) f32 {
+        pub fn bar(self: @This()) f32 {
             _ = self;
             return 3.14;
         }
@@ -43,41 +43,19 @@ test "Can registr and use zig API" {
     try std.testing.expectEqual(expect_value, foo_api2.?.bar());
 }
 
-test "Can registr and use C API" {
-    try apidb.init(std.testing.allocator);
-    defer apidb.deinit();
-
-    const FooAPI = struct {
-        bar: *const fn () callconv(.C) f32,
-
-        pub fn barImpl() callconv(.C) f32 {
-            return 3.14;
-        }
-    };
-
-    var foo_api = FooAPI{ .bar = &FooAPI.barImpl };
-    try apidb.api.setApi(.foo, FooAPI, cetech1.apidb.ApiDbAPI.lang_c, "foo", &foo_api);
-
-    var foo_api2 = apidb.api.getApi(.foo, FooAPI, cetech1.apidb.ApiDbAPI.lang_c, "foo");
-    try std.testing.expect(foo_api2 != null);
-
-    const expect_value: f32 = 3.14;
-    try std.testing.expectEqual(expect_value, foo_api2.?.bar());
-}
-
 test "Unregistred api return zeroed interface" {
     try apidb.init(std.testing.allocator);
     defer apidb.deinit();
 
     const FooAPI = struct {
-        bar: ?*const fn () callconv(.C) f32,
+        bar: ?*const fn () f32,
 
-        pub fn barImpl() callconv(.C) f32 {
+        pub fn barImpl() f32 {
             return 3.14;
         }
     };
 
-    const foo_api2 = apidb.api.getApi(.foo, FooAPI, cetech1.apidb.ApiDbAPI.lang_c, "foo");
+    const foo_api2 = apidb.api.getApi(.foo, FooAPI, cetech1.apidb.ApiDbAPI.lang_zig, "foo");
     try std.testing.expect(foo_api2 != null);
     try std.testing.expect(foo_api2.?.bar == null);
 }

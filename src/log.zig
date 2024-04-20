@@ -15,9 +15,6 @@ const module_name = .log;
 
 pub fn registerToApi() !void {
     try apidb.api.setZigApi(module_name, cetech1.log.LogAPI, &api);
-
-    _ct_log_set_log_api(&api_c);
-    try apidb.api.setOrRemoveCApi(module_name, c.ct_log_api_t, &api_c, true);
 }
 
 pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]const u8) void {
@@ -66,25 +63,6 @@ pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]cons
         iface.log(@intFromEnum(level), scope.ptr, msg.ptr);
     }
 }
-
-extern fn _ct_log_set_log_api(_logapi: *const c.ct_log_api_t) callconv(.C) void;
-extern fn _ct_log_va(_logapi: *cetech1.c.ct_log_api_t, log_level: cetech1.c.ct_log_level_e, scope: [*c]const u8, msg: [*c]const u8, va: std.builtin.VaList) callconv(.C) void;
-extern fn ct_log_warn(scope: [*c]const u8, msg: [*c]const u8, ...) callconv(.C) void;
-extern fn ct_log_info(scope: [*c]const u8, msg: [*c]const u8, ...) callconv(.C) void;
-extern fn ct_log_err(scope: [*c]const u8, msg: [*c]const u8, ...) callconv(.C) void;
-extern fn ct_log_debug(scope: [*c]const u8, msg: [*c]const u8, ...) callconv(.C) void;
-
-const api_c = c.ct_log_api_t{
-    .log = struct {
-        pub fn f(level: c.ct_log_level_e, scope: [*c]const u8, log_msg: [*c]const u8) callconv(.C) void {
-            logFn(@enumFromInt(level), std.mem.span(scope), std.mem.span(log_msg));
-        }
-    }.f,
-    .info = ct_log_info,
-    .debug = ct_log_debug,
-    .warn = ct_log_warn,
-    .err = ct_log_err,
-};
 
 pub fn zigLogFn(
     comptime level: std.log.Level,
@@ -141,50 +119,4 @@ test "log: should log messge" {
     try std.testing.expectEqual(cetech1.log.LogAPI.Level.warn, H.level);
     try std.testing.expectEqualStrings("test_warn", H.scope);
     try std.testing.expectEqualStrings("test warn msg", H.log_msg);
-}
-
-test "log: should log messge via c api" {
-    try apidb.init(std.testing.allocator);
-    defer apidb.deinit();
-    try registerToApi();
-
-    const H = struct {
-        var level: cetech1.log.LogAPI.Level = .invalid;
-        var scope: [:0]const u8 = undefined;
-        var log_msg: [:0]const u8 = undefined;
-        pub fn logFn(level_: cetech1.log.LogAPI.Level, scope_: [:0]const u8, log_msg_: [:0]const u8) !void {
-            level = level_;
-            scope = try std.testing.allocator.dupeZ(u8, scope_);
-            log_msg = try std.testing.allocator.dupeZ(u8, log_msg_);
-        }
-    };
-
-    errdefer {
-        defer std.testing.allocator.free(H.scope);
-        defer std.testing.allocator.free(H.log_msg);
-    }
-
-    var handler = cetech1.log.LogHandlerI.implement(H);
-    try apidb.api.implInterface(.foo, cetech1.log.LogHandlerI, &handler);
-
-    api_c.info.?.*("test_info", "test info msg");
-    try std.testing.expectEqual(cetech1.log.LogAPI.Level.info, H.level);
-    try std.testing.expectEqualStrings("test_info", H.scope);
-    try std.testing.expectEqualStrings("test info msg", H.log_msg);
-    std.testing.allocator.free(H.scope);
-    std.testing.allocator.free(H.log_msg);
-
-    api_c.debug.?.*("test_debug", "test debug msg");
-    try std.testing.expectEqual(cetech1.log.LogAPI.Level.debug, H.level);
-    try std.testing.expectEqualStrings("test_debug", H.scope);
-    try std.testing.expectEqualStrings("test debug msg", H.log_msg);
-    std.testing.allocator.free(H.scope);
-    std.testing.allocator.free(H.log_msg);
-
-    api_c.warn.?.*("test_warn", "test warn msg");
-    try std.testing.expectEqual(cetech1.log.LogAPI.Level.warn, H.level);
-    try std.testing.expectEqualStrings("test_warn", H.scope);
-    try std.testing.expectEqualStrings("test warn msg", H.log_msg);
-    std.testing.allocator.free(H.scope);
-    std.testing.allocator.free(H.log_msg);
 }

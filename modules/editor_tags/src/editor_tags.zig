@@ -9,6 +9,6 @@ pub const EditorTagsApi = struct {
         obj: cdb.ObjId,
         prop_idx: u32,
         in_table: bool,
-        filter: ?[*:0]const u8,
+        filter: ?[:0]const u8,
     ) anyerror!bool,
 };

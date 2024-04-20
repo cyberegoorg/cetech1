@@ -3,9 +3,6 @@ const c = @import("c.zig").c;
 
 const strid = @import("strid.zig");
 
-pub const ct_apidb_api_t = c.ct_apidb_api_t;
-pub const ct_allocator_t = c.ct_allocator_t;
-
 pub const ImplIter = extern struct {
     interface: *const anyopaque,
     next: ?*ImplIter,
@@ -23,9 +20,6 @@ pub const ApiDbAPI = struct {
 
     /// Zig api
     pub const lang_zig = "zig";
-
-    /// C api
-    pub const lang_c = "c";
 
     /// Crete variable that can survive reload.
     pub fn globalVar(self: Self, comptime T: type, comptime module: @Type(.EnumLiteral), var_name: []const u8, default: T) !*T {
@@ -45,17 +39,8 @@ pub const ApiDbAPI = struct {
 
     /// Get api for given language.
     /// If api not exist create place holder with zeroed values and return it. (setApi fill the valid pointers)
-    pub fn getApi(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type, language: []const u8, api_name: []const u8) ?*T {
+    pub fn getApi(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type, language: []const u8, api_name: []const u8) ?*const T {
         return @ptrFromInt(@intFromPtr(self.getApiOpaaqueFn(@tagName(module), language, api_name, @sizeOf(T))));
-    }
-
-    // Set or remove C API
-    pub fn setOrRemoveCApi(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type, api_ptr: *const T, load: bool) !void {
-        if (load) {
-            return self.setApi(module, T, lang_c, _sanitizeApiName(T), api_ptr);
-        } else {
-            return self.removeApi(module, lang_c, _sanitizeApiName(T));
-        }
     }
 
     // Set or remove API for given language and api name
@@ -92,7 +77,7 @@ pub const ApiDbAPI = struct {
     }
 
     // Get zig api
-    pub fn getZigApi(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type) ?*T {
+    pub fn getZigApi(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type) ?*const T {
         var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
         return @ptrFromInt(@intFromPtr(self.getApiOpaaqueFn(@tagName(module), lang_zig, name_iter.first(), @sizeOf(T))));
     }
@@ -109,7 +94,7 @@ pub const ApiDbAPI = struct {
     }
 
     // Cast generic interface to true type
-    pub fn toInterface(comptime T: type, iter: *const ImplIter) *T {
+    pub fn toInterface(comptime T: type, iter: *const ImplIter) *const T {
         return @ptrFromInt(@intFromPtr(iter.interface));
     }
 

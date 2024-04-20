@@ -70,7 +70,7 @@ pub const LogAPI = struct {
     //#endregion
 };
 
-pub fn zigLogFnGen(comptime log_api: **LogAPI) LogFn {
+pub fn zigLogFnGen(comptime log_api: **const LogAPI) LogFn {
     return struct {
         pub fn f(
             comptime level: std.log.Level,

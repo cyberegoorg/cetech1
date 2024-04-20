@@ -219,12 +219,12 @@ pub const AssetDBAPI = struct {
     }
 
     /// Save only modified assets.
-    pub fn saveAllModifiedAssets(self: *Self, tmp_allocator: std.mem.Allocator) !void {
+    pub fn saveAllModifiedAssets(self: Self, tmp_allocator: std.mem.Allocator) !void {
         return self.saveAllModifiedAssetsFn(tmp_allocator);
     }
 
     /// Save asset.
-    pub fn saveAsset(self: *Self, tmp_allocator: std.mem.Allocator, asset: cdb.ObjId) !void {
+    pub fn saveAsset(self: Self, tmp_allocator: std.mem.Allocator, asset: cdb.ObjId) !void {
         return self.saveAssetFn(tmp_allocator, asset);
     }
 

@@ -291,7 +291,7 @@ pub fn CdbTypeDecl(comptime type_name: [:0]const u8, comptime props_enum: type, 
 pub const CdbDb = struct {
     const Self = @This();
 
-    pub fn fromDbT(db: *Db, dbapi: *CdbAPI) Self {
+    pub fn fromDbT(db: *Db, dbapi: *const CdbAPI) Self {
         return Self{ .db = db, .cdbapi = dbapi };
     }
 
@@ -622,7 +622,7 @@ pub const CdbDb = struct {
     }
 
     db: *Db,
-    cdbapi: *CdbAPI,
+    cdbapi: *const CdbAPI,
 };
 
 /// Main CDB API

@@ -21,7 +21,6 @@
         //
         // CETech1 examples
         //
-        .bar = .{ .path = "examples/bar" },
         .foo = .{ .path = "examples/foo" },
         .editor_foo_tab = .{ .path = "examples/editor_foo_tab" },
         .editor_foo_viewport_tab = .{ .path = "examples/editor_foo_viewport_tab" },

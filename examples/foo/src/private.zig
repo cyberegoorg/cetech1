@@ -18,10 +18,11 @@ const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _log: *cetech1.log.LogAPI = undefined;
-var _cdb: *cdb.CdbAPI = undefined;
-var _coreui: *cetech1.coreui.CoreUIApi = undefined;
-var _kernel: *cetech1.kernel.KernelApi = undefined;
+var _log: *const cetech1.log.LogAPI = undefined;
+var _cdb: *const cdb.CdbAPI = undefined;
+var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
+var _kernel: *const cetech1.kernel.KernelApi = undefined;
+var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 
 var _db: *cdb.CdbDb = undefined;
 
@@ -30,7 +31,6 @@ const do_cdb = false;
 
 // Create c and zig api
 var zig_api = public.FooAPI{};
-var c_api = public.c.ct_foo_api_t{ .foo = &public.FooAPI.foo1_c };
 
 // Global state that can surive hot-reload
 const G = struct {
@@ -76,17 +76,20 @@ var create_types_i = cdb.CreateTypesI.implement(struct {
 
 // Create simple update kernel task
 const KernelTask = struct {
-    pub fn update(frame_allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
+    pub fn update(kernel_tick: u64, dt: f32) !void {
         _db = _kernel.getDb();
         _g.var_1 += 1;
+
+        const tmp_alloc = try _tmpalloc.create();
+        defer _tmpalloc.destroy(tmp_alloc);
 
         if (spam_log) log.info("kernel_tick:{}\tdt:{}\tg_var_1:{}", .{ kernel_tick, dt, _g.var_1 });
 
         // Alocator see in tracy
-        const foo = try frame_allocator.create(public.FooAPI);
+        const foo = try tmp_alloc.create(public.FooAPI);
         if (spam_log) log.info("alloc {}", .{foo});
 
-        defer frame_allocator.destroy(foo);
+        defer tmp_alloc.destroy(foo);
 
         // Cdb object create test
         if (do_cdb) {
@@ -193,17 +196,17 @@ var update_task8 = cetech1.kernel.KernelTaskUpdateI.implment(
 );
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
     // basic
     _allocator = allocator;
     _log = log_api;
     _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
     _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
+    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
 
     // set module api
     try apidb.setOrRemoveZigApi(module_name, public.FooAPI, &zig_api, load);
-    try apidb.setOrRemoveCApi(module_name, public.c.ct_foo_api_t, &c_api, load);
 
     // impl interface
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_types_i, load);
@@ -243,6 +246,6 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_foo(__apidb: *const cetech1.apidb.ct_apidb_api_t, __allocator: *const cetech1.apidb.ct_allocator_t, __load: bool, __reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_foo(__apidb: *const cetech1.apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.C) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }

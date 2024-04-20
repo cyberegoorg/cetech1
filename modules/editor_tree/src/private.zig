@@ -13,8 +13,6 @@ const editor_inspector = @import("editor_inspector");
 
 const Icons = coreui.CoreIcons;
 
-pub const c = @cImport(@cInclude("editor_tree.h"));
-
 const module_name = .editor_tree;
 
 pub const std_options: std.Options = .{
@@ -28,14 +26,14 @@ const INSIATED_COLOR = .{ 1.0, 0.6, 0.0, 1.0 };
 const REMOVED_COLOR = .{ 0.7, 0.0, 0.0, 1.0 };
 
 var _allocator: Allocator = undefined;
-var _apidb: *cetech1.apidb.ApiDbAPI = undefined;
-var _log: *cetech1.log.LogAPI = undefined;
-var _cdb: *cdb.CdbAPI = undefined;
-var _coreui: *cetech1.coreui.CoreUIApi = undefined;
-var _editor: *editor.EditorAPI = undefined;
-var _assetdb: *cetech1.assetdb.AssetDBAPI = undefined;
-var _kernel: *cetech1.kernel.KernelApi = undefined;
-var _tempalloc: *cetech1.tempalloc.TempAllocApi = undefined;
+var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
+var _log: *const cetech1.log.LogAPI = undefined;
+var _cdb: *const cdb.CdbAPI = undefined;
+var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
+var _editor: *const editor.EditorAPI = undefined;
+var _assetdb: *const cetech1.assetdb.AssetDBAPI = undefined;
+var _kernel: *const cetech1.kernel.KernelApi = undefined;
+var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 
 // Global state
 const G = struct {};
@@ -100,7 +98,7 @@ fn cdbObjTreeNode(
             if (_coreui.isItemHovered(.{})) {
                 _coreui.beginTooltip();
                 defer _coreui.endTooltip();
-                tooltip(&allocator, db.db, obj);
+                tooltip(allocator, db.db, obj) catch undefined;
             }
         }
     }
@@ -136,7 +134,7 @@ fn cdbObjTreeNode(
 
             if (db.getAspect(public.UiTreeAspect, obj.type_idx)) |aspect| {
                 if (aspect.ui_drop_obj) |ui_drop_obj| {
-                    ui_drop_obj(&allocator, db.db, tab, obj, drag_obj);
+                    ui_drop_obj(allocator, db.db, tab, obj, drag_obj) catch undefined;
                 }
             }
         }
@@ -208,7 +206,7 @@ fn cdbTreeView(
 
     if (ui_aspect) |aspect| {
         //_ = aspect;
-        return aspect.ui_tree.?(&allocator, db.db, tab, context.ptr, context.len, obj, selection, depth, args);
+        return aspect.ui_tree(allocator, db.db, tab, context, obj, selection, depth, args);
     }
 
     if (!args.ignored_object.isEmpty() and args.ignored_object.eql(obj)) {
@@ -432,7 +430,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
     _ = reload;
     // basic
     _allocator = allocator;
@@ -455,13 +453,9 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_tree(__apidb: *const cetech1.apidb.ct_apidb_api_t, __allocator: *const cetech1.apidb.ct_allocator_t, __load: bool, __reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor_tree(__apidb: *const cetech1.apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.C) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }
 
 // Assert C api == C api in zig.
-comptime {
-    std.debug.assert(@sizeOf(c.ct_editor_ui_tree_aspect) == @sizeOf(public.UiTreeAspect));
-    std.debug.assert(@sizeOf(c.ct_editor_cdb_tree_args) == @sizeOf(public.CdbTreeViewArgs));
-    std.debug.assert(@sizeOf(c.ct_editor_cdb_tree_result) == @sizeOf(public.SelectInTreeResult));
-}
+comptime {}

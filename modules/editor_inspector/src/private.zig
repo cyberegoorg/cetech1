@@ -1,8 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-pub const c = @cImport(@cInclude("editor_properties.h"));
-
 const public = @import("editor_inspector.zig");
 
 const cetech1 = @import("cetech1");
@@ -34,15 +32,15 @@ const ASSET_PROPERTIES_ASPECT_NAME = "ct_asset_properties_aspect";
 const PROP_HEADER_BG_COLOR = .{ 0.2, 0.2, 0.2, 0.65 };
 
 var _allocator: Allocator = undefined;
-var _apidb: *cetech1.apidb.ApiDbAPI = undefined;
-var _log: *cetech1.log.LogAPI = undefined;
-var _cdb: *cdb.CdbAPI = undefined;
-var _coreui: *cetech1.coreui.CoreUIApi = undefined;
-var _uuid: *cetech1.uuid.UuidAPI = undefined;
-var _editor: *editor.EditorAPI = undefined;
-var _assetdb: *assetdb.AssetDBAPI = undefined;
-var _kernel: *cetech1.kernel.KernelApi = undefined;
-var _tempalloc: *cetech1.tempalloc.TempAllocApi = undefined;
+var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
+var _log: *const cetech1.log.LogAPI = undefined;
+var _cdb: *const cdb.CdbAPI = undefined;
+var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
+var _uuid: *const cetech1.uuid.UuidAPI = undefined;
+var _editor: *const editor.EditorAPI = undefined;
+var _assetdb: *const assetdb.AssetDBAPI = undefined;
+var _kernel: *const cetech1.kernel.KernelApi = undefined;
+var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 
 // Global state
 const G = struct {
@@ -330,7 +328,7 @@ fn cdbPropertiesObj(
     // Find properties asspect for obj type.
     const ui_aspect = db.getAspect(public.UiPropertiesAspect, obj.type_idx);
     if (ui_aspect) |aspect| {
-        aspect.ui_properties.?(&allocator, db.db, tab, obj, args);
+        try aspect.ui_properties(allocator, db.db, tab, obj, args);
         return;
     }
 
@@ -381,13 +379,7 @@ fn cdbPropertiesObj(
                 ui_prop_aspect = db.getPropertyAspect(public.UiPropertyAspect, obj.type_idx, prop_idx);
                 // If exist aspect and is empty hide property.
                 if (ui_prop_aspect) |aspect| {
-                    if (aspect.ui_property == null) continue;
-                    if (aspect.ui_property) |ui| {
-                        ui(&allocator, @ptrCast(db.db), obj, prop_idx, args);
-                        continue;
-                    } else {
-                        continue;
-                    }
+                    aspect.ui_property(allocator, @ptrCast(db.db), obj, prop_idx, args) catch continue;
                 }
             }
 
@@ -397,7 +389,8 @@ fn cdbPropertiesObj(
                     if (ui_embed_prop_aspect) |aspect| {
                         const lbl = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
                         if (uiPropLabel(allocator, lbl, prop_color, args)) {
-                            aspect.ui_properties.?(&allocator, db.db, obj, prop_idx, args);
+                            try aspect.ui_properties(allocator, db.db, obj, prop_idx, args);
+                            continue;
                         }
                     }
                 },
@@ -413,7 +406,7 @@ fn cdbPropertiesObj(
                             if (subobj == null) {
                                 try objContextMenuBtn(allocator, db, tab, obj, prop_idx, null);
                             } else {
-                                aspect.ui_properties.?(&allocator, db.db, subobj.?, args);
+                                try aspect.ui_properties(allocator, db.db, subobj.?, args);
                             }
                         }
                     }
@@ -447,9 +440,7 @@ fn cdbPropertiesObj(
                     const label = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
                     if (api.uiPropLabel(allocator, label, prop_color, args)) {
                         if (ui_prop_aspect) |aspect| {
-                            if (aspect.ui_property) |ui| {
-                                ui(&allocator, @ptrCast(db.db), obj, prop_idx, args);
-                            }
+                            try aspect.ui_property(allocator, @ptrCast(db.db), obj, prop_idx, args);
                         } else {
                             try api.uiPropInput(db, obj, prop_idx);
                         }
@@ -477,14 +468,8 @@ fn cdbPropertiesObj(
         const ui_prop_aspect = db.getPropertyAspect(public.UiPropertyAspect, obj.type_idx, prop_idx);
         // If exist aspect and is empty hide property.
         if (ui_prop_aspect) |aspect| {
-            if (aspect.ui_property == null) continue;
-
-            if (aspect.ui_property) |ui| {
-                ui(&allocator, @ptrCast(db.db), obj, prop_idx, args);
-                continue;
-            } else {
-                continue;
-            }
+            try aspect.ui_property(allocator, @ptrCast(db.db), obj, prop_idx, args);
+            continue;
         }
 
         switch (prop_def.type) {
@@ -818,7 +803,7 @@ fn uiPropInputRaw(db: *cdb.CdbDb, obj: cdb.ObjId, prop_idx: u32) !void {
 
 fn uiPropLabel(allocator: std.mem.Allocator, name: [:0]const u8, color: ?[4]f32, args: public.cdbPropertiesViewArgs) bool {
     if (args.filter) |filter| {
-        if (_coreui.uiFilterPass(allocator, cetech1.fromCstrZ(filter), name, false) == null) return false;
+        if (_coreui.uiFilterPass(allocator, filter, name, false) == null) return false;
     }
     _coreui.tableNextColumn();
 
@@ -902,10 +887,8 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
                 const ui_prop_aspect = db.getPropertyAspect(public.UiEmbedPropertyAspect, obj.type_idx, assetdb.Asset.propIdx(.Tags));
                 // If exist aspect and is empty hide property.
                 if (ui_prop_aspect) |aspect| {
-                    if (aspect.ui_properties) |ui_prop| {
-                        if (api.uiPropLabel(allocator, "Tags", null, args)) {
-                            ui_prop(&allocator, @ptrCast(db.db), obj, assetdb.Asset.propIdx(.Tags), args);
-                        }
+                    if (api.uiPropLabel(allocator, "Tags", null, args)) {
+                        try aspect.ui_properties(allocator, @ptrCast(db.db), obj, assetdb.Asset.propIdx(.Tags), args);
                     }
                 }
             }
@@ -1035,7 +1018,7 @@ var inspector_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
                 obj = _coreui.getFirstSelected(allocator, &tab_o.db, tab_o.selected_obj);
             }
 
-            try api.cdbPropertiesView(allocator, &tab_o.db, tab_o, obj, 0, .{ .filter = if (tab_o.filter) |f| f.ptr else null });
+            try api.cdbPropertiesView(allocator, &tab_o.db, tab_o, obj, 0, .{ .filter = tab_o.filter });
         }
     }
 
@@ -1706,7 +1689,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
     _ = reload;
     // basic
     _allocator = allocator;
@@ -1745,13 +1728,9 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_inspector(__apidb: *const cetech1.apidb.ct_apidb_api_t, __allocator: *const cetech1.apidb.ct_allocator_t, __load: bool, __reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor_inspector(__apidb: *const cetech1.apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.C) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }
 
 // Assert C api == C api in zig.
-comptime {
-    std.debug.assert(@sizeOf(c.ct_editor_ui_properties_aspect) == @sizeOf(public.UiPropertiesAspect));
-    std.debug.assert(@sizeOf(c.ct_editor_ui_property_aspect) == @sizeOf(public.UiPropertyAspect));
-    std.debug.assert(@sizeOf(c.ct_editor_cdb_proprties_args) == @sizeOf(public.cdbPropertiesViewArgs));
-}
+comptime {}

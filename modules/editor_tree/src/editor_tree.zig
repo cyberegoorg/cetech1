@@ -7,82 +7,51 @@ const log = std.log.scoped(.editor_tree);
 
 const editor = @import("editor");
 
-pub const UiTreeAspect = extern struct {
+pub const UiTreeAspect = struct {
     pub const c_name = "ct_ui_tree_aspect";
     pub const name_hash = strid.strId32(@This().c_name);
 
-    ui_tree: ?*const fn (
-        allocator: *const std.mem.Allocator,
+    ui_tree: *const fn (
+        allocator: std.mem.Allocator,
         db: *cdb.Db,
         tab: *editor.TabO,
-        context: [*]const strid.StrId64,
-        context_n: usize,
+        context: []const strid.StrId64,
         obj: cdb.ObjId,
         selected_obj: cdb.ObjId,
         depth: u32,
         args: CdbTreeViewArgs,
-    ) callconv(.C) SelectInTreeResult = null,
+    ) anyerror!SelectInTreeResult = undefined,
 
     ui_drop_obj: ?*const fn (
-        allocator: *const std.mem.Allocator,
+        allocator: std.mem.Allocator,
         db: *cdb.Db,
         tab: *editor.TabO,
         obj: cdb.ObjId,
         drag_obj: cdb.ObjId,
-    ) callconv(.C) void = null,
+    ) anyerror!void = null,
 
     pub fn implement(comptime T: type) UiTreeAspect {
         if (!std.meta.hasFn(T, "uiTree")) @compileError("implement me");
 
         return UiTreeAspect{
-            .ui_tree = struct {
-                pub fn f(
-                    allocator: *const std.mem.Allocator,
-                    db: *cdb.Db,
-                    tab: *editor.TabO,
-                    context: [*]const strid.StrId64,
-                    context_n: usize,
-                    obj: cdb.ObjId,
-                    selected_obj: cdb.ObjId,
-                    depth: u32,
-                    args: CdbTreeViewArgs,
-                ) callconv(.C) SelectInTreeResult {
-                    return T.uiTree(allocator.*, db, tab, context[0..context_n], obj, selected_obj, depth, args) catch |err| {
-                        log.err("UiTreeAspect.uiTree() failed with error {}", .{err});
-                        return .{};
-                    };
-                }
-            }.f,
-
-            .ui_drop_obj = if (std.meta.hasFn(T, "uiDropObj")) struct {
-                pub fn f(
-                    allocator: *const std.mem.Allocator,
-                    db: *cdb.Db,
-                    tab: *editor.TabO,
-                    obj: cdb.ObjId,
-                    drag_obj: cdb.ObjId,
-                ) callconv(.C) void {
-                    T.uiDropObj(allocator.*, db, tab, obj, drag_obj) catch |err| {
-                        log.err("UiTreeAspect.uiDropObj() failed with error {}", .{err});
-                    };
-                }
-            }.f else null,
+            .ui_tree = T.uiTree,
+            .ui_drop_obj = if (std.meta.hasFn(T, "uiDropObj")) T.uiDropObj else null,
         };
     }
 };
 
-pub const CdbTreeViewArgs = extern struct {
+pub const CdbTreeViewArgs = struct {
     expand_object: bool = true,
     ignored_object: cdb.ObjId = .{},
     only_types: cdb.TypeIdx = .{},
     opened_obj: cdb.ObjId = .{},
-    filter: ?[*:0]const u8 = null,
+    filter: ?[:0]const u8 = null,
     multiselect: bool = false,
     sr: SelectInTreeResult = .{},
     max_autopen_depth: u32 = 5,
 };
 
-pub const SelectInTreeResult = extern struct {
+pub const SelectInTreeResult = struct {
     is_changed: bool = false,
     is_prop: bool = false,
     prop_idx: u32 = 0,

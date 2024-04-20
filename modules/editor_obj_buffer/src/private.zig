@@ -19,15 +19,15 @@ const log = std.log.scoped(module_name);
 const TAB_NAME = "ct_editor_obj_buffer_tab";
 
 var _allocator: Allocator = undefined;
-var _apidb: *cetech1.apidb.ApiDbAPI = undefined;
-var _log: *cetech1.log.LogAPI = undefined;
-var _cdb: *cetech1.cdb.CdbAPI = undefined;
-var _coreui: *cetech1.coreui.CoreUIApi = undefined;
-var _editor: *editor.EditorAPI = undefined;
-var _editortree: *editor_tree.TreeAPI = undefined;
-var _assetdb: *cetech1.assetdb.AssetDBAPI = undefined;
-var _kernel: *cetech1.kernel.KernelApi = undefined;
-var _tempalloc: *cetech1.tempalloc.TempAllocApi = undefined;
+var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
+var _log: *const cetech1.log.LogAPI = undefined;
+var _cdb: *const cetech1.cdb.CdbAPI = undefined;
+var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
+var _editor: *const editor.EditorAPI = undefined;
+var _editortree: *const editor_tree.TreeAPI = undefined;
+var _assetdb: *const cetech1.assetdb.AssetDBAPI = undefined;
+var _kernel: *const cetech1.kernel.KernelApi = undefined;
+var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 
 // Global state
 const G = struct {
@@ -407,7 +407,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
     _ = reload;
     // basic
     _allocator = allocator;
@@ -438,6 +438,6 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_obj_buffer(__apidb: *const cetech1.apidb.ct_apidb_api_t, __allocator: *const cetech1.apidb.ct_allocator_t, __load: bool, __reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor_obj_buffer(__apidb: *const cetech1.apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.C) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }

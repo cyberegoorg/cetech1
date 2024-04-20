@@ -38,17 +38,17 @@ const MAIN_CONTEXTS = &.{
 };
 
 var _allocator: Allocator = undefined;
-var _apidb: *cetech1.apidb.ApiDbAPI = undefined;
-var _log: *cetech1.log.LogAPI = undefined;
-var _cdb: *cdb.CdbAPI = undefined;
-var _coreui: *cetech1.coreui.CoreUIApi = undefined;
-var _editor: *editor.EditorAPI = undefined;
-var _editor_tree: *editor_tree.TreeAPI = undefined;
-var _assetdb: *assetdb.AssetDBAPI = undefined;
-var _kernel: *cetech1.kernel.KernelApi = undefined;
-var _tempalloc: *cetech1.tempalloc.TempAllocApi = undefined;
-var _uuid: *cetech1.uuid.UuidAPI = undefined;
-var _tags: *editor_tags.EditorTagsApi = undefined;
+var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
+var _log: *const cetech1.log.LogAPI = undefined;
+var _cdb: *const cdb.CdbAPI = undefined;
+var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
+var _editor: *const editor.EditorAPI = undefined;
+var _editor_tree: *const editor_tree.TreeAPI = undefined;
+var _assetdb: *const assetdb.AssetDBAPI = undefined;
+var _kernel: *const cetech1.kernel.KernelApi = undefined;
+var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
+var _uuid: *const cetech1.uuid.UuidAPI = undefined;
+var _tags: *const editor_tags.EditorTagsApi = undefined;
 
 const G = struct {
     tab_vt: *editor.EditorTabTypeI = undefined,
@@ -169,7 +169,7 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
             &tab_o.filter_buff,
             tab_o.tags,
             .{
-                .filter = if (tab_o.filter == null) null else tab_o.filter.?.ptr,
+                .filter = tab_o.filter,
                 .multiselect = true,
                 .expand_object = false,
                 .opened_obj = tab_o.opened_obj,
@@ -263,7 +263,7 @@ fn uiAssetBrowser(
     var result = UiAssetBrowserResult{};
     const new_args = args;
 
-    const filter = if (args.filter) |filter| filter[0..std.mem.len(filter) :0] else null;
+    const filter = args.filter;
 
     const new_filter = _coreui.uiFilter(filter_buff, filter);
     const tag_filter_used = try _tags.tagsInput(allocator, db, tags_filter, assetdb.Tags.propIdx(.Tags), false, null);
@@ -433,7 +433,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
     _ = reload;
 
     // basic
@@ -465,6 +465,6 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_asset_browser(__apidb: *const cetech1.apidb.ct_apidb_api_t, __allocator: *const cetech1.apidb.ct_allocator_t, __load: bool, __reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor_asset_browser(__apidb: *const cetech1.apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.C) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }

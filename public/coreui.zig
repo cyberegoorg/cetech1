@@ -163,45 +163,45 @@ pub const ImGuiTestGuiFunc = fn (context: *TestContext) callconv(.C) void;
 pub const ImGuiTestTestFunc = fn (context: *TestContext) callconv(.C) void;
 pub const Test = anyopaque;
 pub const TestContext = opaque {
-    pub fn setRef(ctx: *TestContext, coreui_api: *CoreUIApi, ref: [:0]const u8) void {
+    pub fn setRef(ctx: *TestContext, coreui_api: *const CoreUIApi, ref: [:0]const u8) void {
         return coreui_api.testContextSetRef(ctx, ref);
     }
 
-    pub fn itemAction(ctx: *TestContext, coreui_api: *CoreUIApi, action: Actions, ref: [:0]const u8, flags: TestOpFlags, action_arg: ?*anyopaque) void {
+    pub fn itemAction(ctx: *TestContext, coreui_api: *const CoreUIApi, action: Actions, ref: [:0]const u8, flags: TestOpFlags, action_arg: ?*anyopaque) void {
         return coreui_api.testItemAction(ctx, action, ref, flags, action_arg);
     }
 
-    pub fn windowFocus(ctx: *TestContext, coreui_api: *CoreUIApi, ref: [:0]const u8) void {
+    pub fn windowFocus(ctx: *TestContext, coreui_api: *const CoreUIApi, ref: [:0]const u8) void {
         return coreui_api.testContextWindowFocus(ctx, ref);
     }
 
-    pub fn yield(ctx: *TestContext, coreui_api: *CoreUIApi, frame_count: i32) void {
+    pub fn yield(ctx: *TestContext, coreui_api: *const CoreUIApi, frame_count: i32) void {
         return coreui_api.testContextYield(ctx, frame_count);
     }
 
-    pub fn menuAction(ctx: *TestContext, coreui_api: *CoreUIApi, action: Actions, ref: [:0]const u8) void {
+    pub fn menuAction(ctx: *TestContext, coreui_api: *const CoreUIApi, action: Actions, ref: [:0]const u8) void {
         return coreui_api.testContextMenuAction(ctx, action, ref);
     }
 
-    pub fn itemInputStrValue(ctx: *TestContext, coreui_api: *CoreUIApi, ref: [:0]const u8, value: [:0]const u8) void {
+    pub fn itemInputStrValue(ctx: *TestContext, coreui_api: *const CoreUIApi, ref: [:0]const u8, value: [:0]const u8) void {
         return coreui_api.testItemInputStrValue(ctx, ref, value);
     }
 
-    pub fn itemInputIntValue(ctx: *TestContext, coreui_api: *CoreUIApi, ref: [:0]const u8, value: i32) void {
+    pub fn itemInputIntValue(ctx: *TestContext, coreui_api: *const CoreUIApi, ref: [:0]const u8, value: i32) void {
         return coreui_api.testItemInputIntValue(ctx, ref, value);
     }
 
-    pub fn itemInputFloatValue(ctx: *TestContext, coreui_api: *CoreUIApi, ref: [:0]const u8, value: f32) void {
+    pub fn itemInputFloatValue(ctx: *TestContext, coreui_api: *const CoreUIApi, ref: [:0]const u8, value: f32) void {
         return coreui_api.testItemInputFloatValue(ctx, ref, value);
     }
-    pub fn dragAndDrop(ctx: *TestContext, coreui_api: *CoreUIApi, ref_src: [:0]const u8, ref_dst: [:0]const u8, button: MouseButton) void {
+    pub fn dragAndDrop(ctx: *TestContext, coreui_api: *const CoreUIApi, ref_src: [:0]const u8, ref_dst: [:0]const u8, button: MouseButton) void {
         return coreui_api.testDragAndDrop(ctx, ref_src, ref_dst, button);
     }
-    pub fn keyDown(ctx: *TestContext, coreui_api: *CoreUIApi, key_chord: Key) void {
+    pub fn keyDown(ctx: *TestContext, coreui_api: *const CoreUIApi, key_chord: Key) void {
         return coreui_api.testKeyDown(ctx, key_chord);
     }
 
-    pub fn keyUp(ctx: *TestContext, coreui_api: *CoreUIApi, key_chord: Key) void {
+    pub fn keyUp(ctx: *TestContext, coreui_api: *const CoreUIApi, key_chord: Key) void {
         return coreui_api.testKeyUp(ctx, key_chord);
     }
 };
@@ -234,7 +234,7 @@ pub const FilterItem = extern struct {
 
 pub const CoreUIApi = struct {
     pub fn checkTestError(
-        coreui_api: *CoreUIApi,
+        coreui_api: *const CoreUIApi,
         src: std.builtin.SourceLocation,
         err: anyerror,
     ) void {

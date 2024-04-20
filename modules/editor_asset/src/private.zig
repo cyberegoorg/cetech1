@@ -26,19 +26,19 @@ pub const std_options: std.Options = .{
 const log = std.log.scoped(module_name);
 
 var _allocator: Allocator = undefined;
-var _apidb: *cetech1.apidb.ApiDbAPI = undefined;
-var _log: *cetech1.log.LogAPI = undefined;
-var _cdb: *cdb.CdbAPI = undefined;
-var _uuid: *cetech1.uuid.UuidAPI = undefined;
-var _coreui: *cetech1.coreui.CoreUIApi = undefined;
-var _editor: *editor.EditorAPI = undefined;
-var _assetdb: *assetdb.AssetDBAPI = undefined;
-var _kernel: *cetech1.kernel.KernelApi = undefined;
-var _tempalloc: *cetech1.tempalloc.TempAllocApi = undefined;
-var _editor_inspector: *editor_inspector.InspectorAPI = undefined;
-var _editor_tree: *editor_tree.TreeAPI = undefined;
-var _editor_obj_buffer: *editor_obj_buffer.EditorObjBufferAPI = undefined;
-var _system: *cetech1.system.SystemApi = undefined;
+var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
+var _log: *const cetech1.log.LogAPI = undefined;
+var _cdb: *const cdb.CdbAPI = undefined;
+var _uuid: *const cetech1.uuid.UuidAPI = undefined;
+var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
+var _editor: *const editor.EditorAPI = undefined;
+var _assetdb: *const assetdb.AssetDBAPI = undefined;
+var _kernel: *const cetech1.kernel.KernelApi = undefined;
+var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
+var _editor_inspector: *const editor_inspector.InspectorAPI = undefined;
+var _editor_tree: *const editor_tree.TreeAPI = undefined;
+var _editor_obj_buffer: *const editor_obj_buffer.EditorObjBufferAPI = undefined;
+var _system: *const cetech1.system.SystemApi = undefined;
 
 // Global state
 const G = struct {
@@ -576,9 +576,9 @@ var create_context_menu_i = editor.ObjContextMenuI.implement(struct {
             var it = _apidb.getFirstImpl(editor.CreateAssetI);
             while (it) |node| : (it = node.next) {
                 const iface = cetech1.apidb.ApiDbAPI.toInterface(editor.CreateAssetI, node);
-                const menu_name = iface.menu_item.?();
+                const menu_name = iface.menu_item() catch "";
 
-                if (_coreui.uiFilterPass(allocator, f, cetech1.fromCstrZ(menu_name), false) != null) return true;
+                if (_coreui.uiFilterPass(allocator, f, menu_name, false) != null) return true;
             }
             return false;
         }
@@ -615,15 +615,15 @@ var create_context_menu_i = editor.ObjContextMenuI.implement(struct {
             var it = _apidb.getFirstImpl(editor.CreateAssetI);
             while (it) |node| : (it = node.next) {
                 const iface = cetech1.apidb.ApiDbAPI.toInterface(editor.CreateAssetI, node);
-                const menu_name = iface.menu_item.?();
+                const menu_name = try iface.menu_item();
                 var buff: [256:0]u8 = undefined;
                 const type_name = db.getTypeName(db.getTypeIdx(iface.cdb_type).?).?;
-                const label = try std.fmt.bufPrintZ(&buff, "{s}###{s}", .{ cetech1.fromCstrZ(menu_name), type_name });
+                const label = try std.fmt.bufPrintZ(&buff, "{s}###{s}", .{ menu_name, type_name });
 
                 if (_coreui.menuItem(allocator, label, .{}, filter)) {
                     var parent_folder = getFolderForSelectedObj(&db, _coreui.getFirstSelected(allocator, &db, selection)) orelse _assetdb.getRootFolder();
                     if (!parent_folder.isEmpty()) {
-                        iface.create.?(&allocator, db.db, parent_folder);
+                        try iface.create(allocator, db.db, parent_folder);
                     }
                 }
             }
@@ -636,7 +636,7 @@ var create_folder_i = editor.CreateAssetI.implement(
     assetdb.Folder.type_hash,
     struct {
         pub fn create(
-            allocator: *const std.mem.Allocator,
+            allocator: std.mem.Allocator,
             dbc: *cdb.Db,
             folder: cdb.ObjId,
         ) !void {
@@ -644,7 +644,7 @@ var create_folder_i = editor.CreateAssetI.implement(
 
             var buff: [256:0]u8 = undefined;
             const name = try _assetdb.buffGetValidName(
-                allocator.*,
+                allocator,
                 &buff,
                 &db,
                 folder,
@@ -655,7 +655,7 @@ var create_folder_i = editor.CreateAssetI.implement(
             _ = try _assetdb.createNewFolder(&db, folder, name);
         }
 
-        pub fn menuItem() ![*]const u8 {
+        pub fn menuItem() ![:0]const u8 {
             return coreui.Icons.Folder ++ "  " ++ "Folder";
         }
     },
@@ -681,7 +681,7 @@ var asset_visual_aspect = editor.UiVisualAspect.implement(struct {
         if (db.getAspect(editor.UiVisualAspect, asset_obj.type_idx)) |aspect| {
             if (aspect.ui_tooltip) |tooltip| {
                 _coreui.separator();
-                tooltip(&allocator, db.db, asset_obj);
+                try tooltip(allocator, db.db, asset_obj);
             }
         }
     }
@@ -722,7 +722,7 @@ var asset_visual_aspect = editor.UiVisualAspect.implement(struct {
         allocator: std.mem.Allocator,
         dbc: *cdb.Db,
         obj: cdb.ObjId,
-    ) ![:0]const u8 {
+    ) ![:0]u8 {
         var db = cdb.CdbDb.fromDbT(dbc, _cdb);
         const obj_r = db.readObj(obj).?;
         const asset_obj = assetdb.Asset.readSubObj(&db, obj_r, .Object).?;
@@ -730,7 +730,7 @@ var asset_visual_aspect = editor.UiVisualAspect.implement(struct {
         var ui_icon: ?[:0]const u8 = null;
         if (ui_visual_aspect) |aspect| {
             if (aspect.ui_icons) |icons| {
-                ui_icon = std.mem.span(icons(&allocator, &db, asset_obj));
+                ui_icon = icons(allocator, &db, asset_obj) catch "";
             }
         }
         defer {
@@ -781,7 +781,7 @@ var folder_visual_aspect = editor.UiVisualAspect.implement(struct {
         allocator: std.mem.Allocator,
         dbc: *cdb.Db,
         obj: cdb.ObjId,
-    ) ![:0]const u8 {
+    ) ![:0]u8 {
         _ = dbc;
         _ = obj;
 
@@ -1287,7 +1287,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
 const ASSET_TREE_ASPECT_NAME = "ct_asset_tree_aspect";
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
     _ = reload;
 
     // basic
@@ -1328,6 +1328,6 @@ pub fn load_module_zig(apidb: *cetech1.apidb.ApiDbAPI, allocator: Allocator, log
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_asset(__apidb: *const cetech1.apidb.ct_apidb_api_t, __allocator: *const cetech1.apidb.ct_allocator_t, __load: bool, __reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor_asset(__apidb: *const cetech1.apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.C) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }
