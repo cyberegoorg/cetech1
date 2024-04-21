@@ -7,7 +7,7 @@ const strid = @import("strid.zig");
 const cdb = @import("cdb.zig");
 const modules = @import("modules.zig");
 const gpu = @import("gpu.zig");
-const system = @import("system.zig");
+const platform = @import("platform.zig");
 
 const log = std.log.scoped(.kernel);
 
@@ -106,7 +106,7 @@ pub const KernelApi = struct {
     restart: *const fn () void,
     isTestigMode: *const fn () bool,
 
-    getMainWindow: *const fn () ?*system.Window,
+    getMainWindow: *const fn () ?platform.Window,
     getGpuCtx: *const fn () ?*gpu.GpuContext,
 
     getExternalsCredit: *const fn () [:0]const u8,

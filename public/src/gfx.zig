@@ -3,6 +3,12 @@ const Backend = @import("gpu.zig");
 
 const log = std.log.scoped(.gfx);
 
+/// Debug draw API
+pub const dd = @import("gfx_dd.zig");
+
+/// Render graph
+pub const rg = @import("gfx_rg.zig");
+
 pub const GfxApi = struct {
     newViewId: *const fn () ViewId,
 

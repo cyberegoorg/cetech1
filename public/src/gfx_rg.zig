@@ -2,7 +2,7 @@ const std = @import("std");
 
 const GfxApi = @import("gfx.zig").GfxApi;
 const GpuViewport = @import("gpu.zig").GpuViewport;
-const GfxDDApi = @import("gfxdd.zig").GfxDDApi;
+const GfxDDApi = @import("gfx_dd.zig").GfxDDApi;
 
 pub const Pass = struct {
     setup: *const fn (pass: *Pass, builder: GraphBuilder) anyerror!void,

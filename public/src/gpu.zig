@@ -1,10 +1,10 @@
 const std = @import("std");
-const system = @import("system.zig");
+const platform = @import("platform.zig");
 const strid = @import("strid.zig");
 const cdb = @import("cdb.zig");
 const gfx = @import("gfx.zig");
-const gfxrg = @import("gfxrg.zig");
-const gfxdd = @import("gfxdd.zig");
+const gfx_rg = @import("gfx_rg.zig");
+const gfx_dd = @import("gfx_dd.zig");
 
 const log = std.log.scoped(.gpu);
 
@@ -62,7 +62,7 @@ pub const GpuViewport = struct {
     pub fn getSize(self: GpuViewport) [2]f32 {
         return self.vtable.getSize(self.ptr);
     }
-    pub fn getDD(self: GpuViewport) gfxdd.Encoder {
+    pub fn getDD(self: GpuViewport) gfx_dd.Encoder {
         return self.vtable.getDD(self.ptr);
     }
 
@@ -74,7 +74,7 @@ pub const GpuViewport = struct {
         getTexture: *const fn (viewport: *anyopaque) ?gfx.TextureHandle,
         getFb: *const fn (viewport: *anyopaque) ?gfx.FrameBufferHandle,
         getSize: *const fn (viewport: *anyopaque) [2]f32,
-        getDD: *const fn (viewport: *anyopaque) gfxdd.Encoder,
+        getDD: *const fn (viewport: *anyopaque) gfx_dd.Encoder,
 
         pub fn implement(comptime T: type) VTable {
             if (!std.meta.hasFn(T, "setSize")) @compileError("implement me");
@@ -95,16 +95,16 @@ pub const GpuViewport = struct {
 };
 
 pub const GpuApi = struct {
-    createContext: *const fn (window: ?*system.Window, backend: ?Backend, vsync: bool, headles: bool) anyerror!*GpuContext,
+    createContext: *const fn (window: ?platform.Window, backend: ?Backend, vsync: bool, headles: bool) anyerror!*GpuContext,
     destroyContext: *const fn (ctx: *GpuContext) void,
 
     // Viewport
-    createViewport: *const fn (rg: gfxrg.RenderGraph) anyerror!GpuViewport,
+    createViewport: *const fn (rg: gfx_rg.RenderGraph) anyerror!GpuViewport,
     destroyViewport: *const fn (viewport: GpuViewport) void,
 
     renderFrame: *const fn (ctx: *GpuContext, kernel_tick: u64, dt: f32, vsync: bool) void,
 
-    // TODO: use system api
+    // TODO: use platform api
     getContentScale: *const fn (ctx: *GpuContext) [2]f32,
-    getWindow: *const fn (ctx: *GpuContext) ?*system.Window,
+    getWindow: *const fn (ctx: *GpuContext) ?platform.Window,
 };

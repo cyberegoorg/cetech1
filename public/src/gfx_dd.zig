@@ -103,8 +103,8 @@ pub const Encoder = struct {
     }
 
     //
-    pub fn popTransform(dde: Encoder, gfxdd_api: *const GfxDDApi) void {
-        _ = gfxdd_api; // autofix
+    pub fn popTransform(dde: Encoder, gfx_dd_api: *const GfxDDApi) void {
+        _ = gfx_dd_api; // autofix
         dde.vtable.encoderPopTransform(dde.ptr);
     }
 
@@ -119,8 +119,8 @@ pub const Encoder = struct {
     }
 
     //
-    pub fn close(dde: Encoder, gfxdd_api: *const GfxDDApi) void {
-        _ = gfxdd_api; // autofix
+    pub fn close(dde: Encoder, gfx_dd_api: *const GfxDDApi) void {
+        _ = gfx_dd_api; // autofix
         dde.vtable.encoderClose(dde.ptr);
     }
 

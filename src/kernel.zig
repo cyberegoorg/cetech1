@@ -13,7 +13,7 @@ const cdb_types = @import("cdb_types.zig");
 const tempalloc = @import("tempalloc.zig");
 const uuid = @import("uuid.zig");
 const assetdb = @import("assetdb.zig");
-const system = @import("system.zig");
+const platform = @import("platform.zig");
 const gpu = @import("gpu.zig");
 const coreui = @import("coreui.zig");
 
@@ -76,7 +76,7 @@ var _task_allocator: profiler.AllocatorProfiler = undefined;
 var _profiler_profiler_allocator: profiler.AllocatorProfiler = undefined;
 var _cdb_allocator: profiler.AllocatorProfiler = undefined;
 var _assetdb_allocator: profiler.AllocatorProfiler = undefined;
-var _system_allocator: profiler.AllocatorProfiler = undefined;
+var _platform_allocator: profiler.AllocatorProfiler = undefined;
 var _gpu_allocator: profiler.AllocatorProfiler = undefined;
 var _coreui_allocator: profiler.AllocatorProfiler = undefined;
 var _tmp_alocator_pool_allocator: profiler.AllocatorProfiler = undefined;
@@ -107,7 +107,7 @@ var _restart = true;
 
 var _next_asset_root_buff: [256]u8 = undefined;
 var _next_asset_root: ?[]u8 = null;
-var main_window: ?*cetech1.system.Window = null;
+var main_window: ?cetech1.platform.Window = null;
 var gpu_context: ?*cetech1.gpu.GpuContext = null;
 
 pub var api = cetech1.kernel.KernelApi{
@@ -133,7 +133,7 @@ fn getAuthors() [:0]const u8 {
     return authors;
 }
 
-fn getMainWindow() ?*cetech1.system.Window {
+fn getMainWindow() ?cetech1.platform.Window {
     return main_window;
 }
 fn getGpuCtx() ?*cetech1.gpu.GpuContext {
@@ -184,7 +184,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     _task_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "task");
     _cdb_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "cdb");
     _assetdb_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "assetdb");
-    _system_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "system");
+    _platform_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "platform");
     _gpu_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "gpu");
     _coreui_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "coreui");
     _tmp_alocator_pool_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "tmp_allocators");
@@ -208,7 +208,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try modules.init(_modules_allocator.allocator());
     try task.init(_task_allocator.allocator());
     try cdb.init(_cdb_allocator.allocator());
-    try system.init(_system_allocator.allocator(), headless);
+    try platform.init(_platform_allocator.allocator(), headless);
     try gpu.init(_gpu_allocator.allocator());
     try coreui.init(_coreui_allocator.allocator());
 
@@ -222,7 +222,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try cdb.registerToApi();
     try cdb_types.registerToApi();
     try assetdb.registerToApi();
-    try system.registerToApi();
+    try platform.registerToApi();
     try gpu.registerToApi();
     try coreui.registerToApi();
 
@@ -247,8 +247,8 @@ pub fn deinit(
     coreui.deinit();
     if (gpu_context) |ctx| gpu.api.destroyContext(ctx);
     gpu.deinit();
-    if (main_window) |window| system.api.destroyWindow(window);
-    system.deinit();
+    if (main_window) |window| platform.api.destroyWindow(window);
+    platform.deinit();
 
     assetdb.deinit();
     modules.deinit();
@@ -455,17 +455,17 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             var w: i32 = 1024;
             var h: i32 = 768;
 
-            const monitor = system.api.getPrimaryMonitor();
+            const monitor = platform.api.getPrimaryMonitor();
 
             if (fullscreen) {
-                const vm = try system.api.getMonitorVideoMode(monitor.?);
+                const vm = try monitor.?.getVideoMode();
                 w = vm.width;
                 h = vm.height;
             }
 
             log.info("Using video mode {d}x{d}", .{ w, h });
 
-            main_window = try system.api.createWindow(w, h, "cetech1", if (fullscreen) monitor else null);
+            main_window = try platform.api.createWindow(w, h, "cetech1", if (fullscreen) monitor else null);
         }
 
         gpu_context = try gpu.api.createContext(
@@ -490,18 +490,19 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
             checkfs_timer += dt;
 
+            const tmp_frame_alloc = try tempalloc.api.create();
+            defer tempalloc.api.destroy(tmp_frame_alloc);
+
             // Any dynamic modules changed?
             // TODO: Watch
             if (checkfs_timer >= (5 * std.time.ms_per_s)) {
                 checkfs_timer = 0;
 
-                const tmp = try tempalloc.api.create();
-                defer tempalloc.api.destroy(tmp);
-                const reloaded_modules = try modules.reloadAllIfNeeded(tmp);
+                const reloaded_modules = try modules.reloadAllIfNeeded(tmp_frame_alloc);
                 if (reloaded_modules) {}
             }
 
-            system.api.poolEvents();
+            platform.api.poolEvents();
 
             // Begin loop
             {
@@ -526,15 +527,6 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                 kernel_task_update_gen = new_kernel_update_gen;
             }
 
-            // Any public.RegisterTestsI iface changed? (add/remove)?
-            // const new_coreui_tests_gen = apidb.api.getInterafcesVersion(cetech1.coreui.RegisterTestsI);
-            // if (new_coreui_tests_gen != coreui_tests_gen) {
-            //     //coreui.api.reloadTests();
-            //     //TODO: move check, for reload we need destroy and create whole test engine
-            //     //TODO: blocked by zgui destroy fce
-            //     coreui_tests_gen = new_coreui_tests_gen;
-            // }
-
             // Do hard work.
             try doKernelUpdateTasks(kernel_tick, dt);
 
@@ -555,7 +547,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             // Dont drill cpu if there is no hard work.
             // But not if test is running and is active fast mode
             if (!(coreui.api.testIsRunning() and fast_mode)) {
-                try sleepIfNeed(last_call, _max_tick_rate, kernel_tick);
+                try sleepIfNeed(tmp_frame_alloc, last_call, _max_tick_rate, kernel_tick);
             }
 
             if (_next_asset_root != null) {
@@ -567,13 +559,11 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             }
 
             // clean main DB
-            const gc_tmp = try tempalloc.api.create();
-            defer tempalloc.api.destroy(gc_tmp);
-            try assetdb.getDb().gc(gc_tmp);
+            try assetdb.getDb().gc(tmp_frame_alloc);
 
             // Check window close request
             if (main_window) |window| {
-                if (system.api.windowClosed(window)) {
+                if (window.closed()) {
                     if (can_quit_handler) |can_quit| {
                         _ = can_quit();
                     } else {
@@ -610,7 +600,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
     }
 }
 
-fn sleepIfNeed(last_call: i64, max_rate: u32, kernel_tick: u64) !void {
+fn sleepIfNeed(allocator: std.mem.Allocator, last_call: i64, max_rate: u32, kernel_tick: u64) !void {
     _ = kernel_tick;
     const frame_limit_time: f32 = (1.0 / @as(f32, @floatFromInt(max_rate)) * std.time.ms_per_s);
 
@@ -620,11 +610,8 @@ fn sleepIfNeed(last_call: i64, max_rate: u32, kernel_tick: u64) !void {
         defer zone_ctx.End();
         const sleep_time: u64 = @intFromFloat((frame_limit_time - dt) * 0.65 * std.time.ns_per_ms);
 
-        const tmp = try tempalloc.api.create();
-        defer tempalloc.api.destroy(tmp);
-
         const n = task.api.getThreadNum();
-        var wait_tasks = std.ArrayList(cetech1.task.TaskID).init(tmp);
+        var wait_tasks = std.ArrayList(cetech1.task.TaskID).init(allocator);
         defer wait_tasks.deinit();
         for (0..n) |_| {
             const SleepTask = struct {
@@ -645,10 +632,10 @@ fn sleepIfNeed(last_call: i64, max_rate: u32, kernel_tick: u64) !void {
             const sleep_time_s: f32 = @as(f32, @floatFromInt(sleep_time)) / std.time.ns_per_s;
             const sleep_delta: f32 = @as(f32, @floatFromInt(std.time.milliTimestamp() - sleep_begin)) / std.time.ms_per_s;
             if (sleep_delta > sleep_time_s) break;
-            system.api.poolEventsWithTimeout(std.math.clamp(sleep_time_s - sleep_delta, 0.0, sleep_time_s));
+            platform.api.poolEventsWithTimeout(std.math.clamp(sleep_time_s - sleep_delta, 0.0, sleep_time_s));
 
             if (main_window) |window| {
-                if (system.api.windowClosed(window)) {
+                if (window.closed()) {
                     if (can_quit_handler) |can_quit| {
                         _ = can_quit();
                     } else {
@@ -745,12 +732,6 @@ fn doKernelUpdateTasks(kernel_tick: u64, dt: i64) !void {
     var all_phase_update_task_id = cetech1.task.TaskID.none;
     var last_phase_task_id = cetech1.task.TaskID.none;
 
-    const tmp_alloc = try tempalloc.api.create();
-    defer tempalloc.api.destroy(tmp_alloc);
-
-    var tmp_allocators = std.ArrayList(std.mem.Allocator).init(tmp_alloc);
-    defer tmp_allocators.deinit();
-
     for (_phases_dag.output.keys()) |phase_hash| {
         var phase = _phase_map.get(phase_hash).?;
 
@@ -793,10 +774,6 @@ fn doKernelUpdateTasks(kernel_tick: u64, dt: i64) !void {
                 prereq = last_phase_task_id;
             }
 
-            const task_alloc = try tempalloc.api.create();
-
-            try tmp_allocators.append(task_alloc);
-
             const job_id = try task.api.schedule(
                 prereq,
                 KernelTask{
@@ -819,10 +796,6 @@ fn doKernelUpdateTasks(kernel_tick: u64, dt: i64) !void {
     }
 
     task.api.wait(all_phase_update_task_id);
-
-    for (tmp_allocators.items) |aloc| {
-        tempalloc.api.destroy(aloc);
-    }
 
     _tmp_depend_array.clearRetainingCapacity();
     _tmp_taskid_map.clearRetainingCapacity();

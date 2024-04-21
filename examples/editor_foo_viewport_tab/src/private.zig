@@ -6,9 +6,9 @@ const cdb = cetech1.cdb;
 const coreui = cetech1.coreui;
 const gpu = cetech1.gpu;
 const gfx = cetech1.gfx;
-const gfxdd = cetech1.gfxdd;
-const gfxrg = cetech1.gfxrg;
-const zm = cetech1.zm;
+const gfx_dd = cetech1.gfx.dd;
+const gfx_rg = cetech1.gfx.rg;
+const zm = cetech1.zmath;
 
 const editor = @import("editor");
 const Icons = coreui.CoreIcons;
@@ -31,12 +31,12 @@ var _log: *const cetech1.log.LogAPI = undefined;
 var _cdb: *const cdb.CdbAPI = undefined;
 var _coreui: *const coreui.CoreUIApi = undefined;
 var _gpu: *const gpu.GpuApi = undefined;
-var _gfxrg: *const gfxrg.GfxRGApi = undefined;
+var _gfx_rg: *const gfx_rg.GfxRGApi = undefined;
 
 // Global state that can surive hot-reload
 const G = struct {
     test_tab_vt_ptr: *editor.EditorTabTypeI = undefined,
-    rg: ?gfxrg.RenderGraph = null,
+    rg: ?gfx_rg.RenderGraph = null,
 };
 var _g: *G = undefined;
 
@@ -109,12 +109,12 @@ var foo_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 });
 
-const rener_pass = gfxrg.Pass.implement(struct {
-    pub fn setup(pass: *gfxrg.Pass, builder: gfxrg.GraphBuilder) !void {
+const rener_pass = gfx_rg.Pass.implement(struct {
+    pub fn setup(pass: *gfx_rg.Pass, builder: gfx_rg.GraphBuilder) !void {
         try builder.addPass(pass);
     }
 
-    pub fn render(builder: gfxrg.GraphBuilder, gfx_api: *const gfx.GfxApi, viewport: gpu.GpuViewport) !void {
+    pub fn render(builder: gfx_rg.GraphBuilder, gfx_api: *const gfx.GfxApi, viewport: gpu.GpuViewport) !void {
         _ = builder; // autofix
         const viewid = gfx_api.newViewId();
 
@@ -166,7 +166,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
     _coreui = apidb.getZigApi(module_name, coreui.CoreUIApi).?;
     _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
-    _gfxrg = apidb.getZigApi(module_name, gfxrg.GfxRGApi).?;
+    _gfx_rg = apidb.getZigApi(module_name, gfx_rg.GfxRGApi).?;
 
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});
@@ -174,13 +174,13 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // Create rendergraph
     if (load) {
         if (_g.rg) |rg| {
-            _gfxrg.destroy(rg);
+            _gfx_rg.destroy(rg);
         }
-        _g.rg = try _gfxrg.create();
+        _g.rg = try _gfx_rg.create();
         try _g.rg.?.addPass(rener_pass);
     } else {
         if (_g.rg) |rg| {
-            _gfxrg.destroy(rg);
+            _gfx_rg.destroy(rg);
         }
         _g.rg = null;
     }

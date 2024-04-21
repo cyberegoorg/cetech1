@@ -76,8 +76,7 @@ const _kernel_hook_i = cetech1.kernel.KernelLoopHookI.implement(struct {
             var size = [2]i32{ 0, 0 };
 
             if (gpu.api.getWindow(ctx.?)) |w| {
-                var true_window: *zglfw.Window = @ptrCast(w);
-                size = true_window.getFramebufferSize();
+                size = w.getFramebufferSize();
             }
 
             newFrame(@intCast(size[0]), @intCast(size[1]));
@@ -624,7 +623,7 @@ pub fn enableWithWindow(gpuctx: *cetech1.gpu.GpuContext) !void {
     _backed_initialised = true;
 
     initFonts(16, _scale_factor.?);
-    backend.init(gpu.api.getWindow(gpuctx));
+    backend.init(if (gpu.api.getWindow(gpuctx)) |w| w.getInternal(anyopaque) else null);
 
     //TODO:
     _te_engine = zguite.getTestEngine().?;

@@ -17,18 +17,17 @@ const task = @import("task.zig");
 const tempalloc = @import("tempalloc.zig");
 
 const cetech1 = @import("cetech1");
-const public = cetech1.gfxrg;
+const public = cetech1.gfx.rg;
 const gfx = cetech1.gfx;
-const gfxdd = cetech1.gfxdd;
+const gfx_dd = cetech1.gfx.dd;
 const gpu = cetech1.gpu;
 
-const log = std.log.scoped(.gfxrg);
+const Pass = public.Pass;
+
+const log = std.log.scoped(.gfx_rg);
 
 const module_name = .gfxrd;
-
 var _allocator: std.mem.Allocator = undefined;
-
-const Pass = public.Pass;
 
 const ModuleOrPass = union(enum) {
     module: *Module,
@@ -251,5 +250,5 @@ test "gfxrd: Basic usage" {
     // const builder = try api.createBuilder(rg);
     // defer api.destroyBuilder(rg, builder);
     // try api.setupBuilder(rg, builder);
-    // try api.builderRender(builder, &gpu_private.gfx_api, &gpu_private.gfxdd_api, &vw);
+    // try api.builderRender(builder, &gpu_private.gfx_api, &gpu_private.gfx_dd_api, &vw);
 }

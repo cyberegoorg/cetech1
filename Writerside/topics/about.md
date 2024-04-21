@@ -18,7 +18,7 @@ posts.
 
 ## Plan
 
-### 0.1.0 - Core (WIP)
+### 0.1.0 - Core (current WIP)
 
 - Basic concept for core (Assets, CDB, Window, Input, UI)
 - Support for modules with hot-reload
@@ -27,11 +27,13 @@ posts.
 - Localization for UI/Editor
 - Automatic test for UI
 - Unittest
+- GPU/GFX
+- Render graph
 
 ### 0.2.0 - Modules (Future)
 
 - ECS
-- Rendering
+- HL Rendering
 - Physics
 - Actions (HL concept for Input)
 - ...

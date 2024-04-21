@@ -9,14 +9,14 @@ const cdb_private = @import("cdb.zig");
 const uuid_private = @import("uuid.zig");
 const tempalloc = @import("tempalloc.zig");
 const profiler = @import("profiler.zig");
-const system_private = @import("system.zig");
+const platform_private = @import("platform.zig");
 
 const cetech1 = @import("cetech1");
 const public = cetech1.assetdb;
 const cdb = cetech1.cdb;
 const uuid = cetech1.uuid;
 const strid = cetech1.strid;
-const system = cetech1.system;
+const platform = cetech1.platform;
 const cdb_types = cetech1.cdb_types;
 
 const coreui = @import("coreui.zig");
@@ -2563,12 +2563,12 @@ fn buffGetValidName(allocator: std.mem.Allocator, buf: [:0]u8, db: cdb.Db, folde
     return name;
 }
 
-fn openInOs(allocator: std.mem.Allocator, open_type: system.OpenInType, asset: cdb.ObjId) !void {
+fn openInOs(allocator: std.mem.Allocator, open_type: platform.OpenInType, asset: cdb.ObjId) !void {
     if (_assetroot_fs.asset_root_path) |asset_root_path| {
         const path = try getFilePathForAsset(asset, allocator);
         const full_path = try std.fs.path.join(allocator, &.{ asset_root_path, path });
         defer allocator.free(full_path);
-        try system_private.api.openIn(allocator, open_type, full_path);
+        try platform_private.api.openIn(allocator, open_type, full_path);
     }
 }
 

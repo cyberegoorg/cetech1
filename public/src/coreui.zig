@@ -4,7 +4,7 @@ const cdb = @import("cdb.zig");
 const modules = @import("modules.zig");
 const strid = @import("strid.zig");
 
-const system = @import("system.zig");
+const platform = @import("platform.zig");
 const gfx = @import("gfx.zig");
 
 const log = std.log.scoped(.coreui);

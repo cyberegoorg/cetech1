@@ -17,15 +17,15 @@ const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");
 const task = @import("task.zig");
 const tempalloc = @import("tempalloc.zig");
-const gfxrg_private = @import("gfxrg.zig");
+const gfx_rg_private = @import("gfx_rg.zig");
 
-const gfxrg_api = gfxrg_private.api;
+const gfx_rg_api = gfx_rg_private.api;
 
 const cetech1 = @import("cetech1");
 const public = cetech1.gpu;
 const gfx = cetech1.gfx;
-const gfxdd = cetech1.gfxdd;
-const gfxrg = cetech1.gfxrg;
+const gfx_dd = cetech1.gfx.dd;
+const gfx_rg = cetech1.gfx.rg;
 
 const log = std.log.scoped(.gpu);
 const bgfx_log = std.log.scoped(.bgfx);
@@ -43,8 +43,8 @@ const GpuViewport = struct {
     fb: gfx.FrameBufferHandle = .{},
     size: [2]f32 = .{ 0, 0 },
     new_size: [2]f32 = .{ 0, 0 },
-    dd: gfxdd.Encoder,
-    rg: gfxrg.RenderGraph,
+    dd: gfx_dd.Encoder,
+    rg: gfx_rg.RenderGraph,
 };
 
 const ViewportPool = cetech1.mem.PoolWithLock(GpuViewport);
@@ -64,11 +64,11 @@ pub fn init(allocator: std.mem.Allocator) !void {
     _viewport_pool = ViewportPool.init(allocator);
     _encoder_map_lock = .{};
 
-    try gfxrg_private.init(allocator);
+    try gfx_rg_private.init(allocator);
 }
 
 pub fn deinit() void {
-    gfxrg_private.deinit();
+    gfx_rg_private.deinit();
 
     if (bgfx_init) {
         zbgfx.debugdraw.deinit();
@@ -82,15 +82,15 @@ pub fn deinit() void {
 pub fn registerToApi() !void {
     try apidb.api.setZigApi(module_name, public.GpuApi, &api);
     try apidb.api.setZigApi(module_name, gfx.GfxApi, &gfx_api);
-    try apidb.api.setZigApi(module_name, gfxdd.GfxDDApi, &gfxdd_api);
+    try apidb.api.setZigApi(module_name, gfx_dd.GfxDDApi, &gfx_dd_api);
 
-    try gfxrg_private.registerToApi();
+    try gfx_rg_private.registerToApi();
 }
 
-fn createViewport(render_graph: gfxrg.RenderGraph) !public.GpuViewport {
+fn createViewport(render_graph: gfx_rg.RenderGraph) !public.GpuViewport {
     const new_viewport = try _viewport_pool.create();
     new_viewport.* = .{
-        .dd = gfxdd_api.encoderCreate(),
+        .dd = gfx_dd_api.encoderCreate(),
         .rg = render_graph,
     };
     try _viewport_set.put(new_viewport, {});
@@ -107,7 +107,7 @@ fn destroyViewport(viewport: public.GpuViewport) void {
         gfx_api.destroyFrameBuffer(true_viewport.fb);
     }
 
-    gfxdd_api.encoderDestroy(true_viewport.dd);
+    gfx_dd_api.encoderDestroy(true_viewport.dd);
     _viewport_pool.destroy(true_viewport);
 }
 
@@ -148,7 +148,7 @@ pub const viewport_vt = public.GpuViewport.VTable.implement(struct {
         return true_viewport.size;
     }
 
-    pub fn getDD(viewport: *anyopaque) gfxdd.Encoder {
+    pub fn getDD(viewport: *anyopaque) gfx_dd.Encoder {
         const true_viewport: *GpuViewport = @alignCast(@ptrCast(viewport));
         return true_viewport.dd;
     }
@@ -234,9 +234,10 @@ fn getContentScale(ctx: *public.GpuContext) [2]f32 {
 
     return .{ 1, 1 };
 }
-fn getWindow(ctx: *public.GpuContext) ?*cetech1.system.Window {
+
+fn getWindow(ctx: *public.GpuContext) ?cetech1.platform.Window {
     const context: *GpuContext = @alignCast(@ptrCast(ctx));
-    return @ptrCast(context.window);
+    return context.window;
 }
 
 var bgfx_init = false;
@@ -245,7 +246,7 @@ var bgfxInit: bgfx.Init = undefined;
 var bgfx_clbs = zbgfx.callbacks.CCallbackInterfaceT{
     .vtable = &zbgfx.callbacks.DefaultZigCallbackVTable.toVtbl(),
 };
-//var bgfx_alloc: zbgfx.callbacks.ZigAllocator = undefined;
+var bgfx_alloc: zbgfx.callbacks.ZigAllocator = undefined;
 
 fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless: bool) !void {
     bgfx.initCtor(&bgfxInit);
@@ -259,7 +260,7 @@ fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless
     bgfxInit.limits.maxEncoders = cpu_count;
 
     // TODO: read note in zbgfx.ZigAllocator
-    //bgfx_alloc = zbgfx.ZigAllocator.init(&_allocator);
+    //bgfx_alloc = zbgfx.callbacks.ZigAllocator.init(&_allocator);
     //bgfxInit.allocator = &bgfx_alloc;
 
     bgfxInit.callback = &bgfx_clbs;
@@ -273,23 +274,11 @@ fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless
             bgfxInit.resolution.reset |= bgfx.ResetFlags_Vsync;
         }
 
-        //TODO: all platforms
-        //TODO: use system no zglfw
-        bgfxInit.platformData.ndt = null;
-        switch (builtin.target.os.tag) {
-            // TODO: wayland
-            .linux => {
-                bgfxInit.platformData.type = bgfx.NativeWindowHandleType.Default;
-                bgfxInit.platformData.nwh = @ptrFromInt(zglfw.getX11Window(context.window.?));
-                bgfxInit.platformData.ndt = zglfw.getX11Display();
-            },
-            .windows => {
-                bgfxInit.platformData.nwh = zglfw.getWin32Window(context.window.?);
-            },
-            else => |v| if (v.isDarwin()) {
-                bgfxInit.platformData.nwh = zglfw.getCocoaWindow(context.window.?);
-            } else undefined,
-        }
+        bgfxInit.platformData.nwh = context.window.?.getOsWindowHandler();
+        bgfxInit.platformData.ndt = context.window.?.getOsDisplayHandler();
+
+        // TODO: wayland
+        bgfxInit.platformData.type = bgfx.NativeWindowHandleType.Default;
     }
 
     // Do not create render thread.
@@ -300,21 +289,20 @@ fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless
     }
 
     bgfx_init = true;
-
     zbgfx.debugdraw.init();
 }
 
 const GpuContext = struct {
-    window: ?*zglfw.Window = null,
+    window: ?cetech1.platform.Window = null,
     headless: bool = false,
 };
 
-fn createContext(window: ?*cetech1.system.Window, backend: ?public.Backend, vsync: bool, headles: bool) !*public.GpuContext {
+fn createContext(window: ?cetech1.platform.Window, backend: ?public.Backend, vsync: bool, headles: bool) !*public.GpuContext {
     var context = try _allocator.create(GpuContext);
     context.* = .{};
 
     if (window) |w| {
-        context.window = @ptrCast(w);
+        context.window = w;
     }
     context.headless = headles;
 
@@ -578,7 +566,7 @@ const encoder_vt = gfx.Encoder.VTable{
     .encoderBlit = @ptrCast(&bgfx.Encoder.blit),
 };
 
-const dd_encoder_vt = gfxdd.Encoder.VTable{
+const dd_encoder_vt = gfx_dd.Encoder.VTable{
     .encoderBegin = @ptrCast(&zbgfx.debugdraw.Encoder.begin),
     .encoderEnd = @ptrCast(&zbgfx.debugdraw.Encoder.end),
     .encoderPush = @ptrCast(&zbgfx.debugdraw.Encoder.push),
@@ -621,7 +609,7 @@ const dd_encoder_vt = gfxdd.Encoder.VTable{
     .encoderDrawOrb = @ptrCast(&zbgfx.debugdraw.Encoder.drawOrb),
 };
 
-pub const gfxdd_api = gfxdd.GfxDDApi{
+pub const gfx_dd_api = gfx_dd.GfxDDApi{
     .createSprite = @ptrCast(&zbgfx.debugdraw.createSprite),
     .destroySprite = @ptrCast(&zbgfx.debugdraw.destroySprite),
     .createGeometry = @ptrCast(&zbgfx.debugdraw.createGeometry),
@@ -631,13 +619,13 @@ pub const gfxdd_api = gfxdd.GfxDDApi{
     .encoderDestroy = destroyDDEncoder,
 };
 
-pub fn createDDEncoder() gfxdd.Encoder {
-    return gfxdd.Encoder{
+pub fn createDDEncoder() gfx_dd.Encoder {
+    return gfx_dd.Encoder{
         .ptr = zbgfx.debugdraw.Encoder.create(),
         .vtable = &dd_encoder_vt,
     };
 }
-pub fn destroyDDEncoder(encoder: gfxdd.Encoder) void {
+pub fn destroyDDEncoder(encoder: gfx_dd.Encoder) void {
     zbgfx.debugdraw.Encoder.destroy(@ptrCast(encoder.ptr));
 }
 

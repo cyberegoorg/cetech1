@@ -27,7 +27,7 @@ var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _coreui: *const coreui.CoreUIApi = undefined;
 var _assetdb: *const assetdb.AssetDBAPI = undefined;
 var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _system: *const cetech1.system.SystemApi = undefined;
+var _platform: *const cetech1.platform.PlatformApi = undefined;
 
 const TabsSelectedObject = std.AutoArrayHashMap(*public.EditorTabI, cdb.ObjId);
 const TabsMap = std.AutoArrayHashMap(*anyopaque, *public.EditorTabI);
@@ -645,11 +645,11 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
         defer _coreui.endMenu();
 
         if (_coreui.menuItem(allocator, coreui.Icons.Link ++ "  " ++ "GitHub", .{}, null)) {
-            try _system.openIn(allocator, .open_url, REPO_URL);
+            try _platform.openIn(allocator, .open_url, REPO_URL);
         }
 
         if (_coreui.menuItem(allocator, coreui.Icons.Link ++ "  " ++ "Docs (online)", .{}, null)) {
-            try _system.openIn(allocator, .open_url, ONLINE_DOCUMENTATION);
+            try _platform.openIn(allocator, .open_url, ONLINE_DOCUMENTATION);
         }
 
         _coreui.separator();
@@ -973,7 +973,7 @@ pub fn load_module_zig(apidb_: *const apidb.ApiDbAPI, allocator: Allocator, log_
     _kernel = _apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _assetdb = _apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
     _tempalloc = _apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _system = _apidb.getZigApi(module_name, cetech1.system.SystemApi).?;
+    _platform = _apidb.getZigApi(module_name, cetech1.platform.PlatformApi).?;
 
     // create global variable that can survive reload
     _g = try _apidb.globalVar(G, module_name, "_g", .{});
