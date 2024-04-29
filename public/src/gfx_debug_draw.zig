@@ -98,13 +98,12 @@ pub const Encoder = struct {
     }
 
     //
-    pub fn pushTransform(dde: Encoder, _mtx: *anyopaque) void {
+    pub fn pushTransform(dde: Encoder, _mtx: *const anyopaque) void {
         dde.vtable.encoderPushTransform(dde.ptr, _mtx);
     }
 
     //
-    pub fn popTransform(dde: Encoder, gfx_dd_api: *const GfxDDApi) void {
-        _ = gfx_dd_api; // autofix
+    pub fn popTransform(dde: Encoder) void {
         dde.vtable.encoderPopTransform(dde.ptr);
     }
 
@@ -126,42 +125,42 @@ pub const Encoder = struct {
 
     ///
     pub fn drawAABB(dde: Encoder, min: [3]f32, max: [3]f32) void {
-        dde.vtable.encoderDrawAABB(dde.ptr, @ptrCast(&min), @ptrCast(&max));
+        dde.vtable.encoderDrawAABB(dde.ptr, min, max);
     }
 
     ///
     pub fn drawCylinder(dde: Encoder, pos: [3]f32, _end: [3]f32, radius: f32) void {
-        dde.vtable.encoderDrawCylinder(dde.ptr, @ptrCast(&pos), @ptrCast(&_end), radius);
+        dde.vtable.encoderDrawCylinder(dde.ptr, pos, _end, radius);
     }
 
     ///
     pub fn drawCapsule(dde: Encoder, pos: [3]f32, _end: [3]f32, radius: f32) void {
-        dde.vtable.encoderDrawCapsule(dde.ptr, @ptrCast(&pos), @ptrCast(&_end), radius);
+        dde.vtable.encoderDrawCapsule(dde.ptr, pos, _end, radius);
     }
 
     ///
     pub fn drawDisk(dde: Encoder, center: [3]f32, normal: [3]f32, radius: f32) void {
-        dde.vtable.encoderDrawDisk(dde.ptr, @ptrCast(&center), @ptrCast(&normal), radius);
+        dde.vtable.encoderDrawDisk(dde.ptr, center, normal, radius);
     }
 
     ///
     pub fn drawObb(dde: Encoder, _obb: [3]f32) void {
-        dde.vtable.encoderDrawObb(dde.ptr, @ptrCast(&_obb));
+        dde.vtable.encoderDrawObb(dde.ptr, _obb);
     }
 
     ///
     pub fn drawSphere(dde: Encoder, center: [3]f32, radius: f32) void {
-        dde.vtable.encoderDrawSphere(dde.ptrde, @ptrCast(&center), radius);
+        dde.vtable.encoderDrawSphere(dde.ptr, center, radius);
     }
 
     ///
     pub fn drawTriangle(dde: Encoder, v0: [3]f32, v1: [3]f32, v2: [3]f32) void {
-        dde.vtable.encoderDrawTriangle(dde.ptr, @ptrCast(&v0), @ptrCast(&v1), @ptrCast(&v2));
+        dde.vtable.encoderDrawTriangle(dde.ptr, &v0, &v1, &v2);
     }
 
     ///
     pub fn drawCone(dde: Encoder, pos: [3]f32, _end: [3]f32, radius: f32) void {
-        dde.vtable.encoderDrawCone(dde.ptr, @ptrCast(&pos), @ptrCast(&_end), radius);
+        dde.vtable.encoderDrawCone(dde.ptr, pos, _end, radius);
     }
 
     //
@@ -251,7 +250,7 @@ pub const Encoder = struct {
         encoderSetSpin: *const fn (dde: *anyopaque, _spin: f32) void,
         encoderSetTransform: *const fn (dde: *anyopaque, _mtx: ?*const anyopaque) void,
         encoderSetTranslate: *const fn (dde: *anyopaque, _xyz: [3]f32) void,
-        encoderPushTransform: *const fn (dde: *anyopaque, _mtx: *anyopaque) void,
+        encoderPushTransform: *const fn (dde: *anyopaque, _mtx: *const anyopaque) void,
         encoderPopTransform: *const fn (dde: *anyopaque) void,
         encoderMoveTo: *const fn (dde: *anyopaque, _xyz: [3]f32) void,
         encoderLineTo: *const fn (dde: *anyopaque, _xyz: [3]f32) void,

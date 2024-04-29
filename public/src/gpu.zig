@@ -3,8 +3,9 @@ const platform = @import("platform.zig");
 const strid = @import("strid.zig");
 const cdb = @import("cdb.zig");
 const gfx = @import("gfx.zig");
-const gfx_rg = @import("gfx_rg.zig");
-const gfx_dd = @import("gfx_dd.zig");
+const gfx_rg = @import("gfx_render_graph.zig");
+const gfx_dd = @import("gfx_debug_draw.zig");
+const ecs = @import("ecs.zig");
 
 const log = std.log.scoped(.gpu);
 
@@ -65,6 +66,12 @@ pub const GpuViewport = struct {
     pub fn getDD(self: GpuViewport) gfx_dd.Encoder {
         return self.vtable.getDD(self.ptr);
     }
+    pub fn setViewMtx(self: GpuViewport, mtx: [16]f32) void {
+        return self.vtable.setViewMtx(self.ptr, mtx);
+    }
+    pub fn getViewMtx(self: GpuViewport) [16]f32 {
+        return self.vtable.getViewMtx(self.ptr);
+    }
 
     ptr: *anyopaque,
     vtable: *const VTable,
@@ -75,6 +82,8 @@ pub const GpuViewport = struct {
         getFb: *const fn (viewport: *anyopaque) ?gfx.FrameBufferHandle,
         getSize: *const fn (viewport: *anyopaque) [2]f32,
         getDD: *const fn (viewport: *anyopaque) gfx_dd.Encoder,
+        setViewMtx: *const fn (viewport: *anyopaque, mtx: [16]f32) void,
+        getViewMtx: *const fn (viewport: *anyopaque) [16]f32,
 
         pub fn implement(comptime T: type) VTable {
             if (!std.meta.hasFn(T, "setSize")) @compileError("implement me");
@@ -82,6 +91,8 @@ pub const GpuViewport = struct {
             if (!std.meta.hasFn(T, "getFb")) @compileError("implement me");
             if (!std.meta.hasFn(T, "getSize")) @compileError("implement me");
             if (!std.meta.hasFn(T, "getDD")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "setViewMtx")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "getViewMtx")) @compileError("implement me");
 
             return VTable{
                 .setSize = &T.setSize,
@@ -89,6 +100,8 @@ pub const GpuViewport = struct {
                 .getFb = &T.getFb,
                 .getSize = &T.getSize,
                 .getDD = &T.getDD,
+                .setViewMtx = &T.setViewMtx,
+                .getViewMtx = &T.getViewMtx,
             };
         }
     };
@@ -99,7 +112,7 @@ pub const GpuApi = struct {
     destroyContext: *const fn (ctx: *GpuContext) void,
 
     // Viewport
-    createViewport: *const fn (rg: gfx_rg.RenderGraph) anyerror!GpuViewport,
+    createViewport: *const fn (rg: gfx_rg.RenderGraph, world: ?ecs.World) anyerror!GpuViewport,
     destroyViewport: *const fn (viewport: GpuViewport) void,
 
     renderFrame: *const fn (ctx: *GpuContext, kernel_tick: u64, dt: f32, vsync: bool) void,

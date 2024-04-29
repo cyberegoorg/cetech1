@@ -6,7 +6,7 @@
     </ZigBrainsArrayOption>
     <ZigBrainsArrayOption name="extraArgs" />
     <ZigBrainsOption name="colored" value="true" />
-    <ZigBrainsOption name="exePath" value="" />
+    <ZigBrainsOption name="exePath" value="$PROJECT_DIR$/zig-out/bin/cetech1_test" />
     <ZigBrainsArrayOption name="exeArgs" />
     <method v="2" />
   </configuration>

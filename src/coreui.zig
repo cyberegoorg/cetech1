@@ -24,13 +24,12 @@ const public = cetech1.coreui;
 const Icons = public.CoreIcons;
 const gfx = cetech1.gfx;
 
+const module_name = .coreui;
 const log = std.log.scoped(module_name);
 
 const _main_font = @embedFile("embed/fonts/Roboto-Medium.ttf");
 const _fa_solid_font = @embedFile("embed/fonts/fa-solid-900.ttf");
 const _fa_regular_font = @embedFile("embed/fonts/fa-regular-400.ttf");
-
-const module_name = .coreui;
 
 const DEFAULT_IMGUI_INI = @embedFile("embed/imgui.ini");
 
@@ -294,6 +293,9 @@ pub var api = public.CoreUIApi{
     .getScaleFactor = getScaleFactor,
     .mainDockSpace = mainDockSpace,
     .image = image,
+    .getMousePos = @ptrCast(&zgui.getMousePos),
+    .getMouseDragDelta = @ptrCast(&zgui.getMouseDragDelta),
+    .setMouseCursor = @ptrCast(&zgui.setMouseCursor),
 };
 
 const BgfxImage = struct {
@@ -562,16 +564,13 @@ pub fn labelText(label: [:0]const u8, text: [:0]const u8) void {
 }
 
 pub fn coreUI(tmp_allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
-    _ = kernel_tick;
-    _ = dt;
-
     var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "CoreUI");
     defer update_zone_ctx.End();
 
     var it = apidb.api.getFirstImpl(cetech1.coreui.CoreUII);
     while (it) |node| : (it = node.next) {
         const iface = cetech1.apidb.ApiDbAPI.toInterface(cetech1.coreui.CoreUII, node);
-        try iface.*.ui(tmp_allocator);
+        try iface.*.ui(tmp_allocator, kernel_tick, dt);
     }
 
     backend.draw();

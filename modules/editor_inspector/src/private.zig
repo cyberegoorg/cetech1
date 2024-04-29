@@ -990,7 +990,9 @@ var inspector_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Draw tab content
-    pub fn ui(inst: *editor.TabO) !void {
+    pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
+        _ = kernel_tick; // autofix
+        _ = dt; // autofix
         var tab_o: *PropertyTab = @alignCast(@ptrCast(inst));
 
         if (tab_o.selected_obj.isEmpty()) {

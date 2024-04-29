@@ -146,7 +146,9 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
     }
 
     // Draw tab content
-    pub fn ui(inst: *editor.TabO) !void {
+    pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
+        _ = kernel_tick;
+        _ = dt;
         var tab_o: *AssetBrowserTab = @alignCast(@ptrCast(inst));
 
         const root_folder = _assetdb.getRootFolder();

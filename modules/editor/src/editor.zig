@@ -170,7 +170,7 @@ pub const EditorTabTypeI = struct {
     destroy: *const fn (*EditorTabI) anyerror!void = undefined,
 
     menu: ?*const fn (*TabO) anyerror!void = null,
-    ui: *const fn (*TabO) anyerror!void = undefined,
+    ui: *const fn (*TabO, kernel_tick: u64, dt: f32) anyerror!void = undefined,
     obj_selected: ?*const fn (*TabO, cdb.Db, cdb.ObjId) anyerror!void = null,
     focused: ?*const fn (*TabO) anyerror!void = null,
     asset_root_opened: ?*const fn (*TabO) anyerror!void = null,
@@ -188,7 +188,6 @@ pub const EditorTabTypeI = struct {
         if (!std.meta.hasFn(T, "title")) @compileError("implement me");
         if (!std.meta.hasFn(T, "create")) @compileError("implement me");
         if (!std.meta.hasFn(T, "destroy")) @compileError("implement me");
-        //if (!std.meta.hasFn(T, "menu")) @compileError("implement me");
         if (!std.meta.hasFn(T, "ui")) @compileError("implement me");
 
         return EditorTabTypeI{

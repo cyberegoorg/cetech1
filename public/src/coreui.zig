@@ -97,12 +97,14 @@ pub const CoreUII = struct {
     pub const c_name = "ct_coreui_ui_i";
     pub const name_hash = strid.strId64(@This().c_name);
 
-    ui: *const fn (allocator: std.mem.Allocator) anyerror!void,
+    ui: *const fn (allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) anyerror!void,
 
     pub inline fn implement(comptime T: type) CoreUII {
         if (!std.meta.hasFn(T, "ui")) @compileError("implement me");
 
-        return CoreUII{ .ui = T.ui };
+        return CoreUII{
+            .ui = T.ui,
+        };
     }
 };
 
@@ -460,6 +462,9 @@ pub const CoreUIApi = struct {
     getScaleFactor: *const fn () f32,
 
     image: *const fn (texture: gfx.TextureHandle, args: Image) void,
+    getMousePos: *const fn () [2]f32,
+    getMouseDragDelta: *const fn (drag_button: MouseButton, args: MouseDragDelta) [2]f32,
+    setMouseCursor: *const fn (cursor: Cursor) void,
 
     mainDockSpace: *const fn (flags: DockNodeFlags) Ident,
 };
@@ -637,6 +642,10 @@ pub const MouseButton = enum(u32) {
     middle = 2,
 };
 
+pub const MouseDragDelta = struct {
+    lock_threshold: f32 = -1.0,
+};
+
 pub const Key = enum(u32) {
     none = 0,
     tab = 512,
@@ -799,6 +808,20 @@ pub const Key = enum(u32) {
     mod_alt = 1 << 14,
     mod_super = 1 << 15,
     mod_mask_ = 0xf000,
+};
+
+pub const Cursor = enum(c_int) {
+    none = -1,
+    arrow = 0,
+    text_input,
+    resize_all,
+    resize_ns,
+    resize_ew,
+    resize_nesw,
+    resize_nwse,
+    hand,
+    not_allowed,
+    count,
 };
 
 pub const TableBorderFlags = packed struct(u4) {

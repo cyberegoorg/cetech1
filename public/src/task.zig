@@ -43,10 +43,15 @@ pub const TaskAPI = struct {
         return self.combineFn(prereq);
     }
 
+    /// Get worker thread count.
+    pub fn getThreadNum(self: Self) u64 {
+        return self.getThreadNumFn();
+    }
+
     //#region Pointers to implementation
     scheduleFn: *const fn (prereq: TaskID, task: TaskStub) anyerror!TaskID,
     waitFn: *const fn (prereq: TaskID) void,
     combineFn: *const fn (prereq: []const TaskID) anyerror!TaskID,
-    getThreadNum: *const fn () u64,
+    getThreadNumFn: *const fn () u64,
     //#endregions
 };

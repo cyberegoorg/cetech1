@@ -140,7 +140,9 @@ var obj_buffer_tab = editor.EditorTabTypeI.implement(
         }
 
         // Draw tab content
-        pub fn ui(inst: *editor.TabO) !void {
+        pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
+            _ = kernel_tick; // autofix
+            _ = dt; // autofix
             const tab_o: *ObjBufferTab = @alignCast(@ptrCast(inst));
 
             const allocator = try _tempalloc.create();

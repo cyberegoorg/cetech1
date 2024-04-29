@@ -133,7 +133,9 @@ var log_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Draw tab content
-    pub fn ui(inst: *editor.TabO) !void {
+    pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
+        _ = kernel_tick; // autofix
+        _ = dt; // autofix
         const tab_o: *LogTab = @alignCast(@ptrCast(inst));
         var scrollBotom = false;
 

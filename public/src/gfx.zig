@@ -4,13 +4,14 @@ const Backend = @import("gpu.zig");
 const log = std.log.scoped(.gfx);
 
 /// Debug draw API
-pub const dd = @import("gfx_dd.zig");
+pub const dd = @import("gfx_debug_draw.zig");
 
 /// Render graph
-pub const rg = @import("gfx_rg.zig");
+pub const rg = @import("gfx_render_graph.zig");
 
 pub const GfxApi = struct {
     newViewId: *const fn () ViewId,
+    addPaletteColor: *const fn (color: u32) u8,
 
     vertexPack: *const fn (_input: [4]f32, _inputNormalized: bool, _attr: Attrib, _layout: [*c]const VertexLayout, _data: ?*anyopaque, _index: u32) void,
     vertexUnpack: *const fn (_output: [4]f32, _attr: Attrib, _layout: [*c]const VertexLayout, _data: ?*const anyopaque, _index: u32) void,

@@ -22,6 +22,9 @@ pub const gpu = @import("gpu.zig");
 pub const gfx = @import("gfx.zig");
 pub const coreui = @import("coreui.zig");
 
+pub const ecs = @import("ecs.zig");
+pub const primitives = @import("primitives.zig");
+
 test {
     // TODO: SHIT
     @setEvalBranchQuota(100000);

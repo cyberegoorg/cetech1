@@ -16,6 +16,7 @@ const assetdb = @import("assetdb.zig");
 const platform = @import("platform.zig");
 const gpu = @import("gpu.zig");
 const coreui = @import("coreui.zig");
+const ecs = @import("ecs.zig");
 
 const cetech1 = @import("cetech1");
 const public = cetech1.kernel;
@@ -80,6 +81,7 @@ var _platform_allocator: profiler.AllocatorProfiler = undefined;
 var _gpu_allocator: profiler.AllocatorProfiler = undefined;
 var _coreui_allocator: profiler.AllocatorProfiler = undefined;
 var _tmp_alocator_pool_allocator: profiler.AllocatorProfiler = undefined;
+var _ecs_allocator: profiler.AllocatorProfiler = undefined;
 
 var _update_dag: cetech1.dag.StrId64DAG = undefined;
 
@@ -188,6 +190,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     _gpu_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "gpu");
     _coreui_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "coreui");
     _tmp_alocator_pool_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "tmp_allocators");
+    _ecs_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "ecs");
 
     _update_dag = cetech1.dag.StrId64DAG.init(_kernel_allocator);
 
@@ -225,6 +228,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try platform.registerToApi();
     try gpu.registerToApi();
     try coreui.registerToApi();
+    try ecs.registerToApi();
 
     try addPhase("OnLoad", &[_]strid.StrId64{});
     try addPhase("PostLoad", &[_]strid.StrId64{cetech1.kernel.OnLoad});
@@ -243,6 +247,8 @@ pub fn deinit(
 ) !void {
     try shutdownKernelTasks();
     try modules.unloadAll();
+
+    ecs.deinit();
 
     coreui.deinit();
     if (gpu_context) |ctx| gpu.api.destroyContext(ctx);
@@ -338,6 +344,8 @@ pub fn bigInit(static_modules: []const cetech1.modules.ModuleDesc, load_dynamic:
     modules.dumpModules();
 
     try task.start();
+
+    try ecs.init(_ecs_allocator.allocator());
 
     try assetdb.init(_assetdb_allocator.allocator());
 
@@ -485,10 +493,11 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             defer update_zone_ctx.End();
 
             const now = std.time.milliTimestamp();
-            const dt = now - last_call;
+            const dt_ms = now - last_call;
+            const dt_s: f32 = @as(f32, @floatFromInt(dt_ms)) / std.time.ms_per_s;
             last_call = now;
 
-            checkfs_timer += dt;
+            checkfs_timer += dt_ms;
 
             const tmp_frame_alloc = try tempalloc.api.create();
             defer tempalloc.api.destroy(tmp_frame_alloc);
@@ -528,11 +537,14 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             }
 
             // Do hard work.
-            try doKernelUpdateTasks(kernel_tick, dt);
+            try doKernelUpdateTasks(kernel_tick, dt_s);
+
+            // TODO remove
+            try ecs.progressAll(dt_s);
 
             // Render frame
             if (gpu_context) |ctx| {
-                gpu.api.renderFrame(ctx, kernel_tick, @floatFromInt(dt), !headless);
+                gpu.api.renderFrame(ctx, kernel_tick, dt_s, !headless);
             }
 
             // End loop
@@ -725,7 +737,7 @@ fn generateTaskUpdateChain() !void {
 
 const UpdateFrameName = "UpdateFrame";
 
-fn doKernelUpdateTasks(kernel_tick: u64, dt: i64) !void {
+fn doKernelUpdateTasks(kernel_tick: u64, dt: f32) !void {
     var fce_zone_ctx = profiler_private.ztracy.Zone(@src());
     defer fce_zone_ctx.End();
 
@@ -743,13 +755,13 @@ fn doKernelUpdateTasks(kernel_tick: u64, dt: i64) !void {
             const KernelTask = struct {
                 update_handler: *const public.KernelTaskUpdateI,
                 kernel_tick: u64,
-                dt: i64,
+                dt: f32,
                 pub fn exec(self: *@This()) !void {
                     var zone_ctx = profiler_private.ztracy.Zone(@src());
                     zone_ctx.Name(self.update_handler.name);
                     defer zone_ctx.End();
 
-                    try self.update_handler.update(self.kernel_tick, @floatFromInt(self.dt));
+                    try self.update_handler.update(self.kernel_tick, self.dt);
                 }
             };
 

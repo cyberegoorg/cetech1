@@ -29,7 +29,9 @@
         "unordered_set": "cpp",
         "vector": "cpp",
         "ios": "cpp",
-        "regex": "cpp"
+        "regex": "cpp",
+        "__locale": "c",
+        "locale": "c"
     },
     "[json]": {
         "editor.insertSpaces": true,

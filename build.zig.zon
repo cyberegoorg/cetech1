@@ -51,11 +51,11 @@
         .system_sdk = .{ .path = "externals/shared/lib/zig-gamedev/libs/system-sdk" },
         .zglfw = .{ .path = "externals/shared/lib/zig-gamedev/libs/zglfw" },
         .zpool = .{ .path = "externals/shared/lib/zig-gamedev/libs/zpool" },
-        //.zjobs = .{ .path = "externals/shared/lib/zig-gamedev/libs/zjobs" },
-        .zjobs = .{ .path = "externals/shared/lib/workarounds/zjobs" },
+        .zjobs = .{ .path = "externals/shared/lib/zig-gamedev/libs/zjobs" },
         .ztracy = .{ .path = "externals/shared/lib/zig-gamedev/libs/ztracy" },
         .zgui = .{ .path = "externals/shared/lib/zig-gamedev/libs/zgui" },
         //.znfde = .{ .path = "externals/shared/lib/zig-gamedev/libs/znfde" },
 
+        .zflecs = .{ .path = "externals/shared/lib/zig-gamedev/libs/zflecs" },
     },
 }

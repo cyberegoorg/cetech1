@@ -175,6 +175,15 @@ pub fn build(b: *std.Build) !void {
         },
     );
 
+    // ZFLECS
+    const zflecs = b.dependency(
+        "zflecs",
+        .{
+            .target = target,
+            .optimize = optimize,
+        },
+    );
+
     // ZBGFX
     const zbgfx = b.dependency(
         "zbgfx",
@@ -339,6 +348,8 @@ pub fn build(b: *std.Build) !void {
         e.root_module.addImport("zpool", zpool.module("root"));
         e.root_module.addImport("zglfw", zglfw.module("root"));
         e.root_module.addImport("zgui", zgui.module("root"));
+        e.root_module.addImport("zflecs", zflecs.module("root"));
+
         e.root_module.addImport("zf", zf.module("zf"));
         e.root_module.addImport("Uuid", uuid.module("Uuid"));
         e.root_module.addImport("zbgfx", zbgfx.module("zbgfx"));
@@ -347,6 +358,7 @@ pub fn build(b: *std.Build) !void {
         e.linkLibrary(zglfw.artifact("glfw"));
         e.linkLibrary(zgui.artifact("imgui"));
         e.linkLibrary(zbgfx.artifact("bgfx"));
+        e.linkLibrary(zflecs.artifact("flecs"));
 
         if (options.enable_nfd) {
             e.root_module.addImport("znfde", znfde.module("root"));

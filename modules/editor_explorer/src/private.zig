@@ -128,7 +128,10 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Draw tab content
-    pub fn ui(inst: *editor.TabO) !void {
+    pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
+        _ = kernel_tick;
+        _ = dt;
+
         var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
 
         if (tab_o.selection.isEmpty()) {

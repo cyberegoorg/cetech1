@@ -133,13 +133,13 @@ CETech provide ZLS as submodule, but you must build it.
     <tab title="MacOS/Linux">
         <code-block lang="bash">
             cd externals/shared/tools/zls
-            ../../../../zig/bin/ARCH/zig build
+            ../../../../zig/bin/ARCH/zig build -Doptimize=ReleaseFast
         </code-block>
     </tab>
     <tab title="Windows">
         <code-block lang="bash">
             cd externals/shared/tools/zls
-            ../../../../zig/bin/ARCH/zig.exe build
+            ../../../../zig/bin/ARCH/zig.exe build -Doptimize=ReleaseFast
         </code-block>
     </tab>
 </tabs>

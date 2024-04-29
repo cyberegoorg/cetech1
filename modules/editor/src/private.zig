@@ -697,7 +697,7 @@ fn doTabMainMenu(allocator: std.mem.Allocator) !void {
     }
 }
 
-fn doTabs(tmp_allocator: std.mem.Allocator) !void {
+fn doTabs(tmp_allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
     var tabs = std.ArrayList(*public.EditorTabI).init(tmp_allocator);
     defer tabs.deinit();
     try tabs.appendSlice(_g.tabs.values());
@@ -783,7 +783,7 @@ fn doTabs(tmp_allocator: std.mem.Allocator) !void {
 
             // Draw content if needed.
 
-            try tab.vt.*.ui(tab.inst);
+            try tab.vt.*.ui(tab.inst, kernel_tick, dt);
         }
         _coreui.end();
 
@@ -794,12 +794,12 @@ fn doTabs(tmp_allocator: std.mem.Allocator) !void {
 }
 
 var coreui_ui_i = coreui.CoreUII.implement(struct {
-    pub fn ui(allocator: std.mem.Allocator) !void {
+    pub fn ui(allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
         _ = _coreui.mainDockSpace(coreui.DockNodeFlags{ .passthru_central_node = true });
 
         try doMainMenu(allocator);
         try quitSaveModal();
-        try doTabs(allocator);
+        try doTabs(allocator, kernel_tick, dt);
 
         if (_g.show_demos) _coreui.showDemoWindow();
         _coreui.showTestingWindow(&_g.show_testing_window);

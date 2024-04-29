@@ -14,7 +14,7 @@ pub var api = cetech1.task.TaskAPI{
     .scheduleFn = schedule,
     .waitFn = wait,
     .combineFn = combine,
-    .getThreadNum = getThreadNum,
+    .getThreadNumFn = getThreadNum,
 };
 
 fn getThreadNum() u64 {
