@@ -8,7 +8,7 @@ pub const OBJID_ZERO = ObjId{};
 
 /// Type idx
 pub const TypeIdx = extern struct {
-    idx: u32 = 0,
+    idx: u16 = 0,
 
     pub fn isEmpty(self: *const TypeIdx) bool {
         return self.idx == 0;
@@ -19,27 +19,40 @@ pub const TypeIdx = extern struct {
     }
 };
 
+pub const ObjIdGen = u16;
+
 /// Object id
 pub const ObjId = extern struct {
     id: u32 = 0,
+    gen: ObjIdGen = 0,
     type_idx: TypeIdx = .{},
 
     pub fn isEmpty(self: *const ObjId) bool {
-        return self.id == 0 and self.type_idx.isEmpty();
+        return self.id == 0 and self.gen == 0 and self.type_idx.isEmpty();
     }
 
     pub fn eql(a: ObjId, b: ObjId) bool {
-        return a.id == b.id and a.type_idx.eql(b.type_idx);
+        return a.id == b.id and a.gen == b.gen and a.type_idx.eql(b.type_idx);
     }
 
     pub fn format(self: ObjId, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) (@TypeOf(writer).Error)!void {
-        try std.fmt.format(writer, "{d}-{d}", .{ self.id, self.type_idx.idx });
+        try std.fmt.format(writer, "{d}:{d}-{d}", .{ self.id, self.gen, self.type_idx.idx });
     }
 
     pub fn toU64(self: *const ObjId) u64 {
         const ptr: *u64 = @ptrFromInt(@intFromPtr(self));
         return ptr.*;
     }
+};
+
+/// Object type version
+pub const TypeVersion = u32;
+
+/// Change object result
+pub const ChangedObjects = struct {
+    need_fullscan: bool,
+    last_version: TypeVersion,
+    objects: []ObjId,
 };
 
 /// Opaqueue Object used for read/write operation
@@ -613,6 +626,14 @@ pub const Db = struct {
         return self.vtable.getTypeIdxFn(self.ptr, type_hash);
     }
 
+    pub fn getChangeObjects(self: Self, allocator: std.mem.Allocator, type_idx: TypeIdx, since_version: TypeVersion) !ChangedObjects {
+        return self.vtable.getChangeObjects(self.ptr, allocator, type_idx, since_version);
+    }
+
+    pub fn isAlive(self: Self, obj: ObjId) bool {
+        return self.vtable.isAlive(self.ptr, obj);
+    }
+
     pub fn dump(self: Self) !void {
         return self.vtable.dump(self.ptr);
     }
@@ -702,6 +723,9 @@ pub const Db = struct {
         hasTypeSubobjectFn: *const fn (db: *anyopaque, type_idx: TypeIdx) bool,
 
         getTypeIdxFn: *const fn (db: *anyopaque, type_hash: strid.StrId32) ?TypeIdx,
+
+        getChangeObjects: *const fn (db: *anyopaque, allocator: std.mem.Allocator, type_idx: TypeIdx, since_version: TypeVersion) anyerror!ChangedObjects,
+        isAlive: *const fn (db: *anyopaque, obj: ObjId) bool,
     };
 };
 

@@ -44,6 +44,54 @@ const PropertyTypeAspectMap = std.AutoArrayHashMap(PropertyAspectPair, *anyopaqu
 
 const OnObjIdDestroyMap = std.AutoArrayHashMap(public.OnObjIdDestroyed, void);
 
+const ChangedObjectsList = std.ArrayList(public.ObjId);
+const ChangedObjectMap = std.AutoArrayHashMap(public.TypeVersion, ChangedObjectsList);
+
+const ChangedObjects = struct {
+    const Self = @This();
+
+    allocator: std.mem.Allocator,
+    map: ChangedObjectMap,
+    max_version: u32 = 0,
+
+    pub fn init(allocator: std.mem.Allocator) Self {
+        return .{
+            .allocator = allocator,
+            .map = ChangedObjectMap.init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        for (self.map.values()) |*values| {
+            values.deinit();
+        }
+
+        self.map.deinit();
+    }
+
+    pub fn addChangedObjects(self: *Self, version: public.TypeVersion, objects: []const public.ObjId) !void {
+        const result = try self.map.getOrPut(version);
+        if (!result.found_existing) {
+            result.value_ptr.* = ChangedObjectsList.init(self.allocator);
+        }
+
+        try result.value_ptr.appendSlice(objects);
+
+        self.max_version = @max(self.max_version, version);
+    }
+
+    pub fn getSince(self: *Self, allocator: std.mem.Allocator, since_version: public.TypeVersion, last_version: public.TypeVersion) ![]public.ObjId {
+        var output = std.ArrayList(public.ObjId).init(allocator);
+
+        for (since_version..last_version) |version| {
+            const objects = self.map.get(@intCast(version)).?;
+            try output.appendSlice(objects.items);
+        }
+
+        return output.toOwnedSlice();
+    }
+};
+
 fn toObjFromObjO(obj: *public.Obj) *Object {
     return @alignCast(@ptrCast(obj));
 }
@@ -93,7 +141,8 @@ pub const Object = struct {
     parent_prop_idx: u32 = 0,
 
     // Protypes
-    prototype_id: u32 = 0,
+    prototype: public.ObjId = .{},
+
     // Set of overided properties.
     overrides_set: OverridesSet,
 
@@ -101,13 +150,6 @@ pub const Object = struct {
         const ptr = self.props_mem.ptr + self.prop_offset[prop_idx];
         std.debug.assert(std.mem.isAligned(@intFromPtr(ptr), @alignOf(T)));
         return @alignCast(@ptrCast(ptr));
-    }
-
-    pub fn getPrototypeObjId(self: *Self) public.ObjId {
-        return .{
-            .id = self.prototype_id,
-            .type_idx = if (self.prototype_id != 0) self.objid.type_idx else .{},
-        };
     }
 };
 
@@ -190,6 +232,9 @@ pub const TypeStorage = struct {
     props_size: usize,
     prop_offset: std.ArrayList(usize),
 
+    version: public.TypeVersion = 1,
+    changed_objs: ChangedObjects,
+
     default_obj: public.ObjId = public.OBJID_ZERO,
 
     // Per ObjectId data
@@ -197,6 +242,7 @@ pub const TypeStorage = struct {
     objid2obj: cetech1.mem.VirtualArray(?*Object),
     objid_ref_count: cetech1.mem.VirtualArray(AtomicInt32),
     objid_version: cetech1.mem.VirtualArray(AtomicInt64),
+    objid_gen: cetech1.mem.VirtualArray(public.ObjIdGen),
     objid2refs: cetech1.mem.VirtualArray(ReferencerIdSet),
     objid2refs_lock: cetech1.mem.VirtualArray(std.Thread.Mutex), //TODO: without lock?
     prototype2instances: cetech1.mem.VirtualArray(PrototypeInstanceSet),
@@ -276,11 +322,12 @@ pub const TypeStorage = struct {
             .allocator = allocator,
             .contain_set = contain_set,
             .contain_subobject = contain_subobject,
-
+            .changed_objs = ChangedObjects.init(allocator),
             .object_pool = try cetech1.mem.VirtualPool(Object).init(allocator, MAX_OBJECTS),
 
             .objid_pool = cetech1.mem.IdPool(u32).init(allocator),
             .objid2obj = try cetech1.mem.VirtualArray(?*Object).init(MAX_OBJECTS),
+            .objid_gen = try cetech1.mem.VirtualArray(public.ObjIdGen).init(MAX_OBJECTS),
             .objid_ref_count = try cetech1.mem.VirtualArray(AtomicInt32).init(MAX_OBJECTS),
             .objid_version = try cetech1.mem.VirtualArray(AtomicInt64).init(MAX_OBJECTS),
             .objid2refs = try cetech1.mem.VirtualArray(ReferencerIdSet).init(MAX_OBJECTS),
@@ -350,8 +397,10 @@ pub const TypeStorage = struct {
 
         self.objid2refs.deinit();
         self.objid2refs_lock.deinit();
+        self.objid_gen.deinit();
         self.prototype2instances.deinit();
         self.prototype2instances_lock.deinit();
+        self.changed_objs.deinit();
 
         _allocator.free(self.props_def);
     }
@@ -380,7 +429,10 @@ pub const TypeStorage = struct {
 
         if (is_new) {
             try self.notifyAlloc();
+            self.objid_gen.items[id] = 1;
         }
+
+        const gen = self.objid_gen.items[id];
 
         self.objid_ref_count.items[id] = AtomicInt32.init(1);
         self.objid_version.items[id] = AtomicInt64.init(1);
@@ -395,8 +447,7 @@ pub const TypeStorage = struct {
         self.objid2refs_lock.items[id] = std.Thread.Mutex{};
         self.prototype2instances_lock.items[id] = std.Thread.Mutex{};
 
-        const objid = .{ .id = id, .type_idx = self.type_idx };
-
+        const objid = .{ .id = id, .gen = gen, .type_idx = self.type_idx };
         return objid;
     }
 
@@ -556,7 +607,7 @@ pub const TypeStorage = struct {
         self.objid2obj.items[id.id] = obj;
         obj.parent = .{};
 
-        return .{ .id = id.id, .type_idx = self.type_idx };
+        return id;
     }
 
     pub fn createObjectFromPrototype(self: *Self, prototype: public.ObjId) !public.ObjId {
@@ -565,7 +616,7 @@ pub const TypeStorage = struct {
 
         const prototype_obj = self.db.getObjectPtr(prototype).?;
         var new_object = try self.cloneObjectRaw(prototype_obj, true, false, false);
-        new_object.prototype_id = prototype_obj.objid.id;
+        new_object.prototype = prototype_obj.objid;
 
         try self.addPrototypeInstance(prototype, new_object.objid);
 
@@ -598,7 +649,7 @@ pub const TypeStorage = struct {
         var new_obj = try self.allocateObject(obj_id, false);
 
         if (!create_new) {
-            new_obj.prototype_id = obj.prototype_id;
+            new_obj.prototype = obj.prototype;
             new_obj.parent = obj.parent;
             new_obj.parent_prop_idx = obj.parent_prop_idx;
         }
@@ -815,9 +866,11 @@ pub const TypeStorage = struct {
                 obj.parent = .{};
             }
 
-            if (obj.prototype_id != 0) {
-                self.removePrototypeInstance(.{ .id = obj.prototype_id, .type_idx = obj.objid.type_idx }, obj.objid);
+            if (!obj.prototype.isEmpty()) {
+                self.removePrototypeInstance(obj.prototype, obj.objid);
             }
+
+            self.objid_gen.items[obj.objid.id] += 1;
 
             try self.freeObjId(obj.objid);
             self.objid2obj.items[obj.objid.id] = null;
@@ -841,13 +894,24 @@ pub const TypeStorage = struct {
         var destroyed_ids = std.ArrayList(public.ObjId).init(tmp_allocator);
         defer destroyed_ids.deinit();
 
+        var changed_ids = std.ArrayList(public.ObjId).init(tmp_allocator);
+        defer changed_ids.deinit();
+
         var free_objects: u32 = 0;
         while (self.to_free_queue.pop()) |node| {
+            try changed_ids.append(node.data.objid);
+
             free_objects += try self.freeObject(node.data, &destroyed_ids, tmp_allocator);
             self.to_free_obj_node_pool.destroy(node);
         }
 
+        try self.changed_objs.addChangedObjects(self.version, changed_ids.items);
+
         self.db.callOnObjIdDestroyed(destroyed_ids.items);
+
+        if (free_objects != 0) {
+            self.version += 1;
+        }
 
         return free_objects;
     }
@@ -864,8 +928,8 @@ pub const TypeStorage = struct {
         } // else: just belive
 
         // If exist prototype and prop is not override read from prototype.
-        if (true_obj.prototype_id != 0 and !true_obj.overrides_set.isSet(prop_idx)) {
-            const prototype_obj = self.db.getObjectPtr(true_obj.getPrototypeObjId());
+        if (!true_obj.prototype.isEmpty() and !true_obj.overrides_set.isSet(prop_idx)) {
+            const prototype_obj = self.db.getObjectPtr(true_obj.prototype);
             if (prototype_obj) |proto_obj| {
                 return readGeneric(self, @ptrCast(proto_obj), prop_idx, prop_type);
             }
@@ -898,7 +962,7 @@ pub const TypeStorage = struct {
         } // else: just belive
 
         // If exist prototype set override flag to prop.
-        if (true_obj.prototype_id != 0) {
+        if (!true_obj.prototype.isEmpty()) {
             true_obj.overrides_set.set(prop_idx);
         }
 
@@ -1232,8 +1296,8 @@ pub const Db = struct {
     //     std.hash.autoHash(hasher, @intFromPtr(obj));
     //     const props_def = self.getTypePropDef(obj.objid.type_hash).?;
 
-    //     if (obj.prototype_id != 0) {
-    //         var proto_obj = self.getObjectPtr(.{ .id = obj.prototype_id, .type_hash = obj.objid.type_hash }).?;
+    //     if (obj.prototype != 0) {
+    //         var proto_obj = self.getObjectPtr(.{ .id = obj.prototype, .type_hash = obj.objid.type_hash }).?;
     //         std.hash.autoHash(hasher, @intFromPtr(proto_obj));
     //     }
 
@@ -1296,9 +1360,9 @@ pub const Db = struct {
 
         const storage = self.typestorage_pool.create(null);
         const idx = self.typestorage_pool.index(storage);
-        try self.typestorage_map.put(type_hash, .{ .idx = idx });
+        try self.typestorage_map.put(type_hash, .{ .idx = @intCast(idx) });
 
-        const new_storage = try TypeStorage.init(_allocator, self, .{ .idx = idx }, name, prop_def);
+        const new_storage = try TypeStorage.init(_allocator, self, .{ .idx = @intCast(idx) }, name, prop_def);
         storage.* = new_storage;
 
         return storage;
@@ -1345,6 +1409,28 @@ pub const Db = struct {
 
     pub fn getTypeIdx(self: *Self, type_hash: StrId32) ?public.TypeIdx {
         return self.typestorage_map.get(type_hash);
+    }
+
+    pub fn getChangeObjects(self: *Self, allocator: std.mem.Allocator, type_idx: public.TypeIdx, since_version: public.TypeVersion) !public.ChangedObjects {
+        const type_storage = self.getTypeStorageByTypeIdx(type_idx).?;
+        if (since_version == 0) return public.ChangedObjects{
+            .need_fullscan = true,
+            .last_version = type_storage.version,
+            .objects = try allocator.alloc(public.ObjId, 0),
+        };
+
+        const objs = try type_storage.changed_objs.getSince(allocator, since_version, type_storage.version);
+
+        return public.ChangedObjects{
+            .need_fullscan = false,
+            .last_version = type_storage.version,
+            .objects = objs,
+        };
+    }
+
+    pub fn isAlive(self: *Self, obj: public.ObjId) bool {
+        const type_storage = self.getTypeStorageByTypeIdx(obj.type_idx).?;
+        return type_storage.objid_gen.items[obj.id] == obj.gen;
     }
 
     pub fn registerAllTypes(self: *Self) void {
@@ -1542,7 +1628,7 @@ pub const Db = struct {
         true_ptr.* = (try self.allocator.dupeZ(u8, value));
 
         // If exist prototype set override flag to prop.
-        if (true_obj.prototype_id != 0) {
+        if (!true_obj.prototype.isEmpty()) {
             true_obj.overrides_set.set(prop_idx);
         }
     }
@@ -1800,7 +1886,7 @@ pub const Db = struct {
         var true_obj = toObjFromObjO(writer);
 
         // Fast path for non prototype
-        if (true_obj.prototype_id == 0) {
+        if (true_obj.prototype.isEmpty()) {
             const array = true_obj.getPropPtr(*ObjIdSet, prop_idx);
             return try array.*.getAddedItems(allocator);
         }
@@ -1821,7 +1907,7 @@ pub const Db = struct {
                 _ = try removed.put(value, {});
             }
 
-            true_it_obj = self.getObjectPtr(obj.getPrototypeObjId());
+            true_it_obj = self.getObjectPtr(obj.prototype);
         }
 
         var result = std.ArrayList(public.ObjId).init(allocator);
@@ -1848,7 +1934,7 @@ pub const Db = struct {
             removed += 1;
         }
 
-        if (true_obj.prototype_id != 0) {
+        if (!true_obj.prototype.isEmpty()) {
             const proto = self.getPrototype(true_obj);
             const true_proto = self.getObjectPtr(proto).?;
             const count = self.countAddedRemoved(true_proto, prop_idx, item_obj);
@@ -1904,7 +1990,7 @@ pub const Db = struct {
     fn resetPropertyOveride(self: *Self, writer: *public.Obj, prop_idx: u32) void {
         _ = self;
         var obj_ptr = toObjFromObjO(writer);
-        if (obj_ptr.prototype_id == 0) return;
+        if (obj_ptr.prototype.isEmpty()) return;
         obj_ptr.overrides_set.unset(prop_idx);
     }
 
@@ -1916,8 +2002,8 @@ pub const Db = struct {
 
     pub fn getPrototype(self: *Self, obj: *public.Obj) public.ObjId {
         _ = self;
-        var true_obj = toObjFromObjO(obj);
-        return true_obj.getPrototypeObjId();
+        const true_obj = toObjFromObjO(obj);
+        return true_obj.prototype;
     }
 
     pub fn instantiateSubObj(self: *Self, writer: *public.Obj, prop_idx: u32) !void {
@@ -1936,7 +2022,7 @@ pub const Db = struct {
         var true_obj = toObjFromObjO(obj);
         const true_inisiated_obj = toObjFromObjO(inisiated_obj);
 
-        const prototype = true_obj.getPrototypeObjId();
+        const prototype = true_obj.prototype;
         if (prototype.isEmpty()) return false;
 
         const type_props = self.getTypePropDef(true_obj.objid.type_idx).?;
@@ -1955,10 +2041,7 @@ pub const Db = struct {
             .SUBOBJECT_SET, .REFERENCE_SET => {
                 const idset = true_obj.getPropPtr(*ObjIdSet, set_prop_idx);
 
-                const protoype_id = .{
-                    .id = true_inisiated_obj.prototype_id,
-                    .type_idx = true_inisiated_obj.objid.type_idx,
-                };
+                const protoype_id = true_inisiated_obj.prototype;
 
                 return idset.*.added.contains(true_inisiated_obj.objid) and idset.*.removed.contains(protoype_id);
             },
@@ -1973,7 +2056,7 @@ pub const Db = struct {
         var true_obj = toObjFromObjO(obj);
         const true_inisiated_obj = toObjFromObjO(inisiated_obj);
 
-        if (true_obj.prototype_id == 0) return;
+        if (true_obj.prototype.isEmpty()) return;
 
         const idset = true_obj.getPropPtr(*ObjIdSet, set_prop_idx);
         idset.*.removeFromRemoved(true_inisiated_obj.objid);
@@ -1984,12 +2067,9 @@ pub const Db = struct {
         const true_obj = toObjFromObjO(obj);
         var true_inisiated_obj = toObjFromObjO(inisiated_obj);
 
-        if (true_obj.prototype_id == 0) return false;
+        if (true_obj.prototype.isEmpty()) return false;
 
-        const protoype_id = .{
-            .id = true_obj.prototype_id,
-            .type_idx = true_obj.objid.type_idx,
-        };
+        const protoype_id = true_obj.prototype;
 
         return true_inisiated_obj.parent.eql(protoype_id);
     }
@@ -1998,11 +2078,11 @@ pub const Db = struct {
         var obj_r = self.getObjectPtr(obj).?;
         var storage = self.getTypeStorage(obj).?;
 
-        if (obj_r.prototype_id != 0) {
+        if (!obj_r.prototype.isEmpty()) {
             storage.removePrototypeInstance(self.getPrototype(obj_r), obj);
         }
 
-        obj_r.prototype_id = prototype.id;
+        obj_r.prototype = prototype;
 
         if (!prototype.isEmpty()) {
             try storage.addPrototypeInstance(prototype, obj);
@@ -2019,7 +2099,7 @@ pub const Db = struct {
         const storage = self.getTypeStorageByTypeIdx(type_idx).?;
         for (1..storage.objid_pool.count.raw) |idx| {
             if (storage.objid2obj.items[idx] == null) continue;
-            return .{ .id = @intCast(idx), .type_idx = type_idx };
+            return .{ .id = @intCast(idx), .gen = storage.objid_gen.items[idx], .type_idx = type_idx };
         }
 
         return public.OBJID_ZERO;
@@ -2031,7 +2111,7 @@ pub const Db = struct {
         for (1..storage.objid_pool.count.raw) |idx| {
             if (storage.objid2obj.items[idx] == null) continue;
 
-            result.append(.{ .id = @intCast(idx), .type_idx = type_idx }) catch {
+            result.append(.{ .id = @intCast(idx), .gen = storage.objid_gen.items[idx], .type_idx = type_idx }) catch {
                 result.deinit();
                 return null;
             };
@@ -2181,6 +2261,8 @@ const db_vt = public.Db.VTable{
     .hasTypeSetFn = @ptrCast(&Db.hasTypeSet),
     .hasTypeSubobjectFn = @ptrCast(&Db.hasTypeSubobject),
     .getTypeIdxFn = @ptrCast(&Db.getTypeIdx),
+    .getChangeObjects = @ptrCast(&Db.getChangeObjects),
+    .isAlive = @ptrCast(&Db.isAlive),
 };
 
 fn createDb(name: [:0]const u8) !public.Db {

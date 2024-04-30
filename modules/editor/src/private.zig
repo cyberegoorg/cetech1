@@ -447,7 +447,7 @@ fn openTabWithPinnedObj(db: cdb.Db, tab_type_hash: strid.StrId32, obj: cdb.ObjId
 fn tabSelectObj(db: cdb.Db, obj: cdb.ObjId, tab: *public.EditorTabI) void {
     _g.tab2selectedobj.put(tab, obj) catch undefined;
     if (tab.vt.*.obj_selected) |obj_selected| {
-        obj_selected(tab.inst, db, .{ .id = obj.id, .type_idx = .{ .idx = obj.type_idx.idx } }) catch undefined;
+        obj_selected(tab.inst, db, obj) catch undefined;
     }
 }
 

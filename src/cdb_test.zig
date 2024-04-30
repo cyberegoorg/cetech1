@@ -223,6 +223,9 @@ test "cdb: Should create object from type" {
     const obj1 = try db.createObject(type_hash);
     const obj2 = try db.createObject(type_hash);
 
+    try std.testing.expect(db.isAlive(obj1));
+    try std.testing.expect(db.isAlive(obj2));
+
     try std.testing.expectEqual(type_hash.idx, obj1.type_idx.idx);
     try std.testing.expectEqual(type_hash.idx, obj2.type_idx.idx);
     try std.testing.expect(obj1.id != obj2.id);
@@ -232,6 +235,9 @@ test "cdb: Should create object from type" {
 
     try db.gc(std.testing.allocator);
     try expectGCStats(db, 2, 2);
+
+    try std.testing.expect(!db.isAlive(obj1));
+    try std.testing.expect(!db.isAlive(obj2));
 }
 
 // test "cdb: Should create object from type with uuid" {
@@ -1447,6 +1453,59 @@ test "cdb: Should specify type_hash for ref/subobj base properties" {
 
     try db.gc(std.testing.allocator);
     try expectGCStats(db, 3, 5);
+}
+
+test "cdb: Should tracking changed objects" {
+    try testInit();
+    defer testDeinit();
+
+    var db = try cdb.api.createDb("Test");
+    defer cdb.api.destroyDb(db);
+
+    const type_hash = try db.addType(
+        "foo",
+        &.{
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.BOOL },
+            .{ .prop_idx = 1, .name = "prop2", .type = public.PropType.BOOL },
+        },
+    );
+
+    const obj1 = try db.createObject(type_hash);
+    const obj2 = try db.createObject(type_hash);
+
+    // Make some changes to obj1 and 2
+    const obj1_w = db.writeObj(obj1).?;
+    db.setValue(bool, obj1_w, 0, true);
+    try db.writeCommit(obj1_w);
+
+    const obj2_w = db.writeObj(obj2).?;
+    db.setValue(bool, obj2_w, 0, true);
+    try db.writeCommit(obj2_w);
+    // Call GC thas create populate changed objects.
+    try db.gc(std.testing.allocator);
+    const changed_1 = try db.getChangeObjects(std.testing.allocator, type_hash, 1);
+    defer std.testing.allocator.free(changed_1.objects);
+    try std.testing.expectEqualSlices(public.ObjId, &.{ obj2, obj1 }, changed_1.objects);
+    try std.testing.expect(!changed_1.need_fullscan);
+
+    // get from 0 version force to do fullscan
+    const changed_0 = try db.getChangeObjects(std.testing.allocator, type_hash, 0);
+    defer std.testing.allocator.free(changed_0.objects);
+    try std.testing.expect(changed_0.need_fullscan);
+
+    // Destroy object
+    db.destroyObject(obj2);
+    // Call GC thas create populate changed objects.
+    try db.gc(std.testing.allocator);
+    const changed_2 = try db.getChangeObjects(std.testing.allocator, type_hash, changed_1.last_version);
+    defer std.testing.allocator.free(changed_2.objects);
+    try std.testing.expect(!changed_2.need_fullscan);
+    try std.testing.expectEqualSlices(public.ObjId, &.{obj2}, changed_2.objects);
+
+    const changed_begin = try db.getChangeObjects(std.testing.allocator, type_hash, 1);
+    defer std.testing.allocator.free(changed_begin.objects);
+    try std.testing.expect(!changed_begin.need_fullscan);
+    try std.testing.expectEqualSlices(public.ObjId, &.{ obj2, obj1, obj2 }, changed_begin.objects);
 }
 
 fn stressTest(comptime task_count: u32, task_based: bool) !void {
