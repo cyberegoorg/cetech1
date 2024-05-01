@@ -12,6 +12,7 @@ const gfx_rg = cetech1.gfx.rg;
 const zm = cetech1.zmath;
 const ecs = cetech1.ecs;
 const primitives = cetech1.primitives;
+const actions = cetech1.actions;
 
 const editor = @import("editor");
 const Icons = coreui.CoreIcons;
@@ -39,6 +40,7 @@ var _gfx_rg: *const gfx_rg.GfxRGApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _ecs: *const ecs.EcsAPI = undefined;
 var _tempalloc: *const tempalloc.TempAllocApi = undefined;
+var _actions: *const actions.ActionsAPI = undefined;
 
 // Global state that can surive hot-reload
 const G = struct {
@@ -57,7 +59,6 @@ const FooViewportTab = struct {
     tab_i: editor.EditorTabI,
     viewport: gpu.GpuViewport = undefined,
     world: ecs.World,
-    last_pos: [2]f32 = .{ 0.0, 0.0 },
     camera_look_activated: bool = false,
 
     camera: SimpleFPSCamera = SimpleFPSCamera.init(.{
@@ -285,31 +286,31 @@ var foo_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
             );
             const hovered = _coreui.isItemHovered(.{});
 
-            const mouse_pos = _coreui.getMousePos();
-            const camera_look_activated = _coreui.isMouseDown(.left);
+            var camera_look_activated = false;
+            {
+                _actions.pushSet(ViewportActionSet);
+                defer _actions.popSet();
+                camera_look_activated = _actions.isActionDown(LookActivationAction);
+            }
 
             if (hovered and camera_look_activated) {
                 tab_o.camera_look_activated = true;
                 _kernel.getMainWindow().?.setCursorMode(.disabled);
+                _actions.pushSet(ActivatedViewportActionSet);
             }
 
             if (tab_o.camera_look_activated and !camera_look_activated) {
                 tab_o.camera_look_activated = false;
                 _kernel.getMainWindow().?.setCursorMode(.normal);
+                _actions.popSet();
             }
 
             if (tab_o.camera_look_activated) {
-                const mouse_delta = if (tab_o.last_pos[0] == 0 and tab_o.last_pos[1] == 0) .{ 0, 0 } else .{
-                    tab_o.last_pos[0] - mouse_pos[0],
-                    mouse_pos[1] - tab_o.last_pos[1],
-                };
+                const move = _actions.getActionAxis(MoveAction);
+                const look = _actions.getActionAxis(LookAction);
 
-                const move_forward: f32 = if (_coreui.isKeyDown(.w)) 1 else if (_coreui.isKeyDown(.s)) -1 else 0;
-                const move_right: f32 = if (_coreui.isKeyDown(.d)) 1 else if (_coreui.isKeyDown(.a)) -1 else 0;
-
-                tab_o.camera.update(move_forward, move_right, mouse_delta, dt);
+                tab_o.camera.update(move, look, dt);
             }
-            tab_o.last_pos = mouse_pos;
         }
 
         tab_o.viewport.setViewMtx(tab_o.camera.calcViewMtx());
@@ -426,6 +427,12 @@ const blit_pass = gfx_rg.Pass.implement(struct {
     }
 });
 
+const ActivatedViewportActionSet = cetech1.strid.strId32("foo_activated_viewport");
+const ViewportActionSet = cetech1.strid.strId32("foo_viewport");
+const MoveAction = cetech1.strid.strId32("move");
+const LookAction = cetech1.strid.strId32("look");
+const LookActivationAction = cetech1.strid.strId32("look_activation");
+
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
     "FooViewportTab",
     &[_]cetech1.strid.StrId64{},
@@ -434,6 +441,54 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             _g.rg = try _gfx_rg.create();
             try _g.rg.addPass(simple_pass);
             try _g.rg.addPass(blit_pass);
+
+            try _actions.createActionSet(ViewportActionSet);
+            try _actions.addActions(ViewportActionSet, &.{
+                .{ .name = LookActivationAction, .action = .{ .button = actions.ButtonAction{} } },
+            });
+
+            try _actions.addMappings(ViewportActionSet, LookActivationAction, &.{
+                .{ .gamepadAxisButton = actions.GamepadAxisButtonMapping{ .a = .right_trigger } },
+                .{ .mouseButton = actions.MouseButtonMapping{ .b = .left } },
+            });
+
+            try _actions.createActionSet(ActivatedViewportActionSet);
+            try _actions.addActions(ActivatedViewportActionSet, &.{
+                .{ .name = MoveAction, .action = .{ .axis = actions.AxisAction{} } },
+                .{ .name = LookAction, .action = .{ .axis = actions.AxisAction{} } },
+            });
+            try _actions.addMappings(ActivatedViewportActionSet, MoveAction, &.{
+                // WSAD
+                .{ .key = actions.KeyButtonMapping{ .k = .w, .axis_map = &.{ 0, 1 } } },
+                .{ .key = actions.KeyButtonMapping{ .k = .s, .axis_map = &.{ 0, -1 } } },
+                .{ .key = actions.KeyButtonMapping{ .k = .a, .axis_map = &.{ -1, 0 } } },
+                .{ .key = actions.KeyButtonMapping{ .k = .d, .axis_map = &.{ 1, 0 } } },
+
+                // Arrow
+                .{ .key = actions.KeyButtonMapping{ .k = .up, .axis_map = &.{ 0, 1 } } },
+                .{ .key = actions.KeyButtonMapping{ .k = .down, .axis_map = &.{ 0, -1 } } },
+                .{ .key = actions.KeyButtonMapping{ .k = .left, .axis_map = &.{ -1, 0 } } },
+                .{ .key = actions.KeyButtonMapping{ .k = .right, .axis_map = &.{ 1, 0 } } },
+
+                // Dpad
+                .{ .gamepadButton = actions.GamepadButtonMapping{ .b = .dpad_up, .axis_map = &.{ 0, 1 } } },
+                .{ .gamepadButton = actions.GamepadButtonMapping{ .b = .dpad_down, .axis_map = &.{ 0, -1 } } },
+                .{ .gamepadButton = actions.GamepadButtonMapping{ .b = .dpad_left, .axis_map = &.{ -1, 0 } } },
+                .{ .gamepadButton = actions.GamepadButtonMapping{ .b = .dpad_right, .axis_map = &.{ 1, 0 } } },
+
+                // Clasic gamepad move
+                .{ .gamepadAxis = actions.GamepadAxisMapping{ .x = .left_x, .y = .left_y } },
+            });
+            try _actions.addMappings(ActivatedViewportActionSet, LookAction, &.{
+                .{ .mouse = actions.MouseMapping{ .delta = true } },
+
+                .{ .gamepadAxis = actions.GamepadAxisMapping{
+                    .x = .right_x,
+                    .y = .right_y,
+                    .scale_x = 10,
+                    .scale_y = 10,
+                } },
+            });
         }
 
         pub fn shutdown() !void {
@@ -457,6 +512,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
     _tempalloc = apidb.getZigApi(module_name, tempalloc.TempAllocApi).?;
+    _actions = apidb.getZigApi(module_name, actions.ActionsAPI).?;
 
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});
@@ -501,14 +557,14 @@ const SimpleFPSCamera = struct {
         return camera;
     }
 
-    pub fn update(self: *SimpleFPSCamera, updown: f32, rightleft: f32, mouse_delta: [2]f32, dt: f32) void {
+    pub fn update(self: *SimpleFPSCamera, move: [2]f32, mouse_delta: [2]f32, dt: f32) void {
         const speed = zm.f32x4s(self.move_speed);
         const delta_time = zm.f32x4s(dt);
 
         // Look handle
         {
-            self.pitch += self.look_speed * mouse_delta[1];
-            self.yaw += self.look_speed * mouse_delta[0];
+            self.pitch += self.look_speed * mouse_delta[1] * -1;
+            self.yaw += self.look_speed * mouse_delta[0] * -1;
             self.pitch = @min(self.pitch, 0.48 * std.math.pi);
             self.pitch = @max(self.pitch, -0.48 * std.math.pi);
             self.yaw = zm.modAngle(self.yaw);
@@ -523,8 +579,8 @@ const SimpleFPSCamera = struct {
             forward = speed * delta_time * forward;
 
             var cam_pos = zm.loadArr3(self.position);
-            cam_pos += forward * zm.f32x4s(updown);
-            cam_pos += right * zm.f32x4s(rightleft);
+            cam_pos += forward * zm.f32x4s(move[1]);
+            cam_pos += right * zm.f32x4s(move[0]);
             zm.storeArr3(&self.position, cam_pos);
         }
     }

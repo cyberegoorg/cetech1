@@ -88,6 +88,7 @@ pub var api = public.ApiDbAPI{
     .getInterafcesVersionFn = getInterafcesVersion,
 };
 
+var _init = false;
 var _allocator: Allocator = undefined;
 var _language_api_map: LanguagesApiHashMap = undefined;
 var _api_map_pool: ApiHashMapPool = undefined;
@@ -101,6 +102,7 @@ var _module_info_map: ModuleInfoMap = undefined;
 var _api2module: Api2Modules = undefined;
 
 pub fn init(a: Allocator) !void {
+    _init = true;
     _allocator = a;
     _language_api_map = LanguagesApiHashMap.init(a);
     _api_map_pool = ApiHashMapPool.init(a);
@@ -147,6 +149,8 @@ pub fn deinit() void {
         v.deinit();
     }
     _module_info_map.deinit();
+
+    _init = false;
 }
 
 fn _toBytes(ptr: *const anyopaque, ptr_size: usize) []u8 {
@@ -312,6 +316,8 @@ fn implInterface(module: []const u8, interface_name: strid.StrId64, impl_ptr: *c
 }
 
 fn getImpl(comptime T: type, interface_name: []const u8) ?*T {
+    if (!_init) return null;
+
     const impl_list = _interafce_map.getPtr(interface_name);
 
     if (impl_list == null) {
@@ -326,6 +332,8 @@ fn getImpl(comptime T: type, interface_name: []const u8) ?*T {
 }
 
 fn getFirstImpl(interface_name: strid.StrId64) ?*const public.ImplIter {
+    if (!_init) return null;
+
     var impl_list = _interafce_map.getPtr(interface_name);
 
     if (impl_list == null) {
@@ -340,6 +348,8 @@ fn getFirstImpl(interface_name: strid.StrId64) ?*const public.ImplIter {
 }
 
 fn getLastImpl(interface_name: strid.StrId64) ?*const public.ImplIter {
+    if (!_init) return null;
+
     var impl_list = _interafce_map.getPtr(interface_name);
 
     if (impl_list == null) {

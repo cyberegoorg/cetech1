@@ -17,6 +17,7 @@ const platform = @import("platform.zig");
 const gpu = @import("gpu.zig");
 const coreui = @import("coreui.zig");
 const ecs = @import("ecs.zig");
+const actions = @import("actions.zig");
 
 const cetech1 = @import("cetech1");
 const public = cetech1.kernel;
@@ -82,6 +83,7 @@ var _gpu_allocator: profiler.AllocatorProfiler = undefined;
 var _coreui_allocator: profiler.AllocatorProfiler = undefined;
 var _tmp_alocator_pool_allocator: profiler.AllocatorProfiler = undefined;
 var _ecs_allocator: profiler.AllocatorProfiler = undefined;
+var _actions_allocator: profiler.AllocatorProfiler = undefined;
 
 var _update_dag: cetech1.dag.StrId64DAG = undefined;
 
@@ -191,6 +193,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     _coreui_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "coreui");
     _tmp_alocator_pool_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "tmp_allocators");
     _ecs_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "ecs");
+    _actions_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "actions");
 
     _update_dag = cetech1.dag.StrId64DAG.init(_kernel_allocator);
 
@@ -212,6 +215,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try task.init(_task_allocator.allocator());
     try cdb.init(_cdb_allocator.allocator());
     try platform.init(_platform_allocator.allocator(), headless);
+    try actions.init(_actions_allocator.allocator());
     try gpu.init(_gpu_allocator.allocator());
     try coreui.init(_coreui_allocator.allocator());
 
@@ -226,6 +230,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try cdb_types.registerToApi();
     try assetdb.registerToApi();
     try platform.registerToApi();
+    try actions.registerToApi();
     try gpu.registerToApi();
     try coreui.registerToApi();
     try ecs.registerToApi();
@@ -254,6 +259,8 @@ pub fn deinit(
     if (gpu_context) |ctx| gpu.api.destroyContext(ctx);
     gpu.deinit();
     if (main_window) |window| platform.api.destroyWindow(window);
+
+    actions.deinit();
     platform.deinit();
 
     assetdb.deinit();
@@ -512,6 +519,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             }
 
             platform.api.poolEvents();
+            actions.checkInputs();
 
             // Begin loop
             {

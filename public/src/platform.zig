@@ -275,7 +275,7 @@ pub const Window = struct {
         return self.vtable.getMods(self.ptr);
     }
 
-    pub fn getMouseButton(self: Window, button: MouseButton) Mods {
+    pub fn getMouseButton(self: Window, button: MouseButton) Action {
         return self.vtable.getMouseButton(self.ptr, button);
     }
     pub fn getCursorPos(self: Window) [2]f64 {

@@ -25,6 +25,8 @@ pub const coreui = @import("coreui.zig");
 pub const ecs = @import("ecs.zig");
 pub const primitives = @import("primitives.zig");
 
+pub const actions = @import("actions.zig");
+
 test {
     // TODO: SHIT
     @setEvalBranchQuota(100000);

@@ -238,7 +238,8 @@ const RenderViewportTask = struct {
 
             const viewers = builder.getViewers();
 
-            // Collect renderables
+            // Collect visible renderables
+            // TODO: generic culling system
             {
                 var z = profiler.ztracy.ZoneN(@src(), "RenderViewport - Culling phase");
                 defer z.End();

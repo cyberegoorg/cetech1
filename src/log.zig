@@ -68,7 +68,6 @@ pub fn zigLogFn(
     comptime format: []const u8,
     args: anytype,
 ) void {
-    //var msg: [std.fmt.count(format, args)]u8 = undefined; //TODO: WHY?
     var msg: [cetech1.log.MAX_LOG_ENTRY_SIZE]u8 = undefined; // TODO: SHIIIIIIIIIIIIITTTTTTTT
     const formated_msg = std.fmt.bufPrintZ(&msg, format, args) catch |e| {
         std.debug.print("caught err writing to buffer {any}", .{e});
