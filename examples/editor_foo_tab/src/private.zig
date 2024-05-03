@@ -41,21 +41,23 @@ const FooTab = struct {
 var foo_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     .tab_name = TAB_NAME,
     .tab_hash = .{ .id = cetech1.strid.strId32(TAB_NAME).id },
+    .category = "Examples",
 }, struct {
 
     // Return name for menu /Tabs/
     pub fn menuName() ![:0]const u8 {
-        return Icons.FA_ROBOT ++ " Foo tab";
+        return Icons.FA_ROBOT ++ "  " ++ "Foo tab";
     }
 
     // Return tab title
     pub fn title(inst: *editor.TabO) ![:0]const u8 {
         _ = inst;
-        return Icons.FA_ROBOT ++ " Foo tab";
+        return Icons.FA_ROBOT ++ "  " ++ "Foo tab";
     }
 
     // Create new tab instantce
-    pub fn create(db: cdb.Db) !?*editor.EditorTabI {
+    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.EditorTabI {
+        _ = tab_id;
         _ = db;
         var tab_inst = _allocator.create(FooTab) catch undefined;
         tab_inst.tab_i = .{
@@ -110,9 +112,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.test_tab_vt_ptr = try apidb.globalVar(editor.EditorTabTypeI, module_name, TAB_NAME, .{});
-    // Patch vt pointer to new.
-    _g.test_tab_vt_ptr.* = foo_tab;
+    _g.test_tab_vt_ptr = try apidb.globalVarValue(editor.EditorTabTypeI, module_name, TAB_NAME, foo_tab);
 
     try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &foo_tab, load);
 
@@ -120,6 +120,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_foo_tab(__apidb: *const cetech1.apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.C) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
+pub export fn ct_load_module_editor_foo_tab(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

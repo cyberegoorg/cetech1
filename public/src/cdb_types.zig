@@ -12,8 +12,8 @@ pub const Color4f = cdb.CdbTypeDecl(
         A,
     },
     struct {
-        pub fn toSlice(db: cdb.Db, color_obj: cdb.ObjId) [4]f32 {
-            const r = db.readObj(color_obj) orelse return .{ 1.0, 1.0, 1.0, 1.0 };
+        pub fn toSlice(db: cdb.Db, obj: cdb.ObjId) [4]f32 {
+            const r = db.readObj(obj) orelse return .{ 1.0, 1.0, 1.0, 1.0 };
             return .{
                 Color4f.readValue(db, f32, r, .R),
                 Color4f.readValue(db, f32, r, .G),
@@ -22,13 +22,179 @@ pub const Color4f = cdb.CdbTypeDecl(
             };
         }
 
-        pub fn fromSlice(db: cdb.Db, color_obj_w: *cdb.Obj, color: [4]f32) void {
-            Color4f.setValue(db, f32, color_obj_w, .R, color[0]);
-            Color4f.setValue(db, f32, color_obj_w, .G, color[1]);
-            Color4f.setValue(db, f32, color_obj_w, .B, color[2]);
-            Color4f.setValue(db, f32, color_obj_w, .A, color[3]);
+        pub fn fromSlice(db: cdb.Db, obj_w: *cdb.Obj, value: [4]f32) void {
+            Color4f.setValue(db, f32, obj_w, .R, value[0]);
+            Color4f.setValue(db, f32, obj_w, .G, value[1]);
+            Color4f.setValue(db, f32, obj_w, .B, value[2]);
+            Color4f.setValue(db, f32, obj_w, .A, value[3]);
         }
     },
+);
+
+pub const Vec2f = cdb.CdbTypeDecl(
+    "ct_vec_2f",
+    enum(u32) {
+        X = 0,
+        Y,
+    },
+    struct {
+        pub fn toSlice(db: cdb.Db, obj: cdb.ObjId) [2]f32 {
+            const r = db.readObj(obj) orelse return .{ 0.0, 0.0 };
+            return .{
+                Vec2f.readValue(db, f32, r, .X),
+                Vec2f.readValue(db, f32, r, .Y),
+            };
+        }
+
+        pub fn fromSlice(db: cdb.Db, obj_w: *cdb.Obj, value: [2]f32) void {
+            Vec2f.setValue(db, f32, obj_w, .X, value[0]);
+            Vec2f.setValue(db, f32, obj_w, .Y, value[1]);
+        }
+    },
+);
+
+pub const Vec3f = cdb.CdbTypeDecl(
+    "ct_vec_3f",
+    enum(u32) {
+        X = 0,
+        Y,
+        Z,
+    },
+    struct {
+        pub fn toSlice(db: cdb.Db, obj: cdb.ObjId) [3]f32 {
+            const r = db.readObj(obj) orelse return .{ 0.0, 0.0, 0.0 };
+            return .{
+                Vec3f.readValue(db, f32, r, .X),
+                Vec3f.readValue(db, f32, r, .Y),
+                Vec3f.readValue(db, f32, r, .Z),
+            };
+        }
+
+        pub fn fromSlice(db: cdb.Db, obj_w: *cdb.Obj, value: [3]f32) void {
+            Vec3f.setValue(db, f32, obj_w, .X, value[0]);
+            Vec3f.setValue(db, f32, obj_w, .Y, value[1]);
+            Vec3f.setValue(db, f32, obj_w, .Z, value[2]);
+        }
+    },
+);
+
+pub const Vec4f = cdb.CdbTypeDecl(
+    "ct_vec_4f",
+    enum(u32) {
+        X = 0,
+        Y,
+        Z,
+        W,
+    },
+    struct {
+        pub fn toSlice(db: cdb.Db, obj: cdb.ObjId) [4]f32 {
+            const r = db.readObj(obj) orelse return .{ 0.0, 0.0, 0.0, 0.0 };
+            return .{
+                Vec4f.readValue(db, f32, r, .X),
+                Vec4f.readValue(db, f32, r, .Y),
+                Vec4f.readValue(db, f32, r, .Z),
+                Vec4f.readValue(db, f32, r, .W),
+            };
+        }
+
+        pub fn fromSlice(db: cdb.Db, obj_w: *cdb.Obj, value: [3]f32) void {
+            Vec4f.setValue(db, f32, obj_w, .X, value[0]);
+            Vec4f.setValue(db, f32, obj_w, .Y, value[1]);
+            Vec4f.setValue(db, f32, obj_w, .Z, value[2]);
+            Vec4f.setValue(db, f32, obj_w, .W, value[3]);
+        }
+    },
+);
+
+pub const Quatf = cdb.CdbTypeDecl(
+    "ct_quat_f",
+    enum(u32) {
+        X = 0,
+        Y,
+        Z,
+        W,
+    },
+    struct {
+        pub fn toSlice(db: cdb.Db, obj: cdb.ObjId) [4]f32 {
+            const r = db.readObj(obj) orelse return .{ 0.0, 0.0, 0.0, 1.0 };
+            return .{
+                Vec4f.readValue(db, f32, r, .X),
+                Vec4f.readValue(db, f32, r, .Y),
+                Vec4f.readValue(db, f32, r, .Z),
+                Vec4f.readValue(db, f32, r, .W),
+            };
+        }
+
+        pub fn fromSlice(db: cdb.Db, obj_w: *cdb.Obj, value: [3]f32) void {
+            Vec4f.setValue(db, f32, obj_w, .X, value[0]);
+            Vec4f.setValue(db, f32, obj_w, .Y, value[1]);
+            Vec4f.setValue(db, f32, obj_w, .Z, value[2]);
+            Vec4f.setValue(db, f32, obj_w, .W, value[3]);
+        }
+    },
+);
+
+pub const BoolType = cdb.CdbTypeDecl(
+    "ct_bool",
+    enum(u32) {
+        value = 0,
+    },
+    struct {},
+);
+
+pub const StringType = cdb.CdbTypeDecl(
+    "ct_string",
+    enum(u32) {
+        value = 0,
+    },
+    struct {},
+);
+
+pub const i32Type = cdb.CdbTypeDecl(
+    "ct_i32",
+    enum(u32) {
+        value = 0,
+    },
+    struct {},
+);
+
+pub const u32Type = cdb.CdbTypeDecl(
+    "ct_u32",
+    enum(u32) {
+        value = 0,
+    },
+    struct {},
+);
+
+pub const i64Type = cdb.CdbTypeDecl(
+    "ct_i64",
+    enum(u32) {
+        value = 0,
+    },
+    struct {},
+);
+
+pub const u64Type = cdb.CdbTypeDecl(
+    "ct_u64",
+    enum(u32) {
+        value = 0,
+    },
+    struct {},
+);
+
+pub const f32Type = cdb.CdbTypeDecl(
+    "ct_f32",
+    enum(u32) {
+        value = 0,
+    },
+    struct {},
+);
+pub const f64Type = cdb.CdbTypeDecl(
+    "ct_f64",
+    enum(u32) {
+        value = 0,
+    },
+    struct {},
 );
 
 //#region BigType

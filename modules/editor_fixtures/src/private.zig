@@ -63,15 +63,17 @@ var create_foo_asset_i = editor.CreateAssetI.implement(
 // Folder visual aspect
 var folder_visual_aspect = editor.UiVisualAspect.implement(struct {
     pub fn uiIcons(
+        buff: [:0]u8,
         allocator: std.mem.Allocator,
         db: cdb.Db,
         obj: cdb.ObjId,
     ) ![:0]const u8 {
+        _ = allocator; // autofix
         _ = db; // autofix
         _ = obj;
 
-        return try std.fmt.allocPrintZ(
-            allocator,
+        return try std.fmt.bufPrintZ(
+            buff,
             "{s}",
             .{
                 Icons.FA_FACE_SMILE_WINK,
@@ -110,6 +112,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_fixtures(__apidb: *const cetech1.apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.C) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
+pub export fn ct_load_module_editor_fixtures(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

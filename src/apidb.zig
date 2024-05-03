@@ -3,7 +3,6 @@ const std = @import("std");
 const mem = std.mem;
 const Allocator = mem.Allocator;
 const ArrayList = std.ArrayList;
-const StringHashMap = std.StringHashMap;
 const StringArrayHashMap = std.StringArrayHashMap;
 
 const cetech1 = @import("cetech1");
@@ -28,9 +27,7 @@ const ApiHashMap = std.AutoArrayHashMap(strid.StrId64, ApiItem);
 const ApiHashMapPool = std.heap.MemoryPool(ApiHashMap);
 const LanguagesApiHashMap = std.AutoArrayHashMap(strid.StrId64, *ApiHashMap);
 
-const InterfaceImplList = std.DoublyLinkedList(public.ImplIter);
-const InterfaceImplNode = InterfaceImplList.Node;
-const IterfaceImplNodePool = std.heap.MemoryPool(InterfaceImplList.Node);
+const InterfaceImplList = std.ArrayList(*const anyopaque);
 const InterfaceHashMap = std.AutoArrayHashMap(strid.StrId64, InterfaceImplList);
 const InterfaceGen = std.AutoArrayHashMap(strid.StrId64, u64);
 
@@ -82,8 +79,7 @@ pub var api = public.ApiDbAPI{
     .getApiOpaaqueFn = getApiOpaque,
     .removeApiFn = removeApi,
     .implInterfaceFn = implInterface,
-    .getFirstImplFn = getFirstImpl,
-    .getLastImplFn = getLastImpl,
+    .getImplFn = getImpl,
     .removeImplFn = removeImpl,
     .getInterafcesVersionFn = getInterafcesVersion,
 };
@@ -95,7 +91,6 @@ var _api_map_pool: ApiHashMapPool = undefined;
 
 var _interafce_gen: InterfaceGen = undefined;
 var _interafce_map: InterfaceHashMap = undefined;
-var _interface_node_pool: IterfaceImplNodePool = undefined;
 var _global_var_map: GlobalVarMap = undefined;
 
 var _module_info_map: ModuleInfoMap = undefined;
@@ -109,7 +104,6 @@ pub fn init(a: Allocator) !void {
 
     _interafce_gen = InterfaceGen.init(a);
     _interafce_map = InterfaceHashMap.init(a);
-    _interface_node_pool = IterfaceImplNodePool.init(a);
 
     _module_info_map = ModuleInfoMap.init(a);
 
@@ -140,8 +134,11 @@ pub fn deinit() void {
     _api_map_pool.deinit();
     _language_api_map.deinit();
 
+    for (_interafce_map.values()) |*v| {
+        v.deinit();
+    }
+
     _interafce_map.deinit();
-    _interface_node_pool.deinit();
     _interafce_gen.deinit();
     _api2module.deinit();
 
@@ -174,7 +171,9 @@ fn globalVar(module: []const u8, var_name: []const u8, size: usize, default: []c
     const v = _global_var_map.get(combine_hash);
     if (v == null) {
         const data = try _allocator.alloc(u8, size);
-        @memcpy(data, default);
+        if (default.len != 0) {
+            @memcpy(data, default);
+        }
         try _global_var_map.put(combine_hash, data);
         return data.ptr;
     }
@@ -283,84 +282,24 @@ pub fn dumpGlobalVar() void {
     // }
 }
 
-/// !!! must be C compatible fce
 fn implInterface(module: []const u8, interface_name: strid.StrId64, impl_ptr: *const anyopaque) anyerror!void {
     _ = module; // autofix
     if (!_interafce_map.contains(interface_name)) {
-        try _interafce_map.put(interface_name, InterfaceImplList{});
+        try _interafce_map.put(interface_name, InterfaceImplList.init(_allocator));
         try _interafce_gen.put(interface_name, 0);
     }
 
     var impl_list = _interafce_map.getPtr(interface_name).?;
-    var last = impl_list.last;
-    var prev: ?*public.ImplIter = null;
-
-    if (last != null) {
-        prev = &last.?.data;
-    }
-
-    const c_iter = public.ImplIter{ .interface = impl_ptr, .next = null, .prev = prev };
-
-    var node = try _interface_node_pool.create();
-    node.* = InterfaceImplNode{ .data = c_iter };
-
-    if (last != null) {
-        last.?.data.next = &node.data;
-    }
-
-    impl_list.append(node);
-
-    //log.debug("Register interface '{s}'", .{interface_name});
+    try impl_list.append(impl_ptr);
 
     increaseIfaceGen(interface_name);
 }
 
-fn getImpl(comptime T: type, interface_name: []const u8) ?*T {
-    if (!_init) return null;
-
-    const impl_list = _interafce_map.getPtr(interface_name);
-
-    if (impl_list == null) {
-        return null;
+fn getImpl(allocator: std.mem.Allocator, interface_name: strid.StrId64) ![]*const anyopaque {
+    if (_interafce_map.getPtr(interface_name)) |impl_list| {
+        return allocator.dupe(*const anyopaque, impl_list.items);
     }
-
-    const first = impl_list.?.first;
-    if (first == null) {
-        return null;
-    }
-    return @ptrFromInt(@intFromPtr(first.?.data.interface));
-}
-
-fn getFirstImpl(interface_name: strid.StrId64) ?*const public.ImplIter {
-    if (!_init) return null;
-
-    var impl_list = _interafce_map.getPtr(interface_name);
-
-    if (impl_list == null) {
-        return null;
-    }
-
-    if (impl_list.?.first == null) {
-        return null;
-    }
-
-    return &impl_list.?.first.?.data;
-}
-
-fn getLastImpl(interface_name: strid.StrId64) ?*const public.ImplIter {
-    if (!_init) return null;
-
-    var impl_list = _interafce_map.getPtr(interface_name);
-
-    if (impl_list == null) {
-        return null;
-    }
-
-    if (impl_list.?.last == null) {
-        return null;
-    }
-
-    return &impl_list.?.last.?.data;
+    return allocator.dupe(*const anyopaque, &.{});
 }
 
 fn removeImpl(module: []const u8, interface_name: strid.StrId64, impl_ptr: *const anyopaque) void {
@@ -371,23 +310,8 @@ fn removeImpl(module: []const u8, interface_name: strid.StrId64, impl_ptr: *cons
         return;
     }
 
-    var it = impl_list.?.first;
-    while (it) |node| : (it = node.next) {
-        if (node.data.interface != impl_ptr) {
-            continue;
-        }
-
-        if (node.data.next != null) {
-            node.data.next.?.*.prev = node.data.prev;
-        }
-
-        if (node.data.prev != null) {
-            node.data.prev.?.*.next = node.data.next;
-        }
-
-        impl_list.?.remove(node);
-        break;
-    }
+    const idx = std.mem.indexOf(*const anyopaque, impl_list.?.items, &.{impl_ptr}) orelse return;
+    _ = impl_list.?.swapRemove(idx);
 
     increaseIfaceGen(interface_name);
 }
@@ -410,9 +334,11 @@ pub fn writeApiGraphD2(out_path: []const u8) !void {
     var dot_file = try std.fs.cwd().createFile(out_path, .{});
     defer dot_file.close();
 
-    // write header
-    var writer = dot_file.writer();
+    var bw = std.io.bufferedWriter(dot_file.writer());
+    defer bw.flush() catch undefined;
+    const writer = bw.writer();
 
+    // write header
     _ = try writer.write("vars: {d2-config: {layout-engine: elk}}\n\n");
 
     for (_module_info_map.values()) |module_info| {

@@ -21,17 +21,17 @@ pub const UuidAPI = struct {
     const Self = @This();
 
     /// Create new UUIDv7
-    pub fn newUUID7(self: Self) Uuid {
+    pub inline fn newUUID7(self: Self) Uuid {
         return self.newUUID7Fn();
     }
 
     /// Create new UUID from int
-    pub fn fromInt(self: Self, int: u128) Uuid {
+    pub inline fn fromInt(self: Self, int: u128) Uuid {
         return self.fromIntFn(int);
     }
 
     /// Create new UUID from str
-    pub fn fromStr(self: Self, str: []const u8) ?Uuid {
+    pub inline fn fromStr(self: Self, str: []const u8) ?Uuid {
         return self.fromStrFn(str);
     }
 

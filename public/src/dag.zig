@@ -9,11 +9,9 @@ pub const StrId32DAG = DAG(strid.StrId32);
 
 // Can build nad resolve dependency graph
 pub fn DAG(comptime T: type) type {
-    const Array = std.ArrayList(T);
     const Set = std.AutoArrayHashMap(T, void);
-    const Graph = std.AutoArrayHashMap(T, Array);
-    const Depends = std.AutoArrayHashMap(T, Array);
-    const Root = std.AutoArrayHashMap(T, void);
+    const Graph = std.AutoArrayHashMap(T, Set);
+    const Depends = std.AutoArrayHashMap(T, Set);
     const Degrees = std.AutoArrayHashMap(T, usize);
 
     return struct {
@@ -21,7 +19,6 @@ pub fn DAG(comptime T: type) type {
         allocator: Allocator,
         graph: Graph,
         depends_on: Depends,
-        root: Root,
         output: Set,
         build: Set,
         degrees: Degrees,
@@ -30,7 +27,6 @@ pub fn DAG(comptime T: type) type {
             return .{
                 .allocator = allocator,
                 .graph = Graph.init(allocator),
-                .root = Root.init(allocator),
                 .depends_on = Depends.init(allocator),
                 .output = Set.init(allocator),
                 .build = Set.init(allocator),
@@ -49,7 +45,6 @@ pub fn DAG(comptime T: type) type {
 
             self.graph.deinit();
             self.output.deinit();
-            self.root.deinit();
             self.depends_on.deinit();
 
             self.build.deinit();
@@ -63,38 +58,38 @@ pub fn DAG(comptime T: type) type {
                 return null;
             }
 
-            if (dep_arr.?.items.len == 0) {
+            if (dep_arr.?.count() == 0) {
                 return null;
             }
 
-            return dep_arr.?.items;
+            return dep_arr.?.keys();
         }
 
         // Add node to graph
         pub fn add(self: *Self, name: T, depends: []const T) !void {
             if (!self.graph.contains(name)) {
-                const dep_arr = Array.init(self.allocator);
+                const dep_arr = Set.init(self.allocator);
                 try self.graph.put(name, dep_arr);
             }
 
             if (!self.depends_on.contains(name)) {
-                var dep_arr = Array.init(self.allocator);
-                try dep_arr.appendSlice(depends);
+                var dep_arr = Set.init(self.allocator);
+
+                for (depends) |dep| {
+                    try dep_arr.put(dep, {});
+                }
+
                 try self.depends_on.put(name, dep_arr);
             }
 
-            if (depends.len == 0) {
-                try self.root.put(name, {});
-            } else {
-                for (depends) |dep_name| {
-                    if (!self.graph.contains(dep_name)) {
-                        const dep_arr = Array.init(self.allocator);
-                        try self.graph.put(dep_name, dep_arr);
-                    }
-
-                    var dep_arr = self.graph.getPtr(dep_name).?;
-                    try dep_arr.append(name);
+            for (depends) |dep_name| {
+                if (!self.graph.contains(dep_name)) {
+                    const dep_arr = Set.init(self.allocator);
+                    try self.graph.put(dep_name, dep_arr);
                 }
+
+                var dep_arr = self.graph.getPtr(dep_name).?;
+                try dep_arr.put(name, {});
             }
         }
 
@@ -110,7 +105,6 @@ pub fn DAG(comptime T: type) type {
 
             self.graph.clearRetainingCapacity();
             self.depends_on.clearRetainingCapacity();
-            self.root.clearRetainingCapacity();
             self.output.clearRetainingCapacity();
 
             self.build.clearRetainingCapacity();
@@ -126,14 +120,15 @@ pub fn DAG(comptime T: type) type {
             for (self.depends_on.keys()) |root| {
                 const dep_arr = self.depends_on.getPtr(root);
                 if (dep_arr) |arr| {
-                    if (arr.items.len != 0) {
-                        try self.degrees.put(root, @intCast(arr.items.len));
+                    if (arr.count() != 0) {
+                        try self.degrees.put(root, @intCast(arr.count()));
                     }
                 }
             }
 
-            for (self.root.keys()) |root| {
-                try self.build.put(root, {});
+            for (self.depends_on.keys(), self.depends_on.values()) |k, v| {
+                if (v.count() != 0) continue;
+                try self.build.put(k, {});
             }
 
             var visited_n: usize = 0;
@@ -143,7 +138,7 @@ pub fn DAG(comptime T: type) type {
 
                 const dep_arr = self.graph.getPtr(value.key);
                 if (dep_arr) |arr| {
-                    for (arr.items) |dep| {
+                    for (arr.keys()) |dep| {
                         if (self.degrees.getPtr(dep)) |deg_ptr| {
                             deg_ptr.* -= 1;
                             if (deg_ptr.* == 0) {

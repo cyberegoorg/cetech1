@@ -1,0 +1,267 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "018f4363-037e-7e0a-89bc-065ac95f7a28",
+  "__type_name": "ct_graph",
+  "__uuid": "018f4363-065b-73ef-943a-d3c88bdaef02",
+  "nodes": [
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "018f52ca-babc-73f1-8c9a-2d55df87bbf6",
+      "node_type": "event_init",
+      "pos_x": 3.21e2,
+      "pos_y": 2.6e1
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "0190685c-9826-7c3e-bbff-a4683912b6e8",
+      "node_type": "const",
+      "settings": {
+        "__type_name": "ct_node_const_settings",
+        "__uuid": "0190685c-34fc-7376-85c5-a78780f21779",
+        "value": {
+          "__type_name": "ct_i32",
+          "__uuid": "0190685c-6e0c-70a3-a75b-eb7fd90233af",
+          "value": 22
+        }
+      },
+      "pos_x": 7.38e2,
+      "pos_y": 1.06e2
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "018f52ca-babc-7408-89ab-e356c41ee60a",
+      "node_type": "print",
+      "pos_x": 9.57e2,
+      "pos_y": 3.8e1
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "018f6362-2438-771f-8389-57d6ca15dcb6",
+      "node_type": "culling_volume",
+      "pos_x": 7.63e2,
+      "pos_y": 2.82e2
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "0190685c-0034-7474-a0f6-3b95800035a8",
+      "node_type": "const",
+      "settings": {
+        "__type_name": "ct_node_const_settings",
+        "__uuid": "0190685b-d221-71a8-a0cd-110703349ff8",
+        "value": {
+          "__type_name": "ct_f32",
+          "__uuid": "0190685b-dcc0-73b9-89b4-ac0b9bded348",
+          "value": 1e0
+        }
+      },
+      "pos_x": 3.22e2,
+      "pos_y": 2.82e2
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "01907490-f70a-7a29-bc17-cbf857d53c0b",
+      "node_type": "random_f32",
+      "pos_x": 3.22e2,
+      "pos_y": 3.94e2
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "0190a8a0-b0da-7980-a8d9-b778e34d16a9",
+      "node_type": "call_graph",
+      "settings": {
+        "__type_name": "ct_call_graph_node_settings",
+        "__uuid": "0190a8a0-8259-763c-94f2-3070d4e90dd2",
+        "graph": {
+          "__type_name": "ct_graph",
+          "__uuid": "0190a8a0-8b77-7e57-aad5-00ac9cd39bf3",
+          "__prototype_uuid": "0190603a-a2e5-77c5-8a81-43dc92decf52"
+        }
+      },
+      "pos_x": 5.44e2,
+      "pos_y": 2.2e1
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "0190a8a1-b27a-7342-bb2b-1604217511d9",
+      "node_type": "call_graph",
+      "settings": {
+        "__type_name": "ct_call_graph_node_settings",
+        "__uuid": "0190a8a1-7921-7837-91f5-111a18ef6ba6",
+        "graph": {
+          "__type_name": "ct_graph",
+          "__uuid": "0190a8a1-8208-7665-99b7-a2c9afd3df96",
+          "__prototype_uuid": "01905fbe-3d77-7ea0-bc8e-61cb44531f81"
+        }
+      },
+      "pos_x": 5.44e2,
+      "pos_y": 3.98e2
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "01914093-d26f-7729-b2c4-6ee437013ede",
+      "node_type": "call_graph",
+      "settings": {
+        "__type_name": "ct_call_graph_node_settings",
+        "__uuid": "01914093-852d-7466-8324-40ecbdcf6812",
+        "graph": {
+          "__type_name": "ct_graph",
+          "__uuid": "01914093-8ad8-70f5-841f-a9c34732b17c",
+          "name": "Sub random",
+          "nodes": [
+            {
+              "__type_name": "ct_graph_node",
+              "__uuid": "01914093-e0c9-7e87-a65b-3cf2f8d18fed",
+              "node_type": "graph_outputs",
+              "pos_x": 7.82e2,
+              "pos_y": 3.82e2
+            },
+            {
+              "__type_name": "ct_graph_node",
+              "__uuid": "01914094-0d61-7796-80a2-563339899d9b",
+              "node_type": "random_f32",
+              "pos_x": 5.26e2,
+              "pos_y": 3.82e2
+            }
+          ],
+          "connections": [
+            {
+              "__type_name": "ct_graph_connection",
+              "__uuid": "01914094-1b88-70d0-805d-c2471e398c48",
+              "from_node": "ct_graph_node:01914094-0d61-7796-80a2-563339899d9b",
+              "to_node": "ct_graph_node:01914093-e0c9-7e87-a65b-3cf2f8d18fed",
+              "from_pin": "out:value",
+              "to_pin": "01914093-a0e6-7821-ba4f-baf08f3e23b5"
+            }
+          ],
+          "interface": {
+            "__type_name": "ct_graph_interface",
+            "__uuid": "01914093-914e-760c-ae59-a863fc642f47",
+            "outputs": [
+              {
+                "__type_name": "ct_graph_interface_output",
+                "__uuid": "01914093-a0e6-7821-ba4f-baf08f3e23b5",
+                "name": "OUT",
+                "value": {
+                  "__type_name": "ct_f32",
+                  "__uuid": "01914093-b987-75b1-a460-cb8daf896439"
+                }
+              }
+            ]
+          },
+          "data": [
+            {
+              "__type_name": "ct_graph_data",
+              "__uuid": "01914142-c6e1-7a18-a137-b024e78fc925",
+              "to_node": "ct_graph_node:01914094-0d61-7796-80a2-563339899d9b",
+              "to_node_pin": "in:min",
+              "value": {
+                "__type_name": "ct_f32",
+                "__uuid": "01914142-c6e1-752a-bf1c-12e49bd15c4e",
+                "value": 5e-1
+              }
+            },
+            {
+              "__type_name": "ct_graph_data",
+              "__uuid": "01914142-cbd2-7fdd-ae43-d44b3069f4c6",
+              "to_node": "ct_graph_node:01914094-0d61-7796-80a2-563339899d9b",
+              "to_node_pin": "in:max",
+              "value": {
+                "__type_name": "ct_f32",
+                "__uuid": "01914142-cbd2-7a68-8ef1-a4db2ee650d1",
+                "value": 2e0
+              }
+            }
+          ]
+        }
+      },
+      "pos_x": 5.44e2,
+      "pos_y": 3.18e2
+    }
+  ],
+  "groups": [
+    {
+      "__type_name": "ct_graph_group",
+      "__uuid": "018f7d10-0ad7-791a-aee3-c86d0022348f",
+      "title": "Draw logic",
+      "color": {
+        "__type_name": "ct_color_4f",
+        "__uuid": "018f7d10-2e71-76e0-a355-3b644aaaca50",
+        "r": 0e0,
+        "b": 5.063271522521973e-2
+      },
+      "pos_x": 2.88e2,
+      "pos_y": 2.4e2,
+      "size_x": 8.48e2,
+      "size_y": 3.48e2
+    },
+    {
+      "__type_name": "ct_graph_group",
+      "__uuid": "018f7d10-9f0b-77ed-a245-fffe22f0ae8b",
+      "title": "Events",
+      "color": {
+        "__type_name": "ct_color_4f",
+        "__uuid": "018f7d11-4e68-7868-a152-f62ab3d8d60d",
+        "r": 0e0,
+        "g": 7.848103046417236e-1
+      },
+      "pos_x": 2.88e2,
+      "pos_y": -3.2e1,
+      "size_x": 8.48e2,
+      "size_y": 2.2e2
+    }
+  ],
+  "connections": [
+    {
+      "__type_name": "ct_graph_connection",
+      "__uuid": "01913311-da72-76c3-bbf9-390d49c1dab5",
+      "from_node": "ct_graph_node:01907490-f70a-7a29-bc17-cbf857d53c0b",
+      "to_node": "ct_graph_node:0190a8a1-b27a-7342-bb2b-1604217511d9",
+      "from_pin": "out:value",
+      "to_pin": "01905fbe-823d-7fbc-ba59-1c675cc01697"
+    },
+    {
+      "__type_name": "ct_graph_connection",
+      "__uuid": "019150a7-bc53-7b3f-8b8c-ee13bbb66a69",
+      "from_node": "ct_graph_node:01914093-d26f-7729-b2c4-6ee437013ede",
+      "to_node": "ct_graph_node:018f6362-2438-771f-8389-57d6ca15dcb6",
+      "from_pin": "01914093-a0e6-7821-ba4f-baf08f3e23b5",
+      "to_pin": "in:radius"
+    },
+    {
+      "__type_name": "ct_graph_connection",
+      "__uuid": "01913d02-b994-7237-a7bf-3f6cbf76b2a7",
+      "from_node": "ct_graph_node:0190685c-9826-7c3e-bbff-a4683912b6e8",
+      "to_node": "ct_graph_node:018f52ca-babc-7408-89ab-e356c41ee60a",
+      "from_pin": "out:value",
+      "to_pin": "in:value"
+    }
+  ],
+  "interface": {
+    "__type_name": "ct_graph_interface",
+    "__uuid": "0190454c-472a-7dd5-8e19-6ea4b354c799"
+  },
+  "data": [
+    {
+      "__type_name": "ct_graph_data",
+      "__uuid": "0191391b-03ba-7491-93ea-99783891b043",
+      "to_node": "ct_graph_node:01907490-f70a-7a29-bc17-cbf857d53c0b",
+      "to_node_pin": "in:min",
+      "value": {
+        "__type_name": "ct_f32",
+        "__uuid": "0191391a-9795-7e7c-ae07-4a7cc8f5b6b8",
+        "value": 5e-1
+      }
+    },
+    {
+      "__type_name": "ct_graph_data",
+      "__uuid": "0191391b-03ba-7b3e-a73e-9e1a3f5352f4",
+      "to_node": "ct_graph_node:01907490-f70a-7a29-bc17-cbf857d53c0b",
+      "to_node_pin": "in:max",
+      "value": {
+        "__type_name": "ct_f32",
+        "__uuid": "0191391a-9c55-7b63-bb3d-e2cc3066b8e5",
+        "value": 2e0
+      }
+    }
+  ]
+}

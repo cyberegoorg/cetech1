@@ -10,6 +10,7 @@ const cdb_types = @import("cdb_types.zig");
 const log = @import("log.zig");
 const uuid = @import("uuid.zig");
 const private = @import("assetdb.zig");
+const metrics = @import("metrics.zig");
 
 const cetech1 = @import("cetech1");
 const public = cetech1.assetdb;
@@ -50,6 +51,7 @@ fn testInit() !void {
     try tempalloc.init(std.testing.allocator, 256);
     try task.init(std.testing.allocator);
     try apidb.init(std.testing.allocator);
+    try metrics.init(std.testing.allocator);
     try cdb.init(std.testing.allocator);
     try private.registerToApi();
     try task.start();
@@ -62,6 +64,7 @@ fn testDeinit() void {
     task.stop();
     task.deinit();
     tempalloc.deinit();
+    metrics.deinit();
 }
 
 test "asset: Should save asset to json" {
@@ -400,8 +403,8 @@ test "asset: Should open asset root dir" {
         defer std.testing.allocator.free(set);
         // TODO: try std.testing.expectEqual(@as(usize, 3), set.len);
 
-        const sub_path = try private.getFilePathForAsset(foo_obj_asset, std.testing.allocator);
-        defer std.testing.allocator.free(sub_path);
+        var buff: [128]u8 = undefined;
+        const sub_path = try private.getFilePathForAsset(&buff, foo_obj_asset);
         try std.testing.expectEqualStrings("foo.ct_foo_asset", sub_path);
 
         // Check refenced objects
@@ -439,8 +442,8 @@ test "asset: Should open asset root dir" {
             public.Asset.readStr(db, db.readObj(private.api.getAssetForObj(core_folder.?).?).?, .Name).?,
         );
 
-        const sub_path = try private.api.getFilePathForAsset(foo_core_obj_asset, std.testing.allocator);
-        defer std.testing.allocator.free(sub_path);
+        var buff: [128]u8 = undefined;
+        const sub_path = try private.api.getFilePathForAsset(&buff, foo_core_obj_asset);
 
         if (builtin.os.tag == .windows) {
             try std.testing.expectEqualStrings("core\\foo_core.ct_foo_asset", sub_path);
@@ -495,8 +498,8 @@ test "asset: Should open asset root dir" {
             public.Asset.readStr(db, db.readObj(private.api.getAssetForObj(core_subfolder_folder.?).?).?, .Name).?,
         );
 
-        const sub_path = try private.api.getFilePathForAsset(foo_subcore_obj_asset, std.testing.allocator);
-        defer std.testing.allocator.free(sub_path);
+        var buff: [128]u8 = undefined;
+        const sub_path = try private.api.getFilePathForAsset(&buff, foo_subcore_obj_asset);
 
         if (builtin.os.tag == .windows) {
             try std.testing.expectEqualStrings("core\\core_subfolder\\foo_subcore.ct_foo_asset", sub_path);
@@ -573,7 +576,7 @@ test "asset: Should save asset root dir" {
     }
 
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, private.CT_TEMP_FOLDER });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, public.CT_TEMP_FOLDER });
         defer std.testing.allocator.free(path);
 
         var d = std.fs.cwd().openDir(path, .{});
@@ -641,7 +644,7 @@ test "asset: Should save modified asset" {
     }
 
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, private.CT_TEMP_FOLDER });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, public.CT_TEMP_FOLDER });
         defer std.testing.allocator.free(path);
 
         var d = std.fs.cwd().openDir(path, .{});

@@ -6,13 +6,20 @@ const cdb = cetech1.cdb;
 const coreui = cetech1.coreui;
 const tempalloc = cetech1.tempalloc;
 const gpu = cetech1.gpu;
-const gfx = cetech1.gfx;
-const gfx_dd = cetech1.gfx.dd;
-const gfx_rg = cetech1.gfx.rg;
-const zm = cetech1.zmath;
+const gfx = cetech1.gpu;
+const gfx_rg = cetech1.render_graph;
+const zm = cetech1.math;
 const ecs = cetech1.ecs;
 const primitives = cetech1.primitives;
 const actions = cetech1.actions;
+const graphvm = cetech1.graphvm;
+const assetdb = cetech1.assetdb;
+const uuid = cetech1.uuid;
+const task = cetech1.task;
+const transform = cetech1.transform;
+const renderer = cetech1.renderer;
+
+const Viewport = renderer.Viewport;
 
 const editor = @import("editor");
 const Icons = coreui.CoreIcons;
@@ -34,22 +41,29 @@ var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
 var _log: *const cetech1.log.LogAPI = undefined;
 var _cdb: *const cdb.CdbAPI = undefined;
 var _coreui: *const coreui.CoreUIApi = undefined;
-var _gpu: *const gpu.GpuApi = undefined;
 var _gfx: *const gfx.GfxApi = undefined;
 var _gfx_rg: *const gfx_rg.GfxRGApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _ecs: *const ecs.EcsAPI = undefined;
 var _tempalloc: *const tempalloc.TempAllocApi = undefined;
 var _actions: *const actions.ActionsAPI = undefined;
+var _graph: *const graphvm.GraphVMApi = undefined;
+var _assetdb: *const assetdb.AssetDBAPI = undefined;
+var _uuid: *const uuid.UuidAPI = undefined;
+var _task: *const task.TaskAPI = undefined;
+var _viewport: *const cetech1.renderer.RendererApi = undefined;
+
+const World2CullingQuery = std.AutoArrayHashMap(ecs.World, ecs.Query);
 
 // Global state that can surive hot-reload
 const G = struct {
     test_tab_vt_ptr: *editor.EditorTabTypeI = undefined,
     rg: gfx_rg.RenderGraph = undefined,
+    db: cetech1.cdb.Db = undefined, // TODO: SHIT
 };
 var _g: *G = undefined;
 
-const SPHERE_COUNT = 10_000;
+const SPHERE_COUNT = 1_000;
 
 const seed: u64 = 1111;
 var prng = std.rand.DefaultPrng.init(seed);
@@ -57,7 +71,7 @@ var prng = std.rand.DefaultPrng.init(seed);
 // Struct for tab type
 const FooViewportTab = struct {
     tab_i: editor.EditorTabI,
-    viewport: gpu.GpuViewport = undefined,
+    viewport: Viewport = undefined,
     world: ecs.World,
     camera_look_activated: bool = false,
 
@@ -68,23 +82,13 @@ const FooViewportTab = struct {
 };
 
 // Some components and systems
-const Position = struct {
-    x: f32,
-    y: f32,
-    z: f32,
-};
+
 const Velocity = struct {
     x: f32,
     y: f32,
     z: f32,
 };
-const Sphere = struct {
-    radius: f32,
-};
-
-const position_c = ecs.ComponentI.implement(Position);
-const celocity_c = ecs.ComponentI.implement(Velocity);
-const sphere_c = ecs.ComponentI.implement(Sphere);
+const velocity_c = ecs.ComponentI.implement(Velocity, struct {});
 
 const move_system_i = ecs.SystemI.implement(
     .{
@@ -92,16 +96,16 @@ const move_system_i = ecs.SystemI.implement(
         .multi_threaded = true,
         .phase = ecs.OnUpdate,
         .query = &.{
-            .{ .id = ecs.id(Position) },
+            .{ .id = ecs.id(transform.Position), .inout = .InOut },
             .{ .id = ecs.id(Velocity), .inout = .In },
         },
     },
     struct {
         pub fn update(iter: *ecs.IterO) !void {
-            const it = _ecs.toIter(iter);
+            var it = _ecs.toIter(iter);
 
-            const p = it.field(Position, 1).?;
-            const v = it.field(Velocity, 2).?;
+            const p = it.field(transform.Position, 0).?;
+            const v = it.field(Velocity, 1).?;
 
             for (0..it.count()) |i| {
                 p[i].x += v[i].x;
@@ -113,79 +117,39 @@ const move_system_i = ecs.SystemI.implement(
 );
 
 // Rendering component
-const SphereRenderParam = struct {
-    viewers: []gfx_rg.Viewer,
-    result: *gfx_rg.CullingResult,
-};
 
-const position_renderer_i = gfx_rg.ComponentRendererI.implement(struct {
-    pub fn culling(allocator: std.mem.Allocator, builder: gfx_rg.GraphBuilder, world: ecs.World, viewers: []gfx_rg.Viewer) !gfx_rg.CullingResult {
-        _ = builder; // autofix
-
-        var result = gfx_rg.CullingResult.init(allocator);
-        world.runSystem(
-            cetech1.strid.strId32("sphere_culling"),
-            &SphereRenderParam{
-                .result = &result,
-                .viewers = viewers,
-            },
-        );
-        return result;
-    }
-
-    pub fn render(builder: gfx_rg.GraphBuilder, world: ecs.World, viewport: gpu.GpuViewport, culling_result: ?gfx_rg.CullingResult) !void {
-        _ = world; // autofix
-
-        const layer = builder.getLayer("color");
-        if (_gfx.getEncoder()) |e| {
-            const dd = viewport.getDD();
-            {
-                dd.begin(layer, true, e);
-                defer dd.end();
-
-                if (culling_result) |result| {
-                    for (result.renderables.items, result.mtx.items) |r, mtx| {
-                        const s: *const Sphere = @alignCast(@ptrCast(r));
-
-                        {
-                            dd.pushTransform(@ptrCast(&mtx));
-                            defer dd.popTransform();
-
-                            dd.drawAxis(.{ 0, 0, 0 }, 1.0, .Count, 0);
-                            dd.drawSphere(.{ 0, 0, 0 }, s.radius);
-                        }
-                    }
-                }
-            }
-        }
-    }
-});
+const ECS_WORLD_CONTEXT = cetech1.strid.strId32("ecs_world_context");
+const ECS_ENTITY_CONTEXT = cetech1.strid.strId32("ecs_entity_context");
 
 // Fill editor tab interface
 var foo_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     .tab_name = TAB_NAME,
     .tab_hash = .{ .id = cetech1.strid.strId32(TAB_NAME).id },
+    .category = "Examples",
 }, struct {
 
     // Return name for menu /Tabs/
     pub fn menuName() ![:0]const u8 {
-        return Icons.FA_ROBOT ++ " Foo viewport";
+        return Icons.FA_ROBOT ++ "  " ++ "Foo viewport";
     }
 
     // Return tab title
     pub fn title(inst: *editor.TabO) ![:0]const u8 {
         _ = inst;
-        return Icons.FA_ROBOT ++ " Foo viewport";
+        return Icons.FA_ROBOT ++ "  " ++ "Foo viewport";
     }
 
     // Create new tab instantce
-    pub fn create(db: cdb.Db) !?*editor.EditorTabI {
-        _ = db;
+    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.EditorTabI {
         const w = try _ecs.createWorld();
+        _g.db = db;
+
+        var buf: [128]u8 = undefined;
+        const name = try std.fmt.bufPrintZ(&buf, "Foo viewport {d}", .{tab_id});
 
         var tab_inst = _allocator.create(FooViewportTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _gpu.createViewport(_g.rg, w),
+            .viewport = try _viewport.createViewport(name, _g.rg, w),
             .world = w,
             .tab_i = .{
                 .vt = _g.test_tab_vt_ptr,
@@ -193,55 +157,43 @@ var foo_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
             },
         };
 
-        // Sphere culling system
-        _ = try w.createSystem(
-            "sphere_culling",
-            &.{
-                .{ .id = ecs.id(Position), .inout = .In },
-                .{ .id = ecs.id(Sphere), .inout = .In },
-            },
-            struct {
-                pub fn update(iter: *ecs.IterO) !void {
-                    const it = _ecs.toIter(iter);
-                    const param = it.getParam(SphereRenderParam).?;
-
-                    const frustrum_planes = primitives.buildFrustumPlanes(param.viewers[0].mtx);
-
-                    const p = it.field(Position, 1).?;
-                    const s = it.field(Sphere, 2).?;
-
-                    for (0..it.count()) |i| {
-                        if (primitives.frustumPlanesVsSphere(
-                            frustrum_planes,
-                            .{ p[i].x, p[i].y, p[i].z },
-                            s[i].radius,
-                        )) {
-                            const model_mat = zm.translation(p[i].x, p[i].y, p[i].z);
-                            try param.result.append(zm.matToArr(model_mat), &s[i]);
-                        }
-                    }
-                }
-            },
-        );
-
         var allocator = try _tempalloc.create();
         defer _tempalloc.destroy(allocator);
+
+        // TODO: HACK
+        const graph_obj = _assetdb.getObjId(_uuid.fromStr("018f4363-065b-73ef-943a-d3c88bdaef02").?);
+        const logic_graph_obj = _assetdb.getObjId(_uuid.fromStr("0190a235-26c1-7ced-aea1-6af9190f0fe1").?);
 
         if (w.newEntities(allocator, SPHERE_COUNT)) |entities| {
             defer allocator.free(entities);
 
             const rnd = prng.random();
 
-            for (entities) |ent| {
+            for (entities, 0..) |ent, idx| {
+                _ = idx;
                 _ = w.setId(
-                    Position,
+                    transform.Position,
                     ent,
-                    &Position{
-                        .x = (rnd.float(f32) * 2 - 1) * 30,
-                        .y = (rnd.float(f32) * 2 - 1) * 30,
-                        .z = (rnd.float(f32) * 2 - 1) * 30,
-                    },
+                    &transform.Position{},
                 );
+
+                // _ = w.setId(
+                //     transform.Scale,
+                //     ent,
+                //     &transform.Scale{
+                //         .x = 2,
+                //         .y = 2,
+                //         .z = 2,
+                //     },
+                // );
+
+                // _ = w.setId(
+                //     transform.Rotation,
+                //     ent,
+                //     &transform.Rotation{
+                //         .q = zm.quatFromRollPitchYaw(0, 0, 0),
+                //     },
+                // );
 
                 _ = w.setId(Velocity, ent, &Velocity{
                     .x = (rnd.float(f32) * 2 - 1) * 0.1,
@@ -249,9 +201,17 @@ var foo_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
                     .z = (rnd.float(f32) * 2 - 1) * 0.1,
                 });
 
-                _ = w.setId(Sphere, ent, &Sphere{
-                    .radius = rnd.float(f32) * 2,
-                });
+                if (graph_obj) |obj| {
+                    _ = w.setId(renderer.RenderComponent, ent, &renderer.RenderComponent{
+                        .graph = obj,
+                    });
+                }
+
+                if (logic_graph_obj) |obj| {
+                    _ = w.setId(ecs.EntityLogicComponent, ent, &ecs.EntityLogicComponent{
+                        .graph = obj,
+                    });
+                }
             }
         }
 
@@ -261,7 +221,7 @@ var foo_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     // Destroy tab instantce
     pub fn destroy(tab_inst: *editor.EditorTabI) !void {
         const tab_o: *FooViewportTab = @alignCast(@ptrCast(tab_inst.inst));
-        _gpu.destroyViewport(tab_o.viewport);
+        _viewport.destroyViewport(tab_o.viewport);
         _ecs.destroyWorld(tab_o.world);
         _allocator.destroy(tab_o);
     }
@@ -364,8 +324,8 @@ const simple_pass = gfx_rg.Pass.implement(struct {
         try builder.addPass("simple_pass", pass);
     }
 
-    pub fn render(builder: gfx_rg.GraphBuilder, gfx_api: *const gfx.GfxApi, viewport: gpu.GpuViewport, viewid: gfx.ViewId) !void {
-        _ = builder; // autofix
+    pub fn render(builder: gfx_rg.GraphBuilder, gfx_api: *const gfx.GfxApi, viewport: Viewport, viewid: gfx.ViewId) !void {
+        _ = builder;
 
         const fb_size = viewport.getSize();
         const aspect_ratio = fb_size[0] / fb_size[1];
@@ -401,7 +361,7 @@ const blit_pass = gfx_rg.Pass.implement(struct {
         try builder.addPass("blit", pass);
     }
 
-    pub fn render(builder: gfx_rg.GraphBuilder, gfx_api: *const gfx.GfxApi, viewport: gpu.GpuViewport, viewid: gfx.ViewId) !void {
+    pub fn render(builder: gfx_rg.GraphBuilder, gfx_api: *const gfx.GfxApi, viewport: Viewport, viewid: gfx.ViewId) !void {
         const fb_size = viewport.getSize();
 
         if (gfx_api.getEncoder()) |e| {
@@ -506,41 +466,40 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _apidb = apidb;
     _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
     _coreui = apidb.getZigApi(module_name, coreui.CoreUIApi).?;
-    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
     _gfx = apidb.getZigApi(module_name, gfx.GfxApi).?;
     _gfx_rg = apidb.getZigApi(module_name, gfx_rg.GfxRGApi).?;
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
     _tempalloc = apidb.getZigApi(module_name, tempalloc.TempAllocApi).?;
     _actions = apidb.getZigApi(module_name, actions.ActionsAPI).?;
+    _graph = apidb.getZigApi(module_name, graphvm.GraphVMApi).?;
+    _assetdb = apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
+    _uuid = apidb.getZigApi(module_name, uuid.UuidAPI).?;
+    _task = apidb.getZigApi(module_name, task.TaskAPI).?;
+    _viewport = apidb.getZigApi(module_name, cetech1.renderer.RendererApi).?;
 
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.test_tab_vt_ptr = try apidb.globalVar(editor.EditorTabTypeI, module_name, TAB_NAME, .{});
-    // Patch vt pointer to new.
-    _g.test_tab_vt_ptr.* = foo_tab;
+    _g.test_tab_vt_ptr = try apidb.globalVarValue(editor.EditorTabTypeI, module_name, TAB_NAME, foo_tab);
 
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
     try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &foo_tab, load);
 
     // Components
-    try apidb.implInterface(module_name, ecs.ComponentI, &position_c);
-    try apidb.implInterface(module_name, ecs.ComponentI, &celocity_c);
-    try apidb.implInterface(module_name, ecs.ComponentI, &sphere_c);
+    try apidb.implOrRemove(module_name, ecs.ComponentI, &velocity_c, load);
 
-    try apidb.implInterface(module_name, ecs.SystemI, &move_system_i);
-
-    try apidb.implInterface(module_name, gfx_rg.ComponentRendererI, &position_renderer_i);
+    // System
+    try apidb.implOrRemove(module_name, ecs.SystemI, &move_system_i, load);
 
     return true;
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_foo_viewport_tab(__apidb: *const cetech1.apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.C) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
+pub export fn ct_load_module_editor_foo_viewport_tab(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }
 
 const SimpleFPSCamera = struct {
@@ -575,7 +534,7 @@ const SimpleFPSCamera = struct {
         // Move handle
         {
             var forward = zm.loadArr3(self.forward);
-            const right = speed * delta_time * -zm.normalize3(zm.cross3(zm.f32x4(0.0, 1.0, 0.0, 0.0), forward));
+            const right = speed * delta_time * -zm.normalize3(zm.cross3(zm.f32x4(0.0, 1.0, 0.0, 1.0), forward));
             forward = speed * delta_time * forward;
 
             var cam_pos = zm.loadArr3(self.position);
@@ -595,8 +554,8 @@ const SimpleFPSCamera = struct {
     }
 
     inline fn calcForward(self: *SimpleFPSCamera) void {
-        const transform = zm.mul(zm.rotationX(self.pitch), zm.rotationY(self.yaw));
-        const forward = zm.normalize3(zm.mul(zm.f32x4(0.0, 0.0, 1.0, 0.0), transform));
+        const t = zm.mul(zm.rotationX(self.pitch), zm.rotationY(self.yaw));
+        const forward = zm.normalize3(zm.mul(zm.f32x4(0.0, 0.0, 1.0, 1.0), t));
         zm.storeArr3(&self.forward, forward);
     }
 };

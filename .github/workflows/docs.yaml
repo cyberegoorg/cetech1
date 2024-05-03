@@ -4,6 +4,7 @@ on:
   push:
     branches: ["main"]
     paths:
+      - ".github/workflows/docs.yaml"
       - "Writerside/**"
 
   workflow_dispatch:
@@ -17,7 +18,7 @@ permissions:
 env:
   INSTANCE: Writerside/cetech1
   ARTIFACT: webHelpCETECH12-all.zip
-  DOCKER_VERSION: 241.15989
+  DOCKER_VERSION: 241.18775
 
 jobs:
   build:

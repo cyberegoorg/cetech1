@@ -42,9 +42,8 @@ var _g: *G = undefined;
 const ExplorerTab = struct {
     tab_i: editor.EditorTabI,
     db: cdb.Db,
-    selection: cdb.ObjId = .{},
-    inter_selection: cdb.ObjId,
-    tv_result: editor_tree.SelectInTreeResult = .{ .is_changed = false },
+    selection: coreui.SelectionItem = coreui.SelectionItem.empty(),
+    inter_selection: coreui.Selection,
 };
 
 // Fill editor tab interface
@@ -58,7 +57,8 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
 }, struct {
 
     // Can open tab
-    pub fn canOpen(db: cdb.Db, selection: cdb.ObjId) !bool {
+    pub fn canOpen(allocator: Allocator, db: cdb.Db, selection: []const coreui.SelectionItem) !bool {
+        _ = allocator; // autofix
         _ = db;
         _ = selection;
 
@@ -66,17 +66,18 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     pub fn menuName() ![:0]const u8 {
-        return coreui.Icons.Explorer ++ " Explorer";
+        return coreui.Icons.Explorer ++ "  " ++ "Explorer";
     }
 
     // Return tab title
     pub fn title(inst: *editor.TabO) ![:0]const u8 {
         _ = inst;
-        return coreui.Icons.Explorer ++ " Explorer";
+        return coreui.Icons.Explorer ++ "  " ++ "Explorer";
     }
 
     // Create new FooTab instantce
-    pub fn create(db: cdb.Db) !?*editor.EditorTabI {
+    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.EditorTabI {
+        _ = tab_id;
         var tab_inst = try _allocator.create(ExplorerTab);
 
         tab_inst.* = ExplorerTab{
@@ -85,7 +86,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
                 .inst = @ptrCast(tab_inst),
             },
             .db = db,
-            .inter_selection = try coreui.ObjSelection.createObject(db),
+            .inter_selection = coreui.Selection.init(_allocator),
         };
         return &tab_inst.tab_i;
     }
@@ -93,13 +94,25 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     // Destroy FooTab instantce
     pub fn destroy(tab_inst: *editor.EditorTabI) !void {
         const tab_o: *ExplorerTab = @alignCast(@ptrCast(tab_inst.inst));
-        tab_o.db.destroyObject(tab_o.inter_selection);
+        tab_o.inter_selection.deinit();
         _allocator.destroy(tab_o);
     }
 
     pub fn focused(inst: *editor.TabO) !void {
         const tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
-        _editor.propagateSelection(tab_o.db, tab_o.inter_selection);
+
+        const allocator = try _tempalloc.create();
+        defer _tempalloc.destroy(allocator);
+
+        if (tab_o.inter_selection.toSlice(allocator)) |objs| {
+            defer allocator.free(objs);
+            _editor.propagateSelection(tab_o.db, inst, objs);
+        }
+    }
+
+    pub fn assetRootOpened(inst: *editor.TabO) !void {
+        const tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
+        tab_o.inter_selection.clear();
     }
 
     // Draw tab menu
@@ -112,6 +125,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
             const allocator = try _tempalloc.create();
             defer _tempalloc.destroy(allocator);
 
+            const first_selected_obj = tab_o.inter_selection.first();
             try _editor.showObjContextMenu(
                 allocator,
                 tab_o.db,
@@ -120,9 +134,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
                     editor.Contexts.open,
                     editor.Contexts.debug,
                 },
-                tab_o.inter_selection,
-                if (tab_o.tv_result.is_prop) tab_o.tv_result.prop_idx else null,
-                if (!tab_o.tv_result.in_set_obj.isEmpty()) tab_o.tv_result.in_set_obj else null,
+                first_selected_obj,
             );
         }
     }
@@ -134,10 +146,6 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
 
         var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
 
-        if (tab_o.selection.isEmpty()) {
-            return;
-        }
-
         var allocator = try _tempalloc.create();
         defer _tempalloc.destroy(allocator);
 
@@ -147,37 +155,33 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
             defer _coreui.popStyleVar(.{});
 
             // Draw only asset content
-            if (_coreui.getSelected(allocator, tab_o.db, tab_o.selection)) |selected_objs| {
-                defer allocator.free(selected_objs);
+            // Draw asset_object
+            if (!tab_o.selection.isEmpty()) {
+                var o = tab_o.selection;
+                o.obj = o.top_level_obj;
 
-                for (selected_objs) |obj| {
-                    if (!assetdb.Asset.isSameType(tab_o.db, obj)) continue;
+                const r = try _editortree.cdbTreeView(
+                    allocator,
+                    tab_o.db,
+                    tab_o,
+                    &.{
+                        editor.Contexts.open,
+                        editor.Contexts.debug,
+                    },
+                    o,
+                    &tab_o.inter_selection,
+                    0,
+                    .{
+                        .expand_object = true,
+                        .multiselect = true,
+                        .opened_obj = o.obj,
+                    },
+                );
 
-                    // Draw asset_object
-                    const r = try _editortree.cdbTreeView(
-                        allocator,
-                        tab_o.db,
-                        tab_o,
-                        &.{
-                            editor.Contexts.open,
-                            editor.Contexts.debug,
-                        },
-                        obj,
-                        tab_o.inter_selection,
-                        0,
-                        .{
-                            .expand_object = true,
-                            .multiselect = true,
-                            .opened_obj = obj,
-                            .sr = tab_o.tv_result,
-                        },
-                    );
-
-                    if (r.isChanged()) tab_o.tv_result = r;
-
-                    const selection_version = tab_o.db.getVersion(tab_o.inter_selection);
-                    if (selection_version != tab_o.db.getVersion(tab_o.inter_selection)) {
-                        _editor.propagateSelection(tab_o.db, tab_o.inter_selection);
+                if (r) {
+                    if (tab_o.inter_selection.toSlice(allocator)) |objs| {
+                        defer allocator.free(objs);
+                        _editor.propagateSelection(tab_o.db, inst, objs);
                     }
                 }
             }
@@ -185,12 +189,13 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, db: cdb.Db, selection: cdb.ObjId) !void {
+    pub fn objSelected(inst: *editor.TabO, db: cdb.Db, selection: []const coreui.SelectionItem) !void {
         _ = db;
-
         var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
-        if (tab_o.inter_selection.eql(selection)) return;
-        tab_o.selection = selection;
+
+        if (tab_o.inter_selection.isSelectedAll(selection)) return;
+        try tab_o.inter_selection.set(selection);
+        tab_o.selection = if (selection.len != 0) selection[0] else coreui.SelectionItem.empty();
     }
 });
 
@@ -212,7 +217,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
                     ctx.setRef(_coreui, "###ct_editor_explorer_tab_1");
                     ctx.windowFocus(_coreui, "");
-                    ctx.itemAction(_coreui, .Click, "**/###foo.ct_foo_asset/018b5846-c2d5-712f-bb12-9d9d15321ecb/Subobject", .{}, null);
+                    ctx.itemAction(_coreui, .Click, "**/###foo.ct_foo_asset/###subobject", .{}, null);
                 }
             },
         );
@@ -236,7 +241,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
                     ctx.setRef(_coreui, "###ct_editor_explorer_tab_2");
                     ctx.windowFocus(_coreui, "");
-                    ctx.itemAction(_coreui, .Click, "**/###foo.ct_foo_asset/018b5846-c2d5-712f-bb12-9d9d15321ecb/Subobject", .{}, null);
+                    ctx.itemAction(_coreui, .Click, "**/###foo.ct_foo_asset/###subobject", .{}, null);
                 }
             },
         );
@@ -257,7 +262,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.setRef(_coreui, "###ct_editor_explorer_tab_1");
                     ctx.windowFocus(_coreui, "");
 
-                    ctx.itemAction(_coreui, .Click, "**/###empty.ct_foo_asset/018e7ba0-571a-71e9-a03e-cbe1fdcf2581/Subobject set", .{}, null);
+                    ctx.itemAction(_coreui, .Click, "**/###empty.ct_foo_asset/###subobject_set", .{}, null);
                     ctx.menuAction(_coreui, .Click, "###ObjContextMenu/###AddToSet/###AddNew");
 
                     const db = _kernel.getDb();
@@ -294,7 +299,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.setRef(_coreui, "###ct_editor_explorer_tab_1");
                     ctx.windowFocus(_coreui, "");
 
-                    ctx.itemAction(_coreui, .Click, "**/###child_asset.ct_foo_asset/018e7ba2-d04a-7176-8374-c38cca68b3ab/Subobject set/0", .{}, null);
+                    ctx.itemAction(_coreui, .Click, "**/###child_asset.ct_foo_asset/###subobject_set/###018e7ba3-4f75-7e4f-bb0a-697eff5b21e2", .{}, null);
                     ctx.menuAction(_coreui, .Click, "###ObjContextMenu/###Inisiate");
 
                     const db = _kernel.getDb();
@@ -332,13 +337,12 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     _kernel.openAssetRoot("fixtures/test_explorer");
                     ctx.yield(_coreui, 1);
 
-                    ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-                    ctx.windowFocus(_coreui, "");
+                    ctx.windowFocus(_coreui, "###ct_editor_asset_browser_tab_1");
                     ctx.itemAction(_coreui, .DoubleClick, "**/###ROOT/###parent_asset.ct_foo_asset", .{}, null);
 
                     ctx.setRef(_coreui, "###ct_editor_explorer_tab_1");
                     ctx.windowFocus(_coreui, "");
-                    ctx.itemAction(_coreui, .Click, "**/###parent_asset.ct_foo_asset/018e7ba3-3540-7790-bb65-3e63081a76f7/Subobject set/0", .{}, null);
+                    ctx.itemAction(_coreui, .Click, "**/###parent_asset.ct_foo_asset/###subobject_set/###018e7ba3-4f75-7e4f-bb0a-697eff5b21e2", .{}, null);
 
                     ctx.menuAction(_coreui, .Click, "###ObjContextMenu/###Remove");
 
@@ -376,7 +380,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.setRef(_coreui, "###ct_editor_explorer_tab_1");
                     ctx.windowFocus(_coreui, "");
 
-                    ctx.itemAction(_coreui, .Click, "**/###child_asset.ct_foo_asset/018e7ba2-d04a-7176-8374-c38cca68b3ab/Subobject", .{}, null);
+                    ctx.itemAction(_coreui, .Click, "**/###child_asset.ct_foo_asset/###subobject", .{}, null);
                     ctx.menuAction(_coreui, .Click, "###ObjContextMenu/###Inisiate");
 
                     const db = _kernel.getDb();
@@ -428,8 +432,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});
 
-    _g.tab_vt = try apidb.globalVar(editor.EditorTabTypeI, module_name, EXPLORER_TAB_NAME, .{});
-    _g.tab_vt.* = explorer_tab;
+    _g.tab_vt = try apidb.globalVarValue(editor.EditorTabTypeI, module_name, EXPLORER_TAB_NAME, explorer_tab);
 
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &explorer_tab, load);
@@ -439,6 +442,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_explorer(__apidb: *const cetech1.apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.C) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
+pub export fn ct_load_module_editor_explorer(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

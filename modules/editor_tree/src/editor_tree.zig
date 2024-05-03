@@ -2,6 +2,7 @@ const std = @import("std");
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const strid = cetech1.strid;
+const coreui = cetech1.coreui;
 
 const log = std.log.scoped(.editor_tree);
 
@@ -16,11 +17,11 @@ pub const UiTreeAspect = struct {
         db: cdb.Db,
         tab: *editor.TabO,
         context: []const strid.StrId64,
-        obj: cdb.ObjId,
-        selected_obj: cdb.ObjId,
+        obj: coreui.SelectionItem,
+        selected_obj: *coreui.Selection,
         depth: u32,
         args: CdbTreeViewArgs,
-    ) anyerror!SelectInTreeResult = undefined,
+    ) anyerror!bool = undefined,
 
     ui_drop_obj: ?*const fn (
         allocator: std.mem.Allocator,
@@ -47,19 +48,8 @@ pub const CdbTreeViewArgs = struct {
     opened_obj: cdb.ObjId = .{},
     filter: ?[:0]const u8 = null,
     multiselect: bool = false,
-    sr: SelectInTreeResult = .{},
-    max_autopen_depth: u32 = 5,
-};
-
-pub const SelectInTreeResult = struct {
-    is_changed: bool = false,
-    is_prop: bool = false,
-    prop_idx: u32 = 0,
-    in_set_obj: cdb.ObjId = .{},
-
-    pub fn isChanged(self: *const @This()) bool {
-        return self.is_changed;
-    }
+    max_autopen_depth: u32 = 2,
+    show_root: bool = false,
 };
 
 // TODO: need unshit api
@@ -70,11 +60,11 @@ pub const TreeAPI = struct {
         db: cdb.Db,
         tab: *editor.TabO,
         []const strid.StrId64,
-        obj: cdb.ObjId,
-        selection: cdb.ObjId,
+        obj: coreui.SelectionItem,
+        selection: *coreui.Selection,
         depth: u32,
         args: CdbTreeViewArgs,
-    ) anyerror!SelectInTreeResult,
+    ) anyerror!bool,
 
     cdbTreeNode: *const fn (label: [:0]const u8, default_open: bool, no_push: bool, selected: bool, leaf: bool, args: CdbTreeViewArgs) bool,
     cdbTreePop: *const fn () void,
@@ -83,8 +73,8 @@ pub const TreeAPI = struct {
         db: cdb.Db,
         tab: *editor.TabO,
         contexts: []const strid.StrId64,
-        selection: cdb.ObjId,
-        obj: cdb.ObjId,
+        selection: *coreui.Selection,
+        obj: coreui.SelectionItem,
         default_open: bool,
         no_push: bool,
         leaf: bool,

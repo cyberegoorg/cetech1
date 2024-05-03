@@ -18,6 +18,10 @@ const gpu = @import("gpu.zig");
 const coreui = @import("coreui.zig");
 const ecs = @import("ecs.zig");
 const actions = @import("actions.zig");
+const graphvm = @import("graphvm.zig");
+const transform = @import("transform.zig");
+const renderer = @import("renderer.zig");
+const metrics = @import("metrics.zig");
 
 const cetech1 = @import("cetech1");
 const public = cetech1.kernel;
@@ -84,6 +88,9 @@ var _coreui_allocator: profiler.AllocatorProfiler = undefined;
 var _tmp_alocator_pool_allocator: profiler.AllocatorProfiler = undefined;
 var _ecs_allocator: profiler.AllocatorProfiler = undefined;
 var _actions_allocator: profiler.AllocatorProfiler = undefined;
+var _graph_allocator: profiler.AllocatorProfiler = undefined;
+var _viewport_allocator: profiler.AllocatorProfiler = undefined;
+var _metrics_allocator: profiler.AllocatorProfiler = undefined;
 
 var _update_dag: cetech1.dag.StrId64DAG = undefined;
 
@@ -194,6 +201,10 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     _tmp_alocator_pool_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "tmp_allocators");
     _ecs_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "ecs");
     _actions_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "actions");
+    _graph_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "graph");
+    _viewport_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "viewport");
+
+    _metrics_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "metrics");
 
     _update_dag = cetech1.dag.StrId64DAG.init(_kernel_allocator);
 
@@ -212,18 +223,22 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
 
     try apidb.init(_apidb_allocator.allocator());
     try modules.init(_modules_allocator.allocator());
+    try metrics.init(_metrics_allocator.allocator());
     try task.init(_task_allocator.allocator());
     try cdb.init(_cdb_allocator.allocator());
     try platform.init(_platform_allocator.allocator(), headless);
     try actions.init(_actions_allocator.allocator());
     try gpu.init(_gpu_allocator.allocator());
+    try renderer.init(_viewport_allocator.allocator());
     try coreui.init(_coreui_allocator.allocator());
+    try graphvm.init(_graph_allocator.allocator());
 
     try apidb.api.setZigApi(module_name, cetech1.kernel.KernelApi, &api);
 
     try log_api.registerToApi();
     try tempalloc.registerToApi();
     try strid_private.registerToApi();
+    try profiler_private.registerToApi();
     try task.registerToApi();
     try uuid.registerToApi();
     try cdb.registerToApi();
@@ -234,6 +249,10 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try gpu.registerToApi();
     try coreui.registerToApi();
     try ecs.registerToApi();
+    try graphvm.registerToApi();
+    try metrics.registerToApi();
+
+    try transform.regsitreAll();
 
     try addPhase("OnLoad", &[_]strid.StrId64{});
     try addPhase("PostLoad", &[_]strid.StrId64{cetech1.kernel.OnLoad});
@@ -255,7 +274,10 @@ pub fn deinit(
 
     ecs.deinit();
 
+    graphvm.deinit();
+
     coreui.deinit();
+    renderer.deinit();
     if (gpu_context) |ctx| gpu.api.destroyContext(ctx);
     gpu.deinit();
     if (main_window) |window| platform.api.destroyWindow(window);
@@ -270,6 +292,7 @@ pub fn deinit(
 
     cdb.deinit();
     task.deinit();
+    metrics.deinit();
     apidb.deinit();
     tempalloc.deinit();
 
@@ -356,7 +379,7 @@ pub fn bigInit(static_modules: []const cetech1.modules.ModuleDesc, load_dynamic:
 
     try assetdb.init(_assetdb_allocator.allocator());
 
-    try generateKernelTaskChain();
+    try generateKernelTaskChain(_kernel_allocator);
 
     apidb.dumpApi();
     apidb.dumpGlobalVar();
@@ -415,7 +438,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         const asset_root = getStrArgs("--asset-root") orelse "";
         const headless = 1 == getIntArgs("--headless") orelse @intFromBool(boot_args.headless);
         const fullscreen = 1 == getIntArgs("--fullscreen") orelse 0;
-        const renderer = getStrArgs("--renderer");
+        const renderer_type = getStrArgs("--renderer");
 
         // Init Kernel
         try init(gpa_allocator, headless);
@@ -461,9 +484,9 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         }
 
         // Create update graph.
-        try generateTaskUpdateChain();
+        try generateTaskUpdateChain(_kernel_allocator);
         var kernel_task_update_gen = apidb.api.getInterafcesVersion(public.KernelTaskUpdateI);
-        var kernel_task_gen = apidb.api.getInterafcesVersion(public.KernelTaskI);
+        var kernel_task_gen: cetech1.apidb.InterfaceVersion = 0;
 
         // Main window
         if (!headless) {
@@ -485,7 +508,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
         gpu_context = try gpu.api.createContext(
             main_window,
-            if (renderer) |r| cetech1.gpu.Backend.fromString(r) else null,
+            if (renderer_type) |r| cetech1.gpu.Backend.fromString(r) else null,
             !headless,
             headless,
         );
@@ -493,16 +516,22 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         try initKernelTasks();
 
         var checkfs_timer: i64 = 0;
+        const dt_couter = try metrics.api.getCounter("kernel/dt");
+        const tick_duration_counter = try metrics.api.getCounter("kernel/tick_duration");
+
         while (_running and !_quit and !_restart) : (kernel_tick += 1) {
             profiler_private.api.frameMark();
-
             var update_zone_ctx = profiler_private.ztracy.ZoneN(@src(), "kernelUpdate");
             defer update_zone_ctx.End();
+
+            const tick_duration = cetech1.metrics.MetricScopedDuration.begin(tick_duration_counter);
 
             const now = std.time.milliTimestamp();
             const dt_ms = now - last_call;
             const dt_s: f32 = @as(f32, @floatFromInt(dt_ms)) / std.time.ms_per_s;
             last_call = now;
+
+            dt_couter.* = @floatFromInt(dt_ms);
 
             checkfs_timer += dt_ms;
 
@@ -523,24 +552,30 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
             // Begin loop
             {
-                var it = apidb.api.getFirstImpl(public.KernelLoopHookI);
-                while (it) |node| : (it = node.next) {
-                    var iface = cetech1.apidb.ApiDbAPI.toInterface(public.KernelLoopHookI, node);
-                    try iface.begin_loop();
+                var zone_ctx = profiler_private.ztracy.ZoneN(@src(), "Begin loop");
+                defer zone_ctx.End();
+
+                const impls = try apidb.api.getImpl(tmp_frame_alloc, public.KernelLoopHookI);
+                defer tmp_frame_alloc.free(impls);
+
+                for (impls) |iface| {
+                    iface.begin_loop(kernel_tick, dt_s) catch |err| {
+                        log.err("Begin loop failed: {any}", .{err});
+                    };
                 }
             }
 
             // Any public.KernelTaskI iface changed? (add/remove)?
             const new_kernel_gen = apidb.api.getInterafcesVersion(public.KernelTaskI);
             if (new_kernel_gen != kernel_task_gen) {
-                try generateKernelTaskChain();
+                try generateKernelTaskChain(tmp_frame_alloc);
                 kernel_task_gen = new_kernel_gen;
             }
 
             // Any public.KernelTaskUpdateI iface changed? (add/remove)?
             const new_kernel_update_gen = apidb.api.getInterafcesVersion(public.KernelTaskUpdateI);
             if (new_kernel_update_gen != kernel_task_update_gen) {
-                try generateTaskUpdateChain();
+                try generateTaskUpdateChain(tmp_frame_alloc);
                 kernel_task_update_gen = new_kernel_update_gen;
             }
 
@@ -557,12 +592,15 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
             // End loop
             {
-                var it = apidb.api.getFirstImpl(public.KernelLoopHookI);
-                while (it) |node| : (it = node.next) {
-                    var iface = cetech1.apidb.ApiDbAPI.toInterface(public.KernelLoopHookI, node);
+                const impls = try apidb.api.getImpl(tmp_frame_alloc, public.KernelLoopHookI);
+                defer tmp_frame_alloc.free(impls);
+
+                for (impls) |iface| {
                     try iface.end_loop();
                 }
             }
+
+            tick_duration.end();
 
             // Dont drill cpu if there is no hard work.
             // But not if test is running and is active fast mode
@@ -583,7 +621,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
             // Check window close request
             if (main_window) |window| {
-                if (window.closed()) {
+                if (window.shouldClose()) {
                     if (can_quit_handler) |can_quit| {
                         _ = can_quit();
                     } else {
@@ -598,6 +636,8 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             if (test_ui) {
                 _quit = !coreui.api.testIsRunning();
             }
+
+            try metrics.pushFrames();
         }
 
         if (test_ui) {
@@ -650,12 +690,12 @@ fn sleepIfNeed(allocator: std.mem.Allocator, last_call: i64, max_rate: u32, kern
         const sleep_begin = std.time.milliTimestamp();
         while (true) {
             const sleep_time_s: f32 = @as(f32, @floatFromInt(sleep_time)) / std.time.ns_per_s;
-            const sleep_delta: f32 = @as(f32, @floatFromInt(std.time.milliTimestamp() - sleep_begin)) / std.time.ms_per_s;
-            if (sleep_delta > sleep_time_s) break;
-            platform.api.poolEventsWithTimeout(std.math.clamp(sleep_time_s - sleep_delta, 0.0, sleep_time_s));
+            const sleep_delta_s: f32 = @as(f32, @floatFromInt(std.time.milliTimestamp() - sleep_begin)) / std.time.ms_per_s;
+            if (sleep_delta_s > sleep_time_s) break;
+            platform.api.poolEventsWithTimeout(std.math.clamp(sleep_time_s - sleep_delta_s, 0.0, sleep_time_s));
 
             if (main_window) |window| {
-                if (window.closed()) {
+                if (window.shouldClose()) {
                     if (can_quit_handler) |can_quit| {
                         _ = can_quit();
                     } else {
@@ -676,17 +716,20 @@ fn addPhase(name: [:0]const u8, depend: []const strid.StrId64) !void {
     try _phases_dag.add(name_hash, depend);
 }
 
-fn generateKernelTaskChain() !void {
+fn generateKernelTaskChain(alloctor: std.mem.Allocator) !void {
+    var zone_ctx = profiler_private.ztracy.ZoneN(@src(), "generateKernelTaskChain");
+    defer zone_ctx.End();
+
     try _task_dag.reset();
     _task_chain.clearRetainingCapacity();
 
     var iface_map = std.AutoArrayHashMap(strid.StrId64, *const public.KernelTaskI).init(_kernel_allocator);
     defer iface_map.deinit();
 
-    var it = apidb.api.getFirstImpl(public.KernelTaskI);
-    while (it) |node| : (it = node.next) {
-        const iface = cetech1.apidb.ApiDbAPI.toInterface(public.KernelTaskI, node);
+    const impls = try apidb.api.getImpl(alloctor, public.KernelTaskI);
+    defer alloctor.free(impls);
 
+    for (impls) |iface| {
         const depends = iface.depends;
 
         const name_hash = strid.strId64(iface.name);
@@ -703,7 +746,7 @@ fn generateKernelTaskChain() !void {
     dumpKernelTask();
 }
 
-fn generateTaskUpdateChain() !void {
+fn generateTaskUpdateChain(allocator: std.mem.Allocator) !void {
     var zone_ctx = profiler_private.ztracy.Zone(@src());
     defer zone_ctx.End();
 
@@ -716,10 +759,10 @@ fn generateTaskUpdateChain() !void {
 
     _iface_map.clearRetainingCapacity();
 
-    var it = apidb.api.getFirstImpl(public.KernelTaskUpdateI);
-    while (it) |node| : (it = node.next) {
-        const iface = cetech1.apidb.ApiDbAPI.toInterface(public.KernelTaskUpdateI, node);
+    const impls = try apidb.api.getImpl(allocator, public.KernelTaskUpdateI);
+    defer allocator.free(impls);
 
+    for (impls) |iface| {
         const depends = iface.depends;
 
         const name_hash = strid.strId64(iface.name);
@@ -874,7 +917,9 @@ fn dumpKernelUpdatePhaseTreeD2() !void {
     var dot_file = try std.fs.createFileAbsolute(path.?, .{});
     defer dot_file.close();
 
-    var writer = dot_file.writer();
+    var bw = std.io.bufferedWriter(dot_file.writer());
+    defer bw.flush() catch undefined;
+    const writer = bw.writer();
 
     _ = try writer.write("vars: {d2-config: {layout-engine: elk}}\n\n");
 

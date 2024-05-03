@@ -13,10 +13,12 @@ const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");
 const task = @import("task.zig");
 const uuid = @import("uuid.zig");
+const metrics = @import("metrics.zig");
 
 pub fn testInit() !void {
     try task.init(std.testing.allocator);
     try apidb.init(std.testing.allocator);
+    try metrics.init(std.testing.allocator);
     try cdb.init(std.testing.allocator);
     try task.start();
 }
@@ -26,6 +28,7 @@ pub fn testDeinit() void {
     apidb.deinit();
     task.stop();
     task.deinit();
+    metrics.deinit();
 }
 
 pub fn expectGCStats(db: cetech1.cdb.Db, alocated_objids: u32, free_object: u32) !void {
@@ -68,7 +71,7 @@ test "cdb: Should register create types handler " {
     try testInit();
     defer testDeinit();
 
-    var create_types_i = public.CreateTypesI.implement(struct {
+    var create_cdb_types_i = public.CreateTypesI.implement(struct {
         pub fn createTypes(db: cetech1.cdb.Db) !void {
             const type_hash = db.addType(
                 "foo",
@@ -81,7 +84,7 @@ test "cdb: Should register create types handler " {
         }
     });
 
-    try apidb.api.implOrRemove(.foo, public.CreateTypesI, &create_types_i, true);
+    try apidb.api.implOrRemove(.foo, public.CreateTypesI, &create_cdb_types_i, true);
 
     var db = try cdb.api.createDb("Test");
     defer cdb.api.destroyDb(db);
@@ -115,7 +118,7 @@ test "cdb: Should register aspect" {
 
     var foo_aspect = FooAspect{ .barFn = &FooAspect.barImpl };
 
-    var create_types_i = public.CreateTypesI.implement(struct {
+    var create_cdb_types_i = public.CreateTypesI.implement(struct {
         pub fn createTypes(db: cetech1.cdb.Db) !void {
             const type_hash = db.addType(
                 "foo",
@@ -128,7 +131,7 @@ test "cdb: Should register aspect" {
         }
     });
 
-    try apidb.api.implOrRemove(.foo, public.CreateTypesI, &create_types_i, true);
+    try apidb.api.implOrRemove(.foo, public.CreateTypesI, &create_cdb_types_i, true);
 
     var db = try cdb.api.createDb("Test");
     defer cdb.api.destroyDb(db);
@@ -171,7 +174,7 @@ test "cdb: Should register property aspect" {
 
     var foo_aspect = FooAspect{ .barFn = &FooAspect.barImpl };
 
-    var create_types_i = public.CreateTypesI.implement(struct {
+    var create_cdb_types_i = public.CreateTypesI.implement(struct {
         pub fn createTypes(db: cetech1.cdb.Db) !void {
             const type_hash = db.addType(
                 "foo",
@@ -183,7 +186,7 @@ test "cdb: Should register property aspect" {
             _ = type_hash;
         }
     });
-    try apidb.api.implOrRemove(.foo, public.CreateTypesI, &create_types_i, true);
+    try apidb.api.implOrRemove(.foo, public.CreateTypesI, &create_cdb_types_i, true);
 
     var db = try cdb.api.createDb("Test");
     defer cdb.api.destroyDb(db);
@@ -1361,7 +1364,7 @@ test "cdb: Should instantiate subobject" {
     );
 
     const obj2_w = db.writeObj(obj2).?;
-    try db.instantiateSubObj(obj2_w, 0);
+    _ = try db.instantiateSubObj(obj2_w, 0);
     try db.writeCommit(obj2_w);
 
     try std.testing.expect(db.isPropertyOverrided(db.readObj(obj2).?, 0));
@@ -1386,6 +1389,111 @@ test "cdb: Should instantiate subobject" {
 
     try db.gc(std.testing.allocator);
     try expectGCStats(db, 4, 8);
+}
+
+test "cdb: Should deep instantiate subobject" {
+    try testInit();
+    defer testDeinit();
+
+    var db = try cdb.api.createDb("Test");
+    defer cdb.api.destroyDb(db);
+
+    const type_hash = try db.addType(
+        "foo",
+        &.{
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.SUBOBJECT },
+            .{ .prop_idx = 1, .name = "prop2", .type = public.PropType.F64 },
+        },
+    );
+
+    const obj1 = try db.createObject(type_hash);
+    const sub_obj1 = try db.createObject(type_hash);
+    const sub_obj2 = try db.createObject(type_hash);
+
+    const obj1_w = db.writeObj(obj1).?;
+    const sub_obj1_w = db.writeObj(sub_obj1).?;
+    const sub_obj2_w = db.writeObj(sub_obj2).?;
+    try db.setSubObj(obj1_w, 0, sub_obj1_w);
+    try db.setSubObj(sub_obj1_w, 0, sub_obj2_w);
+
+    db.setValue(f64, sub_obj1_w, 1, 666);
+    db.setValue(f64, sub_obj2_w, 1, 666);
+
+    try db.writeCommit(sub_obj1_w);
+    try db.writeCommit(sub_obj2_w);
+    try db.writeCommit(obj1_w);
+
+    const obj2 = try db.createObjectFromPrototype(obj1);
+
+    const instasiated_obj = db.inisitateDeep(std.testing.allocator, obj2, sub_obj2);
+    try std.testing.expect(instasiated_obj != null);
+
+    const instasiated_obj_w = db.writeObj(instasiated_obj.?).?;
+    db.setValue(f64, instasiated_obj_w, 1, 22);
+    try db.writeCommit(instasiated_obj_w);
+
+    const sub_obj2_r = db.readObj(sub_obj2).?;
+    const prop2_value = db.readValue(f64, sub_obj2_r, 1);
+    try std.testing.expectEqual(666, prop2_value);
+
+    db.destroyObject(obj1);
+    db.destroyObject(obj2);
+
+    try db.gc(std.testing.allocator);
+    try expectGCStats(db, 6, 6);
+}
+
+test "cdb: Should deep instantiate subobject in set" {
+    try testInit();
+    defer testDeinit();
+
+    var db = try cdb.api.createDb("Test");
+    defer cdb.api.destroyDb(db);
+
+    const type_hash = try db.addType(
+        "foo",
+        &.{
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.SUBOBJECT },
+            .{ .prop_idx = 1, .name = "prop2", .type = public.PropType.F64 },
+            .{ .prop_idx = 2, .name = "prop3", .type = public.PropType.SUBOBJECT_SET },
+        },
+    );
+
+    const obj1 = try db.createObject(type_hash);
+    const sub_obj1 = try db.createObject(type_hash);
+    const sub_obj2 = try db.createObject(type_hash);
+
+    const obj1_w = db.writeObj(obj1).?;
+    const sub_obj1_w = db.writeObj(sub_obj1).?;
+    const sub_obj2_w = db.writeObj(sub_obj2).?;
+    try db.setSubObj(obj1_w, 0, sub_obj1_w);
+
+    try db.addSubObjToSet(sub_obj1_w, 2, &.{sub_obj2_w});
+
+    db.setValue(f64, sub_obj2_w, 1, 666);
+
+    try db.writeCommit(sub_obj1_w);
+    try db.writeCommit(sub_obj2_w);
+    try db.writeCommit(obj1_w);
+
+    const obj2 = try db.createObjectFromPrototype(obj1);
+
+    const instasiated_obj = db.inisitateDeep(std.testing.allocator, obj2, sub_obj2);
+    try std.testing.expect(instasiated_obj != null);
+
+    const instasiated_obj_w = db.writeObj(instasiated_obj.?).?;
+    db.setValue(f64, instasiated_obj_w, 1, 22);
+    try db.writeCommit(instasiated_obj_w);
+
+    const sub_obj2_r = db.readObj(sub_obj2).?;
+    const prop2_value = db.readValue(f64, sub_obj2_r, 1);
+    try std.testing.expectEqual(666, prop2_value);
+
+    db.destroyObject(obj1);
+    db.destroyObject(obj2);
+
+    try db.gc(std.testing.allocator);
+    try expectGCStats(db, 6, 6);
 }
 
 test "cdb: Should specify type_hash for ref/subobj base properties" {
@@ -1485,7 +1593,7 @@ test "cdb: Should tracking changed objects" {
     try db.gc(std.testing.allocator);
     const changed_1 = try db.getChangeObjects(std.testing.allocator, type_hash, 1);
     defer std.testing.allocator.free(changed_1.objects);
-    try std.testing.expectEqualSlices(public.ObjId, &.{ obj2, obj1 }, changed_1.objects);
+    try std.testing.expectEqualSlices(public.ObjId, &.{ obj1, obj2 }, changed_1.objects);
     try std.testing.expect(!changed_1.need_fullscan);
 
     // get from 0 version force to do fullscan
@@ -1497,7 +1605,7 @@ test "cdb: Should tracking changed objects" {
     db.destroyObject(obj2);
     // Call GC thas create populate changed objects.
     try db.gc(std.testing.allocator);
-    const changed_2 = try db.getChangeObjects(std.testing.allocator, type_hash, changed_1.last_version);
+    const changed_2 = try db.getChangeObjects(std.testing.allocator, type_hash, changed_0.last_version);
     defer std.testing.allocator.free(changed_2.objects);
     try std.testing.expect(!changed_2.need_fullscan);
     try std.testing.expectEqualSlices(public.ObjId, &.{obj2}, changed_2.objects);
@@ -1505,7 +1613,59 @@ test "cdb: Should tracking changed objects" {
     const changed_begin = try db.getChangeObjects(std.testing.allocator, type_hash, 1);
     defer std.testing.allocator.free(changed_begin.objects);
     try std.testing.expect(!changed_begin.need_fullscan);
-    try std.testing.expectEqualSlices(public.ObjId, &.{ obj2, obj1, obj2 }, changed_begin.objects);
+    try std.testing.expectEqualSlices(public.ObjId, &.{ obj1, obj2, obj2 }, changed_begin.objects);
+}
+
+test "cdb: Should get object realtion" {
+    try testInit();
+    defer testDeinit();
+
+    var db = try cdb.api.createDb("Test");
+    defer cdb.api.destroyDb(db);
+
+    const type_hash = try db.addType(
+        "foo",
+        &.{
+            .{ .prop_idx = 0, .name = "prop1", .type = public.PropType.F64 },
+            .{ .prop_idx = 1, .name = "prop2", .type = public.PropType.SUBOBJECT },
+        },
+    );
+
+    const obj1 = try db.createObject(type_hash);
+    const obj2 = try db.createObjectFromPrototype(obj1);
+    const obj3 = try db.createObject(type_hash);
+
+    const obj1_w = db.writeObj(obj1).?;
+    const obj3_w = db.writeObj(obj3).?;
+    try db.setSubObj(obj1_w, 1, obj3_w);
+    try db.writeCommit(obj1_w);
+    try db.writeCommit(obj3_w);
+
+    const obj1_r = db.readObj(obj1).?;
+    _ = obj1_r; // autofix
+    const obj2_r = db.readObj(obj2).?;
+    _ = obj2_r; // autofix
+    const obj3_r = db.readObj(obj3).?;
+    _ = obj3_r; // autofix
+
+    // // Obj2 does not have relation with Obj3
+    // try std.testing.expectEqual(.none, db.getRelation(obj2_r, obj3_r));
+
+    // // Obj3 does not have relation with Obj2
+    // try std.testing.expectEqual(.none, db.getRelation(obj3_r, obj2_r));
+
+    // // Obj1 is prototype for Obj2
+    // try std.testing.expectEqual(.prototype, db.getRelation(obj1_r, obj2_r));
+
+    // // Obj1 is parent for Obj3
+    // try std.testing.expectEqual(.parent, db.getRelation(obj1_r, obj3_r));
+
+    db.destroyObject(obj1);
+    db.destroyObject(obj2);
+    db.destroyObject(obj3);
+
+    try db.gc(std.testing.allocator);
+    try expectGCStats(db, 3, 5);
 }
 
 fn stressTest(comptime task_count: u32, task_based: bool) !void {

@@ -132,14 +132,12 @@ CETech provide ZLS as submodule, but you must build it.
 <tabs>
     <tab title="MacOS/Linux">
         <code-block lang="bash">
-            cd externals/shared/tools/zls
-            ../../../../zig/bin/ARCH/zig build -Doptimize=ReleaseFast
+            zig/bin/ARCH/zig build zls
         </code-block>
     </tab>
     <tab title="Windows">
         <code-block lang="bash">
-            cd externals/shared/tools/zls
-            ../../../../zig/bin/ARCH/zig.exe build -Doptimize=ReleaseFast
+            zig/bin/ARCH/zig.exe build zls
         </code-block>
     </tab>
 </tabs>
@@ -149,7 +147,10 @@ CETech provide ZLS as submodule, but you must build it.
 > Repository contain recommended extension.
 
 1. Build [ZLS](#zls)
-2. Install extension `ziglang.vscode-zig` (or install all recommended)
-3. Set zig path to `<FULL_PATH_TO_CETECH_REPO>/zig/bin/<ARCH>/zig`
-4. Set zls path to `<FULL_PATH_TO_CETECH_REPO>/externals/shared/tools/zls/zig-out/bin/zls`
-
+2. Crate vscode configs.
+    <code-block lang="bash">
+        # This generate vscode launch.json with predefined cases and
+        # create or update settings.json with path to zig and zls.
+        zig/bin/ARCH/zig build vscode
+    </code-block>
+3. Install extension `ziglang.vscode-zig` (or install all recommended)

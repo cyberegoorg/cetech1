@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const zjobs = @import("zjobs");
 
@@ -21,7 +22,7 @@ fn getThreadNum() u64 {
     return _job_queue._num_threads;
 }
 
-const JobQueue = zjobs.JobQueue(.{});
+const JobQueue = zjobs.JobQueue(.{ .idle_sleep_ns = 50, .max_job_size = 128, .max_jobs = 1024 });
 
 var _allocator: std.mem.Allocator = undefined;
 var _job_queue: JobQueue = undefined;
@@ -44,8 +45,11 @@ pub fn getThreadName(id: std.Thread.Id) []const u8 {
 }
 
 pub fn start() !void {
-    const num_threads = @max(2, (std.Thread.getCpuCount() catch 2) - 1);
-    log.info("Using {} threads", .{num_threads});
+    const cpu_count = (std.Thread.getCpuCount() catch 2);
+    const cpu_core_count = @max(2, if (builtin.cpu.arch == .x86_64) cpu_count / 2 else cpu_count); // TODO:
+
+    const num_threads = @max(2, (cpu_core_count - 1));
+    log.info("Using {} threads for {} cores", .{ num_threads, cpu_core_count });
 
     _job_queue.start(.{ .num_threads = @truncate(num_threads) });
 

@@ -7,12 +7,15 @@ on:
   pull_request:
   push:
     #branches: ["main"]
-    paths:
-      - "src/**"
-      - "include/**"
-      - "externals/**"
-      - "build.zig"
-      - "build.zig.zon"
+    # paths:
+    #   - ".github/workflows/test.yaml"
+    #   - "src/**"
+    #   - "public/**"
+    #   - "externals/**"
+    #   - "modules/**"
+    #   - "fixtures/**"
+    #   - "build.zig"
+    #   - "build.zig.zon"
 
 concurrency:
   group: ${{ github.head_ref || github.run_id }}-${{ github.actor }}
@@ -72,9 +75,22 @@ jobs:
         with:
           path: zig/bin/x86_64-linux/zig
           key: ${{ runner.arch }}-${{ runner.os }}-zig-${{ steps.zigversion.outputs.content }}
+
+      - name: Zig cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/zig/
+          key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
+
       - name: Init zig
         if: steps.cache-zig.outputs.cache-hit != 'true'
         run: .ci/init_zig.sh x86_64-linux
+
+      - name: Zig cache
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/zig/
+          key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
 
       - name: Build
         run: .ci/build.sh x86_64-linux Debug
@@ -140,15 +156,29 @@ jobs:
         uses: juliangruber/read-file-action@v1
         with:
           path: ./.zigversion
+
       - name: Cache zig binary
         id: cache-zig
         uses: actions/cache@v4
         with:
           path: zig/bin/x86_64-macos/zig
           key: ${{ runner.arch }}-${{ runner.os }}-zig-${{ steps.zigversion.outputs.content }}
+
+      - name: Zig cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/zig/
+          key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
+
       - name: Init zig
         if: steps.cache-zig.outputs.cache-hit != 'true'
         run: .ci/init_zig.sh x86_64-macos
+
+      - name: Zig cache
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/zig/
+          key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
 
       - name: Build
         run: .ci/build.sh x86_64-macos Debug
@@ -162,17 +192,17 @@ jobs:
           retention-days: 1
 
       - name: Test unit
-        run: zig-out/bin/cetech1_test
+        run: TRACY_NO_INVARIANT_CHECK=1 zig-out/bin/cetech1_test
         #run: kcov --include-pattern=/cetech1/src/,/cetech/public/ kcov-output zig-out/bin/cetech1_test
 
       - name: Test headless standalone
-        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 
+        run: TRACY_NO_INVARIANT_CHECK=1 zig-out/bin/cetech1 --headless --max-kernel-tick 5 
 
       - name: Test headless standalone with asset root
-        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
+        run: TRACY_NO_INVARIANT_CHECK=1 zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
 
       - name: Test UI headless 
-        run: zig-out/bin/cetech1 --headless --test-ui --test-ui-junit ./result.xml
+        run: TRACY_NO_INVARIANT_CHECK=1 zig-out/bin/cetech1 --headless --test-ui --test-ui-junit ./result.xml
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4
@@ -206,11 +236,24 @@ jobs:
         with:
           path: zig/bin/x86_64-windows/zig.exe
           key: ${{ runner.arch }}-${{ runner.os }}-zig-${{ steps.zigversion.outputs.content }}
+      
+      - name: Zig cache
+        uses: actions/cache/restore@v4
+        with:
+          path: C:\Users\runneradmin\AppData\Local\zig
+          key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
+
       - name: Init zig
         if: steps.cache-zig.outputs.cache-hit != 'true'
         shell: bash
         run: .ci/init_zig.sh x86_64-windows
-        
+
+      - name: Zig cache
+        uses: actions/cache/save@v4
+        with:
+          path: C:\Users\runneradmin\AppData\Local\zig
+          key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
+
       - name: Build
         shell: bash
         run: .ci/build.sh x86_64-windows Debug

@@ -27,17 +27,20 @@ pub fn main() !void {
     };
     defer output_file.close();
 
-    var w = output_file.writer();
+    var bw = std.io.bufferedWriter(output_file.writer());
+    defer bw.flush() catch undefined;
+    const w = bw.writer();
 
     try w.print("// GENERATED - DO NOT EDIT\n", .{});
     try w.print("const cetech1 = @import(\"cetech1\");\n\n", .{});
+    try w.print("const std = @import(\"std\");\n\n", .{});
 
     for (modules.items) |m| {
         if (m.len == 0) continue;
-        try w.print("extern fn ct_load_module_{s}(?*const cetech1.apidb.ct_apidb_api_t, ?*const cetech1.apidb.ct_allocator_t, u8, u8) callconv(.C) u8;\n", .{m});
+        try w.print("extern fn ct_load_module_{s}(apidb: *const cetech1.apidb.ApiDbAPI, _allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool;\n", .{m});
     }
 
-    try w.print("\npub const descs = [_]cetech1.modules.ct_module_desc_t{{\n", .{});
+    try w.print("\npub const descs = [_]cetech1.modules.ModuleDesc{{\n", .{});
 
     for (modules.items) |m| {
         if (m.len == 0) continue;

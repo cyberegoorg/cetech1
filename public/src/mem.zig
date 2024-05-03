@@ -4,6 +4,12 @@ const builtin = @import("builtin");
 const AtomicInt = std.atomic.Value(u32);
 const FreeIdQueue = QueueWithLock(u32);
 
+const strid = @import("strid.zig");
+
+const ziglangSet = @import("ziglangSet");
+pub const ArraySet = ziglangSet.ArraySetManaged;
+pub const Set = ArraySet;
+
 pub fn QueueWithLock(comptime T: type) type {
     return struct {
         ll: std.DoublyLinkedList(T),
@@ -47,6 +53,13 @@ pub fn PoolWithLock(comptime T: type) type {
             };
         }
 
+        pub fn initPreheated(allocator: std.mem.Allocator, initial_size: usize) !Self {
+            return .{
+                .pool = try std.heap.MemoryPool(T).initPreheated(allocator, initial_size),
+                .lock = std.Thread.Mutex{},
+            };
+        }
+
         pub fn deinit(self: *Self) void {
             self.pool.deinit();
         }
@@ -55,6 +68,12 @@ pub fn PoolWithLock(comptime T: type) type {
             self.lock.lock();
             defer self.lock.unlock();
             return try self.pool.create();
+        }
+
+        pub fn createMany(self: *Self, output: []*T, count: usize) !void {
+            self.lock.lock();
+            defer self.lock.unlock();
+            for (0..count) |idx| output[idx] = try self.pool.create();
         }
 
         pub fn destroy(self: *Self, item: *T) void {
@@ -280,3 +299,65 @@ pub const TmpAllocatorPool = struct {
         self.pool.destroy(true_alloc) catch undefined;
     }
 };
+
+// TODO: unshit
+pub fn StringInternWithLock(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        const Storage = std.AutoHashMap(InternId, T);
+        const has_sentinel = std.meta.sentinel(T) != null;
+
+        pub const InternId = strid.StrId64;
+
+        allocator: std.mem.Allocator,
+        storage: Storage,
+        lck: std.Thread.Mutex = .{},
+
+        pub fn init(allocator: std.mem.Allocator) Self {
+            return Self{
+                .allocator = allocator,
+                .storage = Storage.init(allocator),
+            };
+        }
+
+        pub fn deinit(self: *Self) void {
+            var it = self.storage.valueIterator();
+            while (it.next()) |v| {
+                self.allocator.free(v.*);
+            }
+            self.storage.deinit();
+        }
+
+        pub fn intern(self: *Self, string: T) !T {
+            self.lck.lock();
+            defer self.lck.unlock();
+            const hash = strid.strId64(string);
+
+            const intern_str_result = try self.storage.getOrPut(hash);
+            if (intern_str_result.found_existing) return intern_str_result.value_ptr.*;
+
+            intern_str_result.value_ptr.* = try if (has_sentinel) self.allocator.dupeZ(u8, string) else self.allocator.dupe(u8, string);
+
+            return intern_str_result.value_ptr.*;
+        }
+
+        pub fn internToHash(self: *Self, string: T) !InternId {
+            const hash = strid.strId64(string);
+
+            self.lck.lock();
+            defer self.lck.unlock();
+            const intern_str_result = try self.storage.getOrPut(hash);
+            if (intern_str_result.found_existing) return hash;
+
+            intern_str_result.value_ptr.* = try if (has_sentinel) self.allocator.dupeZ(u8, string) else self.allocator.dupe(u8, string);
+
+            return hash;
+        }
+
+        pub fn findById(self: *Self, id: InternId) ?[:0]const u8 {
+            self.lck.lock();
+            defer self.lck.unlock();
+            return self.storage.get(id);
+        }
+    };
+}

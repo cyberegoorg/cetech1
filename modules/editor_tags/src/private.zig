@@ -209,25 +209,29 @@ fn getTagColor(db: cdb.Db, tag_r: *cdb.Obj) [4]f32 {
 // Tag visual aspect
 var tag_visual_aspect = editor.UiVisualAspect.implement(struct {
     pub fn uiName(
+        buff: [:0]u8,
         allocator: std.mem.Allocator,
         db: cdb.Db,
         obj: cdb.ObjId,
     ) ![:0]const u8 {
+        _ = allocator; // autofix
         const obj_r = db.readObj(obj).?;
-        return std.fmt.allocPrintZ(allocator, "{s}", .{
+        return std.fmt.bufPrintZ(buff, "{s}", .{
             Tag.readStr(db, obj_r, .Name) orelse "No NAME =()",
         });
     }
 
     pub fn uiIcons(
+        buff: [:0]u8,
         allocator: std.mem.Allocator,
         db: cdb.Db,
         obj: cdb.ObjId,
     ) ![:0]const u8 {
+        _ = allocator; // autofix
         _ = db; // autofix
 
         _ = obj;
-        return std.fmt.allocPrintZ(allocator, "{s}", .{coreui.Icons.Tag});
+        return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Tag});
     }
 
     pub fn uiColor(
@@ -298,14 +302,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});
 
-    _g.noproto_config_aspect = try apidb.globalVar(editor_inspector.UiPropertiesConfigAspect, module_name, FOLDER_PROPERTY_CONFIG_ASPECT_NAME, .{});
-    _g.noproto_config_aspect.* = folder_properties_config_aspect;
-
-    _g.tag_prop_aspect = try apidb.globalVar(editor_inspector.UiEmbedPropertyAspect, module_name, TAGS_ASPECT_NAME, .{});
-    _g.tag_prop_aspect.* = tag_prop_aspect;
-
-    _g.tag_visual_aspect = try apidb.globalVar(editor.UiVisualAspect, module_name, TAG_VISUAL_ASPECT_NAME, .{});
-    _g.tag_visual_aspect.* = tag_visual_aspect;
+    _g.noproto_config_aspect = try apidb.globalVarValue(editor_inspector.UiPropertiesConfigAspect, module_name, FOLDER_PROPERTY_CONFIG_ASPECT_NAME, folder_properties_config_aspect);
+    _g.tag_prop_aspect = try apidb.globalVarValue(editor_inspector.UiEmbedPropertyAspect, module_name, TAGS_ASPECT_NAME, tag_prop_aspect);
+    _g.tag_visual_aspect = try apidb.globalVarValue(editor.UiVisualAspect, module_name, TAG_VISUAL_ASPECT_NAME, tag_visual_aspect);
 
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(module_name, editor.CreateAssetI, &create_tag_asset_i, load);
@@ -317,6 +316,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_tags(__apidb: *const cetech1.apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.C) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
+pub export fn ct_load_module_editor_tags(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

@@ -81,10 +81,16 @@ pub const window_vt = public.Window.VTable.implement(struct {
         };
     }
 
-    pub fn windowClosed(window: *anyopaque) bool {
+    pub fn shouldClose(window: *anyopaque) bool {
         const true_w: *Window = @alignCast(@ptrCast(window));
         const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
         return zglfw.Window.shouldClose(glfw_w);
+    }
+
+    pub fn setShouldClose(window: *anyopaque, should_quit: bool) void {
+        const true_w: *Window = @alignCast(@ptrCast(window));
+        const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
+        zglfw.Window.setShouldClose(glfw_w, should_quit);
     }
 
     pub fn getMouseButton(window: *anyopaque, button: public.MouseButton) public.Action {

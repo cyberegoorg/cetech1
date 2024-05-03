@@ -5,10 +5,9 @@ const builtin = @import("builtin");
 const mem = std.mem;
 const Allocator = mem.Allocator;
 const ArrayList = std.ArrayList;
-const StringHashMap = std.StringHashMap;
 
 const apidb = @import("apidb.zig");
-const profiler = @import("profiler.zig");
+const profiler_private = @import("profiler.zig");
 
 const cetech1 = @import("cetech1");
 const public = cetech1.modules;
@@ -120,7 +119,7 @@ pub fn loadAll() !void {
             var item_ptr = try _allocator.create(AllocatorItem);
             item_ptr.* = AllocatorItem{
                 .tracy = cetech1.profiler.AllocatorProfiler.init(
-                    &profiler.api,
+                    &profiler_private.api,
                     _allocator,
                     module_desc.desc.name,
                 ),
@@ -238,6 +237,9 @@ pub fn loadDynModules() !void {
 }
 
 pub fn reloadAllIfNeeded(allocator: std.mem.Allocator) !bool {
+    var zone_ctx = profiler_private.ztracy.ZoneN(@src(), "reloadAllIfNeeded");
+    defer zone_ctx.End();
+
     const keys = _dyn_modules_map.keys();
     const value = _dyn_modules_map.values();
 

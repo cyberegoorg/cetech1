@@ -8,7 +8,7 @@ const kernel = @import("kernel.zig");
 
 const strid = cetech1.strid;
 const public = cetech1.actions;
-const zm = cetech1.zmath;
+const zm = cetech1.math;
 
 pub var api = public.ActionsAPI{
     .createActionSet = createActionSet,

@@ -74,6 +74,8 @@ pub const AssetRootOpenedI = extern struct {
     }
 };
 
+pub const CT_TEMP_FOLDER = ".ct_temp";
+
 /// Asset In/Out interface
 /// Use this if you need define your non-cdb assets importer or exporter
 pub const AssetIOI = struct {
@@ -126,7 +128,7 @@ pub const AssetIOI = struct {
     }
 };
 
-pub const FilteredAsset = extern struct {
+pub const FilteredAsset = struct {
     score: f64,
     obj: cdb.ObjId,
 
@@ -146,79 +148,79 @@ pub const AssetDBAPI = struct {
     const Self = @This();
 
     /// Create new asset with name, folder and probably asset object.
-    pub fn createAsset(self: Self, asset_name: []const u8, asset_folder: cdb.ObjId, asset_obj: ?cdb.ObjId) ?cdb.ObjId {
+    pub inline fn createAsset(self: Self, asset_name: []const u8, asset_folder: cdb.ObjId, asset_obj: ?cdb.ObjId) ?cdb.ObjId {
         return self.createAssetFn(asset_name, asset_folder, asset_obj);
     }
 
     /// Open asset root folder, crete basic struct if not exist and load assets.
-    pub fn openAssetRootFolder(self: Self, asset_root_path: []const u8, tmp_allocator: std.mem.Allocator) !void {
+    pub inline fn openAssetRootFolder(self: Self, asset_root_path: []const u8, tmp_allocator: std.mem.Allocator) !void {
         try self.openAssetRootFolderFn(asset_root_path, tmp_allocator);
     }
 
     /// Get root folder object.
-    pub fn getRootFolder(self: Self) cdb.ObjId {
+    pub inline fn getRootFolder(self: Self) cdb.ObjId {
         return self.getRootFolderFn();
     }
 
     /// Get UUID for obj if exist.
     /// Only object that is loaded/saved has UUID
-    pub fn getUuid(self: Self, obj: cdb.ObjId) ?uuid.Uuid {
+    pub inline fn getUuid(self: Self, obj: cdb.ObjId) ?uuid.Uuid {
         return self.getUuidFn(obj);
     }
 
     /// Get or create UUID for obj.
-    pub fn getOrCreateUuid(self: Self, obj: cdb.ObjId) !uuid.Uuid {
+    pub inline fn getOrCreateUuid(self: Self, obj: cdb.ObjId) !uuid.Uuid {
         return self.getOrCreateUUIDFn(obj);
     }
 
     /// Get objid for UUID if exist.
     /// Only object that is loaded/saved has UUID
-    pub fn getObjId(self: Self, obj_uuid: uuid.Uuid) ?cdb.ObjId {
+    pub inline fn getObjId(self: Self, obj_uuid: uuid.Uuid) ?cdb.ObjId {
         return self.getObjIdFn(obj_uuid);
     }
 
     /// Add AssetIO interface.
-    pub fn addAssetIO(self: Self, asset_io: *AssetIOI) void {
+    pub inline fn addAssetIO(self: Self, asset_io: *AssetIOI) void {
         self.addAssetIOFn(asset_io);
     }
 
     /// Remove AssetIO interface.
-    pub fn removeAssetIO(self: Self, asset_io: *AssetIOI) void {
+    pub inline fn removeAssetIO(self: Self, asset_io: *AssetIOI) void {
         self.removeAssetIOFn(asset_io);
     }
 
     /// Add or remove AssetIO interface based on load param.
-    pub fn addOrRemoveAssetIO(self: Self, asset_io: *AssetIOI, load: bool) void {
+    pub inline fn addOrRemoveAssetIO(self: Self, asset_io: *AssetIOI, load: bool) void {
         if (load) self.addAssetIO(asset_io) else self.removeAssetIO(asset_io);
     }
 
     /// Get path to tmp directory within asset root dir
-    pub fn getTmpPath(self: Self, path_buff: []u8) !?[]u8 {
+    pub inline fn getTmpPath(self: Self, path_buff: []u8) !?[]u8 {
         return try self.getTmpPathFn(path_buff);
     }
 
     /// Is asset modified?
-    pub fn isAssetModified(self: Self, asset: cdb.ObjId) bool {
+    pub inline fn isAssetModified(self: Self, asset: cdb.ObjId) bool {
         return self.isAssetModifiedFn(asset);
     }
 
     /// Is any asset in project modified?
-    pub fn isProjectModified(self: Self) bool {
+    pub inline fn isProjectModified(self: Self) bool {
         return self.isProjectModifiedFn();
     }
 
     /// Force save all assets.
-    pub fn saveAllAssets(self: Self, tmp_allocator: std.mem.Allocator) !void {
+    pub inline fn saveAllAssets(self: Self, tmp_allocator: std.mem.Allocator) !void {
         return self.saveAllAssetsFn(tmp_allocator);
     }
 
     /// Save only modified assets.
-    pub fn saveAllModifiedAssets(self: Self, tmp_allocator: std.mem.Allocator) !void {
+    pub inline fn saveAllModifiedAssets(self: Self, tmp_allocator: std.mem.Allocator) !void {
         return self.saveAllModifiedAssetsFn(tmp_allocator);
     }
 
     /// Save asset.
-    pub fn saveAsset(self: Self, tmp_allocator: std.mem.Allocator, asset: cdb.ObjId) !void {
+    pub inline fn saveAsset(self: Self, tmp_allocator: std.mem.Allocator, asset: cdb.ObjId) !void {
         return self.saveAssetFn(tmp_allocator, asset);
     }
 
@@ -227,8 +229,10 @@ pub const AssetDBAPI = struct {
     getAssetForObj: *const fn (obj: cdb.ObjId) ?cdb.ObjId,
     getObjForAsset: *const fn (obj: cdb.ObjId) ?cdb.ObjId,
     isAssetFolder: *const fn (obj: cdb.ObjId) bool,
-    getFilePathForAsset: *const fn (asset: cdb.ObjId, tmp_allocator: std.mem.Allocator) anyerror![]u8,
-    getPathForFolder: *const fn (asset: cdb.ObjId, tmp_allocator: std.mem.Allocator) anyerror![]u8,
+    isObjAssetObj: *const fn (obj: cdb.ObjId) bool,
+
+    getFilePathForAsset: *const fn (buff: []u8, asset: cdb.ObjId) anyerror![]u8,
+    getPathForFolder: *const fn (buff: []u8, asset: cdb.ObjId) anyerror![]u8,
 
     createNewFolder: *const fn (db: cdb.Db, parent_folder: cdb.ObjId, name: [:0]const u8) anyerror!cdb.ObjId,
     filerAsset: *const fn (tmp_allocator: std.mem.Allocator, filter: [:0]const u8, tags_filter: cdb.ObjId) anyerror!FilteredAssets,

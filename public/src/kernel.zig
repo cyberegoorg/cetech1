@@ -81,7 +81,7 @@ pub const KernelLoopHookI = struct {
     pub const c_name = "ct_kernel_loop_hook_i";
     pub const name_hash = strid.strId64(@This().c_name);
 
-    begin_loop: *const fn () anyerror!void,
+    begin_loop: *const fn (kernel_tick: u64, dt: f32) anyerror!void,
     end_loop: *const fn () anyerror!void,
 
     pub inline fn implement(

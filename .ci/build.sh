@@ -6,8 +6,7 @@ set -e
 ZIG_ARCH=$1
 OPTIMIZE=$2
 
-#./zig/get_zig.sh ${ZIG_ARCH}
-./lfs_pull.sh
+zig/bin/${ZIG_ARCH}/zig build init
 
 function build() {
     WITH_TRACY=$1

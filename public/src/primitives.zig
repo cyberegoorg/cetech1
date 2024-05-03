@@ -5,7 +5,7 @@ pub const Plane = struct {
     dist: f32 = 0,
 };
 
-pub fn frustumPlanesVsSphere(planes: [6]Plane, center: [3]f32, radius: f32) bool {
+pub fn frustumPlanesVsSphere(planes: FrustrumPlanes, center: [3]f32, radius: f32) bool {
     for (0..6) |idx| {
         const world_space_point = zm.loadArr3(center);
         const plane_normal = zm.loadArr3(planes[idx].normal);
@@ -17,7 +17,9 @@ pub fn frustumPlanesVsSphere(planes: [6]Plane, center: [3]f32, radius: f32) bool
     return true;
 }
 
-pub fn buildFrustumPlanes(mtx: [16]f32) [6]Plane {
+pub const FrustrumPlanes = [6]Plane;
+
+pub fn buildFrustumPlanes(mtx: [16]f32) FrustrumPlanes {
     const xw = mtx[3];
     const yw = mtx[7];
     const zw = mtx[11];

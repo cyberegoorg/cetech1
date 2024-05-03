@@ -20,11 +20,11 @@ pub const UiSetMenusAspect = struct {
     pub const name_hash = strid.strId32(@This().c_name);
 
     add_menu: *const fn (
-        allocator: *const std.mem.Allocator,
+        allocator: std.mem.Allocator,
         db: cdb.Db,
         obj: cdb.ObjId,
         prop_idx: u32,
-    ) void,
+    ) anyerror!void = undefined,
 
     pub fn implement(comptime T: type) UiSetMenusAspect {
         if (!std.meta.hasFn(T, "addMenu")) @compileError("implement me");
@@ -39,12 +39,14 @@ pub const UiVisualAspect = struct {
     pub const name_hash = strid.strId32(@This().c_name);
 
     ui_name: ?*const fn (
+        buff: [:0]u8,
         allocator: std.mem.Allocator,
         db: cdb.Db,
         obj: cdb.ObjId,
     ) anyerror![:0]const u8 = null,
 
     ui_icons: ?*const fn (
+        buff: [:0]u8,
         allocator: std.mem.Allocator,
         db: cdb.Db,
         obj: cdb.ObjId,
@@ -80,9 +82,7 @@ pub const ObjContextMenuI = struct {
         db: cdb.Db,
         tab: *TabO,
         context: strid.StrId64,
-        obj: cdb.ObjId,
-        prop_idx: ?u32,
-        in_set_obj: ?cdb.ObjId,
+        obj: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) anyerror!bool,
 
@@ -91,9 +91,7 @@ pub const ObjContextMenuI = struct {
         db: cdb.Db,
         tab: *TabO,
         context: strid.StrId64,
-        obj: cdb.ObjId,
-        prop_idx: ?u32,
-        in_set_obj: ?cdb.ObjId,
+        obj: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) anyerror!void,
 
@@ -137,16 +135,17 @@ pub const CreateAssetI = struct {
 
 pub const TabO = anyopaque;
 
-pub const EditorTabI = extern struct {
+pub const EditorTabI = struct {
     vt: *EditorTabTypeI,
     inst: *TabO,
     tabid: u32 = 0,
-    pinned_obj: cdb.ObjId = .{},
+    pinned_obj: coreui.SelectionItem = coreui.SelectionItem.empty(),
 };
 
 pub const EditorTabTypeIArgs = struct {
     tab_name: [:0]const u8,
     tab_hash: strid.StrId32,
+    category: ?[:0]const u8 = null,
     create_on_init: bool = false,
     show_pin_object: bool = false,
     show_sel_obj_in_title: bool = false,
@@ -158,20 +157,21 @@ pub const EditorTabTypeI = struct {
 
     tab_name: [:0]const u8 = undefined,
     tab_hash: strid.StrId32 = .{},
+    category: ?[:0]const u8 = null,
     create_on_init: bool = false,
     show_pin_object: bool = false,
     show_sel_obj_in_title: bool = false,
 
     menu_name: *const fn () anyerror![:0]const u8 = undefined,
     title: *const fn (*TabO) anyerror![:0]const u8 = undefined,
-    can_open: ?*const fn (cdb.Db, cdb.ObjId) anyerror!bool = null,
+    can_open: ?*const fn (std.mem.Allocator, cdb.Db, []const coreui.SelectionItem) anyerror!bool = null,
 
-    create: *const fn (cdb.Db) anyerror!?*EditorTabI = undefined,
+    create: *const fn (cdb.Db, tab_id: u32) anyerror!?*EditorTabI = undefined,
     destroy: *const fn (*EditorTabI) anyerror!void = undefined,
 
     menu: ?*const fn (*TabO) anyerror!void = null,
     ui: *const fn (*TabO, kernel_tick: u64, dt: f32) anyerror!void = undefined,
-    obj_selected: ?*const fn (*TabO, cdb.Db, cdb.ObjId) anyerror!void = null,
+    obj_selected: ?*const fn (*TabO, cdb.Db, []const coreui.SelectionItem) anyerror!void = null,
     focused: ?*const fn (*TabO) anyerror!void = null,
     asset_root_opened: ?*const fn (*TabO) anyerror!void = null,
 
@@ -193,6 +193,7 @@ pub const EditorTabTypeI = struct {
         return EditorTabTypeI{
             .tab_name = args.tab_name,
             .tab_hash = args.tab_hash,
+            .category = args.category,
             .create_on_init = args.create_on_init,
             .show_pin_object = args.show_pin_object,
             .show_sel_obj_in_title = args.show_sel_obj_in_title,
@@ -215,10 +216,10 @@ pub const EditorTabTypeI = struct {
 
 pub const EditorAPI = struct {
     // Selection
-    propagateSelection: *const fn (db: cdb.Db, obj: cdb.ObjId) void,
+    propagateSelection: *const fn (db: cdb.Db, tab: *TabO, obj: []const coreui.SelectionItem) void,
 
     // Tabs
-    openTabWithPinnedObj: *const fn (db: cdb.Db, tab_type_hash: strid.StrId32, obj: cdb.ObjId) void,
+    openTabWithPinnedObj: *const fn (db: cdb.Db, tab_type_hash: strid.StrId32, obj: coreui.SelectionItem) void,
     getAllTabsByType: *const fn (allocator: std.mem.Allocator, tab_type_hash: strid.StrId32) anyerror![]*EditorTabI,
 
     showObjContextMenu: *const fn (
@@ -226,16 +227,15 @@ pub const EditorAPI = struct {
         db: cdb.Db,
         tab: *TabO,
         contexts: []const strid.StrId64,
-        obj: cdb.ObjId,
-        prop_idx: ?u32,
-        in_set_obj: ?cdb.ObjId,
+        obj: coreui.SelectionItem,
     ) anyerror!void,
 
-    buffFormatObjLabel: *const fn (allocator: std.mem.Allocator, buff: [:0]u8, db: cdb.Db, obj: cdb.ObjId, with_id: bool) ?[:0]u8,
-    getObjColor: *const fn (db: cdb.Db, obj: cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cdb.ObjId) [4]f32,
+    buffFormatObjLabel: *const fn (allocator: std.mem.Allocator, buff: [:0]u8, db: cdb.Db, obj: cdb.ObjId, with_id: bool, uuid_id: bool) ?[:0]u8,
 
+    getStateColor: *const fn (state: cdb.ObjRelation) [4]f32,
+    getObjColor: *const fn (db: cdb.Db, obj: cdb.ObjId, in_set_obj: ?cdb.ObjId) ?[4]f32,
     getAssetColor: *const fn (db: cdb.Db, obj: cdb.ObjId) [4]f32,
-    getPropertyColor: *const fn (db: cdb.Db, obj: cdb.ObjId, prop_idx: u32) ?[4]f32,
+
     isColorsEnabled: *const fn () bool,
     selectObjFromMenu: *const fn (allocator: std.mem.Allocator, db: cdb.Db, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) ?cdb.ObjId,
 };

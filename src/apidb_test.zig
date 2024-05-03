@@ -86,7 +86,10 @@ test "Can implement and use interface" {
     try apidb.init(std.testing.allocator);
     defer apidb.deinit();
 
-    const FooInterace = struct {
+    const FooInterface = struct {
+        pub const c_name = "ct_foo_i";
+        pub const name_hash = strid.strId64(@This().c_name);
+
         bar: *const fn () f32,
     };
 
@@ -96,10 +99,14 @@ test "Can implement and use interface" {
         }
     };
 
-    var foo_impl = FooInterace{ .bar = &FooInteraceImpl.barImpl };
+    var foo_impl = FooInterface{ .bar = &FooInteraceImpl.barImpl };
 
-    try apidb.api.implInterfaceFn("foo", cetech1.strid.strId64("foo_i"), &foo_impl);
-    var foo_i_ptr: *const FooInterace = @alignCast(@ptrCast(apidb.api.getFirstImplFn(cetech1.strid.strId64("foo_i")).?.interface));
+    try apidb.api.implInterface(.testing, FooInterface, &foo_impl);
+
+    const impls = apidb.api.getImpl(std.testing.allocator, FooInterface) catch undefined;
+    defer std.testing.allocator.free(impls);
+
+    var foo_i_ptr: *const FooInterface = impls[0];
 
     try std.testing.expectEqual(@intFromPtr(&foo_impl), @intFromPtr(foo_i_ptr));
 
@@ -137,9 +144,9 @@ test "Interface should have multiple implementation" {
     try apidb.api.implInterface(.foo, ct_foo_i, &foo_impl2);
 
     var acc: i32 = 0.0;
-    var it = apidb.api.getFirstImpl(ct_foo_i);
-    while (it) |node| : (it = node.next) {
-        var iface = cetech1.apidb.ApiDbAPI.toInterface(ct_foo_i, node);
+    const impls = apidb.api.getImpl(std.testing.allocator, ct_foo_i) catch undefined;
+    defer std.testing.allocator.free(impls);
+    for (impls) |iface| {
         acc += iface.bar();
     }
 
@@ -178,9 +185,9 @@ test "Interface implementation can be removed" {
     apidb.api.removeImpl(.foo, ct_foo_i, &foo_impl2);
     {
         var acc: i32 = 0;
-        var it = apidb.api.getFirstImpl(ct_foo_i);
-        while (it) |node| : (it = node.next) {
-            var iface = cetech1.apidb.ApiDbAPI.toInterface(ct_foo_i, node);
+        const impls = apidb.api.getImpl(std.testing.allocator, ct_foo_i) catch undefined;
+        defer std.testing.allocator.free(impls);
+        for (impls) |iface| {
             acc += iface.bar();
         }
 
@@ -191,9 +198,9 @@ test "Interface implementation can be removed" {
     apidb.api.removeImpl(.foo, ct_foo_i, &foo_impl1);
     {
         var acc: i32 = 0;
-        var it = apidb.api.getFirstImpl(ct_foo_i);
-        while (it) |node| : (it = node.next) {
-            var iface = cetech1.apidb.ApiDbAPI.toInterface(ct_foo_i, node);
+        const impls = apidb.api.getImpl(std.testing.allocator, ct_foo_i) catch undefined;
+        defer std.testing.allocator.free(impls);
+        for (impls) |iface| {
             acc += iface.bar();
         }
 

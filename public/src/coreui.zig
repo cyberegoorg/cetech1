@@ -1,3 +1,4 @@
+// TODO: TMP SHIT big module
 const std = @import("std");
 
 const cdb = @import("cdb.zig");
@@ -5,19 +6,98 @@ const modules = @import("modules.zig");
 const strid = @import("strid.zig");
 
 const platform = @import("platform.zig");
-const gfx = @import("gfx.zig");
+const gpu = @import("gpu.zig");
+const ArraySet = @import("mem.zig").Set;
 
 const log = std.log.scoped(.coreui);
 
 pub const CoreIcons = @import("coreui_icons.zig").Icons;
 
-pub const ObjSelection = cdb.CdbTypeDecl(
-    "ct_obj_selection",
-    enum(u32) {
-        Selection = 0,
-    },
-    struct {},
-);
+// TODO: taged union?
+pub const SelectionItem = struct {
+    top_level_obj: cdb.ObjId,
+    obj: cdb.ObjId,
+
+    in_set_obj: ?cdb.ObjId = null,
+    parent_obj: ?cdb.ObjId = null,
+    prop_idx: ?u32 = null,
+
+    pub fn isEmpty(self: SelectionItem) bool {
+        return self.obj.isEmpty();
+    }
+
+    pub fn empty() SelectionItem {
+        return .{ .top_level_obj = .{}, .obj = .{} };
+    }
+};
+
+// TODO: TEMP solution. need api
+pub const Selection = struct {
+    const Item = SelectionItem;
+    const SetImpl = ArraySet(Item);
+    storage: SetImpl,
+
+    pub fn init(allocator: std.mem.Allocator) Selection {
+        return Selection{ .storage = SetImpl.init(allocator) };
+    }
+
+    pub fn deinit(self: *Selection) void {
+        self.storage.deinit();
+    }
+
+    pub fn clear(self: *Selection) void {
+        self.storage.clearRetainingCapacity();
+    }
+
+    pub fn add(self: *Selection, objs: []const Item) !void {
+        _ = try self.storage.appendSlice(objs);
+    }
+
+    pub fn remove(self: *Selection, objs: []const Item) void {
+        self.storage.removeAllSlice(objs);
+    }
+
+    pub fn set(self: *Selection, objs: []const Item) !void {
+        self.clear();
+        try self.add(objs);
+    }
+
+    pub fn isSelected(self: *Selection, obj: Item) bool {
+        return self.storage.contains(obj);
+    }
+
+    pub fn isSelectedAll(self: *Selection, obj: []const Item) bool {
+        return self.storage.containsAllSlice(obj);
+    }
+
+    pub fn count(self: Selection) usize {
+        return self.storage.cardinality();
+    }
+
+    pub fn toSlice(self: Selection, allocator: std.mem.Allocator) ?[]Item {
+        var result = std.ArrayList(Item).initCapacity(allocator, self.count()) catch return null;
+        var it = self.storage.iterator();
+
+        while (it.next()) |v| {
+            result.appendAssumeCapacity(v.key_ptr.*);
+        }
+
+        return result.toOwnedSlice() catch return null;
+    }
+
+    pub fn first(self: Selection) Item {
+        var it = self.storage.iterator();
+        while (it.next()) |v| {
+            return v.key_ptr.*;
+        }
+
+        return SelectionItem.empty();
+    }
+
+    pub fn isEmpty(self: Selection) bool {
+        return self.storage.isEmpty();
+    }
+};
 
 pub const Colors = struct {
     pub const Deleted = .{ 0.7, 0.0, 0.0, 1.0 };
@@ -36,11 +116,11 @@ pub const Icons = struct {
     pub const Save = CoreIcons.FA_FLOPPY_DISK;
     pub const SaveAll = CoreIcons.FA_FLOPPY_DISK;
 
-    pub const Add = CoreIcons.FA_PLUS;
+    pub const Add = CoreIcons.FA_CIRCLE_PLUS;
     pub const AddFile = CoreIcons.FA_FILE_CIRCLE_PLUS;
     pub const AddAsset = CoreIcons.FA_FILE_CIRCLE_PLUS;
     pub const AddFolder = CoreIcons.FA_FOLDER_PLUS;
-    pub const Remove = CoreIcons.FA_MINUS;
+    pub const Remove = CoreIcons.FA_CIRCLE_MINUS;
     pub const Close = CoreIcons.FA_XMARK;
     pub const Delete = CoreIcons.FA_TRASH;
 
@@ -91,6 +171,22 @@ pub const Icons = struct {
     pub const Authors = CoreIcons.FA_USER_INJURED;
 
     pub const Link = CoreIcons.FA_LINK;
+
+    pub const Graph = CoreIcons.FA_DIAGRAM_PROJECT;
+    pub const FitContent = CoreIcons.FA_ARROWS_TO_CIRCLE;
+    pub const Build = CoreIcons.FA_GEARS;
+
+    pub const Group = CoreIcons.FA_OBJECT_GROUP;
+    pub const Node = CoreIcons.FA_VECTOR_SQUARE;
+    pub const Connection = CoreIcons.FA_LINK;
+    pub const Const = CoreIcons.FA_PENCIL;
+    pub const Random = CoreIcons.FA_SHUFFLE;
+    pub const Bounding = CoreIcons.FA_ENVELOPE;
+
+    pub const Input = CoreIcons.FA_RIGHT_TO_BRACKET;
+    pub const Output = CoreIcons.FA_RIGHT_FROM_BRACKET;
+
+    pub const Metrics = CoreIcons.FA_CHART_LINE;
 };
 
 pub const CoreUII = struct {
@@ -152,45 +248,45 @@ pub const ImGuiTestGuiFunc = fn (context: *TestContext) callconv(.C) void;
 pub const ImGuiTestTestFunc = fn (context: *TestContext) callconv(.C) void;
 pub const Test = anyopaque;
 pub const TestContext = opaque {
-    pub fn setRef(ctx: *TestContext, coreui_api: *const CoreUIApi, ref: [:0]const u8) void {
+    pub inline fn setRef(ctx: *TestContext, coreui_api: *const CoreUIApi, ref: [:0]const u8) void {
         return coreui_api.testContextSetRef(ctx, ref);
     }
 
-    pub fn itemAction(ctx: *TestContext, coreui_api: *const CoreUIApi, action: Actions, ref: [:0]const u8, flags: TestOpFlags, action_arg: ?*anyopaque) void {
+    pub inline fn itemAction(ctx: *TestContext, coreui_api: *const CoreUIApi, action: Actions, ref: [:0]const u8, flags: TestOpFlags, action_arg: ?*anyopaque) void {
         return coreui_api.testItemAction(ctx, action, ref, flags, action_arg);
     }
 
-    pub fn windowFocus(ctx: *TestContext, coreui_api: *const CoreUIApi, ref: [:0]const u8) void {
+    pub inline fn windowFocus(ctx: *TestContext, coreui_api: *const CoreUIApi, ref: [:0]const u8) void {
         return coreui_api.testContextWindowFocus(ctx, ref);
     }
 
-    pub fn yield(ctx: *TestContext, coreui_api: *const CoreUIApi, frame_count: i32) void {
+    pub inline fn yield(ctx: *TestContext, coreui_api: *const CoreUIApi, frame_count: i32) void {
         return coreui_api.testContextYield(ctx, frame_count);
     }
 
-    pub fn menuAction(ctx: *TestContext, coreui_api: *const CoreUIApi, action: Actions, ref: [:0]const u8) void {
+    pub inline fn menuAction(ctx: *TestContext, coreui_api: *const CoreUIApi, action: Actions, ref: [:0]const u8) void {
         return coreui_api.testContextMenuAction(ctx, action, ref);
     }
 
-    pub fn itemInputStrValue(ctx: *TestContext, coreui_api: *const CoreUIApi, ref: [:0]const u8, value: [:0]const u8) void {
+    pub inline fn itemInputStrValue(ctx: *TestContext, coreui_api: *const CoreUIApi, ref: [:0]const u8, value: [:0]const u8) void {
         return coreui_api.testItemInputStrValue(ctx, ref, value);
     }
 
-    pub fn itemInputIntValue(ctx: *TestContext, coreui_api: *const CoreUIApi, ref: [:0]const u8, value: i32) void {
+    pub inline fn itemInputIntValue(ctx: *TestContext, coreui_api: *const CoreUIApi, ref: [:0]const u8, value: i32) void {
         return coreui_api.testItemInputIntValue(ctx, ref, value);
     }
 
-    pub fn itemInputFloatValue(ctx: *TestContext, coreui_api: *const CoreUIApi, ref: [:0]const u8, value: f32) void {
+    pub inline fn itemInputFloatValue(ctx: *TestContext, coreui_api: *const CoreUIApi, ref: [:0]const u8, value: f32) void {
         return coreui_api.testItemInputFloatValue(ctx, ref, value);
     }
-    pub fn dragAndDrop(ctx: *TestContext, coreui_api: *const CoreUIApi, ref_src: [:0]const u8, ref_dst: [:0]const u8, button: MouseButton) void {
+    pub inline fn dragAndDrop(ctx: *TestContext, coreui_api: *const CoreUIApi, ref_src: [:0]const u8, ref_dst: [:0]const u8, button: MouseButton) void {
         return coreui_api.testDragAndDrop(ctx, ref_src, ref_dst, button);
     }
-    pub fn keyDown(ctx: *TestContext, coreui_api: *const CoreUIApi, key_chord: Key) void {
+    pub inline fn keyDown(ctx: *TestContext, coreui_api: *const CoreUIApi, key_chord: Key) void {
         return coreui_api.testKeyDown(ctx, key_chord);
     }
 
-    pub fn keyUp(ctx: *TestContext, coreui_api: *const CoreUIApi, key_chord: Key) void {
+    pub inline fn keyUp(ctx: *TestContext, coreui_api: *const CoreUIApi, key_chord: Key) void {
         return coreui_api.testKeyUp(ctx, key_chord);
     }
 };
@@ -215,8 +311,12 @@ pub const FilterItem = extern struct {
     spec: [*:0]const u8,
 };
 
+const BeginDisabled = struct {
+    disabled: bool = true,
+};
+
 pub const CoreUIApi = struct {
-    pub fn checkTestError(
+    pub inline fn checkTestError(
         coreui_api: *const CoreUIApi,
         src: std.builtin.SourceLocation,
         err: anyerror,
@@ -226,7 +326,7 @@ pub const CoreUIApi = struct {
         _ = coreui_api.testCheck(src, .{}, false, msg);
     }
 
-    pub fn registerTest(
+    pub inline fn registerTest(
         self: @This(),
         category: [:0]const u8,
         name: [:0]const u8,
@@ -261,6 +361,7 @@ pub const CoreUIApi = struct {
     }
 
     showDemoWindow: *const fn () void,
+    showMetricsWindow: *const fn () void,
     showTestingWindow: *const fn (show: *bool) void,
     showExternalCredits: *const fn (show: *bool) void,
     showAuthors: *const fn (show: *bool) void,
@@ -371,6 +472,9 @@ pub const CoreUIApi = struct {
     isItemClicked: *const fn (button: MouseButton) bool,
     isItemActivated: *const fn () bool,
 
+    isRectVisible: *const fn (rect: [2]f32) bool,
+    isItemVisible: *const fn () bool,
+
     beginPopupModal: *const fn (name: [:0]const u8, args: Begin) bool,
     openPopup: *const fn (str_id: [:0]const u8, flags: PopupFlags) void,
     endPopup: *const fn () void,
@@ -396,6 +500,8 @@ pub const CoreUIApi = struct {
     getItemRectMax: *const fn () [2]f32,
     getItemRectMin: *const fn () [2]f32,
     getCursorPosX: *const fn () f32,
+    getCursorPos: *const fn () [2]f32,
+    getCursorScreenPos: *const fn () [2]f32,
     calcTextSize: *const fn (txt: []const u8, args: CalcTextSize) [2]f32,
     getWindowPos: *const fn () [2]f32,
     getWindowContentRegionMax: *const fn () [2]f32,
@@ -415,16 +521,7 @@ pub const CoreUIApi = struct {
     isMouseDown: *const fn (mouse_button: MouseButton) bool,
     isMouseClicked: *const fn (mouse_button: MouseButton) bool,
 
-    // Selection OBJ
-    isSelected: *const fn (db: cdb.Db, selection: cdb.ObjId, obj: cdb.ObjId) bool,
-    addToSelection: *const fn (db: cdb.Db, selection: cdb.ObjId, obj: cdb.ObjId) anyerror!void,
-    removeFromSelection: *const fn (db: cdb.Db, selection: cdb.ObjId, obj: cdb.ObjId) anyerror!void,
-    clearSelection: *const fn (allocator: std.mem.Allocator, db: cdb.Db, selection: cdb.ObjId) anyerror!void,
-    setSelection: *const fn (allocator: std.mem.Allocator, db: cdb.Db, selection: cdb.ObjId, obj: cdb.ObjId) anyerror!void,
-    selectedCount: *const fn (allocator: std.mem.Allocator, db: cdb.Db, selection: cdb.ObjId) u32,
-    getFirstSelected: *const fn (allocator: std.mem.Allocator, db: cdb.Db, selection: cdb.ObjId) cdb.ObjId,
-    getSelected: *const fn (allocator: std.mem.Allocator, db: cdb.Db, selection: cdb.ObjId) ?[]const cdb.ObjId,
-    handleSelection: *const fn (allocator: std.mem.Allocator, db: cdb.Db, selection: cdb.ObjId, obj: cdb.ObjId, multiselect_enabled: bool) anyerror!void,
+    handleSelection: *const fn (allocator: std.mem.Allocator, db: cdb.Db, selection: *Selection, obj: SelectionItem, multiselect_enabled: bool) anyerror!void,
 
     // TODO: MOVE?
     // Tests
@@ -461,12 +558,959 @@ pub const CoreUIApi = struct {
     setScaleFactor: *const fn (scale_factor: f32) void,
     getScaleFactor: *const fn () f32,
 
-    image: *const fn (texture: gfx.TextureHandle, args: Image) void,
+    image: *const fn (texture: gpu.TextureHandle, args: Image) void,
     getMousePos: *const fn () [2]f32,
     getMouseDragDelta: *const fn (drag_button: MouseButton, args: MouseDragDelta) [2]f32,
     setMouseCursor: *const fn (cursor: Cursor) void,
 
+    popItemWidth: *const fn () void,
+    pushItemWidth: *const fn (item_width: f32) void,
+
     mainDockSpace: *const fn (flags: DockNodeFlags) Ident,
+
+    beginPlot: *const fn (title_id: [:0]const u8, args: BeginPlot) bool,
+    endPlot: *const fn () void,
+    plotLineF64: *const fn (label_id: [:0]const u8, args: PlotLineGen(f64)) void,
+    plotLineValuesF64: *const fn (label_id: [:0]const u8, args: PlotLineValuesGen(f64)) void,
+    setupAxis: *const fn (axis: Axis, args: SetupAxis) void,
+    setupFinish: *const fn () void,
+    setupLegend: *const fn (location: PlotLocation, flags: LegendFlags) void,
+
+    getWindowDrawList: *const fn () DrawList,
+
+    beginDisabled: *const fn (args: BeginDisabled) void,
+    endDisabled: *const fn () void,
+};
+
+pub const DrawCmd = extern struct {
+    clip_rect: [4]f32,
+    texture_id: gpu.TextureHandle,
+    vtx_offset: c_uint,
+    idx_offset: c_uint,
+    elem_count: c_uint,
+    user_callback: ?DrawCallback,
+    user_callback_data: ?*anyopaque,
+};
+
+pub const DrawCallback = *const fn (*const anyopaque, *const DrawCmd) callconv(.C) void;
+
+pub const DrawFlags = packed struct(c_int) {
+    closed: bool = false,
+    _padding0: u3 = 0,
+    round_corners_top_left: bool = false,
+    round_corners_top_right: bool = false,
+    round_corners_bottom_left: bool = false,
+    round_corners_bottom_right: bool = false,
+    round_corners_none: bool = false,
+    _padding1: u23 = 0,
+
+    pub const round_corners_top = DrawFlags{
+        .round_corners_top_left = true,
+        .round_corners_top_right = true,
+    };
+
+    pub const round_corners_bottom = DrawFlags{
+        .round_corners_bottom_left = true,
+        .round_corners_bottom_right = true,
+    };
+
+    pub const round_corners_left = DrawFlags{
+        .round_corners_top_left = true,
+        .round_corners_bottom_left = true,
+    };
+
+    pub const round_corners_right = DrawFlags{
+        .round_corners_top_right = true,
+        .round_corners_bottom_right = true,
+    };
+
+    pub const round_corners_all = DrawFlags{
+        .round_corners_top_left = true,
+        .round_corners_top_right = true,
+        .round_corners_bottom_left = true,
+        .round_corners_bottom_right = true,
+    };
+};
+
+pub const DrawIdx = u16;
+pub const DrawVert = extern struct {
+    pos: [2]f32,
+    uv: [2]f32,
+    color: u32,
+};
+
+pub const DrawListFlags = packed struct(c_int) {
+    anti_aliased_lines: bool = false,
+    anti_aliased_lines_use_tex: bool = false,
+    anti_aliased_fill: bool = false,
+    allow_vtx_offset: bool = false,
+
+    _padding: u28 = 0,
+};
+
+pub const ClipRect = struct {
+    pmin: [2]f32,
+    pmax: [2]f32,
+    intersect_with_current: bool = false,
+};
+
+pub const PathRect = struct {
+    bmin: [2]f32,
+    bmax: [2]f32,
+    rounding: f32 = 0.0,
+    flags: DrawFlags = .{},
+};
+pub const DrawList = struct {
+    ptr: *anyopaque,
+    vtable: *const VTable,
+
+    pub inline fn getOwnerName(self: DrawList) ?[*:0]const u8 {
+        return self.vtable.getOwnerName(self.ptr);
+    }
+    pub inline fn reset(self: DrawList) void {
+        self.vtable.reset(self.ptr);
+    }
+    pub inline fn clearMemory(self: DrawList) void {
+        self.vtable.clearMemory(self.ptr);
+    }
+    pub inline fn getVertexBufferLength(self: DrawList) i32 {
+        return self.vtable.getVertexBufferLength(self.ptr);
+    }
+    pub inline fn getVertexBufferData(self: DrawList) [*]DrawVert {
+        return @ptrCast(self.vtable.getVertexBufferData(self.ptr));
+    }
+
+    pub inline fn getIndexBufferLength(self: DrawList) i32 {
+        return self.vtable.getIndexBufferLength(self.ptr);
+    }
+    pub inline fn getIndexBufferData(self: DrawList) [*]DrawIdx {
+        return self.vtable.getIndexBufferData(self.ptr);
+    }
+
+    pub inline fn getCurrentIndex(self: DrawList) u32 {
+        return self.vtable.getCurrentIndex(self.ptr);
+    }
+    pub inline fn getCmdBufferLength(self: DrawList) i32 {
+        return self.vtable.getCmdBufferLength(self.ptr);
+    }
+    pub inline fn getCmdBufferData(self: DrawList) [*]DrawCmd {
+        return @ptrCast(self.vtable.getCmdBufferData(self.ptr));
+    }
+
+    pub inline fn setDrawListFlags(self: DrawList, flags: DrawListFlags) void {
+        return self.vtable.setDrawListFlags(self.ptr, .{
+            .anti_aliased_lines = flags.anti_aliased_lines,
+            .anti_aliased_lines_use_tex = flags.anti_aliased_lines_use_tex,
+            .anti_aliased_fill = flags.anti_aliased_fill,
+            .allow_vtx_offset = flags.allow_vtx_offset,
+        });
+    }
+    pub inline fn getDrawListFlags(self: DrawList) DrawListFlags {
+        const flags = self.vtable.getDrawListFlags(
+            self.ptr,
+        );
+        return .{
+            .anti_aliased_lines = flags.anti_aliased_lines,
+            .anti_aliased_lines_use_tex = flags.anti_aliased_lines_use_tex,
+            .anti_aliased_fill = flags.anti_aliased_fill,
+            .allow_vtx_offset = flags.allow_vtx_offset,
+        };
+    }
+    pub inline fn pushClipRect(self: DrawList, args: ClipRect) void {
+        return self.vtable.pushClipRect(self.ptr, .{
+            .pmin = args.pmin,
+            .pmax = args.pmax,
+            .intersect_with_current = args.intersect_with_current,
+        });
+    }
+    pub inline fn pushClipRectFullScreen(self: DrawList) void {
+        return self.vtable.pushClipRectFullScreen(
+            self.ptr,
+        );
+    }
+    pub inline fn popClipRect(self: DrawList) void {
+        return self.vtable.popClipRect(
+            self.ptr,
+        );
+    }
+    pub inline fn pushTextureId(self: DrawList, texture_id: gpu.TextureHandle) void {
+        return self.vtable.pushTextureId(self.ptr, @ptrFromInt(texture_id.idx));
+    }
+    pub inline fn popTextureId(self: DrawList) void {
+        return self.vtable.popTextureId(
+            self.ptr,
+        );
+    }
+    pub inline fn getClipRectMin(self: DrawList) [2]f32 {
+        return self.vtable.getClipRectMin(
+            self.ptr,
+        );
+    }
+    pub inline fn getClipRectMax(self: DrawList) [2]f32 {
+        return self.vtable.getClipRectMax(
+            self.ptr,
+        );
+    }
+    pub inline fn addLine(self: DrawList, args: struct { p1: [2]f32, p2: [2]f32, col: u32, thickness: f32 }) void {
+        self.vtable.addLine(self.ptr, .{
+            .p1 = args.p1,
+            .p2 = args.p2,
+            .col = args.col,
+            .thickness = args.thickness,
+        });
+    }
+    pub inline fn addRect(self: DrawList, args: struct {
+        pmin: [2]f32,
+        pmax: [2]f32,
+        col: u32,
+        rounding: f32 = 0.0,
+        flags: DrawFlags = .{},
+        thickness: f32 = 1.0,
+    }) void {
+        self.vtable.addRect(self.ptr, .{
+            .pmin = args.pmin,
+            .pmax = args.pmax,
+            .col = args.col,
+            .rounding = args.rounding,
+            .flags = .{
+                .closed = args.flags.closed,
+                .round_corners_top_left = args.flags.round_corners_top_left,
+                .round_corners_top_right = args.flags.round_corners_top_right,
+                .round_corners_bottom_left = args.flags.round_corners_bottom_left,
+                .round_corners_bottom_right = args.flags.round_corners_bottom_right,
+                .round_corners_none = args.flags.round_corners_none,
+            },
+            .thickness = args.thickness,
+        });
+    }
+    pub inline fn addRectFilled(self: DrawList, args: struct {
+        pmin: [2]f32,
+        pmax: [2]f32,
+        col: u32,
+        rounding: f32 = 0.0,
+        flags: DrawFlags = .{},
+    }) void {
+        self.vtable.addRectFilled(self.ptr, .{
+            .pmin = args.pmin,
+            .pmax = args.pmax,
+            .col = args.col,
+            .rounding = args.rounding,
+            .flags = .{
+                .closed = args.flags.closed,
+                .round_corners_top_left = args.flags.round_corners_top_left,
+                .round_corners_top_right = args.flags.round_corners_top_right,
+                .round_corners_bottom_left = args.flags.round_corners_bottom_left,
+                .round_corners_bottom_right = args.flags.round_corners_bottom_right,
+                .round_corners_none = args.flags.round_corners_none,
+            },
+        });
+    }
+    pub inline fn addRectFilledMultiColor(self: DrawList, args: struct {
+        pmin: [2]f32,
+        pmax: [2]f32,
+        col_upr_left: u32,
+        col_upr_right: u32,
+        col_bot_right: u32,
+        col_bot_left: u32,
+    }) void {
+        self.vtable.addRectFilledMultiColor(self.ptr, .{
+            .pmin = args.pmin,
+            .pmax = args.pmax,
+            .col_upr_left = args.col_upr_left,
+            .col_upr_right = args.col_upr_right,
+            .col_bot_right = args.col_bot_right,
+            .col_bot_left = args.col_bot_left,
+        });
+    }
+    pub inline fn addQuad(self: DrawList, args: struct {
+        p1: [2]f32,
+        p2: [2]f32,
+        p3: [2]f32,
+        p4: [2]f32,
+        col: u32,
+        thickness: f32 = 1.0,
+    }) void {
+        self.vtable.addQuad(self.ptr, .{
+            .p1 = args.p1,
+            .p2 = args.p2,
+            .p3 = args.p3,
+            .p4 = args.p4,
+            .col = args.col,
+            .thickness = args.thickness,
+        });
+    }
+    pub inline fn addQuadFilled(self: DrawList, args: struct {
+        p1: [2]f32,
+        p2: [2]f32,
+        p3: [2]f32,
+        p4: [2]f32,
+        col: u32,
+    }) void {
+        self.vtable.addQuadFilled(self.ptr, .{
+            .p1 = args.p1,
+            .p2 = args.p2,
+            .p3 = args.p3,
+            .p4 = args.p4,
+            .col = args.col,
+        });
+    }
+    pub inline fn addTriangle(self: DrawList, args: struct {
+        p1: [2]f32,
+        p2: [2]f32,
+        p3: [2]f32,
+        col: u32,
+        thickness: f32 = 1.0,
+    }) void {
+        self.vtable.addTriangle(self.ptr, .{
+            .p1 = args.p1,
+            .p2 = args.p2,
+            .p3 = args.p3,
+            .col = args.col,
+            .thickness = args.thickness,
+        });
+    }
+    pub inline fn addTriangleFilled(self: DrawList, args: struct {
+        p1: [2]f32,
+        p2: [2]f32,
+        p3: [2]f32,
+        col: u32,
+    }) void {
+        self.vtable.addTriangleFilled(self.ptr, .{
+            .p1 = args.p1,
+            .p2 = args.p2,
+            .p3 = args.p3,
+            .col = args.col,
+        });
+    }
+    pub inline fn addCircle(self: DrawList, args: struct {
+        p: [2]f32,
+        r: f32,
+        col: u32,
+        num_segments: i32 = 0,
+        thickness: f32 = 1.0,
+    }) void {
+        self.vtable.addCircle(self.ptr, .{
+            .p = args.p,
+            .r = args.r,
+            .col = args.col,
+            .num_segments = args.num_segments,
+            .thickness = args.thickness,
+        });
+    }
+    pub inline fn addCircleFilled(self: DrawList, args: struct {
+        p: [2]f32,
+        r: f32,
+        col: u32,
+        num_segments: u16 = 0,
+    }) void {
+        self.vtable.addCircleFilled(self.ptr, .{
+            .p = args.p,
+            .r = args.r,
+            .col = args.col,
+            .num_segments = args.num_segments,
+        });
+    }
+    pub inline fn addNgon(self: DrawList, args: struct {
+        p: [2]f32,
+        r: f32,
+        col: u32,
+        num_segments: u32,
+        thickness: f32 = 1.0,
+    }) void {
+        self.vtable.addNgon(self.ptr, .{
+            .p = args.p,
+            .r = args.r,
+            .col = args.col,
+            .num_segments = args.num_segments,
+            .thickness = args.thickness,
+        });
+    }
+    pub inline fn addNgonFilled(self: DrawList, args: struct {
+        p: [2]f32,
+        r: f32,
+        col: u32,
+        num_segments: u32,
+    }) void {
+        self.vtable.addNgonFilled(self.ptr, .{
+            .p = args.p,
+            .r = args.r,
+            .col = args.col,
+            .num_segments = args.num_segments,
+        });
+    }
+    pub inline fn addTextUnformatted(self: DrawList, pos: [2]f32, col: u32, txt: []const u8) void {
+        self.vtable.addTextUnformatted(self.ptr, pos, col, txt);
+    }
+    pub inline fn addPolyline(self: DrawList, points: []const [2]f32, args: struct {
+        col: u32,
+        flags: DrawFlags = .{},
+        thickness: f32 = 1.0,
+    }) void {
+        self.vtable.addPolyline(self.ptr, points, .{
+            .col = args.col,
+            .flags = .{
+                .closed = args.flags.closed,
+                .round_corners_top_left = args.flags.round_corners_top_left,
+                .round_corners_top_right = args.flags.round_corners_top_right,
+                .round_corners_bottom_left = args.flags.round_corners_bottom_left,
+                .round_corners_bottom_right = args.flags.round_corners_bottom_right,
+                .round_corners_none = args.flags.round_corners_none,
+            },
+            .thickness = args.thickness,
+        });
+    }
+    pub inline fn addConvexPolyFilled(self: DrawList, points: []const [2]f32, col: u32) void {
+        self.vtable.addConvexPolyFilled(self.ptr, points, col);
+    }
+    pub inline fn addBezierCubic(self: DrawList, args: struct {
+        p1: [2]f32,
+        p2: [2]f32,
+        p3: [2]f32,
+        p4: [2]f32,
+        col: u32,
+        thickness: f32 = 1.0,
+        num_segments: u32 = 0,
+    }) void {
+        self.vtable.addBezierCubic(self.ptr, .{
+            .p1 = args.p1,
+            .p2 = args.p2,
+            .p3 = args.p3,
+            .p4 = args.p4,
+            .col = args.col,
+            .thickness = args.thickness,
+            .num_segments = args.num_segments,
+        });
+    }
+    pub inline fn addBezierQuadratic(self: DrawList, args: struct {
+        p1: [2]f32,
+        p2: [2]f32,
+        p3: [2]f32,
+        col: u32,
+        thickness: f32 = 1.0,
+        num_segments: u32 = 0,
+    }) void {
+        self.vtable.addBezierQuadratic(self.ptr, .{
+            .p1 = args.p1,
+            .p2 = args.p2,
+            .p3 = args.p3,
+            .col = args.col,
+            .thickness = args.thickness,
+            .num_segments = args.num_segments,
+        });
+    }
+    pub inline fn addImage(self: DrawList, user_texture_id: gpu.TextureHandle, args: struct {
+        pmin: [2]f32,
+        pmax: [2]f32,
+        uvmin: [2]f32 = .{ 0, 0 },
+        uvmax: [2]f32 = .{ 1, 1 },
+        col: u32 = 0xff_ff_ff_ff,
+    }) void {
+        self.vtable.addImage(self.ptr, @ptrFromInt(user_texture_id.idx), .{
+            .pmin = args.pmin,
+            .pmax = args.pmax,
+            .uvmin = args.uvmin,
+            .uvmax = args.uvmax,
+            .col = args.col,
+        });
+    }
+    pub inline fn addImageQuad(self: DrawList, user_texture_id: gpu.TextureHandle, args: struct {
+        p1: [2]f32,
+        p2: [2]f32,
+        p3: [2]f32,
+        p4: [2]f32,
+        uv1: [2]f32 = .{ 0, 0 },
+        uv2: [2]f32 = .{ 1, 0 },
+        uv3: [2]f32 = .{ 1, 1 },
+        uv4: [2]f32 = .{ 0, 1 },
+        col: u32 = 0xff_ff_ff_ff,
+    }) void {
+        self.vtable.addImageQuad(self.ptr, @ptrFromInt(user_texture_id.idx), .{
+            .p1 = args.p1,
+            .p2 = args.p2,
+            .p3 = args.p3,
+            .p4 = args.p4,
+            .uv1 = args.uv1,
+            .uv2 = args.uv2,
+            .uv3 = args.uv3,
+            .uv4 = args.uv4,
+            .col = args.col,
+        });
+    }
+    pub inline fn addImageRounded(self: DrawList, user_texture_id: gpu.TextureHandle, args: struct {
+        pmin: [2]f32,
+        pmax: [2]f32,
+        uvmin: [2]f32 = .{ 0, 0 },
+        uvmax: [2]f32 = .{ 1, 1 },
+        col: u32 = 0xff_ff_ff_ff,
+        rounding: f32 = 4.0,
+        flags: DrawFlags = .{},
+    }) void {
+        self.vtable.addImageRounded(self.ptr, @ptrFromInt(user_texture_id.idx), .{
+            .pmin = args.pmin,
+            .pmax = args.pmax,
+            .uvmin = args.uvmin,
+            .uvmax = args.uvmax,
+            .col = args.col,
+            .rounding = args.rounding,
+            .flags = .{
+                .closed = args.flags.closed,
+                .round_corners_top_left = args.flags.round_corners_top_left,
+                .round_corners_top_right = args.flags.round_corners_top_right,
+                .round_corners_bottom_left = args.flags.round_corners_bottom_left,
+                .round_corners_bottom_right = args.flags.round_corners_bottom_right,
+                .round_corners_none = args.flags.round_corners_none,
+            },
+        });
+    }
+    pub inline fn pathClear(self: DrawList) void {
+        self.vtable.pathClear(
+            self.ptr,
+        );
+    }
+    pub inline fn pathLineTo(self: DrawList, pos: [2]f32) void {
+        self.vtable.pathLineTo(self.ptr, pos);
+    }
+    pub inline fn pathLineToMergeDuplicate(self: DrawList, pos: [2]f32) void {
+        self.vtable.pathLineToMergeDuplicate(self.ptr, pos);
+    }
+    pub inline fn pathFillConvex(self: DrawList, col: u32) void {
+        self.vtable.pathFillConvex(self.ptr, col);
+    }
+    pub inline fn pathStroke(self: DrawList, args: struct {
+        col: u32,
+        flags: DrawFlags = .{},
+        thickness: f32 = 1.0,
+    }) void {
+        self.vtable.pathStroke(self.ptr, .{
+            .col = args.col,
+            .flags = .{
+                .closed = args.flags.closed,
+                .round_corners_top_left = args.flags.round_corners_top_left,
+                .round_corners_top_right = args.flags.round_corners_top_right,
+                .round_corners_bottom_left = args.flags.round_corners_bottom_left,
+                .round_corners_bottom_right = args.flags.round_corners_bottom_right,
+                .round_corners_none = args.flags.round_corners_none,
+            },
+            .thickness = args.thickness,
+        });
+    }
+    pub inline fn pathArcTo(self: DrawList, args: struct {
+        p: [2]f32,
+        r: f32,
+        amin: f32,
+        amax: f32,
+        num_segments: u16 = 0,
+    }) void {
+        self.vtable.pathArcTo(self.ptr, .{
+            .p = args.p,
+            .r = args.r,
+            .amin = args.amin,
+            .amax = args.amax,
+            .num_segments = args.num_segments,
+        });
+    }
+    pub inline fn pathArcToFast(self: DrawList, args: struct {
+        p: [2]f32,
+        r: f32,
+        amin_of_12: u16,
+        amax_of_12: u16,
+    }) void {
+        self.vtable.pathArcToFast(self.ptr, .{
+            .p = args.p,
+            .r = args.r,
+            .amin_of_12 = args.amin_of_12,
+            .amax_of_12 = args.amax_of_12,
+        });
+    }
+    pub inline fn pathBezierCubicCurveTo(self: DrawList, args: struct {
+        p2: [2]f32,
+        p3: [2]f32,
+        p4: [2]f32,
+        num_segments: u16 = 0,
+    }) void {
+        self.vtable.pathBezierCubicCurveTo(self.ptr, .{
+            .p2 = args.p2,
+            .p3 = args.p3,
+            .p4 = args.p4,
+            .num_segments = args.num_segments,
+        });
+    }
+    pub inline fn pathBezierQuadraticCurveTo(self: DrawList, args: struct {
+        p2: [2]f32,
+        p3: [2]f32,
+        num_segments: u16 = 0,
+    }) void {
+        self.vtable.pathBezierQuadraticCurveTo(self.ptr, .{
+            .p2 = args.p2,
+            .p3 = args.p3,
+            .num_segments = args.num_segments,
+        });
+    }
+    pub inline fn pathRect(self: DrawList, args: PathRect) void {
+        self.vtable.pathRect(self.ptr, .{
+            .bmin = args.bmin,
+            .bmax = args.bmax,
+            .rounding = args.rounding,
+            .flags = .{
+                .closed = args.flags.closed,
+                .round_corners_top_left = args.flags.round_corners_top_left,
+                .round_corners_top_right = args.flags.round_corners_top_right,
+                .round_corners_bottom_left = args.flags.round_corners_bottom_left,
+                .round_corners_bottom_right = args.flags.round_corners_bottom_right,
+                .round_corners_none = args.flags.round_corners_none,
+            },
+        });
+    }
+    pub inline fn primReserve(self: DrawList, idx_count: i32, vtx_count: i32) void {
+        self.vtable.primReserve(self.ptr, idx_count, vtx_count);
+    }
+    pub inline fn primUnreserve(self: DrawList, idx_count: i32, vtx_count: i32) void {
+        self.vtable.primUnreserve(self.ptr, idx_count, vtx_count);
+    }
+    pub inline fn primRect(self: DrawList, a: [2]f32, b: [2]f32, col: u32) void {
+        self.vtable.primRect(self.ptr, a, b, col);
+    }
+    pub inline fn primRectUV(self: DrawList, a: [2]f32, b: [2]f32, uv_a: [2]f32, uv_b: [2]f32, col: u32) void {
+        self.vtable.primRectUV(
+            self.ptr,
+            a,
+            b,
+            uv_a,
+            uv_b,
+            col,
+        );
+    }
+    pub inline fn primQuadUV(self: DrawList, a: [2]f32, b: [2]f32, c: [2]f32, d: [2]f32, uv_a: [2]f32, uv_b: [2]f32, uv_c: [2]f32, uv_d: [2]f32, col: u32) void {
+        self.vtable.primQuadUV(
+            self.ptr,
+            a,
+            b,
+            c,
+            d,
+            uv_a,
+            uv_b,
+            uv_c,
+            uv_d,
+            col,
+        );
+    }
+    pub inline fn primWriteVtx(self: DrawList, pos: [2]f32, uv: [2]f32, col: u32) void {
+        self.vtable.primWriteVtx(self.ptr, pos, uv, col);
+    }
+    pub inline fn primWriteIdx(self: DrawList, idx: DrawIdx) void {
+        self.vtable.primWriteIdx(self.ptr, idx);
+    }
+    pub inline fn addCallback(self: DrawList, callback: DrawCallback, callback_data: ?*anyopaque) void {
+        self.vtable.addCallback(self.ptr, @ptrCast(callback), callback_data);
+    }
+    pub inline fn addResetRenderStateCallback(self: DrawList) void {
+        self.vtable.addResetRenderStateCallback(self.ptr);
+    }
+
+    pub const VTable = struct {
+        getOwnerName: *const fn (draw_list: *anyopaque) ?[*:0]const u8,
+        reset: *const fn (draw_list: *anyopaque) void,
+        clearMemory: *const fn (draw_list: *anyopaque) void,
+        getVertexBufferLength: *const fn (draw_list: *anyopaque) i32,
+        getVertexBufferData: *const fn (draw_list: *anyopaque) [*]DrawVert,
+        getIndexBufferLength: *const fn (draw_list: *anyopaque) i32,
+        getIndexBufferData: *const fn (draw_list: *anyopaque) [*]DrawIdx,
+        getCurrentIndex: *const fn (draw_list: *anyopaque) u32,
+        getCmdBufferLength: *const fn (draw_list: *anyopaque) i32,
+        getCmdBufferData: *const fn (draw_list: *anyopaque) [*]DrawCmd,
+        setDrawListFlags: *const fn (draw_list: *anyopaque, flags: DrawListFlags) void,
+        getDrawListFlags: *const fn (draw_list: *anyopaque) DrawListFlags,
+        pushClipRect: *const fn (draw_list: *anyopaque, args: ClipRect) void,
+        pushClipRectFullScreen: *const fn (draw_list: *anyopaque) void,
+        popClipRect: *const fn (draw_list: *anyopaque) void,
+        pushTextureId: *const fn (draw_list: *anyopaque, texture_id: gpu.TextureHandle) void,
+        popTextureId: *const fn (draw_list: *anyopaque) void,
+        getClipRectMin: *const fn (draw_list: *anyopaque) [2]f32,
+        getClipRectMax: *const fn (draw_list: *anyopaque) [2]f32,
+        addLine: *const fn (draw_list: *anyopaque, args: struct {
+            p1: [2]f32,
+            p2: [2]f32,
+            col: u32,
+            thickness: f32,
+        }) void,
+        addRect: *const fn (draw_list: *anyopaque, args: struct {
+            pmin: [2]f32,
+            pmax: [2]f32,
+            col: u32,
+            rounding: f32 = 0.0,
+            flags: DrawFlags = .{},
+            thickness: f32 = 1.0,
+        }) void,
+        addRectFilled: *const fn (draw_list: *anyopaque, args: struct {
+            pmin: [2]f32,
+            pmax: [2]f32,
+            col: u32,
+            rounding: f32 = 0.0,
+            flags: DrawFlags = .{},
+        }) void,
+        addRectFilledMultiColor: *const fn (draw_list: *anyopaque, args: struct {
+            pmin: [2]f32,
+            pmax: [2]f32,
+            col_upr_left: u32,
+            col_upr_right: u32,
+            col_bot_right: u32,
+            col_bot_left: u32,
+        }) void,
+        addQuad: *const fn (draw_list: *anyopaque, args: struct {
+            p1: [2]f32,
+            p2: [2]f32,
+            p3: [2]f32,
+            p4: [2]f32,
+            col: u32,
+            thickness: f32 = 1.0,
+        }) void,
+        addQuadFilled: *const fn (draw_list: *anyopaque, args: struct {
+            p1: [2]f32,
+            p2: [2]f32,
+            p3: [2]f32,
+            p4: [2]f32,
+            col: u32,
+        }) void,
+        addTriangle: *const fn (draw_list: *anyopaque, args: struct {
+            p1: [2]f32,
+            p2: [2]f32,
+            p3: [2]f32,
+            col: u32,
+            thickness: f32 = 1.0,
+        }) void,
+        addTriangleFilled: *const fn (draw_list: *anyopaque, args: struct {
+            p1: [2]f32,
+            p2: [2]f32,
+            p3: [2]f32,
+            col: u32,
+        }) void,
+        addCircle: *const fn (draw_list: *anyopaque, args: struct {
+            p: [2]f32,
+            r: f32,
+            col: u32,
+            num_segments: i32 = 0,
+            thickness: f32 = 1.0,
+        }) void,
+        addCircleFilled: *const fn (draw_list: *anyopaque, args: struct {
+            p: [2]f32,
+            r: f32,
+            col: u32,
+            num_segments: u16 = 0,
+        }) void,
+        addNgon: *const fn (draw_list: *anyopaque, args: struct {
+            p: [2]f32,
+            r: f32,
+            col: u32,
+            num_segments: u32,
+            thickness: f32 = 1.0,
+        }) void,
+        addNgonFilled: *const fn (draw_list: *anyopaque, args: struct {
+            p: [2]f32,
+            r: f32,
+            col: u32,
+            num_segments: u32,
+        }) void,
+        addTextUnformatted: *const fn (draw_list: *anyopaque, pos: [2]f32, col: u32, txt: []const u8) void,
+        addPolyline: *const fn (draw_list: *anyopaque, points: []const [2]f32, args: struct {
+            col: u32,
+            flags: DrawFlags = .{},
+            thickness: f32 = 1.0,
+        }) void,
+        addConvexPolyFilled: *const fn (
+            draw_list: *anyopaque,
+            points: []const [2]f32,
+            col: u32,
+        ) void,
+        addBezierCubic: *const fn (draw_list: *anyopaque, args: struct {
+            p1: [2]f32,
+            p2: [2]f32,
+            p3: [2]f32,
+            p4: [2]f32,
+            col: u32,
+            thickness: f32 = 1.0,
+            num_segments: u32 = 0,
+        }) void,
+        addBezierQuadratic: *const fn (draw_list: *anyopaque, args: struct {
+            p1: [2]f32,
+            p2: [2]f32,
+            p3: [2]f32,
+            col: u32,
+            thickness: f32 = 1.0,
+            num_segments: u32 = 0,
+        }) void,
+        addImage: *const fn (draw_list: *anyopaque, user_texture_id: gpu.TextureHandle, args: struct {
+            pmin: [2]f32,
+            pmax: [2]f32,
+            uvmin: [2]f32 = .{ 0, 0 },
+            uvmax: [2]f32 = .{ 1, 1 },
+            col: u32 = 0xff_ff_ff_ff,
+        }) void,
+        addImageQuad: *const fn (draw_list: *anyopaque, user_texture_id: gpu.TextureHandle, args: struct {
+            p1: [2]f32,
+            p2: [2]f32,
+            p3: [2]f32,
+            p4: [2]f32,
+            uv1: [2]f32 = .{ 0, 0 },
+            uv2: [2]f32 = .{ 1, 0 },
+            uv3: [2]f32 = .{ 1, 1 },
+            uv4: [2]f32 = .{ 0, 1 },
+            col: u32 = 0xff_ff_ff_ff,
+        }) void,
+        addImageRounded: *const fn (draw_list: *anyopaque, user_texture_id: gpu.TextureHandle, args: struct {
+            pmin: [2]f32,
+            pmax: [2]f32,
+            uvmin: [2]f32 = .{ 0, 0 },
+            uvmax: [2]f32 = .{ 1, 1 },
+            col: u32 = 0xff_ff_ff_ff,
+            rounding: f32 = 4.0,
+            flags: DrawFlags = .{},
+        }) void,
+        pathClear: *const fn (draw_list: *anyopaque) void,
+        pathLineTo: *const fn (draw_list: *anyopaque, pos: [2]f32) void,
+        pathLineToMergeDuplicate: *const fn (draw_list: *anyopaque, pos: [2]f32) void,
+        pathFillConvex: *const fn (draw_list: *anyopaque, col: u32) void,
+        pathStroke: *const fn (draw_list: *anyopaque, args: struct {
+            col: u32,
+            flags: DrawFlags = .{},
+            thickness: f32 = 1.0,
+        }) void,
+        pathArcTo: *const fn (draw_list: **anyopaque, args: struct {
+            p: [2]f32,
+            r: f32,
+            amin: f32,
+            amax: f32,
+            num_segments: u16 = 0,
+        }) void,
+        pathArcToFast: *const fn (draw_list: *anyopaque, args: struct {
+            p: [2]f32,
+            r: f32,
+            amin_of_12: u16,
+            amax_of_12: u16,
+        }) void,
+        pathBezierCubicCurveTo: *const fn (draw_list: *anyopaque, args: struct {
+            p2: [2]f32,
+            p3: [2]f32,
+            p4: [2]f32,
+            num_segments: u16 = 0,
+        }) void,
+        pathBezierQuadraticCurveTo: *const fn (draw_list: *anyopaque, args: struct {
+            p2: [2]f32,
+            p3: [2]f32,
+            num_segments: u16 = 0,
+        }) void,
+        pathRect: *const fn (draw_list: *anyopaque, args: PathRect) void,
+        primReserve: *const fn (
+            draw_list: *anyopaque,
+            idx_count: i32,
+            vtx_count: i32,
+        ) void,
+        primUnreserve: *const fn (
+            draw_list: *anyopaque,
+            idx_count: i32,
+            vtx_count: i32,
+        ) void,
+        primRect: *const fn (
+            draw_list: *anyopaque,
+            a: [2]f32,
+            b: [2]f32,
+            col: u32,
+        ) void,
+        primRectUV: *const fn (
+            draw_list: *anyopaque,
+            a: [2]f32,
+            b: [2]f32,
+            uv_a: [2]f32,
+            uv_b: [2]f32,
+            col: u32,
+        ) void,
+        primQuadUV: *const fn (
+            draw_list: *anyopaque,
+            a: [2]f32,
+            b: [2]f32,
+            c: [2]f32,
+            d: [2]f32,
+            uv_a: [2]f32,
+            uv_b: [2]f32,
+            uv_c: [2]f32,
+            uv_d: [2]f32,
+            col: u32,
+        ) void,
+        primWriteVtx: *const fn (
+            draw_list: *anyopaque,
+            pos: [2]f32,
+            uv: [2]f32,
+            col: u32,
+        ) void,
+        primWriteIdx: *const fn (
+            draw_list: *anyopaque,
+            idx: DrawIdx,
+        ) void,
+        addCallback: *const fn (draw_list: *anyopaque, callback: DrawCallback, callback_data: ?*anyopaque) void,
+        addResetRenderStateCallback: *const fn (draw_list: *anyopaque) void,
+
+        pub fn implement(comptime T: type) VTable {
+            return VTable{
+                .getOwnerName = @ptrCast(&T.getOwnerName),
+                .reset = @ptrCast(&T.reset),
+                .clearMemory = @ptrCast(&T.clearMemory),
+                .getVertexBufferLength = @ptrCast(&T.getVertexBufferLength),
+                .getVertexBufferData = @ptrCast(&T.getVertexBufferData),
+                .getIndexBufferLength = @ptrCast(&T.getIndexBufferLength),
+                .getIndexBufferData = @ptrCast(&T.getIndexBufferData),
+                .getCurrentIndex = @ptrCast(&T.getCurrentIndex),
+                .getCmdBufferLength = @ptrCast(&T.getCmdBufferLength),
+                .getCmdBufferData = @ptrCast(&T.getCmdBufferData),
+                .setDrawListFlags = @ptrCast(&T.setDrawListFlags),
+                .getDrawListFlags = @ptrCast(&T.getDrawListFlags),
+                .pushClipRect = @ptrCast(&T.pushClipRect),
+                .pushClipRectFullScreen = @ptrCast(&T.pushClipRectFullScreen),
+                .popClipRect = @ptrCast(&T.popClipRect),
+                .pushTextureId = @ptrCast(&T.pushTextureId),
+                .popTextureId = @ptrCast(&T.popTextureId),
+                .getClipRectMin = @ptrCast(&T.getClipRectMin),
+                .getClipRectMax = @ptrCast(&T.getClipRectMax),
+                .addLine = @ptrCast(&T.addLine),
+                .addRect = @ptrCast(&T.addRect),
+                .addRectFilled = @ptrCast(&T.addRectFilled),
+                .addRectFilledMultiColor = @ptrCast(&T.addRectFilledMultiColor),
+                .addQuad = @ptrCast(&T.addQuad),
+                .addQuadFilled = @ptrCast(&T.addQuadFilled),
+                .addTriangle = @ptrCast(&T.addTriangle),
+                .addTriangleFilled = @ptrCast(&T.addTriangleFilled),
+                .addCircle = @ptrCast(&T.addCircle),
+                .addCircleFilled = @ptrCast(&T.addCircleFilled),
+                .addNgon = @ptrCast(&T.addNgon),
+                .addNgonFilled = @ptrCast(&T.addNgonFilled),
+                .addTextUnformatted = @ptrCast(&T.addTextUnformatted),
+                .addPolyline = @ptrCast(&T.addPolyline),
+                .addConvexPolyFilled = @ptrCast(&T.addConvexPolyFilled),
+                .addBezierCubic = @ptrCast(&T.addBezierCubic),
+                .addBezierQuadratic = @ptrCast(&T.addBezierQuadratic),
+                .addImage = @ptrCast(&T.addImage),
+                .addImageQuad = @ptrCast(&T.addImageQuad),
+                .addImageRounded = @ptrCast(&T.addImageRounded),
+                .pathClear = @ptrCast(&T.pathClear),
+                .pathLineTo = @ptrCast(&T.pathLineTo),
+                .pathLineToMergeDuplicate = @ptrCast(&T.pathLineToMergeDuplicate),
+                .pathFillConvex = @ptrCast(&T.pathFillConvex),
+                .pathStroke = @ptrCast(&T.pathStroke),
+                .pathArcTo = @ptrCast(&T.pathArcTo),
+                .pathArcToFast = @ptrCast(&T.pathArcToFast),
+                .pathBezierCubicCurveTo = @ptrCast(&T.pathBezierCubicCurveTo),
+                .pathBezierQuadraticCurveTo = @ptrCast(&T.pathBezierQuadraticCurveTo),
+                .pathRect = @ptrCast(&T.pathRect),
+                .primReserve = @ptrCast(&T.primReserve),
+                .primUnreserve = @ptrCast(&T.primUnreserve),
+                .primRect = @ptrCast(&T.primRect),
+                .primRectUV = @ptrCast(&T.primRectUV),
+                .primQuadUV = @ptrCast(&T.primQuadUV),
+                .primWriteVtx = @ptrCast(&T.primWriteVtx),
+                .primWriteIdx = @ptrCast(&T.primWriteIdx),
+                .addCallback = @ptrCast(&T.addCallback),
+                .addResetRenderStateCallback = @ptrCast(&T.addResetRenderStateCallback),
+            };
+        }
+    };
 };
 
 pub const Image = struct {
@@ -558,7 +1602,6 @@ pub const WindowFlags = packed struct(c_int) {
 
 pub const ChildFlags = packed struct(c_int) {
     border: bool = false,
-    no_move: bool = false,
     always_use_window_padding: bool = false,
     resize_x: bool = false,
     resize_y: bool = false,
@@ -566,6 +1609,7 @@ pub const ChildFlags = packed struct(c_int) {
     auto_resize_y: bool = false,
     always_auto_resize: bool = false,
     frame_style: bool = false,
+    nav_flattened: bool = false,
     _padding: u23 = 0,
 };
 
@@ -595,9 +1639,10 @@ pub const TreeNodeFlags = packed struct(c_int) {
     frame_padding: bool = false,
     span_avail_width: bool = false,
     span_full_width: bool = false,
+    span_text_width: bool = false,
     span_all_columns: bool = false,
     nav_left_jumps_back_here: bool = false,
-    _padding: u17 = 0,
+    _padding: u16 = 0,
 
     pub const collapsing_header = TreeNodeFlags{
         .framed = true,
@@ -974,29 +2019,33 @@ pub const TableSetupColumn = struct {
     user_id: Ident = 0,
 };
 
-pub const InputTextFlags = packed struct(u32) {
+pub const InputTextFlags = packed struct(c_int) {
     chars_decimal: bool = false,
     chars_hexadecimal: bool = false,
+    chars_scientific: bool = false,
     chars_uppercase: bool = false,
     chars_no_blank: bool = false,
-    auto_select_all: bool = false,
+    allow_tab_input: bool = false,
     enter_returns_true: bool = false,
+    escape_clears_all: bool = false,
+    ctrl_enter_for_new_line: bool = false,
+    read_only: bool = false,
+    password: bool = false,
+    always_overwrite: bool = false,
+    auto_select_all: bool = false,
+    parse_empty_ref_val: bool = false,
+    display_empty_ref_val: bool = false,
+    no_horizontal_scroll: bool = false,
+    no_undo_redo: bool = false,
     callback_completion: bool = false,
     callback_history: bool = false,
     callback_always: bool = false,
     callback_char_filter: bool = false,
-    allow_tab_input: bool = false,
-    ctrl_enter_for_new_line: bool = false,
-    no_horizontal_scroll: bool = false,
-    always_overwrite: bool = false,
-    read_only: bool = false,
-    password: bool = false,
-    no_undo_redo: bool = false,
-    chars_scientific: bool = false,
     callback_resize: bool = false,
     callback_edit: bool = false,
-    _padding: u12 = 0,
+    _padding: u9 = 0,
 };
+
 const InputText = struct {
     buf: [:0]u8,
     flags: InputTextFlags = .{},
@@ -1102,11 +2151,13 @@ pub const StyleCol = enum(c_int) {
     resize_grip,
     resize_grip_hovered,
     resize_grip_active,
-    tab,
     tab_hovered,
-    tab_active,
-    tab_unfocused,
-    tab_unfocused_active,
+    tab,
+    tab_selected,
+    tab_selected_overline,
+    tab_dimmed,
+    tab_dimmed_selected,
+    tab_dimmed_selected_overline,
     docking_preview,
     docking_empty_bg,
     plot_lines,
@@ -1118,6 +2169,7 @@ pub const StyleCol = enum(c_int) {
     table_border_light,
     table_row_bg,
     table_row_bg_alt,
+    text_link,
     text_selected_bg,
     drag_drop_target,
     nav_highlight,
@@ -1247,7 +2299,9 @@ pub const Style = extern struct {
     tab_border_size: f32,
     tab_min_width_for_close_button: f32,
     tab_bar_border_size: f32,
+    tab_bar_overline_size: f32,
     table_angled_header_angle: f32,
+    table_angled_headers_text_align: [2]f32,
     color_button_position: Direction,
     button_text_align: [2]f32,
     selectable_text_align: [2]f32,
@@ -1281,10 +2335,10 @@ pub const Style = extern struct {
     pub const scaleAllSizes = zguiStyle_ScaleAllSizes;
     extern fn zguiStyle_ScaleAllSizes(style: *Style, scale_factor: f32) void;
 
-    pub fn getColor(style: Style, idx: StyleCol) [4]f32 {
+    pub inline fn getColor(style: Style, idx: StyleCol) [4]f32 {
         return style.colors[@intCast(@intFromEnum(idx))];
     }
-    pub fn setColor(style: *Style, idx: StyleCol, color: [4]f32) void {
+    pub inline fn setColor(style: *Style, idx: StyleCol, color: [4]f32) void {
         style.colors[@intCast(@intFromEnum(idx))] = color;
     }
 };
@@ -1325,7 +2379,11 @@ pub const StyleVar = enum(c_int) {
     grab_min_size, // 1f
     grab_rounding, // 1f
     tab_rounding, // 1f
+    tab_border_size, // 1f
     tab_bar_border_size, // 1f
+    tab_bar_overline_size, // 1f
+    table_angled_headers_angle, // 1f
+    table_angled_headers_text_align, // 2f
     button_text_align, // 2f
     selectable_text_align, // 2f
     separator_text_border_size, // 1f
@@ -1366,9 +2424,11 @@ pub const DragDropFlags = packed struct(c_int) {
     source_no_hold_open_to_others: bool = false,
     source_allow_null_id: bool = false,
     source_extern: bool = false,
-    source_auto_expire_payload: bool = false,
+    payload_auto_expire: bool = false,
+    payload_no_cross_context: bool = false,
+    payload_no_cross_process: bool = false,
 
-    _padding0: u4 = 0,
+    _padding0: u2 = 0,
 
     accept_before_delivery: bool = false,
     accept_no_draw_default_rect: bool = false,
@@ -1407,7 +2467,8 @@ pub const SliderFlags = packed struct(c_int) {
     logarithmic: bool = false,
     no_round_to_format: bool = false,
     no_input: bool = false,
-    _padding: u24 = 0,
+    wrap_around: bool = false,
+    _padding: u23 = 0,
 };
 
 pub fn DragFloatGen(comptime T: type) type {
@@ -1442,3 +2503,129 @@ pub fn DragScalarGen(comptime T: type) type {
         flags: SliderFlags = .{},
     };
 }
+
+pub const PlotFlags = packed struct(u32) {
+    no_title: bool = false,
+    no_legend: bool = false,
+    no_mouse_text: bool = false,
+    no_inputs: bool = false,
+    no_menus: bool = false,
+    no_box_select: bool = false,
+    no_frame: bool = false,
+    equal: bool = false,
+    crosshairs: bool = false,
+    _padding: u23 = 0,
+
+    pub const canvas_only = PlotFlags{
+        .no_title = true,
+        .no_legend = true,
+        .no_menus = true,
+        .no_box_select = true,
+        .no_mouse_text = true,
+    };
+};
+pub const BeginPlot = struct {
+    w: f32 = -1.0,
+    h: f32 = 0.0,
+    flags: PlotFlags = .{},
+};
+pub const LineFlags = packed struct(u32) {
+    _reserved0: bool = false,
+    _reserved1: bool = false,
+    _reserved2: bool = false,
+    _reserved3: bool = false,
+    _reserved4: bool = false,
+    _reserved5: bool = false,
+    _reserved6: bool = false,
+    _reserved7: bool = false,
+    _reserved8: bool = false,
+    _reserved9: bool = false,
+    segments: bool = false,
+    loop: bool = false,
+    skip_nan: bool = false,
+    no_clip: bool = false,
+    shaded: bool = false,
+    _padding: u17 = 0,
+};
+pub fn PlotLineGen(comptime T: type) type {
+    return struct {
+        xv: []const T,
+        yv: []const T,
+        flags: LineFlags = .{},
+        offset: i32 = 0,
+        stride: i32 = @sizeOf(T),
+    };
+}
+
+pub fn PlotLineValuesGen(comptime T: type) type {
+    return struct {
+        v: []const T,
+        xscale: f64 = 1.0,
+        xstart: f64 = 0.0,
+        flags: LineFlags = .{},
+        offset: i32 = 0,
+        stride: i32 = @sizeOf(T),
+    };
+}
+
+pub const AxisFlags = packed struct(u32) {
+    no_label: bool = false,
+    no_grid_lines: bool = false,
+    no_tick_marks: bool = false,
+    no_tick_labels: bool = false,
+    no_initial_fit: bool = false,
+    no_menus: bool = false,
+    no_side_switch: bool = false,
+    no_highlight: bool = false,
+    opposite: bool = false,
+    foreground: bool = false,
+    invert: bool = false,
+    auto_fit: bool = false,
+    range_fit: bool = false,
+    pan_stretch: bool = false,
+    lock_min: bool = false,
+    lock_max: bool = false,
+    _padding: u16 = 0,
+
+    pub const lock = AxisFlags{
+        .lock_min = true,
+        .lock_max = true,
+    };
+    pub const no_decorations = AxisFlags{
+        .no_label = true,
+        .no_grid_lines = true,
+        .no_tick_marks = true,
+        .no_tick_labels = true,
+    };
+    pub const aux_default = AxisFlags{
+        .no_grid_lines = true,
+        .opposite = true,
+    };
+};
+pub const Axis = enum(u32) { x1, x2, x3, y1, y2, y3 };
+pub const SetupAxis = struct {
+    label: ?[:0]const u8 = null,
+    flags: AxisFlags = .{},
+};
+
+pub const PlotLocation = packed struct(u32) {
+    north: bool = false,
+    south: bool = false,
+    west: bool = false,
+    east: bool = false,
+    _padding: u28 = 0,
+
+    pub const north_west = PlotLocation{ .north = true, .west = true };
+    pub const north_east = PlotLocation{ .north = true, .east = true };
+    pub const south_west = PlotLocation{ .south = true, .west = true };
+    pub const south_east = PlotLocation{ .south = true, .east = true };
+};
+pub const LegendFlags = packed struct(u32) {
+    no_buttons: bool = false,
+    no_highlight_item: bool = false,
+    no_highlight_axis: bool = false,
+    no_menus: bool = false,
+    outside: bool = false,
+    horizontal: bool = false,
+    _padding: u26 = 0,
+};

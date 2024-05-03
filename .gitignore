@@ -8,8 +8,8 @@
 /docs/**/*.cs
 
 # ZIG
-zig-cache
-zig-out
+*zig-cache
+*zig-out
 
 # VSCode
 
@@ -18,11 +18,24 @@ zig-out
 .DS_Store
 *.dylib
 
+# Xcode
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcuserstate
+project.xcworkspace/
+xcuserdata/
+
 kcov-output/
 
 imgui.ini
 
 _static.zig
+
+# VSCode
+.vscode/launch.json
+.vscode/settings.json
 
 # temp folder for tests
 /fixtures/tmp
@@ -32,3 +45,4 @@ _static.zig
 
 result.xml
 *.tracy
+NodeEditor.json

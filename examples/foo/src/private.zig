@@ -26,10 +26,12 @@ var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 
 var _db: cdb.Db = undefined;
 
+// Play with this constants to enable some features
 const spam_log = false;
+const do_tasks = false;
 const do_cdb = false;
 
-// Create c and zig api
+// Create zig api
 const api = public.FooAPI{};
 
 // Global state that can surive hot-reload
@@ -54,7 +56,7 @@ const FooCDB = cdb.CdbTypeDecl(
 
 // Register all cdb stuff in this method
 
-var create_types_i = cdb.CreateTypesI.implement(struct {
+var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.Db) !void {
         _ = try db.addType(
             FooCDB.name,
@@ -207,11 +209,11 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.setOrRemoveZigApi(module_name, public.FooAPI, &api, load);
 
     // impl interface
-    try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_types_i, load);
+    try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
 
     // dont block test with sleeping shit
-    if (!_kernel.isTestigMode()) {
+    if (!_kernel.isTestigMode() and do_tasks) {
         try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task, load);
         try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task2, load);
         try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task3, load);
@@ -244,6 +246,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_foo(__apidb: *const cetech1.apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.C) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
+pub export fn ct_load_module_foo(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

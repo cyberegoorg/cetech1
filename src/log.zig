@@ -15,6 +15,8 @@ pub fn registerToApi() !void {
     try apidb.api.setZigApi(module_name, cetech1.log.LogAPI, &api);
 }
 
+const MAX_HANDLERS = 8;
+
 pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]const u8) void {
     if (profiler.profiler_enabled) {
         const LOG_FORMAT_TRACY = "{s}: {s}";
@@ -38,8 +40,8 @@ pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]cons
 
     {
         const stderr = std.io.getStdErr().writer();
-        std.debug.getStderrMutex().lock();
-        defer std.debug.getStderrMutex().unlock();
+        std.debug.lockStdErr();
+        defer std.debug.unlockStdErr();
 
         const color: std.io.tty.Color = switch (level) {
             .info => .reset,
@@ -55,10 +57,15 @@ pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]cons
         cfg.setColor(stderr, .reset) catch return;
     }
 
-    var it = apidb.api.getFirstImpl(cetech1.log.LogHandlerI);
-    while (it) |node| : (it = node.next) {
-        var iface = cetech1.apidb.ApiDbAPI.toInterface(cetech1.log.LogHandlerI, node);
-        iface.log(level, scope, msg) catch continue;
+    {
+        var buff: [@sizeOf(*anyopaque) * MAX_HANDLERS]u8 = undefined;
+        var fba = std.heap.FixedBufferAllocator.init(&buff);
+        const a = fba.allocator();
+
+        const impls = apidb.api.getImpl(a, cetech1.log.LogHandlerI) catch undefined;
+        for (impls) |iface| {
+            iface.log(level, scope, msg) catch continue;
+        }
     }
 }
 

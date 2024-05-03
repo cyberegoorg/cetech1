@@ -1,0 +1,24 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "01916b31-fc67-74d2-8665-e3f3cf3a3ca5",
+  "__type_name": "ct_foo_asset",
+  "__uuid": "01916b32-00fc-7af0-a1a0-1cb5c51282b3",
+  "subobject": {
+    "__type_name": "ct_foo_asset",
+    "__uuid": "01916b32-758b-7959-9614-5238371d10e0",
+    "subobject": {
+      "__type_name": "ct_foo_asset",
+      "__uuid": "01916b32-85b9-7e62-a1b7-43015f92e9f5"
+    },
+    "subobject_set": [
+      {
+        "__type_name": "ct_foo_asset",
+        "__uuid": "01916b32-c6c0-7564-a50e-9043f70dacd5"
+      },
+      {
+        "__type_name": "ct_foo_asset",
+        "__uuid": "01916b33-8944-7a88-836f-8d28c18a4789"
+      }
+    ]
+  }
+}

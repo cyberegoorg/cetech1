@@ -1,5 +1,6 @@
 const std = @import("std");
 const Src = std.builtin.SourceLocation;
+pub const profiler_enabled = @import("cetech1_options").enable_tracy;
 
 /// Profiler alocator wraping struct
 /// Wrap given alocator and trace alloc/free with profiler
@@ -80,44 +81,135 @@ pub const AllocatorProfiler = struct {
     }
 };
 
+pub const ZoneCtx = struct {
+    _zone: _tracy_c_zone_context = undefined,
+    profiler: *const ProfilerAPI = undefined,
+
+    pub inline fn End(self: *ZoneCtx) void {
+        self.profiler.emitZoneEnd(&self._zone);
+    }
+
+    pub inline fn Name(self: *ZoneCtx, name: []const u8) void {
+        self.profiler.emitZoneName(&self._zone, name);
+    }
+};
+
 /// Main profiler API.
 /// Using awesome Tracy profiler.
 pub const ProfilerAPI = struct {
     const Self = @This();
 
+    pub inline fn Zone(self: *const Self, comptime src: Src) ZoneCtx {
+        if (!profiler_enabled) return .{};
+        return self.initZone(src, null, 0, 0);
+    }
+
+    pub inline fn ZoneN(self: *const Self, comptime src: Src, name: [*:0]const u8) ZoneCtx {
+        if (!profiler_enabled) return .{};
+        return self.initZone(src, name, 0, 0);
+    }
+    pub inline fn ZoneC(self: *const Self, comptime src: Src, color: u32) ZoneCtx {
+        if (!profiler_enabled) return .{};
+        return self.initZone(src, null, color, 0);
+    }
+    pub inline fn ZoneNC(self: *const Self, comptime src: Src, name: [*:0]const u8, color: u32) ZoneCtx {
+        if (!profiler_enabled) return .{};
+        return self.initZone(src, name, color, 0);
+    }
+    pub inline fn ZoneS(self: *const Self, comptime src: Src, depth: i32) ZoneCtx {
+        if (!profiler_enabled) return .{};
+        return self.initZone(src, null, 0, depth);
+    }
+    pub inline fn ZoneNS(self: *const Self, comptime src: Src, name: [*:0]const u8, depth: i32) ZoneCtx {
+        if (!profiler_enabled) return .{};
+        return self.initZone(src, name, 0, depth);
+    }
+    pub inline fn ZoneCS(self: *const Self, comptime src: Src, color: u32, depth: i32) ZoneCtx {
+        if (!profiler_enabled) return .{};
+        return self.initZone(src, null, color, depth);
+    }
+    pub inline fn ZoneNCS(self: *const Self, comptime src: Src, name: [*:0]const u8, color: u32, depth: i32) ZoneCtx {
+        if (!profiler_enabled) return .{};
+        return self.initZone(src, name, color, depth);
+    }
+
+    inline fn initZone(self: *const Self, comptime src: Src, name: ?[*:0]const u8, color: u32, depth: c_int) ZoneCtx {
+        if (!profiler_enabled) return .{};
+
+        _ = depth; // autofix
+        // Tracy uses pointer identity to identify contexts.
+        // The `src` parameter being comptime ensures that
+        // each zone gets its own unique global location for this
+        // struct.
+        const static = struct {
+            var loc: _tracy_source_location_data = undefined;
+
+            // Ensure that a unique struct type is generated for each unique `src`. See
+            // https://github.com/ziglang/zig/issues/18816
+            comptime {
+                // https://github.com/ziglang/zig/issues/19274
+                _ = @sizeOf(@TypeOf(src));
+            }
+        };
+
+        static.loc = .{
+            .name = name,
+            .function = src.fn_name.ptr,
+            .file = src.file.ptr,
+            .line = src.line,
+            .color = color,
+        };
+
+        const zone = self.emitZoneBegin(&static.loc, 1);
+        return ZoneCtx{ .profiler = self, ._zone = zone };
+    }
+
     /// Trace this msg with color
-    pub fn msgWithColor(self: Self, text: []const u8, color: u32) void {
+    pub inline fn msgWithColor(self: Self, text: []const u8, color: u32) void {
+        if (!profiler_enabled) return;
         self.msgWithColorFn(text, color);
     }
 
     /// Trace allocation
-    pub fn alloc(self: Self, ptr: ?*const anyopaque, size: usize) void {
+    pub inline fn alloc(self: Self, ptr: ?*const anyopaque, size: usize) void {
+        if (!profiler_enabled) return;
         self.allocFn(ptr, size);
     }
 
     /// Trace free
-    pub fn free(self: Self, ptr: ?*const anyopaque) void {
+    pub inline fn free(self: Self, ptr: ?*const anyopaque) void {
+        if (!profiler_enabled) return;
         self.freeFn(ptr);
     }
 
     /// Trace allocation with name
-    pub fn allocNamed(self: Self, name: [*:0]const u8, ptr: ?*const anyopaque, size: usize) void {
+    pub inline fn allocNamed(self: Self, name: [*:0]const u8, ptr: ?*const anyopaque, size: usize) void {
+        if (!profiler_enabled) return;
         self.allocNamedFn(name, ptr, size);
     }
 
     /// Trace free with name
-    pub fn freeNamed(self: Self, name: [*:0]const u8, ptr: ?*const anyopaque) void {
+    pub inline fn freeNamed(self: Self, name: [*:0]const u8, ptr: ?*const anyopaque) void {
+        if (!profiler_enabled) return;
         self.freeNamedFn(name, ptr);
     }
 
     /// Mark frame begin
-    pub fn frameMark(self: Self) void {
+    pub inline fn frameMark(self: Self) void {
+        if (!profiler_enabled) return;
         self.frameMarkFn();
     }
 
     /// Plot u64 value with name
-    pub fn plotU64(self: Self, name: [*:0]const u8, val: u64) void {
+    pub inline fn plotU64(self: Self, name: [*:0]const u8, val: u64) void {
+        if (!profiler_enabled) return;
         self.plotU64Fn(name, val);
+    }
+
+    /// Plot f64 value with name
+    pub inline fn plotF64(self: Self, name: [*:0]const u8, val: f64) void {
+        if (!profiler_enabled) return;
+        self.plotF64Fn(name, val);
     }
 
     //#region Pointers to implementation
@@ -128,5 +220,23 @@ pub const ProfilerAPI = struct {
     freeNamedFn: *const fn (name: [*:0]const u8, ptr: ?*const anyopaque) void,
     frameMarkFn: *const fn () void,
     plotU64Fn: *const fn (name: [*:0]const u8, val: u64) void,
+    plotF64Fn: *const fn (name: [*:0]const u8, val: f64) void,
+
+    emitZoneBegin: *const fn (srcloc: *_tracy_source_location_data, active: c_int) _tracy_c_zone_context,
+    emitZoneEnd: *const fn (zone: *_tracy_c_zone_context) void,
+    emitZoneName: *const fn (zone: *_tracy_c_zone_context, name: []const u8) void,
     //#endregion
+};
+
+// Must be sync with original tracy
+pub const _tracy_source_location_data = extern struct {
+    name: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
+    function: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
+    file: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
+    line: u32 = @import("std").mem.zeroes(u32),
+    color: u32 = @import("std").mem.zeroes(u32),
+};
+pub const _tracy_c_zone_context = extern struct {
+    id: u32 = @import("std").mem.zeroes(u32),
+    active: c_int = @import("std").mem.zeroes(c_int),
 };

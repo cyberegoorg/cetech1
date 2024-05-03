@@ -24,18 +24,18 @@ posts.
 - Support for modules with hot-reload
 - Supported platforms `macOS`, `linux/steamdeck`, `windows`
 - Editor basic concept
-- Localization for UI/Editor
 - Automatic test for UI
 - Unittest
 - GPU/GFX
 - Render graph
+- ECS
+- Actions (HL concept for Input)
+- Localization for UI/Editor
 
 ### 0.2.0 - Modules (Future)
 
-- ECS
 - HL Rendering
 - Physics
-- Actions (HL concept for Input)
 - ...
 
 ## Credits/Licenses For Fonts Included In Repository

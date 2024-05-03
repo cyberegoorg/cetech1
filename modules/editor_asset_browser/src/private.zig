@@ -60,8 +60,7 @@ var api = public.AssetBrowserAPI{};
 const AssetBrowserTab = struct {
     tab_i: editor.EditorTabI,
     db: cdb.Db,
-    selection_obj: cdb.ObjId,
-    opened_obj: cdb.ObjId,
+    selection_obj: coreui.Selection,
     filter_buff: [256:0]u8 = std.mem.zeroes([256:0]u8),
     filter: ?[:0]const u8 = null,
     tags: cdb.ObjId,
@@ -75,17 +74,18 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
     .create_on_init = true,
 }, struct {
     pub fn menuName() ![:0]const u8 {
-        return ASSET_BROWSER_ICON ++ " Asset browser";
+        return ASSET_BROWSER_ICON ++ "  " ++ "Asset browser";
     }
 
     // Return tab title
     pub fn title(inst: *editor.TabO) ![:0]const u8 {
         _ = inst;
-        return ASSET_BROWSER_ICON ++ " Asset browser";
+        return ASSET_BROWSER_ICON ++ "  " ++ "Asset browser";
     }
 
     // Create new FooTab instantce
-    pub fn create(db: cdb.Db) !?*editor.EditorTabI {
+    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.EditorTabI {
+        _ = tab_id;
         var tab_inst = try _allocator.create(AssetBrowserTab);
 
         tab_inst.* = AssetBrowserTab{
@@ -95,8 +95,7 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
             },
             .db = db,
             .tags = try assetdb.Tags.createObject(db),
-            .selection_obj = try coreui.ObjSelection.createObject(db),
-            .opened_obj = try coreui.ObjSelection.createObject(db),
+            .selection_obj = coreui.Selection.init(_allocator),
         };
         return &tab_inst.tab_i;
     }
@@ -105,7 +104,8 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
     pub fn destroy(tab_inst: *editor.EditorTabI) !void {
         var tab_o: *AssetBrowserTab = @alignCast(@ptrCast(tab_inst.inst));
         tab_o.db.destroyObject(tab_o.tags);
-        tab_o.db.destroyObject(tab_o.selection_obj);
+        tab_o.selection_obj.deinit();
+
         _allocator.destroy(tab_o);
     }
 
@@ -115,7 +115,8 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
         const allocator = try _tempalloc.create();
         defer _tempalloc.destroy(allocator);
 
-        const selected_count = _coreui.selectedCount(allocator, tab_o.db, tab_o.selection_obj);
+        const selected_count = tab_o.selection_obj.count();
+        const first_selected_obj = tab_o.selection_obj.first();
 
         if (_coreui.beginMenu(allocator, coreui.Icons.ContextMenu ++ "###ObjContextMenu", selected_count != 0, null)) {
             defer _coreui.endMenu();
@@ -124,9 +125,7 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
                 tab_o.db,
                 tab_o,
                 MAIN_CONTEXTS,
-                tab_o.selection_obj,
-                null,
-                null,
+                first_selected_obj,
             ) catch undefined;
         }
 
@@ -138,9 +137,7 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
                 tab_o.db,
                 tab_o,
                 &.{editor.Contexts.create},
-                tab_o.selection_obj,
-                null,
-                null,
+                first_selected_obj,
             );
         }
     }
@@ -166,14 +163,13 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
             tab_o,
             MAIN_CONTEXTS,
             root_folder,
-            tab_o.selection_obj,
+            &tab_o.selection_obj,
             &tab_o.filter_buff,
             tab_o.tags,
             .{
                 .filter = tab_o.filter,
                 .multiselect = true,
                 .expand_object = false,
-                .opened_obj = tab_o.opened_obj,
             },
         );
         tab_o.filter = r.filter;
@@ -187,6 +183,7 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
     pub fn assetRootOpened(inst: *editor.TabO) !void {
         const tab_o: *AssetBrowserTab = @alignCast(@ptrCast(inst));
         tab_o.filter = null;
+        tab_o.selection_obj.clear();
     }
 
     pub fn selectObjFromMenu(allocator: std.mem.Allocator, tab: *editor.TabO, db: cdb.Db, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) !cdb.ObjId {
@@ -194,21 +191,23 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
         defer allocator.free(tabs);
 
         var label_buff: [1024]u8 = undefined;
-        const tab_o: *AssetBrowserTab = @alignCast(@ptrCast(tab));
-        const selected_n = _coreui.selectedCount(allocator, db, tab_o.selection_obj);
 
-        const selected_obj = _coreui.getFirstSelected(allocator, db, tab_o.selection_obj);
+        const tab_o: *AssetBrowserTab = @alignCast(@ptrCast(tab));
+
+        const selected_n = tab_o.selection_obj.count();
+        const selected_obj = tab_o.selection_obj.first();
 
         var valid = false;
         var label: [:0]u8 = undefined;
 
-        var real_obj = selected_obj;
-        if (db.readObj(selected_obj)) |r| {
-            if (assetdb.Asset.isSameType(db, selected_obj)) {
+        var real_obj = selected_obj.obj;
+        if (db.readObj(selected_obj.obj)) |r| {
+            if (selected_obj.obj.type_idx.eql(AssetTypeIdx)) {
                 real_obj = assetdb.Asset.readSubObj(db, r, .Object).?;
 
-                const path = _assetdb.getFilePathForAsset(selected_obj, allocator) catch undefined;
-                defer allocator.free(path);
+                var buff: [1024]u8 = undefined;
+                const path = _assetdb.getFilePathForAsset(&buff, selected_obj.obj) catch undefined;
+
                 label = std.fmt.bufPrintZ(&label_buff, "browser {d} - {s}" ++ "###{d}", .{ tab_o.tab_i.tabid, path, tab_o.tab_i.tabid }) catch return .{};
             } else {
                 label = std.fmt.bufPrintZ(&label_buff, "browser {d}" ++ "###{d}", .{ tab_o.tab_i.tabid, tab_o.tab_i.tabid }) catch return .{};
@@ -254,7 +253,7 @@ fn uiAssetBrowser(
     tab: *editor.TabO,
     context: []const strid.StrId64,
     root_folder: cdb.ObjId,
-    selectection: cdb.ObjId,
+    selectection: *coreui.Selection,
     filter_buff: [:0]u8,
     tags_filter: cdb.ObjId,
     args: editor_tree.CdbTreeViewArgs,
@@ -290,7 +289,7 @@ fn uiAssetBrowser(
                             db,
                             tab,
                             context,
-                            asset,
+                            .{ .top_level_obj = asset, .obj = asset },
                             selectection,
                             0,
                             .{ .expand_object = args.expand_object, .multiselect = args.multiselect, .opened_obj = args.opened_obj },
@@ -298,7 +297,7 @@ fn uiAssetBrowser(
                     }
                 }
             } else {
-                const assets_filtered = _assetdb.filerAsset(allocator, if (args.filter) |fil| std.mem.sliceTo(fil, 0) else "", tags_filter) catch undefined;
+                const assets_filtered = _assetdb.filerAsset(allocator, if (args.filter) |f| f else "", tags_filter) catch undefined;
                 defer allocator.free(assets_filtered);
 
                 std.sort.insertion(assetdb.FilteredAsset, assets_filtered, {}, assetdb.FilteredAsset.lessThan);
@@ -308,7 +307,7 @@ fn uiAssetBrowser(
                         db,
                         tab,
                         context,
-                        asset.obj,
+                        .{ .top_level_obj = asset.obj, .obj = asset.obj },
                         selectection,
                         0,
                         new_args,
@@ -325,7 +324,7 @@ fn uiAssetBrowser(
                 db,
                 tab,
                 context,
-                root_folder,
+                .{ .top_level_obj = root_folder, .obj = root_folder },
                 selectection,
                 0,
                 args,
@@ -401,33 +400,40 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             },
         );
 
-        // TODO:
-        //Work in fast but not in others
-        // _ = _coreui.registerTest(
-        //     "AssetBrowser",
-        //     "should_move_assets_to_folder_by_drag_and_drop",
-        //     @src(),
-        //     struct {
-        //         pub fn run(ctx: *coreui.TestContext) !void {
-        //             _kernel.openAssetRoot("fixtures/test_move");
-        //             ctx.yield(_coreui, 1);
+        _ = _coreui.registerTest(
+            "AssetBrowser",
+            "should_move_assets_to_folder_by_drag_and_drop",
+            @src(),
+            struct {
+                pub fn run(ctx: *coreui.TestContext) !void {
+                    _kernel.openAssetRoot("fixtures/test_move");
+                    ctx.yield(_coreui, 1);
 
-        //             ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-        //             ctx.windowFocus(_coreui, "");
+                    ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
+                    ctx.windowFocus(_coreui, "");
 
-        //             //ctx.itemAction(_coreui, .Click, "**/###ROOT/###asset_a.ct_foo_asset", .{}, null);
-        //             ctx.yield(_coreui, 1);
+                    //ctx.itemAction(_coreui, .Click, "**/###ROOT/###asset_a.ct_foo_asset", .{}, null);
+                    ctx.yield(_coreui, 1);
 
-        //             ctx.dragAndDrop(
-        //                 _coreui,
-        //                 "**/###ROOT/###asset_a.ct_foo_asset",
-        //                 "**/###ROOT/###folder_b",
-        //                 //"//###ct_editor_asset_browser_tab_1/**/###ROOT/###folder_a",
-        //                 .left,
-        //             );
-        //         }
-        //     },
-        // );
+                    ctx.dragAndDrop(
+                        _coreui,
+                        "**/###ROOT/###asset_a.ct_foo_asset",
+                        "**/###ROOT/###folder_b",
+                        //"//###ct_editor_asset_browser_tab_1/**/###ROOT/###folder_a",
+                        .left,
+                    );
+                }
+            },
+        );
+    }
+});
+
+// Cdb
+var AssetTypeIdx: cdb.TypeIdx = undefined;
+
+const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
+    pub fn postCreateTypes(db: cdb.Db) !void {
+        AssetTypeIdx = assetdb.Asset.typeIdx(db);
     }
 });
 
@@ -452,11 +458,11 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});
 
-    _g.tab_vt = try apidb.globalVar(editor.EditorTabTypeI, module_name, ASSET_BROWSER_NAME, .{});
-    _g.tab_vt.* = asset_browser_tab;
+    _g.tab_vt = try apidb.globalVarValue(editor.EditorTabTypeI, module_name, ASSET_BROWSER_NAME, asset_browser_tab);
 
     try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &asset_browser_tab, load);
     try apidb.implOrRemove(module_name, coreui.RegisterTestsI, &register_tests_i, load);
+    try apidb.implOrRemove(module_name, cdb.PostCreateTypesI, &post_create_types_i, load);
 
     try apidb.setOrRemoveZigApi(module_name, public.AssetBrowserAPI, &api, load);
 
@@ -464,6 +470,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_asset_browser(__apidb: *const cetech1.apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.C) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
+pub export fn ct_load_module_editor_asset_browser(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

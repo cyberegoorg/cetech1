@@ -244,52 +244,56 @@ pub const Window = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
 
-    pub fn closed(self: Window) bool {
-        return self.vtable.windowClosed(self.ptr);
+    pub inline fn shouldClose(self: Window) bool {
+        return self.vtable.shouldClose(self.ptr);
     }
 
-    pub fn getInternal(self: Window, comptime T: type) *const T {
+    pub inline fn setShouldClose(self: Window, should_close: bool) void {
+        return self.vtable.setShouldClose(self.ptr, should_close);
+    }
+
+    pub inline fn getInternal(self: Window, comptime T: type) *const T {
         return @ptrCast(self.vtable.getInternalHandler(self.ptr));
     }
 
-    pub fn getFramebufferSize(self: Window) [2]i32 {
+    pub inline fn getFramebufferSize(self: Window) [2]i32 {
         return self.vtable.getFramebufferSize(self.ptr);
     }
 
-    pub fn getContentScale(self: Window) [2]f32 {
+    pub inline fn getContentScale(self: Window) [2]f32 {
         return self.vtable.getContentScale(self.ptr);
     }
 
-    pub fn getOsWindowHandler(self: Window) ?*anyopaque {
+    pub inline fn getOsWindowHandler(self: Window) ?*anyopaque {
         return self.vtable.getOsWindowHandler(self.ptr);
     }
 
-    pub fn getOsDisplayHandler(self: Window) ?*anyopaque {
+    pub inline fn getOsDisplayHandler(self: Window) ?*anyopaque {
         return self.vtable.getOsDisplayHandler(self.ptr);
     }
 
-    pub fn getKey(self: Window, key: Key) Action {
+    pub inline fn getKey(self: Window, key: Key) Action {
         return self.vtable.getKey(self.ptr, key);
     }
-    pub fn getMods(self: Window) Mods {
+    pub inline fn getMods(self: Window) Mods {
         return self.vtable.getMods(self.ptr);
     }
 
-    pub fn getMouseButton(self: Window, button: MouseButton) Action {
+    pub inline fn getMouseButton(self: Window, button: MouseButton) Action {
         return self.vtable.getMouseButton(self.ptr, button);
     }
-    pub fn getCursorPos(self: Window) [2]f64 {
+    pub inline fn getCursorPos(self: Window) [2]f64 {
         return self.vtable.getCursorPos(self.ptr);
     }
-    pub fn getCursorPosDelta(self: Window, last_pos: [2]f64) [2]f64 {
+    pub inline fn getCursorPosDelta(self: Window, last_pos: [2]f64) [2]f64 {
         return self.vtable.getCursorPosDelta(self.ptr, last_pos);
     }
-    pub fn setCursorMode(self: Window, mode: CursorMode) void {
+    pub inline fn setCursorMode(self: Window, mode: CursorMode) void {
         return self.vtable.setCursorMode(self.ptr, mode);
     }
 
     pub const VTable = struct {
-        windowClosed: *const fn (window: *anyopaque) bool,
+        shouldClose: *const fn (window: *anyopaque) bool,
         getInternalHandler: *const fn (window: *anyopaque) *const anyopaque,
         getFramebufferSize: *const fn (window: *anyopaque) [2]i32,
         getContentScale: *const fn (window: *anyopaque) [2]f32,
@@ -301,9 +305,11 @@ pub const Window = struct {
         getCursorPos: *const fn (window: *anyopaque) [2]f64,
         getCursorPosDelta: *const fn (window: *anyopaque, last_pos: [2]f64) [2]f64,
         setCursorMode: *const fn (window: *anyopaque, mode: CursorMode) void,
+        setShouldClose: *const fn (window: *anyopaque, should_close: bool) void,
 
         pub fn implement(comptime T: type) VTable {
-            if (!std.meta.hasFn(T, "windowClosed")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "shouldClose")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "setShouldClose")) @compileError("implement me");
             if (!std.meta.hasFn(T, "getInternalHandler")) @compileError("implement me");
             if (!std.meta.hasFn(T, "getFramebufferSize")) @compileError("implement me");
             if (!std.meta.hasFn(T, "getContentScale")) @compileError("implement me");
@@ -317,7 +323,8 @@ pub const Window = struct {
             if (!std.meta.hasFn(T, "setCursorMode")) @compileError("implement me");
 
             return VTable{
-                .windowClosed = T.windowClosed,
+                .shouldClose = T.shouldClose,
+                .setShouldClose = T.setShouldClose,
                 .getInternalHandler = T.getInternalHandler,
                 .getFramebufferSize = T.getFramebufferSize,
                 .getContentScale = T.getContentScale,
@@ -347,7 +354,7 @@ pub const Monitor = struct {
         refresh_rate: c_int,
     };
 
-    pub fn getVideoMode(self: Monitor) !*VideoMode {
+    pub inline fn getVideoMode(self: Monitor) !*VideoMode {
         return self.vtable.getMonitorVideoMode(self.ptr);
     }
 
