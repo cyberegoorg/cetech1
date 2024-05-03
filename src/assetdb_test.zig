@@ -10,6 +10,7 @@ const cdb_types = @import("cdb_types.zig");
 const log = @import("log.zig");
 const uuid = @import("uuid.zig");
 const private = @import("assetdb.zig");
+const metrics = @import("metrics.zig");
 
 const cetech1 = @import("cetech1");
 const public = cetech1.assetdb;
@@ -50,6 +51,7 @@ fn testInit() !void {
     try tempalloc.init(std.testing.allocator, 256);
     try task.init(std.testing.allocator);
     try apidb.init(std.testing.allocator);
+    try metrics.init(std.testing.allocator);
     try cdb.init(std.testing.allocator);
     try private.registerToApi();
     try task.start();
@@ -62,6 +64,7 @@ fn testDeinit() void {
     task.stop();
     task.deinit();
     tempalloc.deinit();
+    metrics.deinit();
 }
 
 test "asset: Should save asset to json" {
@@ -573,7 +576,7 @@ test "asset: Should save asset root dir" {
     }
 
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, private.CT_TEMP_FOLDER });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, public.CT_TEMP_FOLDER });
         defer std.testing.allocator.free(path);
 
         var d = std.fs.cwd().openDir(path, .{});
@@ -641,7 +644,7 @@ test "asset: Should save modified asset" {
     }
 
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, private.CT_TEMP_FOLDER });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, public.CT_TEMP_FOLDER });
         defer std.testing.allocator.free(path);
 
         var d = std.fs.cwd().openDir(path, .{});

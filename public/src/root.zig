@@ -7,7 +7,8 @@ pub const dag = @import("dag.zig");
 pub const uuid = @import("uuid.zig");
 pub const tempalloc = @import("tempalloc.zig");
 pub const profiler = @import("profiler.zig");
-pub const zmath = @import("zmath");
+pub const metrics = @import("metrics.zig");
+pub const math = @import("math.zig");
 
 pub const platform = @import("platform.zig");
 pub const apidb = @import("apidb.zig");
@@ -19,13 +20,20 @@ pub const cdb_types = @import("cdb_types.zig");
 
 pub const assetdb = @import("assetdb.zig");
 pub const gpu = @import("gpu.zig");
-pub const gfx = @import("gfx.zig");
+pub const renderer = @import("renderer.zig");
 pub const coreui = @import("coreui.zig");
+pub const coreui_node_editor = @import("coreui_node_editor.zig");
 
 pub const ecs = @import("ecs.zig");
 pub const primitives = @import("primitives.zig");
 
 pub const actions = @import("actions.zig");
+
+pub const graphvm = @import("graphvm.zig");
+pub const render_graph = @import("render_graph.zig");
+pub const debug_draw = @import("debug_draw.zig");
+
+pub const transform = @import("transform.zig");
 
 test {
     // TODO: SHIT

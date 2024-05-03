@@ -2,6 +2,11 @@ const std = @import("std");
 const builtin = @import("builtin");
 const strid = @import("strid.zig");
 
+const cdb = @import("cdb.zig");
+const graphvm = @import("graphvm.zig");
+
+const log = std.log.scoped(.ecs);
+
 pub const Id = u64;
 pub const EntityId = Id;
 pub const ComponentId = EntityId;
@@ -37,6 +42,7 @@ pub const Union = strid.strId32("Union");
 pub const Alias = strid.strId32("Alias");
 pub const Prefab = strid.strId32("Prefab");
 pub const Disabled = strid.strId32("Disabled");
+
 pub const OnStart = strid.strId32("OnStart");
 pub const PreFrame = strid.strId32("PreFrame");
 pub const OnLoad = strid.strId32("OnLoad");
@@ -48,6 +54,7 @@ pub const PostUpdate = strid.strId32("PostUpdate");
 pub const PreStore = strid.strId32("PreStore");
 pub const OnStore = strid.strId32("OnStore");
 pub const PostFrame = strid.strId32("PostFrame");
+
 pub const Phase = strid.strId32("Phase");
 pub const OnAdd = strid.strId32("OnAdd");
 pub const OnRemove = strid.strId32("OnRemove");
@@ -62,6 +69,18 @@ pub const OnTableFill = strid.strId32("OnTableFill");
 pub fn id(comptime T: type) strid.StrId32 {
     return strid.strId32(@typeName(T));
 }
+
+pub const Selff = 1 << 1;
+pub const Up = 1 << 2;
+pub const Down = 1 << 3;
+pub const TraverseAll = 1 << 4;
+pub const Cascade = 1 << 5;
+pub const Parent = 1 << 6;
+pub const IsVariable = 1 << 7;
+pub const IsEntity = 1 << 8;
+pub const IsName = 1 << 9;
+pub const Filter = 1 << 10;
+pub const TraverseFlags = Up | Down | TraverseAll | Selff | Cascade | Parent;
 
 pub const InOutKind = enum(i32) {
     InOutDefault,
@@ -81,15 +100,27 @@ pub const OperatorKind = enum(i32) {
     NotFrom,
 };
 
-pub const Term = struct {
+pub const TermId = extern struct {
+    id: EntityId = 0,
+    name: ?[*:0]const u8 = null,
+    trav: EntityId = 0,
+    flags: u32 = 0,
+};
+
+pub const QueryTerm = struct {
     id: strid.StrId32,
     inout: InOutKind = .InOutDefault,
     oper: OperatorKind = .And,
+
+    src: TermId = .{},
+    first: TermId = .{},
+    second: TermId = .{},
 };
 
 pub const IterO = opaque {};
 
 pub const ComponentI = struct {
+    const Self = @This();
     pub const c_name = "ct_ecs_component_i";
     pub const name_hash = strid.strId64(@This().c_name);
 
@@ -98,12 +129,96 @@ pub const ComponentI = struct {
     size: usize,
     aligment: usize,
 
-    pub fn implement(comptime T: type) @This() {
-        return @This(){
+    onAdd: ?*const fn (iter: *IterO) callconv(.C) void = null,
+    onSet: ?*const fn (iter: *IterO) callconv(.C) void = null,
+    onRemove: ?*const fn (iter: *IterO) callconv(.C) void = null,
+
+    onCreate: ?*const fn (ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void = null,
+    onDestroy: ?*const fn (ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void = null,
+    onCopy: ?*const fn (dst_ptr: *anyopaque, src_ptr: *const anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void = null,
+    onMove: ?*const fn (dst_ptr: *anyopaque, src_ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void = null,
+
+    pub fn implement(comptime T: type, comptime Hooks: type) Self {
+        return Self{
             .name = @typeName(T),
             .id = strid.strId32(@typeName(T)),
+
             .size = @sizeOf(T),
             .aligment = @alignOf(T),
+
+            .onAdd = if (std.meta.hasFn(Hooks, "onAdd")) struct {
+                fn f(iter: *IterO) callconv(.C) void {
+                    Hooks.onAdd(iter) catch undefined;
+                }
+            }.f else null,
+
+            .onSet = if (std.meta.hasFn(Hooks, "onSet")) struct {
+                fn f(iter: *IterO) callconv(.C) void {
+                    Hooks.onSet(iter) catch undefined;
+                }
+            }.f else null,
+
+            .onRemove = if (std.meta.hasFn(Hooks, "onRemove")) struct {
+                fn f(iter: *IterO) callconv(.C) void {
+                    Hooks.onRemove(iter) catch undefined;
+                }
+            }.f else null,
+
+            .onCreate = if (std.meta.hasFn(Hooks, "onCreate")) struct {
+                fn f(ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void {
+                    _ = type_info;
+                    var tptr: []T = undefined;
+                    tptr.len = @intCast(count);
+                    tptr.ptr = @alignCast(@ptrCast(ptr));
+
+                    Hooks.onCreate(tptr) catch undefined;
+                }
+            }.f else null,
+
+            .onDestroy = if (std.meta.hasFn(Hooks, "onDestroy")) struct {
+                fn f(ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void {
+                    _ = type_info;
+                    var tptr: []T = undefined;
+                    tptr.len = @intCast(count);
+                    tptr.ptr = @alignCast(@ptrCast(ptr));
+
+                    Hooks.onDestroy(tptr) catch undefined;
+                }
+            }.f else null,
+
+            .onCopy = if (std.meta.hasFn(Hooks, "onCopy")) struct {
+                fn f(dst_ptr: *anyopaque, src_ptr: *const anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void {
+                    _ = type_info;
+
+                    var dst_tptr: []T = undefined;
+                    dst_tptr.len = @intCast(count);
+                    dst_tptr.ptr = @alignCast(@ptrCast(dst_ptr));
+
+                    var src_tptr: []const T = undefined;
+                    src_tptr.len = @intCast(count);
+                    src_tptr.ptr = @alignCast(@ptrCast(src_ptr));
+
+                    Hooks.onCopy(dst_tptr, src_tptr) catch |err| {
+                        log.err("OnCopy erro {}", .{err});
+                    };
+                }
+            }.f else null,
+
+            .onMove = if (std.meta.hasFn(Hooks, "onMove")) struct {
+                fn f(dst_ptr: *anyopaque, src_ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void {
+                    _ = type_info;
+
+                    var dst_tptr: []T = undefined;
+                    dst_tptr.len = @intCast(count);
+                    dst_tptr.ptr = @alignCast(@ptrCast(dst_ptr));
+
+                    var src_tptr: []T = undefined;
+                    src_tptr.len = @intCast(count);
+                    src_tptr.ptr = @alignCast(@ptrCast(src_ptr));
+
+                    Hooks.onMove(dst_tptr, src_tptr) catch undefined;
+                }
+            }.f else null,
         };
     }
 };
@@ -114,25 +229,50 @@ pub const SystemI = struct {
 
     name: [:0]const u8 = undefined,
     phase: strid.StrId32 = undefined,
-    query: []const Term,
+    query: []const QueryTerm,
     multi_threaded: bool = true,
+    instanced: bool = false,
 
-    update: *const fn (iter: *IterO) callconv(.C) void = undefined,
+    update: ?*const fn (iter: *IterO) callconv(.C) void = undefined,
+    iterate: ?*const fn (iter: *IterO) callconv(.C) void = undefined,
 
     pub fn implement(args: SystemI, comptime T: type) SystemI {
-        if (!std.meta.hasFn(T, "update")) @compileError("implement me");
-
         return SystemI{
             .name = args.name,
             .phase = args.phase,
             .query = args.query,
             .multi_threaded = args.multi_threaded,
+            .instanced = args.instanced,
 
-            .update = struct {
+            .update = if (std.meta.hasFn(T, "update")) struct {
                 pub fn f(iter: *IterO) callconv(.C) void {
                     T.update(iter) catch undefined;
                 }
-            }.f,
+            }.f else null,
+
+            .iterate = if (std.meta.hasFn(T, "iterate")) struct {
+                pub fn f(iter: *IterO) callconv(.C) void {
+                    T.iterate(iter) catch undefined;
+                }
+            }.f else null,
+        };
+    }
+};
+
+pub const OnWorldI = struct {
+    pub const c_name = "ct_ecs_on_world_i";
+    pub const name_hash = strid.strId64(@This().c_name);
+
+    onCreate: *const fn (world: World) anyerror!void = undefined,
+    onDestroy: *const fn (world: World) anyerror!void = undefined,
+
+    pub fn implement(comptime T: type) OnWorldI {
+        if (!std.meta.hasFn(T, "onCreate")) @compileError("implement me");
+        if (!std.meta.hasFn(T, "onDestroy")) @compileError("implement me");
+
+        return OnWorldI{
+            .onCreate = T.onCreate,
+            .onDestroy = T.onDestroy,
         };
     }
 };
@@ -190,25 +330,8 @@ pub const World = struct {
         return self.vtable.progress(self.ptr, dt);
     }
 
-    pub fn createQuery(self: World, query: []const Term) !Query {
+    pub fn createQuery(self: World, query: []const QueryTerm) !Query {
         return self.vtable.createQuery(self.ptr, query);
-    }
-
-    pub fn createSystem(self: World, name: [:0]const u8, query: []const Term, comptime T: type) !SystemId {
-        return self.vtable.createSystem(
-            self.ptr,
-            name,
-            query,
-            struct {
-                pub fn f(iter: *IterO) callconv(.C) void {
-                    T.update(iter) catch undefined;
-                }
-            }.f,
-        );
-    }
-
-    pub fn runSystem(self: World, system_id: strid.StrId32, param: ?*const anyopaque) void {
-        return self.vtable.runSystem(self.ptr, system_id, param);
     }
 
     ptr: *anyopaque,
@@ -220,9 +343,7 @@ pub const World = struct {
 
         setId: *const fn (world: *anyopaque, entity: EntityId, id: strid.StrId32, size: usize, ptr: ?*const anyopaque) EntityId,
 
-        createQuery: *const fn (world: *anyopaque, query: []const Term) anyerror!Query,
-        createSystem: *const fn (world: *anyopaque, name: [:0]const u8, query: []const Term, update: *const fn (iter: *IterO) callconv(.C) void) anyerror!SystemId,
-        runSystem: *const fn (world: *anyopaque, system_id: strid.StrId32, param: ?*const anyopaque) void,
+        createQuery: *const fn (world: *anyopaque, query: []const QueryTerm) anyerror!Query,
 
         progress: *const fn (world: *anyopaque, dt: f32) bool,
     };
@@ -245,6 +366,10 @@ pub const Iter = struct {
         return null;
     }
 
+    pub fn isSelf(self: Iter, index: i32) bool {
+        return self.vtable.isSelf(self.ptr, index);
+    }
+
     pub fn destroy(self: Iter) void {
         self.vtable.destroy(self.ptr);
     }
@@ -252,6 +377,26 @@ pub const Iter = struct {
     pub fn getParam(self: Iter, comptime T: type) ?*T {
         const p: *T = @alignCast(@ptrCast(self.vtable.getParam(self.ptr) orelse return null));
         return p;
+    }
+
+    pub fn entities(self: Iter) []EntityId {
+        return self.vtable.entities(self.ptr);
+    }
+
+    pub fn nextTable(self: Iter) bool {
+        return self.vtable.nextTable(self.ptr);
+    }
+
+    pub fn changed(self: Iter) bool {
+        return self.vtable.changed(self.ptr);
+    }
+
+    pub fn skip(self: Iter) void {
+        return self.vtable.skip(self.ptr);
+    }
+
+    pub fn populate(self: Iter) void {
+        return self.vtable.populate(self.ptr);
     }
 
     ptr: *anyopaque,
@@ -263,6 +408,15 @@ pub const Iter = struct {
         field: *const fn (self: *anyopaque, size: usize, index: i32) ?*anyopaque,
         destroy: *const fn (self: *anyopaque) void,
         getParam: *const fn (self: *anyopaque) ?*anyopaque,
+        entities: *const fn (self: *anyopaque) []EntityId,
+
+        nextTable: *const fn (self: *anyopaque) bool,
+        changed: *const fn (self: *anyopaque) bool,
+
+        populate: *const fn (self: *anyopaque) void,
+        skip: *const fn (self: *anyopaque) void,
+
+        isSelf: *const fn (self: *anyopaque, index: i32) bool,
 
         pub fn implement(comptime T: type) VTable {
             if (!std.meta.hasFn(T, "getWorld")) @compileError("implement me");
@@ -270,6 +424,11 @@ pub const Iter = struct {
             if (!std.meta.hasFn(T, "field")) @compileError("implement me");
             if (!std.meta.hasFn(T, "destroy")) @compileError("implement me");
             if (!std.meta.hasFn(T, "getParam")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "nextTable")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "changed")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "populate")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "skip")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "isSelf")) @compileError("implement me");
 
             return VTable{
                 .getWorld = T.getWorld,
@@ -277,10 +436,27 @@ pub const Iter = struct {
                 .field = T.field,
                 .destroy = T.destroy,
                 .getParam = T.getParam,
+                .entities = T.entites,
+                .nextTable = T.nextTable,
+                .changed = T.changed,
+                .skip = T.skip,
+                .populate = T.populate,
+                .isSelf = T.isSelf,
             };
         }
     };
 };
+
+pub const EntityLogicComponent = struct {
+    graph: cdb.ObjId = .{},
+};
+
+pub const EntityLogicComponentInstance = struct {
+    graph_container: graphvm.GraphInstance = .{},
+};
+
+pub const ECS_WORLD_CONTEXT = strid.strId32("ecs_world_context");
+pub const ECS_ENTITY_CONTEXT = strid.strId32("ecs_entity_context");
 
 pub const EcsAPI = struct {
     createWorld: *const fn () anyerror!World,

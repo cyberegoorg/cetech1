@@ -31,7 +31,11 @@
         "ios": "cpp",
         "regex": "cpp",
         "__locale": "c",
-        "locale": "c"
+        "locale": "c",
+        "__config": "c",
+        "bitset": "cpp",
+        "queue": "cpp",
+        "stack": "cpp"
     },
     "[json]": {
         "editor.insertSpaces": true,

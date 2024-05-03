@@ -1,0 +1,58 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "0190603a-a016-74ba-8a3d-9cd050650616",
+  "__type_name": "ct_graph",
+  "__uuid": "0190603a-a2e5-77c5-8a81-43dc92decf52",
+  "nodes": [
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "0190603a-e033-77c8-9593-1ea764665206",
+      "node_type": "graph_inputs",
+      "pos_x": 2.84e2,
+      "pos_y": 3.8e1
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "0190603b-4e22-7b03-ac92-15e807d87fc3",
+      "node_type": "graph_outputs",
+      "pos_x": 5.25e2,
+      "pos_y": 3.8e1
+    }
+  ],
+  "connections": [
+    {
+      "__type_name": "ct_graph_connection",
+      "__uuid": "01913311-bb53-71dc-a7eb-3fb62bc084f8",
+      "from_node": "ct_graph_node:0190603a-e033-77c8-9593-1ea764665206",
+      "to_node": "ct_graph_node:0190603b-4e22-7b03-ac92-15e807d87fc3",
+      "from_pin": "0190603a-b76a-7441-86e5-2c64f5f2b46c",
+      "to_pin": "0190603a-f2cb-7b53-9caf-bf4f867b9451"
+    }
+  ],
+  "interface": {
+    "__type_name": "ct_graph_interface",
+    "__uuid": "0190603a-b025-72e1-9601-055e4fd04c9b",
+    "inputs": [
+      {
+        "__type_name": "ct_graph_interface_input",
+        "__uuid": "0190603a-b76a-7441-86e5-2c64f5f2b46c",
+        "name": "IN",
+        "value": {
+          "__type_name": "ct_node_flow_type",
+          "__uuid": "0190603a-c0fb-7c35-bbbc-fed905dca73c"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "__type_name": "ct_graph_interface_output",
+        "__uuid": "0190603a-f2cb-7b53-9caf-bf4f867b9451",
+        "name": "OUT",
+        "value": {
+          "__type_name": "ct_node_flow_type",
+          "__uuid": "0190603b-0a68-7e7c-b01d-da402d1f03a9"
+        }
+      }
+    ]
+  }
+}

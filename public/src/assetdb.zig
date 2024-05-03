@@ -74,6 +74,8 @@ pub const AssetRootOpenedI = extern struct {
     }
 };
 
+pub const CT_TEMP_FOLDER = ".ct_temp";
+
 /// Asset In/Out interface
 /// Use this if you need define your non-cdb assets importer or exporter
 pub const AssetIOI = struct {
@@ -126,7 +128,7 @@ pub const AssetIOI = struct {
     }
 };
 
-pub const FilteredAsset = extern struct {
+pub const FilteredAsset = struct {
     score: f64,
     obj: cdb.ObjId,
 
@@ -227,6 +229,7 @@ pub const AssetDBAPI = struct {
     getAssetForObj: *const fn (obj: cdb.ObjId) ?cdb.ObjId,
     getObjForAsset: *const fn (obj: cdb.ObjId) ?cdb.ObjId,
     isAssetFolder: *const fn (obj: cdb.ObjId) bool,
+    isObjAssetObj: *const fn (obj: cdb.ObjId) bool,
     getFilePathForAsset: *const fn (asset: cdb.ObjId, tmp_allocator: std.mem.Allocator) anyerror![]u8,
     getPathForFolder: *const fn (asset: cdb.ObjId, tmp_allocator: std.mem.Allocator) anyerror![]u8,
 

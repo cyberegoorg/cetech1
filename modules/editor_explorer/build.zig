@@ -13,7 +13,7 @@ pub fn build(b: *std.Build) !void {
     const lib = b.addSharedLibrary(.{
         .name = "ct_editor_explorer",
         .version = version,
-        .root_source_file = .{ .path = "src/private.zig" },
+        .root_source_file = b.path("src/private.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) !void {
     const slib = b.addStaticLibrary(.{
         .name = "static",
         .version = version,
-        .root_source_file = .{ .path = "src/private.zig" },
+        .root_source_file = b.path("src/private.zig"),
         .target = target,
         .optimize = optimize,
     });

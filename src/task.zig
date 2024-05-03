@@ -21,7 +21,7 @@ fn getThreadNum() u64 {
     return _job_queue._num_threads;
 }
 
-const JobQueue = zjobs.JobQueue(.{});
+const JobQueue = zjobs.JobQueue(.{ .idle_sleep_ns = 25, .max_job_size = 128, .max_jobs = 4096 * 2 });
 
 var _allocator: std.mem.Allocator = undefined;
 var _job_queue: JobQueue = undefined;

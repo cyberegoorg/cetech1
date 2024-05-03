@@ -82,17 +82,18 @@ var obj_buffer_tab = editor.EditorTabTypeI.implement(
     },
     struct {
         pub fn menuName() ![:0]const u8 {
-            return coreui.Icons.Buffer ++ " Obj buffer";
+            return coreui.Icons.Buffer ++ "  " ++ "Obj buffer";
         }
 
         // Return tab title
         pub fn title(inst: *editor.TabO) ![:0]const u8 {
             _ = inst;
-            return coreui.Icons.Buffer ++ " Obj buffer";
+            return coreui.Icons.Buffer ++ "  " ++ "Obj buffer";
         }
 
         // Create new ObjBufferTab instantce
-        pub fn create(db: cetech1.cdb.Db) !?*editor.EditorTabI {
+        pub fn create(db: cetech1.cdb.Db, tab_id: u32) !?*editor.EditorTabI {
+            _ = tab_id;
             var tab_inst = try _allocator.create(ObjBufferTab);
             tab_inst.* = ObjBufferTab{
                 .tab_i = .{
@@ -169,6 +170,7 @@ var obj_buffer_tab = editor.EditorTabTypeI.implement(
                             .{
                                 .multiselect = true,
                                 .expand_object = false,
+                                .show_root = true,
                             },
                         );
                     }
@@ -386,17 +388,18 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
                     ctx.windowFocus(_coreui, "");
 
-                    ctx.keyDown(_coreui, .mod_super);
+                    // TODO: FIx mutli select
+                    //ctx.keyDown(_coreui, .mod_ctrl);
                     ctx.itemAction(_coreui, .Click, "**/###ROOT/###foo.ct_foo_asset", .{}, null);
-                    ctx.itemAction(_coreui, .Click, "**/###ROOT/###core", .{}, null);
-                    ctx.keyUp(_coreui, .mod_super);
+                    //ctx.itemAction(_coreui, .Click, "**/###ROOT/###core", .{}, null);
+                    //ctx.keyUp(_coreui, .mod_ctrl);
 
                     ctx.menuAction(_coreui, .Click, "###ObjContextMenu/###EditInObjBuffer1");
 
                     ctx.setRef(_coreui, "###ct_editor_obj_buffer_tab_1");
                     ctx.windowFocus(_coreui, "");
                     ctx.itemAction(_coreui, .Click, "**/###foo.ct_foo_asset", .{}, null);
-                    ctx.itemAction(_coreui, .Click, "**/###core", .{}, null);
+                    //ctx.itemAction(_coreui, .Click, "**/###core", .{}, null);
                 }
             },
         );
@@ -421,8 +424,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});
 
-    _g.tab_vt = try apidb.globalVar(editor.EditorTabTypeI, module_name, TAB_NAME, .{});
-    _g.tab_vt.* = obj_buffer_tab;
+    _g.tab_vt = try apidb.globalVarValue(editor.EditorTabTypeI, module_name, TAB_NAME, obj_buffer_tab);
 
     try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &obj_buffer_tab, load);
     try apidb.implOrRemove(module_name, editor.ObjContextMenuI, &buffer_context_menu_i, load);

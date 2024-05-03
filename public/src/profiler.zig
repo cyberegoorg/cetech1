@@ -120,6 +120,11 @@ pub const ProfilerAPI = struct {
         self.plotU64Fn(name, val);
     }
 
+    /// Plot f64 value with name
+    pub fn plotF64(self: Self, name: [*:0]const u8, val: f64) void {
+        self.plotF64Fn(name, val);
+    }
+
     //#region Pointers to implementation
     msgWithColorFn: *const fn (text: []const u8, color: u32) void,
     allocFn: *const fn (ptr: ?*const anyopaque, size: usize) void,
@@ -128,5 +133,6 @@ pub const ProfilerAPI = struct {
     freeNamedFn: *const fn (name: [*:0]const u8, ptr: ?*const anyopaque) void,
     frameMarkFn: *const fn () void,
     plotU64Fn: *const fn (name: [*:0]const u8, val: u64) void,
+    plotF64Fn: *const fn (name: [*:0]const u8, val: f64) void,
     //#endregion
 };

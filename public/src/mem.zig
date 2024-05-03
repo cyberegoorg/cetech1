@@ -4,6 +4,9 @@ const builtin = @import("builtin");
 const AtomicInt = std.atomic.Value(u32);
 const FreeIdQueue = QueueWithLock(u32);
 
+pub const HashSet = @import("ziglangSet").HashSetManaged;
+pub const ArraySet = @import("ziglangSet").ArraySetManaged;
+
 pub fn QueueWithLock(comptime T: type) type {
     return struct {
         ll: std.DoublyLinkedList(T),
@@ -47,6 +50,13 @@ pub fn PoolWithLock(comptime T: type) type {
             };
         }
 
+        pub fn initPreheated(allocator: std.mem.Allocator, initial_size: usize) !Self {
+            return .{
+                .pool = try std.heap.MemoryPool(T).initPreheated(allocator, initial_size),
+                .lock = std.Thread.Mutex{},
+            };
+        }
+
         pub fn deinit(self: *Self) void {
             self.pool.deinit();
         }
@@ -55,6 +65,12 @@ pub fn PoolWithLock(comptime T: type) type {
             self.lock.lock();
             defer self.lock.unlock();
             return try self.pool.create();
+        }
+
+        pub fn createMany(self: *Self, output: []*T, count: usize) !void {
+            self.lock.lock();
+            defer self.lock.unlock();
+            for (0..count) |idx| output[idx] = try self.pool.create();
         }
 
         pub fn destroy(self: *Self, item: *T) void {
@@ -278,5 +294,59 @@ pub const TmpAllocatorPool = struct {
         var true_alloc: *InnerAllocator = @alignCast(@ptrCast(alloc.ptr));
         _ = true_alloc.reset(.retain_capacity);
         self.pool.destroy(true_alloc) catch undefined;
+    }
+};
+
+pub const StringInternWithLock = struct {
+    const Self = @This();
+    const Storage = std.HashMap([:0]const u8, void, StringZContext, 80);
+
+    pub const StringZContext = struct {
+        pub fn hash(self: @This(), s: [:0]const u8) u64 {
+            _ = self;
+            return hashString(s);
+        }
+        pub fn eql(self: @This(), a: [:0]const u8, b: [:0]const u8) bool {
+            _ = self;
+            return eqlString(a, b);
+        }
+
+        fn eqlString(a: [:0]const u8, b: [:0]const u8) bool {
+            return std.mem.eql(u8, a, b);
+        }
+
+        fn hashString(s: [:0]const u8) u64 {
+            return std.hash.Wyhash.hash(0, s);
+        }
+    };
+
+    allocator: std.mem.Allocator,
+    storage: Storage,
+    lck: std.Thread.Mutex = .{},
+
+    pub fn init(allocator: std.mem.Allocator) Self {
+        return Self{
+            .allocator = allocator,
+            .storage = Storage.init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        var it = self.storage.keyIterator();
+        while (it.next()) |k| {
+            self.allocator.free(k.*);
+        }
+        self.storage.deinit();
+    }
+
+    pub fn intern(self: *Self, string: [:0]const u8) ![:0]const u8 {
+        self.lck.lock();
+        defer self.lck.unlock();
+
+        const intern_str_result = try self.storage.getOrPut(string);
+        if (intern_str_result.found_existing) return intern_str_result.key_ptr.*;
+
+        intern_str_result.key_ptr.* = try self.allocator.dupeZ(u8, string);
+        return intern_str_result.key_ptr.*;
     }
 };

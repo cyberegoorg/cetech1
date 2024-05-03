@@ -13,7 +13,7 @@ pub fn build(b: *std.Build) !void {
     const lib = b.addSharedLibrary(.{
         .name = "ct_editor_inspector",
         .version = version,
-        .root_source_file = .{ .path = "src/private.zig" },
+        .root_source_file = b.path("src/private.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) !void {
     const slib = b.addStaticLibrary(.{
         .name = "static",
         .version = version,
-        .root_source_file = .{ .path = "src/private.zig" },
+        .root_source_file = b.path("src/private.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -30,12 +30,12 @@ pub fn build(b: *std.Build) !void {
         l.root_module.addImport("cetech1", cetech1_module);
         l.root_module.addImport("editor", b.dependency("editor", .{}).module("editor"));
         l.addIncludePath(cetech1.path("includes"));
-        l.addIncludePath(.{ .path = "includes" });
+        l.addIncludePath(b.path("includes"));
         b.installArtifact(l);
     }
 
     _ = b.addModule("editor_inspector", .{
-        .root_source_file = .{ .path = "src/editor_inspector.zig" },
+        .root_source_file = b.path("src/editor_inspector.zig"),
         .imports = &.{
             .{ .name = "cetech1", .module = cetech1_module },
             .{ .name = "editor", .module = b.dependency("editor", .{}).module("editor") },

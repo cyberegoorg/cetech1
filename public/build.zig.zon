@@ -13,5 +13,6 @@
 
     .dependencies = .{
         .zmath = .{ .path = "../externals/shared/lib/zig-gamedev/libs/zmath" },
+        .ziglangSet = .{ .path = "../externals/shared/lib/ziglang-set" },
     },
 }

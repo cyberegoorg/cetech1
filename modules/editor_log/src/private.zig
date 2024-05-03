@@ -103,17 +103,18 @@ var log_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
 
     // Return name for menu /Tabs/
     pub fn menuName() ![:0]const u8 {
-        return Icons.FA_SCROLL ++ " Log";
+        return Icons.FA_SCROLL ++ "  " ++ "Log";
     }
 
     // Return tab title
     pub fn title(inst: *editor.TabO) ![:0]const u8 {
         _ = inst;
-        return Icons.FA_SCROLL ++ " Log";
+        return Icons.FA_SCROLL ++ "  " ++ " Log";
     }
 
     // Create new tab instantce
-    pub fn create(db: cdb.Db) !?*editor.EditorTabI {
+    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.EditorTabI {
+        _ = tab_id;
         _ = db;
         var tab_inst = _allocator.create(LogTab) catch undefined;
         tab_inst.* = .{
@@ -256,9 +257,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.log_tab_vt_ptr = try apidb.globalVar(editor.EditorTabTypeI, module_name, TAB_NAME, .{});
-    // Patch vt pointer to new.
-    _g.log_tab_vt_ptr.* = log_tab;
+    _g.log_tab_vt_ptr = try apidb.globalVarValue(editor.EditorTabTypeI, module_name, TAB_NAME, log_tab);
 
     try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &log_tab, load);
     try apidb.implOrRemove(module_name, cetech1.log.LogHandlerI, &handler, load);

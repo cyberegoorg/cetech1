@@ -54,7 +54,7 @@ const FooCDB = cdb.CdbTypeDecl(
 
 // Register all cdb stuff in this method
 
-var create_types_i = cdb.CreateTypesI.implement(struct {
+var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.Db) !void {
         _ = try db.addType(
             FooCDB.name,
@@ -207,7 +207,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.setOrRemoveZigApi(module_name, public.FooAPI, &api, load);
 
     // impl interface
-    try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_types_i, load);
+    try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
 
     // dont block test with sleeping shit

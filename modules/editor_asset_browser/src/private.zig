@@ -75,17 +75,18 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
     .create_on_init = true,
 }, struct {
     pub fn menuName() ![:0]const u8 {
-        return ASSET_BROWSER_ICON ++ " Asset browser";
+        return ASSET_BROWSER_ICON ++ "  " ++ "Asset browser";
     }
 
     // Return tab title
     pub fn title(inst: *editor.TabO) ![:0]const u8 {
         _ = inst;
-        return ASSET_BROWSER_ICON ++ " Asset browser";
+        return ASSET_BROWSER_ICON ++ "  " ++ "Asset browser";
     }
 
     // Create new FooTab instantce
-    pub fn create(db: cdb.Db) !?*editor.EditorTabI {
+    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.EditorTabI {
+        _ = tab_id;
         var tab_inst = try _allocator.create(AssetBrowserTab);
 
         tab_inst.* = AssetBrowserTab{
@@ -401,33 +402,31 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             },
         );
 
-        // TODO:
-        //Work in fast but not in others
-        // _ = _coreui.registerTest(
-        //     "AssetBrowser",
-        //     "should_move_assets_to_folder_by_drag_and_drop",
-        //     @src(),
-        //     struct {
-        //         pub fn run(ctx: *coreui.TestContext) !void {
-        //             _kernel.openAssetRoot("fixtures/test_move");
-        //             ctx.yield(_coreui, 1);
+        _ = _coreui.registerTest(
+            "AssetBrowser",
+            "should_move_assets_to_folder_by_drag_and_drop",
+            @src(),
+            struct {
+                pub fn run(ctx: *coreui.TestContext) !void {
+                    _kernel.openAssetRoot("fixtures/test_move");
+                    ctx.yield(_coreui, 1);
 
-        //             ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-        //             ctx.windowFocus(_coreui, "");
+                    ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
+                    ctx.windowFocus(_coreui, "");
 
-        //             //ctx.itemAction(_coreui, .Click, "**/###ROOT/###asset_a.ct_foo_asset", .{}, null);
-        //             ctx.yield(_coreui, 1);
+                    //ctx.itemAction(_coreui, .Click, "**/###ROOT/###asset_a.ct_foo_asset", .{}, null);
+                    ctx.yield(_coreui, 1);
 
-        //             ctx.dragAndDrop(
-        //                 _coreui,
-        //                 "**/###ROOT/###asset_a.ct_foo_asset",
-        //                 "**/###ROOT/###folder_b",
-        //                 //"//###ct_editor_asset_browser_tab_1/**/###ROOT/###folder_a",
-        //                 .left,
-        //             );
-        //         }
-        //     },
-        // );
+                    ctx.dragAndDrop(
+                        _coreui,
+                        "**/###ROOT/###asset_a.ct_foo_asset",
+                        "**/###ROOT/###folder_b",
+                        //"//###ct_editor_asset_browser_tab_1/**/###ROOT/###folder_a",
+                        .left,
+                    );
+                }
+            },
+        );
     }
 });
 
@@ -452,8 +451,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});
 
-    _g.tab_vt = try apidb.globalVar(editor.EditorTabTypeI, module_name, ASSET_BROWSER_NAME, .{});
-    _g.tab_vt.* = asset_browser_tab;
+    _g.tab_vt = try apidb.globalVarValue(editor.EditorTabTypeI, module_name, ASSET_BROWSER_NAME, asset_browser_tab);
 
     try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &asset_browser_tab, load);
     try apidb.implOrRemove(module_name, coreui.RegisterTestsI, &register_tests_i, load);

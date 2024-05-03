@@ -79,7 +79,7 @@ fn cdbObjTreeNode(
 ) bool {
     _ = args;
     var buff: [128:0]u8 = undefined;
-    const asset_label = _editor.buffFormatObjLabel(allocator, &buff, db, obj, true) orelse "Not implemented";
+    const asset_label = _editor.buffFormatObjLabel(allocator, &buff, db, obj, true, false) orelse "Not implemented";
     const asset_color = _editor.getAssetColor(db, obj);
     _coreui.pushStyleColor4f(.{ .idx = .text, .c = asset_color });
 
@@ -116,7 +116,7 @@ fn cdbObjTreeNode(
     if (!is_project and !_assetdb.isRootFolder(db, obj) and _coreui.beginDragDropSource(.{})) {
         defer _coreui.endDragDropSource();
 
-        const aasset_label = _editor.buffFormatObjLabel(allocator, &buff, db, obj, false) orelse "Not implemented";
+        const aasset_label = _editor.buffFormatObjLabel(allocator, &buff, db, obj, false, false) orelse "Not implemented";
         const aasset_color = _editor.getAssetColor(db, obj);
         _coreui.textColored(aasset_color, aasset_label);
 
@@ -181,6 +181,9 @@ fn isLeaf(db: cdb.Db, obj: cdb.ObjId) bool {
                 .REFERENCE_SET => {
                     return false;
                 },
+                .SUBOBJECT => {
+                    return false;
+                },
                 else => {},
             }
         }
@@ -219,8 +222,21 @@ fn cdbTreeView(
 
     const obj_r = db.readObj(obj) orelse return .{ .is_changed = false };
 
-    _coreui.pushObjUUID(obj);
-    defer _coreui.popId();
+    // _coreui.pushObjUUID(obj);
+    // defer _coreui.popId();
+    if (args.show_root) {
+        _ = cdbObjTreeNode(allocator, db, tab, context, selection, obj, false, false, true, args);
+        defer cdbTreePop();
+        if (_coreui.isItemActivated()) {
+            try _coreui.handleSelection(allocator, db, selection, obj, args.multiselect);
+            result = .{
+                .is_changed = true,
+                .parent_obj = obj,
+            };
+        }
+    }
+
+    if (!args.expand_object) return result;
 
     // Do generic tree walk
     const prop_defs = db.getTypePropDef(obj.type_idx).?;
@@ -265,7 +281,7 @@ fn cdbTreeView(
                     label,
                     depth < args.max_autopen_depth,
                     false,
-                    _coreui.isSelected(db, selection, subobj) or (args.sr.prop_idx == prop_idx and args.sr.in_set_obj.isEmpty()),
+                    _coreui.isSelected(db, selection, subobj), // or (args.sr.prop_idx == prop_idx and args.sr.in_set_obj.isEmpty()),
                     isLeaf(db, subobj),
                     args,
                 );
@@ -275,8 +291,13 @@ fn cdbTreeView(
                 }
 
                 if (_coreui.isItemActivated()) {
-                    try _coreui.handleSelection(allocator, db, selection, obj, args.multiselect);
-                    result = .{ .is_changed = true, .is_prop = true, .prop_idx = prop_idx };
+                    try _coreui.handleSelection(allocator, db, selection, subobj, args.multiselect);
+                    result = .{
+                        .is_changed = true,
+                        .is_prop = true,
+                        .prop_idx = prop_idx,
+                        .parent_obj = obj,
+                    };
                 }
 
                 if (open) {
@@ -327,8 +348,10 @@ fn cdbTreeView(
                             // _coreui.pushIntId(@truncate(set_idx));
                             // defer _coreui.popId();
 
-                            // const label = _coreui.buffFormatObjLabel(allocator, &buff, db, subobj) orelse try std.fmt.bufPrintZ(&buff, "{d}", .{set_idx});
-                            const label = try std.fmt.bufPrintZ(&buff, "{d}", .{set_idx});
+                            const label = _editor.buffFormatObjLabel(allocator, &buff, db, subobj, true, true) orelse
+                                try std.fmt.bufPrintZ(&buff, "{d}", .{set_idx});
+
+                            //const label = try std.fmt.bufPrintZ(&buff, "{d}", .{set_idx});
 
                             const is_inisiated = db.isIinisiated(obj_r, prop_idx, db.readObj(subobj).?);
 
@@ -350,11 +373,12 @@ fn cdbTreeView(
                             _coreui.popStyleColor(.{});
 
                             if (_coreui.isItemActivated()) {
-                                try _coreui.handleSelection(allocator, db, selection, obj, args.multiselect);
+                                try _coreui.handleSelection(allocator, db, selection, subobj, args.multiselect);
                                 result.is_changed = true;
                                 result.is_prop = true;
                                 result.prop_idx = prop_idx;
                                 result.in_set_obj = subobj;
+                                result.parent_obj = obj;
                             }
 
                             if (_coreui.beginPopupContextItem()) {

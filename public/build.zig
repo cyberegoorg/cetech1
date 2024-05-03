@@ -13,12 +13,18 @@ pub fn build(b: *std.Build) !void {
         },
     );
 
+    const ziglangSet = b.dependency("ziglangSet", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const cetech1_module = b.addModule(
         "cetech1",
         .{
-            .root_source_file = .{ .path = "src/root.zig" },
+            .root_source_file = b.path("src/root.zig"),
         },
     );
-    cetech1_module.addIncludePath(.{ .path = "includes" });
+    cetech1_module.addIncludePath(b.path("includes"));
     cetech1_module.addImport("zmath", zmath.module("root"));
+    cetech1_module.addImport("ziglangSet", ziglangSet.module("ziglangSet"));
 }

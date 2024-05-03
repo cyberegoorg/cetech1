@@ -32,6 +32,8 @@ pub const UiVisualPropertyConfigAspect = struct {
 pub const cdbPropertiesViewArgs = struct {
     filter: ?[:0]const u8 = null,
     max_autopen_depth: u32 = 5,
+    hide_proto: bool = false,
+    flat: bool = false,
 };
 
 pub const UiEmbedPropertyAspect = struct {
@@ -134,8 +136,8 @@ pub const InspectorAPI = struct {
     cdbPropertiesView: *const fn (allocator: std.mem.Allocator, db: cdb.Db, tab: *editor.TabO, obj: cdb.ObjId, depth: u32, args: cdbPropertiesViewArgs) anyerror!void,
     cdbPropertiesObj: *const fn (allocator: std.mem.Allocator, db: cdb.Db, tab: *editor.TabO, obj: cdb.ObjId, depth: u32, args: cdbPropertiesViewArgs) anyerror!void,
 
-    beginSection: *const fn (label: [:0]const u8, leaf: bool, default_open: bool) bool,
-    endSection: *const fn (open: bool) void,
+    beginSection: *const fn (label: [:0]const u8, leaf: bool, default_open: bool, flat: bool) bool,
+    endSection: *const fn (open: bool, flat: bool) void,
 
     beginPropTable: *const fn (name: [:0]const u8) bool,
     endPropTabel: *const fn () void,

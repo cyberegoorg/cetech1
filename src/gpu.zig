@@ -13,16 +13,16 @@ const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");
 const task = @import("task.zig");
 const tempalloc = @import("tempalloc.zig");
+const renderer_private = @import("renderer.zig");
 
-const gfx_rg_private = @import("gfx_render_graph.zig");
-const gfx_rg_api = gfx_rg_private.api;
+const gfx_rg_private = @import("render_graph.zig");
 
 const cetech1 = @import("cetech1");
 const public = cetech1.gpu;
-const gfx = cetech1.gfx;
-const gfx_dd = cetech1.gfx.dd;
-const gfx_rg = cetech1.gfx.rg;
-const zm = cetech1.zmath;
+const gfx = cetech1.gpu;
+const gfx_dd = cetech1.debug_draw;
+const gfx_rg = cetech1.render_graph;
+const zm = cetech1.math;
 
 const log = std.log.scoped(.gpu);
 const bgfx_log = std.log.scoped(.bgfx);
@@ -36,7 +36,7 @@ var _allocator: std.mem.Allocator = undefined;
 var _encoder_map: EncoderMap = undefined;
 var _encoder_map_lock: std.Thread.Mutex = .{};
 
-const GpuViewport = struct {
+const Viewport = struct {
     fb: gfx.FrameBufferHandle = .{},
     size: [2]f32 = .{ 0, 0 },
     new_size: [2]f32 = .{ 0, 0 },
@@ -46,8 +46,8 @@ const GpuViewport = struct {
     world: ?cetech1.ecs.World,
 };
 
-const ViewportPool = cetech1.mem.PoolWithLock(GpuViewport);
-const ViewportSet = std.AutoArrayHashMap(*GpuViewport, void);
+const ViewportPool = cetech1.mem.PoolWithLock(Viewport);
+const ViewportSet = std.AutoArrayHashMap(*Viewport, void);
 const PalletColorMap = std.AutoArrayHashMap(u32, u8);
 
 var _viewport_set: ViewportSet = undefined;
@@ -91,97 +91,15 @@ pub fn registerToApi() !void {
     try gfx_rg_private.registerToApi();
 }
 
-fn createViewport(render_graph: gfx_rg.RenderGraph, world: ?cetech1.ecs.World) !public.GpuViewport {
-    const new_viewport = try _viewport_pool.create();
-    new_viewport.* = .{
-        .dd = gfx_dd_api.encoderCreate(),
-        .rg = render_graph,
-        .world = world,
-        .view_mtx = zm.matToArr(zm.lookAtRh(
-            zm.f32x4(0.0, 0.0, 0.0, 1.0),
-            zm.f32x4(0.0, 0.0, 1.0, 1.0),
-            zm.f32x4(0.0, 1.0, 0.0, 0.0),
-        )),
-    };
-    try _viewport_set.put(new_viewport, {});
-    return public.GpuViewport{
-        .ptr = new_viewport,
-        .vtable = &viewport_vt,
-    };
-}
-fn destroyViewport(viewport: public.GpuViewport) void {
-    const true_viewport: *GpuViewport = @alignCast(@ptrCast(viewport.ptr));
-    _ = _viewport_set.swapRemove(true_viewport);
-
-    if (true_viewport.fb.isValid()) {
-        gfx_api.destroyFrameBuffer(true_viewport.fb);
-    }
-
-    gfx_dd_api.encoderDestroy(true_viewport.dd);
-    _viewport_pool.destroy(true_viewport);
-}
-
 pub var api = public.GpuApi{
     .createContext = createContext,
     .destroyContext = destroyContext,
     .renderFrame = renderAll,
     .getContentScale = getContentScale,
     .getWindow = getWindow,
-
-    .createViewport = createViewport,
-    .destroyViewport = destroyViewport,
 };
 
-pub const viewport_vt = public.GpuViewport.VTable.implement(struct {
-    pub fn setSize(viewport: *anyopaque, size: [2]f32) void {
-        const true_viewport: *GpuViewport = @alignCast(@ptrCast(viewport));
-        true_viewport.new_size[0] = @max(size[0], 1);
-        true_viewport.new_size[1] = @max(size[1], 1);
-    }
-
-    pub fn getTexture(viewport: *anyopaque) ?gfx.TextureHandle {
-        const true_viewport: *GpuViewport = @alignCast(@ptrCast(viewport));
-        if (!true_viewport.fb.isValid()) return null;
-
-        const txt = gfx_api.getTexture(true_viewport.fb, 0);
-        return if (txt.isValid()) txt else null;
-    }
-
-    pub fn getFb(viewport: *anyopaque) ?gfx.FrameBufferHandle {
-        const true_viewport: *GpuViewport = @alignCast(@ptrCast(viewport));
-        if (!true_viewport.fb.isValid()) return null;
-        return true_viewport.fb;
-    }
-
-    pub fn getSize(viewport: *anyopaque) [2]f32 {
-        const true_viewport: *GpuViewport = @alignCast(@ptrCast(viewport));
-        return true_viewport.size;
-    }
-
-    pub fn getDD(viewport: *anyopaque) gfx_dd.Encoder {
-        const true_viewport: *GpuViewport = @alignCast(@ptrCast(viewport));
-        return true_viewport.dd;
-    }
-
-    pub fn setViewMtx(viewport: *anyopaque, mtx: [16]f32) void {
-        const true_viewport: *GpuViewport = @alignCast(@ptrCast(viewport));
-        true_viewport.view_mtx = mtx;
-    }
-    pub fn getViewMtx(viewport: *anyopaque) [16]f32 {
-        const true_viewport: *GpuViewport = @alignCast(@ptrCast(viewport));
-        return true_viewport.view_mtx;
-    }
-});
-
 const AtomicViewId = std.atomic.Value(u16);
-var view_id: AtomicViewId = AtomicViewId.init(1);
-fn newViewId() bgfx.ViewId {
-    return view_id.fetchAdd(1, .monotonic);
-}
-
-fn resetViewId() void {
-    view_id.store(1, .monotonic);
-}
 
 var pallet_id_counter: AtomicViewId = AtomicViewId.init(1);
 fn addPaletteColor(color: u32) u8 {
@@ -194,127 +112,6 @@ fn addPaletteColor(color: u32) u8 {
     _pallet_map.put(color, idx) catch undefined;
 
     return idx;
-}
-
-const RenderViewportTask = struct {
-    viewport: *GpuViewport,
-    pub fn exec(s: *@This()) !void {
-        var zone = profiler.ztracy.ZoneN(@src(), "RenderViewport");
-        defer zone.End();
-
-        const tmp_alloc = try tempalloc.api.create();
-        defer tempalloc.api.destroy(tmp_alloc);
-
-        const fb = s.viewport.fb;
-        if (!fb.isValid()) return;
-
-        const rg = s.viewport.rg;
-
-        const vp = public.GpuViewport{ .ptr = s.viewport, .vtable = &viewport_vt };
-        const builder = try rg.createBuilder(tmp_alloc, vp);
-        defer rg.destroyBuilder(builder);
-
-        {
-            var z = profiler.ztracy.ZoneN(@src(), "RenderViewport - Render graph");
-            defer z.End();
-
-            const color_output = gfx_api.getTexture(fb, 0);
-            try builder.importTexture(gfx_rg.ViewportColorResource, color_output);
-
-            try rg.setupBuilder(builder);
-
-            try builder.compile();
-            try builder.execute(vp);
-        }
-
-        const Renderables = struct {
-            iface: *const gfx_rg.ComponentRendererI,
-            culling: ?gfx_rg.CullingResult = null,
-        };
-
-        if (s.viewport.world) |world| {
-            var renderables = std.ArrayList(Renderables).init(tmp_alloc);
-            defer renderables.deinit();
-
-            const viewers = builder.getViewers();
-
-            // Collect visible renderables
-            // TODO: generic culling system
-            {
-                var z = profiler.ztracy.ZoneN(@src(), "RenderViewport - Culling phase");
-                defer z.End();
-
-                var it = apidb.api.getFirstImpl(gfx_rg.ComponentRendererI);
-                while (it) |node| : (it = node.next) {
-                    const iface = cetech1.apidb.ApiDbAPI.toInterface(gfx_rg.ComponentRendererI, node);
-
-                    var renderable = Renderables{ .iface = iface };
-
-                    if (iface.culling) |culling| {
-                        renderable.culling = try culling(tmp_alloc, builder, world, viewers);
-                    }
-
-                    try renderables.append(renderable);
-                }
-            }
-
-            // Render
-            {
-                var z = profiler.ztracy.ZoneN(@src(), "RenderViewport - Render phase");
-                defer z.End();
-                for (renderables.items) |renderable| {
-                    try renderable.iface.render(builder, world, vp, renderable.culling);
-                }
-            }
-
-            for (renderables.items) |*renderable| {
-                if (renderable.culling) |*c| {
-                    c.deinit();
-                }
-            }
-        }
-    }
-};
-
-fn renderAllViewports(allocator: std.mem.Allocator) !void {
-    var zone_ctx = profiler.ztracy.ZoneN(@src(), "renderAllViewports");
-    defer zone_ctx.End();
-
-    var tasks = std.ArrayList(cetech1.task.TaskID).init(allocator);
-    defer tasks.deinit();
-
-    for (_viewport_set.keys()) |viewport| {
-        const recreate = viewport.new_size[0] != viewport.size[0] or viewport.new_size[1] != viewport.size[1];
-
-        if (recreate) {
-            if (viewport.fb.isValid()) {
-                gfx_api.destroyFrameBuffer(viewport.fb);
-            }
-
-            const txFlags: u64 = 0 | gfx.TextureFlags_Rt | gfx.TextureFlags_BlitDst | gfx.SamplerFlags_MinPoint | gfx.SamplerFlags_MagPoint | gfx.SamplerFlags_MipMask | gfx.SamplerFlags_MagPoint | gfx.SamplerFlags_MipPoint | gfx.SamplerFlags_UClamp | gfx.SamplerFlags_VClamp | gfx.SamplerFlags_MipPoint;
-
-            const fb = gfx_api.createFrameBuffer(
-                @intFromFloat(viewport.new_size[0]),
-                @intFromFloat(viewport.new_size[1]),
-                gfx.TextureFormat.BGRA8,
-                txFlags,
-            );
-            viewport.fb = fb;
-            viewport.size = viewport.new_size;
-        }
-
-        const task_id = try task.api.schedule(
-            cetech1.task.TaskID.none,
-            RenderViewportTask{
-                .viewport = viewport,
-            },
-        );
-        try tasks.append(task_id);
-    }
-
-    if (tasks.items.len != 0) {
-        task.api.wait(try task.api.combine(tasks.items));
-    }
 }
 
 fn getContentScale(ctx: *public.GpuContext) [2]f32 {
@@ -352,8 +149,8 @@ fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless
     bgfxInit.limits.maxEncoders = cpu_count;
 
     // TODO: read note in zbgfx.ZigAllocator
-    //bgfx_alloc = zbgfx.callbacks.ZigAllocator.init(&_allocator);
-    //bgfxInit.allocator = &bgfx_alloc;
+    // bgfx_alloc = zbgfx.callbacks.ZigAllocator.init(&_allocator);
+    // bgfxInit.allocator = &bgfx_alloc;
 
     bgfxInit.callback = &bgfx_clbs;
 
@@ -414,8 +211,8 @@ fn renderAll(ctx: *public.GpuContext, kernel_tick: u64, dt: f32, vsync: bool) vo
 var old_fb_size = [2]i32{ -1, -1 };
 var old_flags = bgfx.ResetFlags_None;
 fn _renderAll(ctx: *GpuContext, kernel_tick: u64, dt: f32, vsync: bool) !void {
-    _ = kernel_tick; // autofix
-    _ = dt; // autofix
+    _ = kernel_tick;
+    _ = dt;
     var zone_ctx = profiler.ztracy.ZoneN(@src(), "Render");
     defer zone_ctx.End();
 
@@ -430,8 +227,6 @@ fn _renderAll(ctx: *GpuContext, kernel_tick: u64, dt: f32, vsync: bool) !void {
     if (vsync) {
         flags |= bgfx.ResetFlags_Vsync;
     }
-
-    resetViewId();
 
     if (old_flags != flags or old_fb_size[0] != size[0] or old_fb_size[1] != size[1]) {
         bgfx.reset(
@@ -454,7 +249,7 @@ fn _renderAll(ctx: *GpuContext, kernel_tick: u64, dt: f32, vsync: bool) !void {
 
     const allocator = try tempalloc.api.create();
     defer tempalloc.api.destroy(allocator);
-    try renderAllViewports(allocator);
+    try renderer_private.api.renderAllViewports(allocator);
 
     endAllUsedEncoders();
 
@@ -469,7 +264,6 @@ fn _renderAll(ctx: *GpuContext, kernel_tick: u64, dt: f32, vsync: bool) !void {
 }
 
 pub const gfx_api = gfx.GfxApi{
-    .newViewId = newViewId,
     .addPaletteColor = addPaletteColor,
     .vertexPack = @ptrCast(&bgfx.vertexPack),
     .vertexUnpack = @ptrCast(&bgfx.vertexUnpack),

@@ -16,6 +16,17 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "CETech1 - graph",
+            "program": "${workspaceFolder}/zig-out/bin/cetech1",
+            "args": [
+                "--asset-root",
+                "fixtures/test_graph/",
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "CETech1 (Vulkan)",
             "program": "${workspaceFolder}/zig-out/bin/cetech1",
             "args": [

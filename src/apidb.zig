@@ -174,7 +174,9 @@ fn globalVar(module: []const u8, var_name: []const u8, size: usize, default: []c
     const v = _global_var_map.get(combine_hash);
     if (v == null) {
         const data = try _allocator.alloc(u8, size);
-        @memcpy(data, default);
+        if (default.len != 0) {
+            @memcpy(data, default);
+        }
         try _global_var_map.put(combine_hash, data);
         return data.ptr;
     }

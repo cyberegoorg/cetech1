@@ -13,6 +13,7 @@ const strid = cetech1.strid;
 const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");
 const task = @import("task.zig");
+const metrics = @import("metrics.zig");
 
 const cdb_test = @import("cdb_test.zig");
 
@@ -34,7 +35,6 @@ const AtomicInt32 = std.atomic.Value(u32);
 const AtomicInt64 = std.atomic.Value(u64);
 const TypeStorageMap = std.AutoArrayHashMap(StrId32, public.TypeIdx);
 const ToFreeIdQueue = cetech1.mem.QueueWithLock(*Object);
-const FreeIdQueueNodePool = cetech1.mem.PoolWithLock(cetech1.FreeIdQueue.Node);
 const ToFreeIdQueueNodePool = cetech1.mem.PoolWithLock(ToFreeIdQueue.Node);
 
 const TypeAspectMap = std.AutoArrayHashMap(StrId32, *anyopaque);
@@ -44,8 +44,8 @@ const PropertyTypeAspectMap = std.AutoArrayHashMap(PropertyAspectPair, *anyopaqu
 
 const OnObjIdDestroyMap = std.AutoArrayHashMap(public.OnObjIdDestroyed, void);
 
-const ChangedObjectsList = std.ArrayList(public.ObjId);
-const ChangedObjectMap = std.AutoArrayHashMap(public.TypeVersion, ChangedObjectsList);
+const ChangedObjectsSet = std.AutoArrayHashMap(public.ObjId, void);
+const ChangedObjectMap = std.AutoArrayHashMap(public.TypeVersion, ChangedObjectsSet);
 
 const ChangedObjects = struct {
     const Self = @This();
@@ -53,6 +53,7 @@ const ChangedObjects = struct {
     allocator: std.mem.Allocator,
     map: ChangedObjectMap,
     max_version: u32 = 0,
+    lck: std.Thread.Mutex = .{},
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
@@ -70,22 +71,30 @@ const ChangedObjects = struct {
     }
 
     pub fn addChangedObjects(self: *Self, version: public.TypeVersion, objects: []const public.ObjId) !void {
+        self.lck.lock();
+        defer self.lck.unlock();
+
         const result = try self.map.getOrPut(version);
         if (!result.found_existing) {
-            result.value_ptr.* = ChangedObjectsList.init(self.allocator);
+            result.value_ptr.* = ChangedObjectsSet.init(self.allocator);
         }
 
-        try result.value_ptr.appendSlice(objects);
+        for (objects) |obj| {
+            try result.value_ptr.put(obj, {});
+        }
 
         self.max_version = @max(self.max_version, version);
     }
 
     pub fn getSince(self: *Self, allocator: std.mem.Allocator, since_version: public.TypeVersion, last_version: public.TypeVersion) ![]public.ObjId {
+        self.lck.lock();
+        defer self.lck.unlock();
+
         var output = std.ArrayList(public.ObjId).init(allocator);
 
         for (since_version..last_version) |version| {
             const objects = self.map.get(@intCast(version)).?;
-            try output.appendSlice(objects.items);
+            try output.appendSlice(objects.keys());
         }
 
         return output.toOwnedSlice();
@@ -273,15 +282,13 @@ pub const TypeStorage = struct {
     writers_created_count: AtomicInt32,
     read_obj_count: AtomicInt32,
 
-    write_commit_count_last: u32 = 0,
-    writers_created_count_last: u32 = 0,
-    read_obj_count_last: u32 = 0,
-
     // Buffers for profiler
     gc_name: [256:0]u8 = undefined,
-    read_name: [256:0]u8 = undefined,
-    write_commit_name: [256:0]u8 = undefined,
-    writers_name: [256:0]u8 = undefined,
+
+    // New
+    read_counter: *f64 = undefined,
+    write_commit_counter: *f64 = undefined,
+    writers_counter: *f64 = undefined,
 
     pub fn init(allocator: std.mem.Allocator, db: *Db, type_idx: public.TypeIdx, name: []const u8, props_def: []const public.PropDef) !Self {
         var props_size: usize = 0;
@@ -354,9 +361,11 @@ pub const TypeStorage = struct {
         };
 
         _ = try std.fmt.bufPrintZ(&ts.gc_name, "CDB:GC: {s}", .{ts.name});
-        _ = std.fmt.bufPrintZ(&ts.read_name, "CDB/{s}/{s}/Readers", .{ db.name, name }) catch undefined;
-        _ = std.fmt.bufPrintZ(&ts.writers_name, "CDB/{s}/{s}/Writers", .{ db.name, name }) catch undefined;
-        _ = std.fmt.bufPrintZ(&ts.write_commit_name, "CDB/{s}/{s}/Commits", .{ db.name, name }) catch undefined;
+
+        var buf: [128]u8 = undefined;
+        ts.read_counter = try metrics.api.getCounter(try std.fmt.bufPrint(&buf, "cdb/{s}/{s}/readers", .{ db.name, name }));
+        ts.write_commit_counter = try metrics.api.getCounter(try std.fmt.bufPrint(&buf, "cdb/{s}/{s}/commits", .{ db.name, name }));
+        ts.writers_counter = try metrics.api.getCounter(try std.fmt.bufPrint(&buf, "cdb/{s}/{s}/writers", .{ db.name, name }));
 
         return ts;
     }
@@ -447,12 +456,14 @@ pub const TypeStorage = struct {
         self.objid2refs_lock.items[id] = std.Thread.Mutex{};
         self.prototype2instances_lock.items[id] = std.Thread.Mutex{};
 
-        const objid = .{ .id = id, .gen = gen, .type_idx = self.type_idx };
+        const objid = .{ .id = @as(u24, @truncate(id)), .gen = gen, .type_idx = self.type_idx };
         return objid;
     }
 
     pub fn increaseVersion(self: *Self, obj: public.ObjId) void {
         _ = self.objid_version.items[obj.id].fetchAdd(1, .monotonic);
+        self.changed_objs.addChangedObjects(self.version, &.{obj}) catch undefined;
+        self.version += 1;
     }
 
     pub fn increaseReference(self: *Self, obj: public.ObjId) void {
@@ -870,7 +881,7 @@ pub const TypeStorage = struct {
                 self.removePrototypeInstance(obj.prototype, obj.objid);
             }
 
-            self.objid_gen.items[obj.objid.id] += 1;
+            self.objid_gen.items[obj.objid.id] = @addWithOverflow(self.objid_gen.items[obj.objid.id], 1)[0];
 
             try self.freeObjId(obj.objid);
             self.objid2obj.items[obj.objid.id] = null;
@@ -905,11 +916,11 @@ pub const TypeStorage = struct {
             self.to_free_obj_node_pool.destroy(node);
         }
 
-        try self.changed_objs.addChangedObjects(self.version, changed_ids.items);
+        try self.changed_objs.addChangedObjects(self.version, destroyed_ids.items);
 
         self.db.callOnObjIdDestroyed(destroyed_ids.items);
 
-        if (free_objects != 0) {
+        if (destroyed_ids.items.len != 0) {
             self.version += 1;
         }
 
@@ -1082,14 +1093,14 @@ pub const Db = struct {
 
     on_obj_destroy_map: OnObjIdDestroyMap,
 
-    // Buffers for profiler
-    read_name: [256:0]u8 = undefined,
-    write_commit_name: [256:0]u8 = undefined,
-    writers_name: [256:0]u8 = undefined,
+    // New
+    read_counter: *f64 = undefined,
+    write_commit_counter: *f64 = undefined,
+    writers_counter: *f64 = undefined,
 
-    alocated_objects_name: [256:0]u8 = undefined,
-    alocated_obj_ids_name: [256:0]u8 = undefined,
-    gc_free_objects_name: [256:0]u8 = undefined,
+    alocated_objects_counter: *f64 = undefined,
+    alocated_obj_ids_counter: *f64 = undefined,
+    gc_free_objects_counter: *f64 = undefined,
 
     metrics_init: bool = false,
 
@@ -1107,12 +1118,13 @@ pub const Db = struct {
             .objects_alocated = 0,
         };
 
-        _ = try std.fmt.bufPrintZ(&self.alocated_obj_ids_name, "CDB/{s}/Allocated ids", .{self.name});
-        _ = try std.fmt.bufPrintZ(&self.alocated_objects_name, "CDB/{s}/Allocated objects", .{self.name});
-        _ = try std.fmt.bufPrintZ(&self.gc_free_objects_name, "CDB/{s}/GC free objects", .{self.name});
-        _ = try std.fmt.bufPrintZ(&self.writers_name, "CDB/{s}/Writers", .{self.name});
-        _ = try std.fmt.bufPrintZ(&self.write_commit_name, "CDB/{s}/Commits", .{self.name});
-        _ = try std.fmt.bufPrintZ(&self.read_name, "CDB/{s}/Readers", .{self.name});
+        var buf: [128]u8 = undefined;
+        self.read_counter = try metrics.api.getCounter(try std.fmt.bufPrint(&buf, "cdb/{s}/readers", .{self.name}));
+        self.write_commit_counter = try metrics.api.getCounter(try std.fmt.bufPrint(&buf, "cdb/{s}/commits", .{self.name}));
+        self.writers_counter = try metrics.api.getCounter(try std.fmt.bufPrint(&buf, "cdb/{s}/writers", .{self.name}));
+        self.alocated_objects_counter = try metrics.api.getCounter(try std.fmt.bufPrint(&buf, "cdb/{s}/allocated_objects", .{self.name}));
+        self.alocated_obj_ids_counter = try metrics.api.getCounter(try std.fmt.bufPrint(&buf, "cdb/{s}/allocated_ids", .{self.name}));
+        self.gc_free_objects_counter = try metrics.api.getCounter(try std.fmt.bufPrint(&buf, "cdb/{s}/free_objects", .{self.name}));
 
         return self;
     }
@@ -1167,15 +1179,6 @@ pub const Db = struct {
         var zone_ctx = profiler.ztracy.ZoneN(@src(), "CDB:GC");
         defer zone_ctx.End();
 
-        // if (!self.metrics_init) {
-        //     self.metrics_init = true;
-        //     for (self.typestorage_map.values()) |*type_map| {
-        //         profiler.api.plotU64(&type_map.writers_name, 0);
-        //         profiler.api.plotU64(&type_map.write_commit_name, 0);
-        //         profiler.api.plotU64(&type_map.read_name, 0);
-        //     }
-        // }
-
         self.free_objects = 0;
         for (self.typestorage_map.values()) |type_storage| {
             //if (type_storage.to_free_queue.isEmpty()) continue;
@@ -1193,36 +1196,25 @@ pub const Db = struct {
         }
 
         if (profiler.profiler_enabled) {
-            profiler.api.plotU64(&self.alocated_obj_ids_name, self.objids_alocated);
-            profiler.api.plotU64(&self.alocated_objects_name, self.objects_alocated);
-            profiler.api.plotU64(&self.gc_free_objects_name, self.free_objects);
+            self.alocated_obj_ids_counter.* = @floatFromInt(self.objids_alocated);
+            self.alocated_objects_counter.* = @floatFromInt(self.objects_alocated);
+            self.gc_free_objects_counter.* = @floatFromInt(self.free_objects);
 
-            profiler.api.plotU64(&self.writers_name, self.writersCount());
-            profiler.api.plotU64(&self.write_commit_name, self.commitCount());
-            profiler.api.plotU64(&self.read_name, self.readersCount());
+            self.writers_counter.* = @floatFromInt(self.writersCount());
+            self.write_commit_counter.* = @floatFromInt(self.commitCount());
+            self.read_counter.* = @floatFromInt(self.readersCount());
 
             for (self.typestorage_map.values()) |type_map| {
                 const storage = self.getTypeStorageByTypeIdx(type_map).?;
-                if (storage.writers_created_count.raw != 0 and storage.writers_created_count_last != 0) {
-                    profiler.api.plotU64(&storage.writers_name, storage.writers_created_count.raw);
-                }
 
-                if (storage.write_commit_count.raw != 0 and storage.write_commit_count_last != 0) {
-                    profiler.api.plotU64(&storage.write_commit_name, storage.write_commit_count.raw);
-                }
-
-                if (storage.read_obj_count.raw != 0 and storage.read_obj_count_last != 0) {
-                    profiler.api.plotU64(&storage.read_name, storage.read_obj_count.raw);
-                }
+                storage.read_counter.* = @floatFromInt(storage.read_obj_count.raw);
+                storage.writers_counter.* = @floatFromInt(storage.writers_created_count.raw);
+                storage.write_commit_counter.* = @floatFromInt(storage.write_commit_count.raw);
             }
         }
 
         for (self.typestorage_map.values()) |type_map| {
             var storage = self.getTypeStorageByTypeIdx(type_map).?;
-
-            storage.write_commit_count_last = storage.write_commit_count.raw;
-            storage.writers_created_count_last = storage.writers_created_count.raw;
-            storage.read_obj_count_last = storage.read_obj_count.raw;
 
             storage.write_commit_count = AtomicInt32.init(0);
             storage.writers_created_count = AtomicInt32.init(0);
@@ -1757,6 +1749,7 @@ pub const Db = struct {
             ref_obj_storage.removeObjIdReferencer(value, true_obj.objid);
             //var ref_obj = self.getObjectPtr(value);
             //_ = try ref_obj_storage.decreaseReferenceToFree(ref_obj.?);
+            self.increaseVersionToAll(true_obj);
         }
     }
 
@@ -1771,6 +1764,7 @@ pub const Db = struct {
         if (try array.*.remove(true_sub_obj.objid)) {
             var ref_obj_storage = self.getTypeStorage(true_sub_obj.objid).?;
             _ = try ref_obj_storage.decreaseReferenceToFree(true_sub_obj);
+            self.increaseVersionToAll(true_obj);
         }
     }
 

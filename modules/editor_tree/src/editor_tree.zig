@@ -49,6 +49,7 @@ pub const CdbTreeViewArgs = struct {
     multiselect: bool = false,
     sr: SelectInTreeResult = .{},
     max_autopen_depth: u32 = 5,
+    show_root: bool = false,
 };
 
 pub const SelectInTreeResult = struct {
@@ -56,6 +57,7 @@ pub const SelectInTreeResult = struct {
     is_prop: bool = false,
     prop_idx: u32 = 0,
     in_set_obj: cdb.ObjId = .{},
+    parent_obj: cdb.ObjId = .{},
 
     pub fn isChanged(self: *const @This()) bool {
         return self.is_changed;
