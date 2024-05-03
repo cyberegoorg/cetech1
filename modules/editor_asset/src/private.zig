@@ -108,7 +108,7 @@ var rename_context_menu_i = editor.ObjContextMenuI.implement(struct {
                     defer _coreui.popId();
                     defer _coreui.popId();
 
-                    const asset_label = _editor.buffFormatObjLabel(allocator, &buff, db, obj, false) orelse "Not implemented";
+                    const asset_label = _editor.buffFormatObjLabel(allocator, &buff, db, obj, false, false) orelse "Not implemented";
                     const asset_color = _editor.getAssetColor(db, obj);
                     _ = _editor_inspector.uiPropLabel(allocator, asset_label, asset_color, .{});
 

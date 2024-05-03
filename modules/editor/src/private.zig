@@ -28,6 +28,7 @@ var _coreui: *const coreui.CoreUIApi = undefined;
 var _assetdb: *const assetdb.AssetDBAPI = undefined;
 var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 var _platform: *const cetech1.platform.PlatformApi = undefined;
+var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
 
 const TabsSelectedObject = std.AutoArrayHashMap(*public.EditorTabI, cdb.ObjId);
 const TabsMap = std.AutoArrayHashMap(*anyopaque, *public.EditorTabI);
@@ -169,7 +170,7 @@ fn getObjColor(db: cdb.Db, obj: cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cdb.ObjI
     return _coreui.getStyle().getColor(.text);
 }
 
-fn buffFormatObjLabel(allocator: std.mem.Allocator, buff: [:0]u8, db: cdb.Db, obj: cdb.ObjId, with_id: bool) ?[:0]u8 {
+fn buffFormatObjLabel(allocator: std.mem.Allocator, buff: [:0]u8, db: cdb.Db, obj: cdb.ObjId, with_id: bool, uuid_id: bool) ?[:0]u8 {
     var label: [:0]u8 = undefined;
     if (db.getAspect(public.UiVisualAspect, obj.type_idx)) |aspect| {
         var name: []const u8 = undefined;
@@ -209,13 +210,21 @@ fn buffFormatObjLabel(allocator: std.mem.Allocator, buff: [:0]u8, db: cdb.Db, ob
             defer allocator.free(icon);
 
             if (with_id) {
-                label = std.fmt.bufPrintZ(buff, "{s}" ++ "  " ++ "{s}###{s}", .{ icon, name, name }) catch return null;
+                if (uuid_id) {
+                    label = std.fmt.bufPrintZ(buff, "{s}" ++ "  " ++ "{s}###{s}", .{ icon, name, _assetdb.getOrCreateUuid(obj) catch return null }) catch return null;
+                } else {
+                    label = std.fmt.bufPrintZ(buff, "{s}" ++ "  " ++ "{s}###{s}", .{ icon, name, name }) catch return null;
+                }
             } else {
                 label = std.fmt.bufPrintZ(buff, "{s}" ++ "  " ++ "{s}", .{ icon, name }) catch return null;
             }
         } else {
             if (with_id) {
-                label = std.fmt.bufPrintZ(buff, "{s}###{s}", .{ name, name }) catch return null;
+                if (uuid_id) {
+                    label = std.fmt.bufPrintZ(buff, "{s}###{s}", .{ name, _assetdb.getOrCreateUuid(obj) catch return null }) catch return null;
+                } else {
+                    label = std.fmt.bufPrintZ(buff, "{s}###{s}", .{ name, name }) catch return null;
+                }
             } else {
                 label = std.fmt.bufPrintZ(buff, "{s}", .{name}) catch return null;
             }
@@ -297,7 +306,7 @@ fn showObjContextMenu(
 
                     const set_menus_aspect = db.getPropertyAspect(public.UiSetMenusAspect, obj.type_idx, pidx);
                     if (set_menus_aspect) |aspect| {
-                        aspect.add_menu(&allocator, db, obj, pidx);
+                        try aspect.add_menu(allocator, db, obj, pidx);
                     } else {
                         if (prop_def.type == .REFERENCE_SET) {
                             if (selectObjFromMenu(
@@ -330,7 +339,10 @@ fn showObjContextMenu(
             } else if (prop_def.type == .SUBOBJECT) {
                 const obj_r = db.readObj(obj) orelse return;
 
-                if (db.readSubObj(obj_r, pidx)) |subobj| {
+                const set_menus_aspect = db.getPropertyAspect(public.UiSetMenusAspect, obj.type_idx, pidx);
+                if (set_menus_aspect) |aspect| {
+                    try aspect.add_menu(allocator, db, obj, pidx);
+                } else if (db.readSubObj(obj_r, pidx)) |subobj| {
                     const subobj_r = db.readObj(subobj).?;
 
                     if (db.canIinisiated(obj_r, subobj_r)) {
@@ -662,19 +674,49 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
 fn doTabMainMenu(allocator: std.mem.Allocator) !void {
     if (_coreui.beginMenu(allocator, coreui.Icons.Windows, true, null)) {
         defer _coreui.endMenu();
+
         if (_coreui.beginMenu(allocator, coreui.Icons.OpenTab ++ "  " ++ "Create", true, null)) {
             defer _coreui.endMenu();
 
             // Create tabs
             var it = _apidb.getFirstImpl(public.EditorTabTypeI);
+
+            // Create category menu first
+            while (it) |node| : (it = node.next) {
+                const iface = apidb.ApiDbAPI.toInterface(public.EditorTabTypeI, node);
+
+                var buff: [128:0]u8 = undefined;
+                if (iface.category) |category| {
+                    const label = try std.fmt.bufPrintZ(&buff, coreui.Icons.Folder ++ "  " ++ "{s}###{s}", .{ category, category });
+
+                    if (_coreui.beginMenu(allocator, label, true, null)) {
+                        _coreui.endMenu();
+                    }
+                }
+            }
+
+            // Create tab items
+            it = _apidb.getFirstImpl(public.EditorTabTypeI);
             while (it) |node| : (it = node.next) {
                 const iface = apidb.ApiDbAPI.toInterface(public.EditorTabTypeI, node);
                 const menu_name = try iface.menu_name();
 
                 const tab_type_menu_name = menu_name;
-                if (_coreui.menuItem(allocator, tab_type_menu_name, .{}, null)) {
+
+                var category_open = true;
+
+                if (iface.category) |category| {
+                    var buff: [128:0]u8 = undefined;
+                    const label = try std.fmt.bufPrintZ(&buff, "###{s}", .{category});
+                    category_open = _coreui.beginMenu(allocator, label, true, null);
+                }
+
+                if (category_open and _coreui.menuItem(allocator, tab_type_menu_name, .{}, null)) {
                     const tab_inst = createNewTab(.{ .id = iface.tab_hash.id });
                     _ = tab_inst;
+                }
+                if (category_open and iface.category != null) {
+                    _coreui.endMenu();
                 }
             }
         }
@@ -974,6 +1016,7 @@ pub fn load_module_zig(apidb_: *const apidb.ApiDbAPI, allocator: Allocator, log_
     _assetdb = _apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
     _tempalloc = _apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
     _platform = _apidb.getZigApi(module_name, cetech1.platform.PlatformApi).?;
+    _profiler = _apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
 
     // create global variable that can survive reload
     _g = try _apidb.globalVar(G, module_name, "_g", .{});

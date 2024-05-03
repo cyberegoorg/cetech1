@@ -8,6 +8,8 @@ pub const ImplIter = extern struct {
     prev: ?*ImplIter,
 };
 
+pub const InterfaceVersion = u64;
+
 /// ApiDbAPI is main api db and purpose is shared api/interafce across all part of enfine+language
 /// API is struct with pointers to functions.
 /// Interaface is similiar to API but Interaface can have multiple implementation and must be valid C struct because he is shared across langugage.
@@ -23,6 +25,13 @@ pub const ApiDbAPI = struct {
     /// Crete variable that can survive reload.
     pub fn globalVar(self: Self, comptime T: type, comptime module: @Type(.EnumLiteral), var_name: []const u8, default: T) !*T {
         const ptr: *T = @ptrFromInt(@intFromPtr(try self.globalVarFn(@tagName(module), var_name, @sizeOf(T), &std.mem.toBytes(default))));
+        return ptr;
+    }
+
+    /// Crete variable that can survive reload + always set value
+    pub fn globalVarValue(self: Self, comptime T: type, comptime module: @Type(.EnumLiteral), var_name: []const u8, default: T, value: T) !*T {
+        const ptr: *T = @ptrFromInt(@intFromPtr(try self.globalVarFn(@tagName(module), var_name, @sizeOf(T), &std.mem.toBytes(default))));
+        ptr.* = value;
         return ptr;
     }
 
@@ -88,7 +97,7 @@ pub const ApiDbAPI = struct {
     }
 
     // Implement interface
-    pub fn implInterface(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type, impl_ptr: *const anyopaque) !void {
+    pub fn implInterface(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type, impl_ptr: *const T) !void {
         return self.implInterfaceFn(@tagName(module), T.name_hash, impl_ptr);
     }
 
@@ -108,13 +117,13 @@ pub const ApiDbAPI = struct {
     }
 
     // Remove interface
-    pub fn removeImpl(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type, impl_ptr: *const anyopaque) void {
+    pub fn removeImpl(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type, impl_ptr: *const T) void {
         self.removeImplFn(@tagName(module), T.name_hash, impl_ptr);
     }
 
     // Get version for given interface.
     // Version is number that is increment every time is interface implementation added or removed
-    pub fn getInterafcesVersion(self: Self, comptime T: type) u64 {
+    pub fn getInterafcesVersion(self: Self, comptime T: type) InterfaceVersion {
         return self.getInterafcesVersionFn(T.name_hash);
     }
 
@@ -127,6 +136,6 @@ pub const ApiDbAPI = struct {
     getFirstImplFn: *const fn (interface_name: strid.StrId64) ?*const ImplIter,
     getLastImplFn: *const fn (interface_name: strid.StrId64) ?*const ImplIter,
     removeImplFn: *const fn (module: []const u8, interface_name: strid.StrId64, impl_ptr: *const anyopaque) void,
-    getInterafcesVersionFn: *const fn (interface_name: strid.StrId64) u64,
+    getInterafcesVersionFn: *const fn (interface_name: strid.StrId64) InterfaceVersion,
     //#endregion
 };

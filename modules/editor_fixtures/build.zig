@@ -13,7 +13,7 @@ pub fn build(b: *std.Build) !void {
     const lib = b.addSharedLibrary(.{
         .name = "ct_editor_fixtures",
         .version = version,
-        .root_source_file = .{ .path = "src/private.zig" },
+        .root_source_file = b.path("src/private.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) !void {
     const slib = b.addStaticLibrary(.{
         .name = "static",
         .version = version,
-        .root_source_file = .{ .path = "src/private.zig" },
+        .root_source_file = b.path("src/private.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -35,7 +35,7 @@ pub fn build(b: *std.Build) !void {
     }
 
     _ = b.addModule("editor_fixtures", .{
-        .root_source_file = .{ .path = "src/editor_fixtures.zig" },
+        .root_source_file = b.path("src/editor_fixtures.zig"),
         .imports = &.{
             .{ .name = "cetech1", .module = cetech1_module },
         },

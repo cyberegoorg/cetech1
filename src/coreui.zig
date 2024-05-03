@@ -9,9 +9,10 @@ const znfde = @import("znfde");
 const zf = @import("zf");
 const tempalloc = @import("tempalloc.zig");
 const kernel = @import("kernel.zig");
-const gpu = @import("gpu.zig");
+const gpu_private = @import("gpu.zig");
 
-const zbgfx = @import("zbgfx");
+const zine = @import("zine");
+
 const backend = @import("backend_glfw_bgfx.zig");
 
 const apidb = @import("apidb.zig");
@@ -20,9 +21,10 @@ const profiler = @import("profiler.zig");
 const assetdb = @import("assetdb.zig");
 
 const cetech1 = @import("cetech1");
+const gpu = cetech1.gpu;
 const public = cetech1.coreui;
 const Icons = public.CoreIcons;
-const gfx = cetech1.gfx;
+const ui_node_editor = cetech1.coreui_node_editor;
 
 const module_name = .coreui;
 const log = std.log.scoped(module_name);
@@ -44,26 +46,25 @@ var _junit_filename: ?[:0]const u8 = null;
 var _scale_factor: ?f32 = null;
 var _new_scale_factor: ?f32 = null;
 
-const KernelTask = struct {
-    pub fn update(kernel_tick: u64, dt: f32) !void {
-        const tmp = try tempalloc.api.create();
-        defer tempalloc.api.destroy(tmp);
-        const ctx = kernel.api.getGpuCtx();
-        if (_enabled_ui and ctx != null) {
-            try coreUI(tmp, kernel_tick, dt);
-        }
-    }
-};
-
-var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
-    cetech1.kernel.PreStore,
-    "CoreUI",
-    &[_]cetech1.strid.StrId64{},
-    KernelTask.update,
-);
+// const KernelTask = struct {
+//     pub fn update(kernel_tick: u64, dt: f32) !void {
+//         const tmp = try tempalloc.api.create();
+//         defer tempalloc.api.destroy(tmp);
+//         const ctx = kernel.api.getGpuCtx();
+//         if (_enabled_ui and ctx != null) {
+//             try coreUI(tmp, kernel_tick, dt);
+//         }
+//     }
+// };
+// var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
+//     cetech1.kernel.PreStore,
+//     "CoreUI",
+//     &[_]cetech1.strid.StrId64{},
+//     KernelTask.update,
+// );
 
 const _kernel_hook_i = cetech1.kernel.KernelLoopHookI.implement(struct {
-    pub fn beginLoop() !void {
+    pub fn beginLoop(kernel_tick: u64, dt: f32) !void {
         const ctx = kernel.api.getGpuCtx();
 
         if (!_enabled_ui and ctx != null) {
@@ -74,11 +75,22 @@ const _kernel_hook_i = cetech1.kernel.KernelLoopHookI.implement(struct {
         if (_enabled_ui and ctx != null) {
             var size = [2]i32{ 0, 0 };
 
-            if (gpu.api.getWindow(ctx.?)) |w| {
+            if (gpu_private.api.getWindow(ctx.?)) |w| {
                 size = w.getFramebufferSize();
             }
 
+            // if (_new_scale_factor) |nsf| {
+            //     initFonts(16, nsf);
+            //     _scale_factor = nsf;
+            //     _new_scale_factor = null;
+            //     return;
+            // }
+
             newFrame(@intCast(size[0]), @intCast(size[1]));
+
+            const tmp = try tempalloc.api.create();
+            defer tempalloc.api.destroy(tmp);
+            try coreUI(tmp, kernel_tick, dt);
         }
     }
 
@@ -87,7 +99,7 @@ const _kernel_hook_i = cetech1.kernel.KernelLoopHookI.implement(struct {
     }
 });
 
-var create_types_i = cetech1.cdb.CreateTypesI.implement(struct {
+var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cetech1.cdb.Db) !void {
 
         // Obj selections
@@ -126,7 +138,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
     if (cetech1_options.enable_nfd) try znfde.init();
 
     try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelLoopHookI, &_kernel_hook_i, true);
-    try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task, true);
+    //try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task, true);
 }
 
 pub fn deinit() void {
@@ -296,10 +308,93 @@ pub var api = public.CoreUIApi{
     .getMousePos = @ptrCast(&zgui.getMousePos),
     .getMouseDragDelta = @ptrCast(&zgui.getMouseDragDelta),
     .setMouseCursor = @ptrCast(&zgui.setMouseCursor),
+    .popItemWidth = @ptrCast(&zgui.popItemWidth),
+    .pushItemWidth = @ptrCast(&zgui.pushItemWidth),
 };
 
+const node_editor_api = ui_node_editor.NodeEditorApi{
+    .createEditor = createEditor,
+    .destroyEditor = @ptrCast(&zine.EditorContext.destroy),
+    .setCurrentEditor = @ptrCast(&zine.setCurrentEditor),
+    .begin = @ptrCast(&zine.begin),
+    .end = @ptrCast(&zine.end),
+    .beginCreate = @ptrCast(&zine.beginCreate),
+    .endCreate = @ptrCast(&zine.endCreate),
+    .showBackgroundContextMenu = @ptrCast(&zine.showBackgroundContextMenu),
+    .suspend_ = @ptrCast(&zine.suspend_),
+    .resume_ = @ptrCast(&zine.resume_),
+    .beginNode = @ptrCast(&zine.beginNode),
+    .endNode = @ptrCast(&zine.endNode),
+    .deleteNode = @ptrCast(&zine.deleteNode),
+    .beginPin = @ptrCast(&zine.beginPin),
+    .endPin = @ptrCast(&zine.endPin),
+    .setNodePosition = @ptrCast(&zine.setNodePosition),
+    .getNodePosition = @ptrCast(&zine.getNodePosition),
+    .link = @ptrCast(&zine.link),
+    .queryNewLink = @ptrCast(&zine.queryNewLink),
+    .acceptNewItem = @ptrCast(&zine.acceptNewItem),
+    .rejectNewItem = @ptrCast(&zine.rejectNewItem),
+
+    .deleteLink = @ptrCast(&zine.deleteLink),
+    .beginDelete = @ptrCast(&zine.beginDelete),
+    .endDelete = @ptrCast(&zine.endDelete),
+    .queryDeletedLink = @ptrCast(&zine.queryDeletedLink),
+    .queryDeletedNode = @ptrCast(&zine.queryDeletedNode),
+    .acceptDeletedItem = @ptrCast(&zine.acceptDeletedItem),
+    .rejectDeletedItem = @ptrCast(&zine.rejectDeletedItem),
+
+    .showNodeContextMenu = @ptrCast(&zine.showNodeContextMenu),
+    .showLinkContextMenu = @ptrCast(&zine.showLinkContextMenu),
+    .showPinContextMenu = @ptrCast(&zine.showPinContextMenu),
+
+    .navigateToContent = @ptrCast(&zine.navigateToContent),
+    .navigateToSelection = @ptrCast(&zine.navigateToSelection),
+    .pinHadAnyLinks = @ptrCast(&zine.pinHadAnyLinks),
+    .breakPinLinks = @ptrCast(&zine.breakPinLinks),
+
+    .getStyleColorName = @ptrCast(&zine.getStyleColorName),
+    .getStyle = @ptrCast(&zine.getStyle),
+    .pushStyleColor = @ptrCast(&zine.pushStyleColor),
+    .popStyleColor = @ptrCast(&zine.popStyleColor),
+    .pushStyleColorushStyleVarF = @ptrCast(&zine.pushStyleColorushStyleVarF),
+    .pushStyleVar2f = @ptrCast(&zine.pushStyleVar2f),
+    .pushStyleVar4f = @ptrCast(&zine.pushStyleVar4f),
+    .popStyleVar = @ptrCast(&zine.popStyleVar),
+
+    .hasSelectionChanged = @ptrCast(&zine.hasSelectionChanged),
+    .getSelectedObjectCount = @ptrCast(&zine.getSelectedObjectCount),
+    .clearSelection = @ptrCast(&zine.clearSelection),
+    .getSelectedNodes = @ptrCast(&zine.getSelectedNodes),
+    .getSelectedLinks = @ptrCast(&zine.getSelectedLinks),
+    .selectNode = @ptrCast(&zine.selectNode),
+    .selectLink = @ptrCast(&zine.selectLink),
+    .group = @ptrCast(&zine.group),
+    .getNodeSize = @ptrCast(&zine.getNodeSize),
+};
+
+fn createEditor(cfg: ui_node_editor.Config) *ui_node_editor.EditorContext {
+    const zine_cfg = zine.Config{
+        .SettingsFile = cfg.SettingsFile,
+        .BeginSaveSession = @ptrCast(cfg.BeginSaveSession),
+        .EndSaveSession = @ptrCast(cfg.EndSaveSession),
+        .SaveSettings = @ptrCast(cfg.SaveSettings),
+        .LoadSettings = @ptrCast(cfg.LoadSettings),
+        .SaveNodeSettings = @ptrCast(cfg.SaveNodeSettings),
+        .LoadNodeSettings = cfg.LoadNodeSettings,
+        .UserPointer = cfg.UserPointer,
+        .CanvasSizeMode = @enumFromInt(@intFromEnum(cfg.CanvasSizeMode)),
+        .DragButtonIndex = cfg.DragButtonIndex,
+        .SelectButtonIndex = cfg.SelectButtonIndex,
+        .NavigateButtonIndex = cfg.NavigateButtonIndex,
+        .ContextMenuButtonIndex = cfg.ContextMenuButtonIndex,
+        .EnableSmoothZoom = cfg.EnableSmoothZoom,
+        .SmoothZoomPower = cfg.SmoothZoomPower,
+    };
+
+    return @ptrCast(zine.EditorContext.create(zine_cfg));
+}
 const BgfxImage = struct {
-    handle: gfx.TextureHandle,
+    handle: gpu.TextureHandle,
     flags: u8,
     mip: u8,
 
@@ -308,7 +403,7 @@ const BgfxImage = struct {
     }
 };
 
-fn image(texture: gfx.TextureHandle, args: public.Image) void {
+fn image(texture: gpu.TextureHandle, args: public.Image) void {
     const tt = BgfxImage{
         .handle = texture,
         .flags = args.flags,
@@ -524,7 +619,11 @@ fn uiFilterPass(allocator: std.mem.Allocator, filter: [:0]const u8, value: [:0]c
     var it: ?[]const u8 = first;
     while (it) |word| : (it = split.next()) {
         if (word.len == 0) continue;
-        tokens.append(word) catch return null;
+
+        var buff: [128]u8 = undefined;
+        const lower_token = std.ascii.lowerString(&buff, word);
+
+        tokens.append(lower_token) catch return null;
     }
     //return 0;
 
@@ -578,7 +677,8 @@ pub fn coreUI(tmp_allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void
 
 pub fn registerToApi() !void {
     try apidb.api.setZigApi(module_name, public.CoreUIApi, &api);
-    try apidb.api.implOrRemove(.cdb_types, cetech1.cdb.CreateTypesI, &create_types_i, true);
+    try apidb.api.setZigApi(module_name, ui_node_editor.NodeEditorApi, &node_editor_api);
+    try apidb.api.implOrRemove(.cdb_types, cetech1.cdb.CreateTypesI, &create_cdb_types_i, true);
 }
 
 pub fn initFonts(font_size: f32, scale_factor: f32) void {
@@ -605,7 +705,7 @@ pub fn initFonts(font_size: f32, scale_factor: f32) void {
 
 pub fn enableWithWindow(gpuctx: *cetech1.gpu.GpuContext) !void {
     _scale_factor = _scale_factor orelse scale_factor: {
-        const scale = gpu.api.getContentScale(gpuctx);
+        const scale = gpu_private.api.getContentScale(gpuctx);
         break :scale_factor @max(scale[0], scale[1]);
     };
 
@@ -622,7 +722,7 @@ pub fn enableWithWindow(gpuctx: *cetech1.gpu.GpuContext) !void {
     _backed_initialised = true;
 
     initFonts(16, _scale_factor.?);
-    backend.init(if (gpu.api.getWindow(gpuctx)) |w| w.getInternal(anyopaque) else null);
+    backend.init(if (gpu_private.api.getWindow(gpuctx)) |w| w.getInternal(anyopaque) else null);
 
     //TODO:
     _te_engine = zguite.getTestEngine().?;
@@ -667,10 +767,6 @@ pub fn enableWithWindow(gpuctx: *cetech1.gpu.GpuContext) !void {
 }
 
 fn newFrame(fb_width: u32, fb_height: u32) void {
-    if (_new_scale_factor) |nsf| {
-        initFonts(16, nsf);
-        _scale_factor = nsf;
-    }
     backend.newFrame(fb_width, fb_height);
 }
 

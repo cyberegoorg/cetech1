@@ -308,8 +308,8 @@ const REMOVED_COLOR = .{ 0.7, 0.0, 0.0, 1.0 };
 
 fn objContextMenuBtn(allocator: std.mem.Allocator, db: cdb.Db, tab: *editor.TabO, obj: cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cdb.ObjId) !void {
     if (_coreui.beginPopup("property_obj_menu", .{})) {
+        defer _coreui.endPopup();
         try _editor.showObjContextMenu(allocator, db, tab, &.{editor.Contexts.open}, obj, prop_idx, in_set_obj);
-        _coreui.endPopup();
     }
 
     if (_coreui.button(Icons.FA_ELLIPSIS ++ "###PropertyCtxMenu", .{})) {
@@ -397,10 +397,11 @@ fn cdbPropertiesObj(
 
                 // If subobject type implement UiEmbedPropertiesAspect show it in table
                 .SUBOBJECT => {
+                    if (prop_def.type_hash.id == 0) continue;
                     const subobj = db.readSubObj(obj_r, prop_idx);
                     const ui_embed_prop_aspect = db.getAspect(public.UiEmbedPropertiesAspect, db.getTypeIdx(prop_def.type_hash).?);
-                    const lbl = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
                     if (ui_embed_prop_aspect) |aspect| {
+                        const lbl = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
                         if (uiPropLabel(allocator, lbl, prop_color, args)) {
                             _coreui.tableNextColumn();
                             if (subobj == null) {
@@ -484,7 +485,9 @@ fn cdbPropertiesObj(
 
                 subobj = db.readSubObj(obj_r, prop_idx);
 
-                if (db.getAspect(public.UiEmbedPropertiesAspect, db.getTypeIdx(prop_def.type_hash).?) != null) continue;
+                if (db.getTypeIdx(prop_def.type_hash)) |type_idx| {
+                    if (db.getAspect(public.UiEmbedPropertiesAspect, type_idx) != null) continue;
+                }
 
                 const label = try std.fmt.bufPrintZ(&buff, "{s}{s}", .{ prop_name, if (prop_def.type == .REFERENCE) "  " ++ Icons.FA_LINK else "" });
 
@@ -533,7 +536,7 @@ fn cdbPropertiesObj(
                         defer allocator.free(set.?);
 
                         for (s, 0..) |subobj, set_idx| {
-                            const label = _editor.buffFormatObjLabel(allocator, &buff, db, subobj, true) orelse try std.fmt.bufPrintZ(&buff, "{d}", .{set_idx});
+                            const label = _editor.buffFormatObjLabel(allocator, &buff, db, subobj, true, false) orelse try std.fmt.bufPrintZ(&buff, "{d}", .{set_idx});
 
                             _coreui.pushIntId(@truncate(set_idx));
                             defer _coreui.popId();

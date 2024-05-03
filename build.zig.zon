@@ -38,14 +38,16 @@
         .editor_tags = .{ .path = "modules/editor_tags" },
         .editor_tree = .{ .path = "modules/editor_tree" },
         .editor_log = .{ .path = "modules/editor_log" },
+        .editor_graph = .{ .path = "modules/editor_graph" },
 
         //
         // Externals
         //
         .zf = .{ .path = "externals/shared/lib/zf" },
-        .uuid = .{ .path = "externals/shared/lib/zig-uuid/" },
+        .uuid = .{ .path = "externals/shared/lib/workarounds/zig-uuid/" },
         .znfde = .{ .path = "externals/shared/lib/znfde" },
         .zbgfx = .{ .path = "externals/shared/lib/zbgfx" },
+        .zine = .{ .path = "externals/shared/lib/zine" },
 
         // zig-gamedev
         .system_sdk = .{ .path = "externals/shared/lib/zig-gamedev/libs/system-sdk" },
@@ -54,6 +56,7 @@
         .zjobs = .{ .path = "externals/shared/lib/zig-gamedev/libs/zjobs" },
         .ztracy = .{ .path = "externals/shared/lib/zig-gamedev/libs/ztracy" },
         .zgui = .{ .path = "externals/shared/lib/zig-gamedev/libs/zgui" },
+        .zmath = .{ .path = "externals/shared/lib/zig-gamedev/libs/zmath" },
         //.znfde = .{ .path = "externals/shared/lib/zig-gamedev/libs/znfde" },
 
         .zflecs = .{ .path = "externals/shared/lib/zig-gamedev/libs/zflecs" },

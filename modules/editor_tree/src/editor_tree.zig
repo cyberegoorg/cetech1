@@ -56,6 +56,7 @@ pub const SelectInTreeResult = struct {
     is_prop: bool = false,
     prop_idx: u32 = 0,
     in_set_obj: cdb.ObjId = .{},
+    parent_obj: cdb.ObjId = .{},
 
     pub fn isChanged(self: *const @This()) bool {
         return self.is_changed;

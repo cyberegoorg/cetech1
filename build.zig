@@ -25,7 +25,7 @@ const externals = .{
     .{ .name = "zf", .file = "externals/shared/lib/zf/LICENSE" },
 
     // zig-uuid
-    .{ .name = "zig-uuid", .file = "externals/shared/lib/zig-uuid/LICENSE.md" },
+    .{ .name = "zig-uuid", .file = "externals/shared/lib/workarounds/zig-uuid/LICENSE.md" },
 
     // nativefiledialog-extended
     .{ .name = "nativefiledialog-extended", .file = "externals/shared/lib/znfde/nativefiledialog/LICENSE" },
@@ -45,6 +45,7 @@ const editor_modules = [_][]const u8{
     "editor_tags",
     "editor_tree",
     "editor_log",
+    "editor_graph",
 };
 
 const samples_modules = [_][]const u8{
@@ -194,6 +195,26 @@ pub fn build(b: *std.Build) !void {
         },
     );
 
+    // Zine
+    const zine = b.dependency(
+        "zine",
+        .{
+            .target = target,
+            .optimize = optimize,
+            .imgui_include = zgui.path("libs").getPath(b),
+        },
+    );
+
+    // Zmath
+
+    const zmath = b.dependency(
+        "zmath",
+        .{
+            .target = target,
+            .optimize = optimize,
+        },
+    );
+
     // System sdk
     // const system_sdk = b.dependency("system_sdk", .{});
 
@@ -209,13 +230,13 @@ pub fn build(b: *std.Build) !void {
 
     const generate_static_tool = b.addExecutable(.{
         .name = "generate_static",
-        .root_source_file = .{ .path = "tools/generate_static.zig" },
+        .root_source_file = b.path("tools/generate_static.zig"),
         .target = target,
     });
 
     const generate_externals_tool = b.addExecutable(.{
         .name = "generate_externals",
-        .root_source_file = .{ .path = "tools/generate_externals.zig" },
+        .root_source_file = b.path("tools/generate_externals.zig"),
         .target = target,
     });
 
@@ -243,7 +264,7 @@ pub fn build(b: *std.Build) !void {
     const external_credits_file = gen_externals.addOutputFileArg("externals_credit.md");
     inline for (externals) |external| {
         gen_externals.addArg(external.name);
-        gen_externals.addDirectoryArg(.{ .path = external.file });
+        gen_externals.addDirectoryArg(b.path(external.file));
     }
 
     //
@@ -260,7 +281,7 @@ pub fn build(b: *std.Build) !void {
     const core_lib_static = b.addStaticLibrary(.{
         .name = "cetech1_static",
         .version = version,
-        .root_source_file = .{ .path = "src/private.zig" },
+        .root_source_file = b.path("src/private.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -271,7 +292,7 @@ pub fn build(b: *std.Build) !void {
     const exe = b.addExecutable(.{
         .name = "cetech1",
         .version = version,
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -292,7 +313,7 @@ pub fn build(b: *std.Build) !void {
     const tests = b.addTest(.{
         .name = "cetech1_test",
         .version = version,
-        .root_source_file = .{ .path = "src/tests.zig" },
+        .root_source_file = b.path("src/tests.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -320,7 +341,7 @@ pub fn build(b: *std.Build) !void {
         e.step.dependOn(&generated_files.step);
 
         e.root_module.addAnonymousImport("authors", .{
-            .root_source_file = .{ .path = "AUTHORS.md" },
+            .root_source_file = b.path("AUTHORS.md"),
         });
 
         e.root_module.addAnonymousImport("externals_credit", .{
@@ -335,7 +356,7 @@ pub fn build(b: *std.Build) !void {
         });
 
         e.root_module.addAnonymousImport("gamecontrollerdb", .{
-            .root_source_file = .{ .path = "externals/shared/lib/SDL_GameControllerDB/gamecontrollerdb.txt" },
+            .root_source_file = b.path("externals/shared/lib/SDL_GameControllerDB/gamecontrollerdb.txt"),
         });
 
         e.root_module.addImport("cetech1", cetech1.module("cetech1"));
@@ -354,11 +375,16 @@ pub fn build(b: *std.Build) !void {
         e.root_module.addImport("Uuid", uuid.module("Uuid"));
         e.root_module.addImport("zbgfx", zbgfx.module("zbgfx"));
 
+        e.root_module.addImport("zine", zine.module("zine"));
+        e.root_module.addImport("zmath", zmath.module("root"));
+
         e.linkLibrary(ztracy.artifact("tracy"));
         e.linkLibrary(zglfw.artifact("glfw"));
         e.linkLibrary(zgui.artifact("imgui"));
         e.linkLibrary(zbgfx.artifact("bgfx"));
         e.linkLibrary(zflecs.artifact("flecs"));
+
+        e.linkLibrary(zine.artifact("zine"));
 
         if (options.enable_nfd) {
             e.root_module.addImport("znfde", znfde.module("root"));

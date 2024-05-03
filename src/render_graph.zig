@@ -6,7 +6,9 @@ const builtin = @import("builtin");
 
 const bgfx = @import("bgfx.zig");
 const gpu_private = @import("gpu.zig");
+const renderer_private = @import("renderer.zig");
 const _gfx_api = gpu_private.gfx_api;
+const _renderer_api = renderer_private.api;
 
 const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");
@@ -14,18 +16,19 @@ const task = @import("task.zig");
 const tempalloc = @import("tempalloc.zig");
 
 const cetech1 = @import("cetech1");
-const public = cetech1.gfx.rg;
-const gfx = cetech1.gfx;
-const gfx_dd = cetech1.gfx.dd;
+const public = cetech1.render_graph;
+const gfx = cetech1.gpu;
 const gpu = cetech1.gpu;
 const dag = cetech1.dag;
-const zm = cetech1.zmath;
+const zm = cetech1.math;
+
+const Viewport = cetech1.renderer.Viewport;
 
 const Pass = public.Pass;
 
-const log = std.log.scoped(.gfx_rg);
+const module_name = .render_graph;
+const log = std.log.scoped(module_name);
 
-const module_name = .gfxrd;
 var _allocator: std.mem.Allocator = undefined;
 
 const ModulePassList = std.ArrayList(ModuleOrPass);
@@ -63,7 +66,7 @@ const ResourceInfo = struct {
 
 const CreatedTextureKey = struct {
     name: public.ResourceId,
-    viewport: gpu.GpuViewport,
+    viewport: Viewport,
 };
 
 const CreatedTextureInfo = struct {
@@ -137,7 +140,7 @@ const GraphBuilder = struct {
     texture_map: TextureMap,
 
     passes: PassList,
-    viewport: gpu.GpuViewport,
+    viewport: Viewport,
     layer_map: LayerMap,
 
     resource_deps: ResourceInfoMap,
@@ -146,7 +149,7 @@ const GraphBuilder = struct {
 
     viewers: ViewersList,
 
-    pub fn init(allocator: std.mem.Allocator, rg: *RenderGraph, viewport: gpu.GpuViewport) GraphBuilder {
+    pub fn init(allocator: std.mem.Allocator, rg: *RenderGraph, viewport: Viewport) GraphBuilder {
         return .{
             .allocator = allocator,
             .rg = rg,
@@ -296,7 +299,7 @@ const GraphBuilder = struct {
         for (self.dag.output.keys()) |pass| {
             var info = self.passinfo_map.getPtr(pass) orelse return error.InvalidPass;
 
-            const viewid = _gfx_api.newViewId();
+            const viewid = _renderer_api.newViewId();
             info.viewid = viewid;
             if (info.exported_layer) |layer| {
                 try self.layer_map.put(layer, viewid);
@@ -494,7 +497,7 @@ const RenderGraph = struct {
         };
     }
 
-    pub fn createBuilder(self: *RenderGraph, allocator: std.mem.Allocator, viewport: gpu.GpuViewport) !public.GraphBuilder {
+    pub fn createBuilder(self: *RenderGraph, allocator: std.mem.Allocator, viewport: Viewport) !public.GraphBuilder {
         const new_builder = try self.builder_pool.create();
         new_builder.* = GraphBuilder.init(allocator, self, viewport);
         return .{ .ptr = new_builder, .vtable = &builder_vt };
@@ -510,7 +513,7 @@ const RenderGraph = struct {
         try self.module.setup(builder);
     }
 
-    pub fn createTexture2D(self: *RenderGraph, viewport: gpu.GpuViewport, texture_name: []const u8, info: public.TextureInfo) !gfx.TextureHandle {
+    pub fn createTexture2D(self: *RenderGraph, viewport: Viewport, texture_name: []const u8, info: public.TextureInfo) !gfx.TextureHandle {
         const texture_id = cetech1.strid.strId32(texture_name);
 
         const vp_size = viewport.getSize();
@@ -639,16 +642,16 @@ test "gfxrd: Basic usage" {
             try builder.addPass("none", pass);
         }
 
-        pub fn render(builder: public.GraphBuilder, gfx_api: *const gfx.GfxApi, viewport: gpu.GpuViewport, viewid: gfx.ViewId) !void {
-            _ = viewid; // autofix
-            _ = viewport; // autofix
-            _ = builder; // autofix
+        pub fn render(builder: public.GraphBuilder, gfx_api: *const gfx.GfxApi, viewport: Viewport, viewid: gfx.ViewId) !void {
+            _ = viewid;
+            _ = viewport;
+            _ = builder;
             try std.testing.expectEqual(&gpu_private.gfx_api, gfx_api);
         }
     });
-    _ = p1; // autofix
+    _ = p1;
 
-    // var vw = gpu.GpuViewport{.ptr = rg, .vtable = };
+    // var vw = gpu.Viewport{.ptr = rg, .vtable = };
 
     // const m1 = try api.createModule(rg);
     // try api.addPassToModule(m1, p1);

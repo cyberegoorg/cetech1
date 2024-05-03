@@ -1,6 +1,6 @@
 const std = @import("std");
-const Backend = @import("gpu.zig");
-const gfx = @import("gfx.zig");
+
+const gpu = @import("gpu.zig");
 
 pub const Axis = enum(c_int) {
     X,
@@ -33,7 +33,7 @@ pub const GeometryHandle = extern struct {
 
 pub const Encoder = struct {
     //
-    pub fn begin(dde: Encoder, _viewId: u16, _depthTestLess: bool, _encoder: gfx.Encoder) void {
+    pub fn begin(dde: Encoder, _viewId: u16, _depthTestLess: bool, _encoder: gpu.Encoder) void {
         dde.vtable.encoderBegin(dde.ptr, _viewId, _depthTestLess, _encoder.ptr);
     }
 
@@ -118,8 +118,7 @@ pub const Encoder = struct {
     }
 
     //
-    pub fn close(dde: Encoder, gfx_dd_api: *const GfxDDApi) void {
-        _ = gfx_dd_api; // autofix
+    pub fn close(dde: Encoder) void {
         dde.vtable.encoderClose(dde.ptr);
     }
 
@@ -209,7 +208,7 @@ pub const Encoder = struct {
     }
 
     ///
-    pub fn drawQuadTexture(dde: Encoder, _handle: gfx.TextureHandle, _normal: [3]f32, _center: [3]f32, _size: f32) void {
+    pub fn drawQuadTexture(dde: Encoder, _handle: gpu.TextureHandle, _normal: [3]f32, _center: [3]f32, _size: f32) void {
         dde.vtable.encoderDrawQuadTexture(dde.ptr, _handle, _normal, _center, _size);
     }
 
@@ -272,7 +271,7 @@ pub const Encoder = struct {
         encoderDrawCircleAxis: *const fn (dde: *anyopaque, _axis: Axis, _xyz: [3]f32, _radius: f32, _weight: f32) void,
         encoderDrawQuad: *const fn (dde: *anyopaque, _normal: [3]f32, _center: [3]f32, _size: f32) void,
         encoderDrawQuadSprite: *const fn (dde: *anyopaque, _handle: SpriteHandle, _normal: [3]f32, _center: [3]f32, _size: f32) void,
-        encoderDrawQuadTexture: *const fn (dde: *anyopaque, _handle: gfx.TextureHandle, _normal: [3]f32, _center: [3]f32, _size: f32) void,
+        encoderDrawQuadTexture: *const fn (dde: *anyopaque, _handle: gpu.TextureHandle, _normal: [3]f32, _center: [3]f32, _size: f32) void,
         encoderDrawAxis: *const fn (dde: *anyopaque, _xyz: [3]f32, _len: f32, _highlight: Axis, _thickness: f32) void,
         encoderDrawGrid: *const fn (dde: *anyopaque, _normal: [3]f32, _center: [3]f32, _size: u32, _step: f32) void,
         encoderDrawGridAxis: *const fn (dde: *anyopaque, _axis: Axis, _center: [3]f32, _size: u32, _step: f32) void,

@@ -44,8 +44,8 @@ const PropertyTypeAspectMap = std.AutoArrayHashMap(PropertyAspectPair, *anyopaqu
 
 const OnObjIdDestroyMap = std.AutoArrayHashMap(public.OnObjIdDestroyed, void);
 
-const ChangedObjectsList = std.ArrayList(public.ObjId);
-const ChangedObjectMap = std.AutoArrayHashMap(public.TypeVersion, ChangedObjectsList);
+const ChangedObjectsSet = std.AutoArrayHashMap(public.ObjId, void);
+const ChangedObjectMap = std.AutoArrayHashMap(public.TypeVersion, ChangedObjectsSet);
 
 const ChangedObjects = struct {
     const Self = @This();
@@ -53,6 +53,7 @@ const ChangedObjects = struct {
     allocator: std.mem.Allocator,
     map: ChangedObjectMap,
     max_version: u32 = 0,
+    lck: std.Thread.Mutex = .{},
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
@@ -70,22 +71,30 @@ const ChangedObjects = struct {
     }
 
     pub fn addChangedObjects(self: *Self, version: public.TypeVersion, objects: []const public.ObjId) !void {
+        self.lck.lock();
+        defer self.lck.unlock();
+
         const result = try self.map.getOrPut(version);
         if (!result.found_existing) {
-            result.value_ptr.* = ChangedObjectsList.init(self.allocator);
+            result.value_ptr.* = ChangedObjectsSet.init(self.allocator);
         }
 
-        try result.value_ptr.appendSlice(objects);
+        for (objects) |obj| {
+            try result.value_ptr.put(obj, {});
+        }
 
         self.max_version = @max(self.max_version, version);
     }
 
     pub fn getSince(self: *Self, allocator: std.mem.Allocator, since_version: public.TypeVersion, last_version: public.TypeVersion) ![]public.ObjId {
+        self.lck.lock();
+        defer self.lck.unlock();
+
         var output = std.ArrayList(public.ObjId).init(allocator);
 
         for (since_version..last_version) |version| {
             const objects = self.map.get(@intCast(version)).?;
-            try output.appendSlice(objects.items);
+            try output.appendSlice(objects.keys());
         }
 
         return output.toOwnedSlice();
@@ -447,12 +456,14 @@ pub const TypeStorage = struct {
         self.objid2refs_lock.items[id] = std.Thread.Mutex{};
         self.prototype2instances_lock.items[id] = std.Thread.Mutex{};
 
-        const objid = .{ .id = id, .gen = gen, .type_idx = self.type_idx };
+        const objid = .{ .id = @as(u24, @truncate(id)), .gen = gen, .type_idx = self.type_idx };
         return objid;
     }
 
     pub fn increaseVersion(self: *Self, obj: public.ObjId) void {
         _ = self.objid_version.items[obj.id].fetchAdd(1, .monotonic);
+        self.changed_objs.addChangedObjects(self.version, &.{obj}) catch undefined;
+        self.version += 1;
     }
 
     pub fn increaseReference(self: *Self, obj: public.ObjId) void {
@@ -870,7 +881,7 @@ pub const TypeStorage = struct {
                 self.removePrototypeInstance(obj.prototype, obj.objid);
             }
 
-            self.objid_gen.items[obj.objid.id] += 1;
+            self.objid_gen.items[obj.objid.id] = @addWithOverflow(self.objid_gen.items[obj.objid.id], 1)[0];
 
             try self.freeObjId(obj.objid);
             self.objid2obj.items[obj.objid.id] = null;
@@ -905,11 +916,11 @@ pub const TypeStorage = struct {
             self.to_free_obj_node_pool.destroy(node);
         }
 
-        try self.changed_objs.addChangedObjects(self.version, changed_ids.items);
+        try self.changed_objs.addChangedObjects(self.version, destroyed_ids.items);
 
         self.db.callOnObjIdDestroyed(destroyed_ids.items);
 
-        if (free_objects != 0) {
+        if (destroyed_ids.items.len != 0) {
             self.version += 1;
         }
 
@@ -1757,6 +1768,7 @@ pub const Db = struct {
             ref_obj_storage.removeObjIdReferencer(value, true_obj.objid);
             //var ref_obj = self.getObjectPtr(value);
             //_ = try ref_obj_storage.decreaseReferenceToFree(ref_obj.?);
+            self.increaseVersionToAll(true_obj);
         }
     }
 
@@ -1771,6 +1783,7 @@ pub const Db = struct {
         if (try array.*.remove(true_sub_obj.objid)) {
             var ref_obj_storage = self.getTypeStorage(true_sub_obj.objid).?;
             _ = try ref_obj_storage.decreaseReferenceToFree(true_sub_obj);
+            self.increaseVersionToAll(true_obj);
         }
     }
 

@@ -43,6 +43,7 @@ const ExplorerTab = struct {
     tab_i: editor.EditorTabI,
     db: cdb.Db,
     selection: cdb.ObjId = .{},
+    last_version: cdb.ObjVersion = 0,
     inter_selection: cdb.ObjId,
     tv_result: editor_tree.SelectInTreeResult = .{ .is_changed = false },
 };
@@ -112,6 +113,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
             const allocator = try _tempalloc.create();
             defer _tempalloc.destroy(allocator);
 
+            const first_selected_obj = _coreui.getFirstSelected(allocator, tab_o.db, tab_o.inter_selection);
             try _editor.showObjContextMenu(
                 allocator,
                 tab_o.db,
@@ -120,7 +122,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
                     editor.Contexts.open,
                     editor.Contexts.debug,
                 },
-                tab_o.inter_selection,
+                if (!tab_o.tv_result.parent_obj.isEmpty()) tab_o.tv_result.parent_obj else first_selected_obj,
                 if (tab_o.tv_result.is_prop) tab_o.tv_result.prop_idx else null,
                 if (!tab_o.tv_result.in_set_obj.isEmpty()) tab_o.tv_result.in_set_obj else null,
             );
@@ -151,8 +153,6 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
                 defer allocator.free(selected_objs);
 
                 for (selected_objs) |obj| {
-                    if (!assetdb.Asset.isSameType(tab_o.db, obj)) continue;
-
                     // Draw asset_object
                     const r = try _editortree.cdbTreeView(
                         allocator,
@@ -173,10 +173,14 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
                         },
                     );
 
-                    if (r.isChanged()) tab_o.tv_result = r;
+                    // const selection_version = tab_o.db.getVersion(tab_o.inter_selection);
+                    // if (selection_version != tab_o.last_version) {
+                    //     _editor.propagateSelection(tab_o.db, tab_o.inter_selection);
+                    //     tab_o.last_version = selection_version;
+                    // }
 
-                    const selection_version = tab_o.db.getVersion(tab_o.inter_selection);
-                    if (selection_version != tab_o.db.getVersion(tab_o.inter_selection)) {
+                    if (r.isChanged()) {
+                        tab_o.tv_result = r;
                         _editor.propagateSelection(tab_o.db, tab_o.inter_selection);
                     }
                 }
@@ -184,13 +188,19 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
         }
     }
 
+    pub fn assetRootOpened(inst: *editor.TabO) !void {
+        const tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
+        tab_o.last_version = 0;
+    }
+
     // Selected object
     pub fn objSelected(inst: *editor.TabO, db: cdb.Db, selection: cdb.ObjId) !void {
         _ = db;
-
         var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
+
         if (tab_o.inter_selection.eql(selection)) return;
         tab_o.selection = selection;
+        //tab_o.last_version = 0;
     }
 });
 
@@ -212,7 +222,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
                     ctx.setRef(_coreui, "###ct_editor_explorer_tab_1");
                     ctx.windowFocus(_coreui, "");
-                    ctx.itemAction(_coreui, .Click, "**/###foo.ct_foo_asset/018b5846-c2d5-712f-bb12-9d9d15321ecb/Subobject", .{}, null);
+                    ctx.itemAction(_coreui, .Click, "**/###foo.ct_foo_asset/Subobject", .{}, null);
                 }
             },
         );
@@ -236,7 +246,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
                     ctx.setRef(_coreui, "###ct_editor_explorer_tab_2");
                     ctx.windowFocus(_coreui, "");
-                    ctx.itemAction(_coreui, .Click, "**/###foo.ct_foo_asset/018b5846-c2d5-712f-bb12-9d9d15321ecb/Subobject", .{}, null);
+                    ctx.itemAction(_coreui, .Click, "**/###foo.ct_foo_asset/Subobject", .{}, null);
                 }
             },
         );
@@ -257,7 +267,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.setRef(_coreui, "###ct_editor_explorer_tab_1");
                     ctx.windowFocus(_coreui, "");
 
-                    ctx.itemAction(_coreui, .Click, "**/###empty.ct_foo_asset/018e7ba0-571a-71e9-a03e-cbe1fdcf2581/Subobject set", .{}, null);
+                    ctx.itemAction(_coreui, .Click, "**/###empty.ct_foo_asset/Subobject set", .{}, null);
                     ctx.menuAction(_coreui, .Click, "###ObjContextMenu/###AddToSet/###AddNew");
 
                     const db = _kernel.getDb();
@@ -294,7 +304,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.setRef(_coreui, "###ct_editor_explorer_tab_1");
                     ctx.windowFocus(_coreui, "");
 
-                    ctx.itemAction(_coreui, .Click, "**/###child_asset.ct_foo_asset/018e7ba2-d04a-7176-8374-c38cca68b3ab/Subobject set/0", .{}, null);
+                    ctx.itemAction(_coreui, .Click, "**/###child_asset.ct_foo_asset/Subobject set/###018e7ba3-4f75-7e4f-bb0a-697eff5b21e2", .{}, null);
                     ctx.menuAction(_coreui, .Click, "###ObjContextMenu/###Inisiate");
 
                     const db = _kernel.getDb();
@@ -338,7 +348,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
                     ctx.setRef(_coreui, "###ct_editor_explorer_tab_1");
                     ctx.windowFocus(_coreui, "");
-                    ctx.itemAction(_coreui, .Click, "**/###parent_asset.ct_foo_asset/018e7ba3-3540-7790-bb65-3e63081a76f7/Subobject set/0", .{}, null);
+                    ctx.itemAction(_coreui, .Click, "**/###parent_asset.ct_foo_asset/Subobject set/###018e7ba3-4f75-7e4f-bb0a-697eff5b21e2", .{}, null);
 
                     ctx.menuAction(_coreui, .Click, "###ObjContextMenu/###Remove");
 
@@ -376,7 +386,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.setRef(_coreui, "###ct_editor_explorer_tab_1");
                     ctx.windowFocus(_coreui, "");
 
-                    ctx.itemAction(_coreui, .Click, "**/###child_asset.ct_foo_asset/018e7ba2-d04a-7176-8374-c38cca68b3ab/Subobject", .{}, null);
+                    ctx.itemAction(_coreui, .Click, "**/###child_asset.ct_foo_asset/Subobject", .{}, null);
                     ctx.menuAction(_coreui, .Click, "###ObjContextMenu/###Inisiate");
 
                     const db = _kernel.getDb();

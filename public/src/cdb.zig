@@ -6,9 +6,11 @@ const log = std.log.scoped(.assetdb);
 
 pub const OBJID_ZERO = ObjId{};
 
+pub const ObjVersion = u64;
+
 /// Type idx
-pub const TypeIdx = extern struct {
-    idx: u16 = 0,
+pub const TypeIdx = packed struct(u32) {
+    idx: u32 = 0,
 
     pub fn isEmpty(self: *const TypeIdx) bool {
         return self.idx == 0;
@@ -19,11 +21,11 @@ pub const TypeIdx = extern struct {
     }
 };
 
-pub const ObjIdGen = u16;
+pub const ObjIdGen = u8;
 
 /// Object id
-pub const ObjId = extern struct {
-    id: u32 = 0,
+pub const ObjId = packed struct(u64) {
+    id: u24 = 0,
     gen: ObjIdGen = 0,
     type_idx: TypeIdx = .{},
 
@@ -41,6 +43,11 @@ pub const ObjId = extern struct {
 
     pub fn toU64(self: *const ObjId) u64 {
         const ptr: *u64 = @ptrFromInt(@intFromPtr(self));
+        return ptr.*;
+    }
+
+    pub fn fromU64(value: u64) ObjId {
+        const ptr: *ObjId = @ptrFromInt(@intFromPtr(&value));
         return ptr.*;
     }
 };
@@ -121,7 +128,7 @@ pub const PropDef = struct {
 };
 
 pub const CreateTypesI = struct {
-    pub const c_name = "ct_cdb_create_types_i";
+    pub const c_name = "ct_cdb_create_cdb_types_i";
     pub const name_hash = strid.strId64(@This().c_name);
 
     create_types: *const fn (db: Db) void,
@@ -573,7 +580,7 @@ pub const Db = struct {
 
     // Get object version.
     // Version is counter increment if obj is changed or any subobj or prototype is changed.
-    pub fn getVersion(self: Self, obj: ObjId) u64 {
+    pub fn getVersion(self: Self, obj: ObjId) ObjVersion {
         return self.vtable.getVersionFn(self.ptr, obj);
     }
 
@@ -670,7 +677,7 @@ pub const Db = struct {
         retargetWriteFn: *const fn (db_: *anyopaque, writer: *Obj, obj: ObjId) anyerror!void,
         getPrototypeFn: *const fn (db_: *anyopaque, obj: *Obj) ObjId,
         getParentFn: *const fn (db_: *anyopaque, obj: ObjId) ObjId,
-        getVersionFn: *const fn (db_: *anyopaque, obj: ObjId) u64,
+        getVersionFn: *const fn (db_: *anyopaque, obj: ObjId) ObjVersion,
         getReferencerSetFn: *const fn (db_: *anyopaque, obj: ObjId, allocator: std.mem.Allocator) anyerror![]ObjId,
         getDefaultObjectFn: *const fn (db: *anyopaque, type_idx: TypeIdx) ?ObjId,
         setPrototypeFn: *const fn (db: *anyopaque, obj: ObjId, prototype: ObjId) anyerror!void,

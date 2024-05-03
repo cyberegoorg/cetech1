@@ -68,7 +68,7 @@ test "cdb: Should register create types handler " {
     try testInit();
     defer testDeinit();
 
-    var create_types_i = public.CreateTypesI.implement(struct {
+    var create_cdb_types_i = public.CreateTypesI.implement(struct {
         pub fn createTypes(db: cetech1.cdb.Db) !void {
             const type_hash = db.addType(
                 "foo",
@@ -81,7 +81,7 @@ test "cdb: Should register create types handler " {
         }
     });
 
-    try apidb.api.implOrRemove(.foo, public.CreateTypesI, &create_types_i, true);
+    try apidb.api.implOrRemove(.foo, public.CreateTypesI, &create_cdb_types_i, true);
 
     var db = try cdb.api.createDb("Test");
     defer cdb.api.destroyDb(db);
@@ -115,7 +115,7 @@ test "cdb: Should register aspect" {
 
     var foo_aspect = FooAspect{ .barFn = &FooAspect.barImpl };
 
-    var create_types_i = public.CreateTypesI.implement(struct {
+    var create_cdb_types_i = public.CreateTypesI.implement(struct {
         pub fn createTypes(db: cetech1.cdb.Db) !void {
             const type_hash = db.addType(
                 "foo",
@@ -128,7 +128,7 @@ test "cdb: Should register aspect" {
         }
     });
 
-    try apidb.api.implOrRemove(.foo, public.CreateTypesI, &create_types_i, true);
+    try apidb.api.implOrRemove(.foo, public.CreateTypesI, &create_cdb_types_i, true);
 
     var db = try cdb.api.createDb("Test");
     defer cdb.api.destroyDb(db);
@@ -171,7 +171,7 @@ test "cdb: Should register property aspect" {
 
     var foo_aspect = FooAspect{ .barFn = &FooAspect.barImpl };
 
-    var create_types_i = public.CreateTypesI.implement(struct {
+    var create_cdb_types_i = public.CreateTypesI.implement(struct {
         pub fn createTypes(db: cetech1.cdb.Db) !void {
             const type_hash = db.addType(
                 "foo",
@@ -183,7 +183,7 @@ test "cdb: Should register property aspect" {
             _ = type_hash;
         }
     });
-    try apidb.api.implOrRemove(.foo, public.CreateTypesI, &create_types_i, true);
+    try apidb.api.implOrRemove(.foo, public.CreateTypesI, &create_cdb_types_i, true);
 
     var db = try cdb.api.createDb("Test");
     defer cdb.api.destroyDb(db);
@@ -1485,7 +1485,7 @@ test "cdb: Should tracking changed objects" {
     try db.gc(std.testing.allocator);
     const changed_1 = try db.getChangeObjects(std.testing.allocator, type_hash, 1);
     defer std.testing.allocator.free(changed_1.objects);
-    try std.testing.expectEqualSlices(public.ObjId, &.{ obj2, obj1 }, changed_1.objects);
+    try std.testing.expectEqualSlices(public.ObjId, &.{ obj1, obj2 }, changed_1.objects);
     try std.testing.expect(!changed_1.need_fullscan);
 
     // get from 0 version force to do fullscan
@@ -1497,7 +1497,7 @@ test "cdb: Should tracking changed objects" {
     db.destroyObject(obj2);
     // Call GC thas create populate changed objects.
     try db.gc(std.testing.allocator);
-    const changed_2 = try db.getChangeObjects(std.testing.allocator, type_hash, changed_1.last_version);
+    const changed_2 = try db.getChangeObjects(std.testing.allocator, type_hash, changed_0.last_version);
     defer std.testing.allocator.free(changed_2.objects);
     try std.testing.expect(!changed_2.need_fullscan);
     try std.testing.expectEqualSlices(public.ObjId, &.{obj2}, changed_2.objects);
@@ -1505,7 +1505,7 @@ test "cdb: Should tracking changed objects" {
     const changed_begin = try db.getChangeObjects(std.testing.allocator, type_hash, 1);
     defer std.testing.allocator.free(changed_begin.objects);
     try std.testing.expect(!changed_begin.need_fullscan);
-    try std.testing.expectEqualSlices(public.ObjId, &.{ obj2, obj1, obj2 }, changed_begin.objects);
+    try std.testing.expectEqualSlices(public.ObjId, &.{ obj1, obj2, obj2 }, changed_begin.objects);
 }
 
 fn stressTest(comptime task_count: u32, task_based: bool) !void {

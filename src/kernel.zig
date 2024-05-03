@@ -18,6 +18,9 @@ const gpu = @import("gpu.zig");
 const coreui = @import("coreui.zig");
 const ecs = @import("ecs.zig");
 const actions = @import("actions.zig");
+const graphvm = @import("graphvm.zig");
+const transform = @import("transform.zig");
+const renderer = @import("renderer.zig");
 
 const cetech1 = @import("cetech1");
 const public = cetech1.kernel;
@@ -84,6 +87,8 @@ var _coreui_allocator: profiler.AllocatorProfiler = undefined;
 var _tmp_alocator_pool_allocator: profiler.AllocatorProfiler = undefined;
 var _ecs_allocator: profiler.AllocatorProfiler = undefined;
 var _actions_allocator: profiler.AllocatorProfiler = undefined;
+var _graph_allocator: profiler.AllocatorProfiler = undefined;
+var _viewport_allocator: profiler.AllocatorProfiler = undefined;
 
 var _update_dag: cetech1.dag.StrId64DAG = undefined;
 
@@ -194,6 +199,8 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     _tmp_alocator_pool_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "tmp_allocators");
     _ecs_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "ecs");
     _actions_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "actions");
+    _graph_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "graph");
+    _viewport_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "viewport");
 
     _update_dag = cetech1.dag.StrId64DAG.init(_kernel_allocator);
 
@@ -217,7 +224,9 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try platform.init(_platform_allocator.allocator(), headless);
     try actions.init(_actions_allocator.allocator());
     try gpu.init(_gpu_allocator.allocator());
+    try renderer.init(_viewport_allocator.allocator());
     try coreui.init(_coreui_allocator.allocator());
+    try graphvm.init(_graph_allocator.allocator());
 
     try apidb.api.setZigApi(module_name, cetech1.kernel.KernelApi, &api);
 
@@ -234,6 +243,9 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try gpu.registerToApi();
     try coreui.registerToApi();
     try ecs.registerToApi();
+    try graphvm.registerToApi();
+
+    try transform.regsitreAll();
 
     try addPhase("OnLoad", &[_]strid.StrId64{});
     try addPhase("PostLoad", &[_]strid.StrId64{cetech1.kernel.OnLoad});
@@ -255,7 +267,10 @@ pub fn deinit(
 
     ecs.deinit();
 
+    graphvm.deinit();
+
     coreui.deinit();
+    renderer.deinit();
     if (gpu_context) |ctx| gpu.api.destroyContext(ctx);
     gpu.deinit();
     if (main_window) |window| platform.api.destroyWindow(window);
@@ -415,7 +430,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         const asset_root = getStrArgs("--asset-root") orelse "";
         const headless = 1 == getIntArgs("--headless") orelse @intFromBool(boot_args.headless);
         const fullscreen = 1 == getIntArgs("--fullscreen") orelse 0;
-        const renderer = getStrArgs("--renderer");
+        const renderer_type = getStrArgs("--renderer");
 
         // Init Kernel
         try init(gpa_allocator, headless);
@@ -485,7 +500,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
         gpu_context = try gpu.api.createContext(
             main_window,
-            if (renderer) |r| cetech1.gpu.Backend.fromString(r) else null,
+            if (renderer_type) |r| cetech1.gpu.Backend.fromString(r) else null,
             !headless,
             headless,
         );
@@ -526,7 +541,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                 var it = apidb.api.getFirstImpl(public.KernelLoopHookI);
                 while (it) |node| : (it = node.next) {
                     var iface = cetech1.apidb.ApiDbAPI.toInterface(public.KernelLoopHookI, node);
-                    try iface.begin_loop();
+                    try iface.begin_loop(kernel_tick, dt_s);
                 }
             }
 

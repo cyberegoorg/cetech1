@@ -41,6 +41,7 @@ const FooTab = struct {
 var foo_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     .tab_name = TAB_NAME,
     .tab_hash = .{ .id = cetech1.strid.strId32(TAB_NAME).id },
+    .category = "Examples",
 }, struct {
 
     // Return name for menu /Tabs/

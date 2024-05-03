@@ -1,0 +1,11 @@
+.{
+    .name = "zine",
+    .version = "0.1.0",
+    .dependencies = .{},
+    .paths = .{
+        "src",
+        "libs",
+        "build.zig",
+        "build.zig.zon",
+    },
+}

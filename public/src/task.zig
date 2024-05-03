@@ -6,10 +6,12 @@ pub const TaskID = enum(u32) {
     _,
 };
 
+pub const TaskIDList = std.ArrayList(TaskID);
+
 /// Structure for task wrap
 pub const TaskStub = struct {
     const Self = @This();
-    const Data = [64 - 8]u8;
+    const Data = [128 - 8]u8;
     const Main = *const fn (*Data) anyerror!void;
     data: Data = undefined,
     task_fn: Main,

@@ -20,11 +20,11 @@ pub const UiSetMenusAspect = struct {
     pub const name_hash = strid.strId32(@This().c_name);
 
     add_menu: *const fn (
-        allocator: *const std.mem.Allocator,
+        allocator: std.mem.Allocator,
         db: cdb.Db,
         obj: cdb.ObjId,
         prop_idx: u32,
-    ) void,
+    ) anyerror!void = undefined,
 
     pub fn implement(comptime T: type) UiSetMenusAspect {
         if (!std.meta.hasFn(T, "addMenu")) @compileError("implement me");
@@ -137,7 +137,7 @@ pub const CreateAssetI = struct {
 
 pub const TabO = anyopaque;
 
-pub const EditorTabI = extern struct {
+pub const EditorTabI = struct {
     vt: *EditorTabTypeI,
     inst: *TabO,
     tabid: u32 = 0,
@@ -147,6 +147,7 @@ pub const EditorTabI = extern struct {
 pub const EditorTabTypeIArgs = struct {
     tab_name: [:0]const u8,
     tab_hash: strid.StrId32,
+    category: ?[:0]const u8 = null,
     create_on_init: bool = false,
     show_pin_object: bool = false,
     show_sel_obj_in_title: bool = false,
@@ -158,6 +159,7 @@ pub const EditorTabTypeI = struct {
 
     tab_name: [:0]const u8 = undefined,
     tab_hash: strid.StrId32 = .{},
+    category: ?[:0]const u8 = null,
     create_on_init: bool = false,
     show_pin_object: bool = false,
     show_sel_obj_in_title: bool = false,
@@ -193,6 +195,7 @@ pub const EditorTabTypeI = struct {
         return EditorTabTypeI{
             .tab_name = args.tab_name,
             .tab_hash = args.tab_hash,
+            .category = args.category,
             .create_on_init = args.create_on_init,
             .show_pin_object = args.show_pin_object,
             .show_sel_obj_in_title = args.show_sel_obj_in_title,
@@ -231,7 +234,7 @@ pub const EditorAPI = struct {
         in_set_obj: ?cdb.ObjId,
     ) anyerror!void,
 
-    buffFormatObjLabel: *const fn (allocator: std.mem.Allocator, buff: [:0]u8, db: cdb.Db, obj: cdb.ObjId, with_id: bool) ?[:0]u8,
+    buffFormatObjLabel: *const fn (allocator: std.mem.Allocator, buff: [:0]u8, db: cdb.Db, obj: cdb.ObjId, with_id: bool, uuid_id: bool) ?[:0]u8,
     getObjColor: *const fn (db: cdb.Db, obj: cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cdb.ObjId) [4]f32,
 
     getAssetColor: *const fn (db: cdb.Db, obj: cdb.ObjId) [4]f32,

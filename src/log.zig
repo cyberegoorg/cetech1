@@ -38,8 +38,8 @@ pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]cons
 
     {
         const stderr = std.io.getStdErr().writer();
-        std.debug.getStderrMutex().lock();
-        defer std.debug.getStderrMutex().unlock();
+        std.debug.lockStdErr();
+        defer std.debug.unlockStdErr();
 
         const color: std.io.tty.Color = switch (level) {
             .info => .reset,

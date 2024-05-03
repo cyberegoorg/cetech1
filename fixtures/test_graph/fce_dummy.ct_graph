@@ -1,0 +1,58 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "01905fbe-3663-712d-84b6-a105d7d97c77",
+  "__type_name": "ct_graph",
+  "__uuid": "01905fbe-3d77-7ea0-bc8e-61cb44531f81",
+  "nodes": [
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "01905fbf-0e6c-7e5c-bb0b-7c7de16bbd53",
+      "node_type": 2364535882,
+      "pos_x": 3.77e2,
+      "pos_y": 7.6e1
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "01905fbf-0e6c-7f11-b16a-4d7e411d5c63",
+      "node_type": 855662471,
+      "pos_x": 5.38e2,
+      "pos_y": 7.6e1
+    }
+  ],
+  "connections": [
+    {
+      "__type_name": "ct_graph_connection",
+      "__uuid": "01905fbf-0e6c-7eba-ab68-6894d7e8af90",
+      "from_node": "ct_graph_node:01905fbf-0e6c-7e5c-bb0b-7c7de16bbd53",
+      "to_node": "ct_graph_node:01905fbf-0e6c-7f11-b16a-4d7e411d5c63",
+      "from_pin": 15314498,
+      "to_pin": 1004249676
+    }
+  ],
+  "interface": {
+    "__type_name": "ct_graph_interface",
+    "__uuid": "01905fbe-74c9-7d29-aeb6-6ae859a61b15",
+    "inputs": [
+      {
+        "__type_name": "ct_graph_interface_input",
+        "__uuid": "01905fbe-823d-7fbc-ba59-1c675cc01697",
+        "name": "IN",
+        "value": {
+          "__type_name": "ct_f32",
+          "__uuid": "01905fbe-925f-703f-bc16-aa56a1a1d271"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "__type_name": "ct_graph_interface_output",
+        "__uuid": "01905fbe-890b-74ac-9c1e-79582e9ab332",
+        "name": "OUT",
+        "value": {
+          "__type_name": "ct_f32",
+          "__uuid": "01905fbe-9ad4-7c94-b60a-038e122f2482"
+        }
+      }
+    ]
+  }
+}

@@ -5,7 +5,7 @@ const modules = @import("modules.zig");
 const strid = @import("strid.zig");
 
 const platform = @import("platform.zig");
-const gfx = @import("gfx.zig");
+const gpu = @import("gpu.zig");
 
 const log = std.log.scoped(.coreui);
 
@@ -91,6 +91,14 @@ pub const Icons = struct {
     pub const Authors = CoreIcons.FA_USER_INJURED;
 
     pub const Link = CoreIcons.FA_LINK;
+
+    pub const Graph = CoreIcons.FA_DIAGRAM_PROJECT;
+    pub const FitContent = CoreIcons.FA_ARROWS_TO_CIRCLE;
+    pub const Build = CoreIcons.FA_GEARS;
+
+    pub const Group = CoreIcons.FA_OBJECT_GROUP;
+    pub const Node = CoreIcons.FA_VECTOR_SQUARE;
+    pub const Connection = CoreIcons.FA_LINK;
 };
 
 pub const CoreUII = struct {
@@ -461,10 +469,13 @@ pub const CoreUIApi = struct {
     setScaleFactor: *const fn (scale_factor: f32) void,
     getScaleFactor: *const fn () f32,
 
-    image: *const fn (texture: gfx.TextureHandle, args: Image) void,
+    image: *const fn (texture: gpu.TextureHandle, args: Image) void,
     getMousePos: *const fn () [2]f32,
     getMouseDragDelta: *const fn (drag_button: MouseButton, args: MouseDragDelta) [2]f32,
     setMouseCursor: *const fn (cursor: Cursor) void,
+
+    popItemWidth: *const fn () void,
+    pushItemWidth: *const fn (item_width: f32) void,
 
     mainDockSpace: *const fn (flags: DockNodeFlags) Ident,
 };

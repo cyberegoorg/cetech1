@@ -1,0 +1,163 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "018f4363-037e-7e0a-89bc-065ac95f7a28",
+  "__type_name": "ct_graph",
+  "__uuid": "018f4363-065b-73ef-943a-d3c88bdaef02",
+  "nodes": [
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "018f52ca-babc-73f1-8c9a-2d55df87bbf6",
+      "node_type": 2435482470,
+      "pos_x": 3.05e2,
+      "pos_y": 2.8e1
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "0190685c-9826-7c3e-bbff-a4683912b6e8",
+      "node_type": 3215161735,
+      "settings": {
+        "__type_name": "ct_node_const_settings",
+        "__uuid": "0190685c-34fc-7376-85c5-a78780f21779",
+        "value": {
+          "__type_name": "ct_i32",
+          "__uuid": "0190685c-6e0c-70a3-a75b-eb7fd90233af",
+          "value": 22
+        }
+      },
+      "pos_x": 5.69e2,
+      "pos_y": 2.8e1
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "018f52ca-babc-7408-89ab-e356c41ee60a",
+      "node_type": 428918520,
+      "pos_x": 6.65e2,
+      "pos_y": 2.8e1
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "018f6362-2438-771f-8389-57d6ca15dcb6",
+      "node_type": 4209638912,
+      "pos_x": 6.11e2,
+      "pos_y": 2.04e2
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "0190685c-0034-7474-a0f6-3b95800035a8",
+      "node_type": 3215161735,
+      "settings": {
+        "__type_name": "ct_node_const_settings",
+        "__uuid": "0190685b-d221-71a8-a0cd-110703349ff8",
+        "value": {
+          "__type_name": "ct_f32",
+          "__uuid": "0190685b-dcc0-73b9-89b4-ac0b9bded348",
+          "value": 1e0
+        }
+      },
+      "pos_x": 3.07e2,
+      "pos_y": 2.04e2
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "01905fc7-8a31-7e34-8b7a-c4529c3fcac1",
+      "node_type": 2366301018,
+      "settings": {
+        "__type_name": "ct_call_graph_node_settings",
+        "__uuid": "01905fc6-f87f-7488-9891-323573d07af2",
+        "graph": "ct_graph:01905fbe-3d77-7ea0-bc8e-61cb44531f81"
+      },
+      "pos_x": 4.49e2,
+      "pos_y": 2e2
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "01906366-0fa8-7077-ac8d-291fc895bbcd",
+      "node_type": 2366301018,
+      "settings": {
+        "__type_name": "ct_call_graph_node_settings",
+        "__uuid": "01906365-0abf-7574-8632-751baf043db0",
+        "graph": "ct_graph:0190603a-a2e5-77c5-8a81-43dc92decf52"
+      },
+      "pos_x": 4.33e2,
+      "pos_y": 2.4e1
+    }
+  ],
+  "groups": [
+    {
+      "__type_name": "ct_graph_group",
+      "__uuid": "018f7d10-0ad7-791a-aee3-c86d0022348f",
+      "title": "Draw logic",
+      "color": {
+        "__type_name": "ct_color_4f",
+        "__uuid": "018f7d10-2e71-76e0-a355-3b644aaaca50",
+        "r": 0e0,
+        "b": 5.063271522521973e-2
+      },
+      "pos_x": 2.88e2,
+      "pos_y": 1.6e2,
+      "size_x": 4.32e2,
+      "size_y": 1.24e2
+    },
+    {
+      "__type_name": "ct_graph_group",
+      "__uuid": "018f7d10-9f0b-77ed-a245-fffe22f0ae8b",
+      "title": "Events",
+      "color": {
+        "__type_name": "ct_color_4f",
+        "__uuid": "018f7d11-4e68-7868-a152-f62ab3d8d60d",
+        "r": 0e0,
+        "g": 7.848103046417236e-1
+      },
+      "pos_x": 2.88e2,
+      "pos_y": -3.2e1,
+      "size_x": 4.32e2,
+      "size_y": 1.4e2
+    }
+  ],
+  "connections": [
+    {
+      "__type_name": "ct_graph_connection",
+      "__uuid": "0190685c-982b-7f02-acd0-1528daa9ea14",
+      "from_node": "ct_graph_node:0190685c-9826-7c3e-bbff-a4683912b6e8",
+      "to_node": "ct_graph_node:018f52ca-babc-7408-89ab-e356c41ee60a",
+      "from_pin": 3291756429,
+      "to_pin": 3801535092
+    },
+    {
+      "__type_name": "ct_graph_connection",
+      "__uuid": "01906366-0fa9-717d-a0f1-a3f84aa30453",
+      "from_node": "ct_graph_node:01906366-0fa8-7077-ac8d-291fc895bbcd",
+      "to_node": "ct_graph_node:018f52ca-babc-7408-89ab-e356c41ee60a",
+      "from_pin": 2993701023,
+      "to_pin": 1942041033
+    },
+    {
+      "__type_name": "ct_graph_connection",
+      "__uuid": "01905fc7-8a32-7762-8572-97ab91c8ce66",
+      "from_node": "ct_graph_node:01905fc7-8a31-7e34-8b7a-c4529c3fcac1",
+      "to_node": "ct_graph_node:018f6362-2438-771f-8389-57d6ca15dcb6",
+      "from_pin": 1004249676,
+      "to_pin": 1288587013
+    },
+    {
+      "__type_name": "ct_graph_connection",
+      "__uuid": "01906366-0faa-7254-bc99-51b726333ff8",
+      "from_node": "ct_graph_node:018f52ca-babc-73f1-8c9a-2d55df87bbf6",
+      "to_node": "ct_graph_node:01906366-0fa8-7077-ac8d-291fc895bbcd",
+      "from_pin": 1942041033,
+      "to_pin": 3871914721
+    },
+    {
+      "__type_name": "ct_graph_connection",
+      "__uuid": "0190685c-982c-75dc-b851-70367bc58ad4",
+      "from_node": "ct_graph_node:0190685c-0034-7474-a0f6-3b95800035a8",
+      "to_node": "ct_graph_node:01905fc7-8a31-7e34-8b7a-c4529c3fcac1",
+      "from_pin": 3291756429,
+      "to_pin": 15314498
+    }
+  ],
+  "interface": {
+    "__type_name": "ct_graph_interface",
+    "__uuid": "0190454c-472a-7dd5-8e19-6ea4b354c799"
+  }
+}

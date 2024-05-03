@@ -126,7 +126,7 @@ pub const AssetIOI = struct {
     }
 };
 
-pub const FilteredAsset = extern struct {
+pub const FilteredAsset = struct {
     score: f64,
     obj: cdb.ObjId,
 

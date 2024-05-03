@@ -47,6 +47,13 @@ pub fn PoolWithLock(comptime T: type) type {
             };
         }
 
+        pub fn initPreheated(allocator: std.mem.Allocator, initial_size: usize) !Self {
+            return .{
+                .pool = try std.heap.MemoryPool(T).initPreheated(allocator, initial_size),
+                .lock = std.Thread.Mutex{},
+            };
+        }
+
         pub fn deinit(self: *Self) void {
             self.pool.deinit();
         }

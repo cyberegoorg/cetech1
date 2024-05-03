@@ -7,7 +7,7 @@ const cetech1 = @import("cetech1");
 const public = cetech1.cdb_types;
 
 // CDB
-var create_types_i = cetech1.cdb.CreateTypesI.implement(struct {
+var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cetech1.cdb.Db) !void {
 
         // Color4f
@@ -35,5 +35,5 @@ var create_types_i = cetech1.cdb.CreateTypesI.implement(struct {
 });
 
 pub fn registerToApi() !void {
-    try apidb.api.implOrRemove(.cdb_types, cetech1.cdb.CreateTypesI, &create_types_i, true);
+    try apidb.api.implOrRemove(.cdb_types, cetech1.cdb.CreateTypesI, &create_cdb_types_i, true);
 }
