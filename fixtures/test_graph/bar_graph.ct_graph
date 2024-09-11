@@ -91,14 +91,6 @@
     },
     {
       "__type_name": "ct_graph_connection",
-      "__uuid": "0191dc80-f24f-7719-8808-5e0b603c5120",
-      "from_node": "ct_graph_node:0190a236-6b65-77ed-a735-76adb888c4ac",
-      "to_node": "ct_graph_node:0191dc80-e5e0-7829-984f-e2c531411048",
-      "from_pin": "out:flow",
-      "to_pin": "in:flow"
-    },
-    {
-      "__type_name": "ct_graph_connection",
       "__uuid": "0191dc80-f88e-74f0-8c83-83efa7915c62",
       "from_node": "ct_graph_node:0191dc80-dc5c-7bf9-9b5b-2c92152a861a",
       "to_node": "ct_graph_node:0191dc80-e5e0-7829-984f-e2c531411048",

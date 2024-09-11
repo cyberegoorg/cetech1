@@ -452,6 +452,7 @@ pub const TypeStorage = struct {
         if (1 == ref_count.fetchSub(1, .release)) {
             ref_count.fence(.acquire);
             try self.addToFreeQueue(object);
+            self.objid_gen.items[object.objid.id] = @addWithOverflow(self.objid_gen.items[object.objid.id], 1)[0];
         }
     }
 
@@ -859,7 +860,7 @@ pub const TypeStorage = struct {
                 self.removePrototypeInstance(obj.prototype, obj.objid);
             }
 
-            self.objid_gen.items[obj.objid.id] = @addWithOverflow(self.objid_gen.items[obj.objid.id], 1)[0];
+            //self.objid_gen.items[obj.objid.id] = @addWithOverflow(self.objid_gen.items[obj.objid.id], 1)[0];
 
             try self.freeObjId(obj.objid);
             self.objid2obj.items[obj.objid.id] = null;
@@ -1253,7 +1254,7 @@ pub const Db = struct {
     fn getVersion(self: *Self, obj: public.ObjId) u64 {
         // var zone_ctx = profiler.ztracy.Zone(@src());
         // defer zone_ctx.End();
-        const true_obj = self.getObjectPtr(obj).?;
+        const true_obj = self.getObjectPtr(obj) orelse return 0;
         return true_obj.version.raw;
 
         // var version_hasher = std.hash.Wyhash.init(0);
@@ -1387,6 +1388,11 @@ pub const Db = struct {
         return self.typestorage_map.get(type_hash);
     }
 
+    pub fn getTypeHash(self: *Self, type_idx: public.TypeIdx) ?public.TypeHash {
+        const storate = self.getTypeStorageByTypeIdx(type_idx) orelse return null;
+        return storate.type_hash;
+    }
+
     pub fn getChangeObjects(self: *Self, allocator: std.mem.Allocator, type_idx: public.TypeIdx, since_version: public.TypeVersion) !public.ChangedObjects {
         const type_storage = self.getTypeStorageByTypeIdx(type_idx).?;
         if (since_version == 0) return public.ChangedObjects{
@@ -1405,6 +1411,7 @@ pub const Db = struct {
     }
 
     pub fn isAlive(self: *Self, obj: public.ObjId) bool {
+        if (obj.isEmpty()) return false;
         const type_storage = self.getTypeStorageByTypeIdx(obj.type_idx).?;
         return type_storage.objid_gen.items[obj.id] == obj.gen;
     }
@@ -2231,8 +2238,8 @@ pub const Db = struct {
     }
 
     fn isChildOff(self: *Self, parent_obj: public.ObjId, child_obj: public.ObjId) bool {
-        const real_parent_obj = self.getObjectPtr(parent_obj).?;
-        const real_child_obj = self.getObjectPtr(child_obj).?;
+        const real_parent_obj = self.getObjectPtr(parent_obj) orelse return false;
+        const real_child_obj = self.getObjectPtr(child_obj) orelse return false;
 
         if (!real_child_obj.parent.isEmpty()) {
             if (real_child_obj.parent.eql(real_parent_obj.objid)) return true;
@@ -2335,6 +2342,7 @@ const db_vt = public.Db.VTable{
     .hasTypeSetFn = @ptrCast(&Db.hasTypeSet),
     .hasTypeSubobjectFn = @ptrCast(&Db.hasTypeSubobject),
     .getTypeIdxFn = @ptrCast(&Db.getTypeIdx),
+    .getTypeHashFn = @ptrCast(&Db.getTypeHash),
     .getChangeObjects = @ptrCast(&Db.getChangeObjects),
     .isAlive = @ptrCast(&Db.isAlive),
     .getRelationFn = @ptrCast(&Db.getRelation),

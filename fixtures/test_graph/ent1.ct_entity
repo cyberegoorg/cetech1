@@ -1,0 +1,30 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "0191e6d1-7eaa-7cea-8407-eefed5506445",
+  "__type_name": "ct_entity",
+  "__uuid": "0191e6d1-830a-73d8-992a-aa6f9add6d1e",
+  "components": [
+    {
+      "__type_name": "ct_position",
+      "__uuid": "0191e6d1-b2e2-7508-9b3e-f6f9de03ab92"
+    },
+    {
+      "__type_name": "ct_render_component",
+      "__uuid": "0191e71a-7f19-760b-9324-72943fb19174",
+      "graph": {
+        "__type_name": "ct_graph",
+        "__uuid": "0191e71a-8a8d-74b1-b906-a859fb5febed",
+        "__prototype_uuid": "018f4363-065b-73ef-943a-d3c88bdaef02"
+      }
+    },
+    {
+      "__type_name": "ct_entity_logic_component",
+      "__uuid": "0191e721-f738-76a1-a055-b63b381433c9",
+      "graph": {
+        "__type_name": "ct_graph",
+        "__uuid": "0191e722-06e7-7b5f-b391-7a27b218ef2e",
+        "__prototype_uuid": "0190a235-26c1-7ced-aea1-6af9190f0fe1"
+      }
+    }
+  ]
+}

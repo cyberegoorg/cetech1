@@ -35,25 +35,26 @@ var _uuid: *const cetech1.uuid.UuidAPI = undefined;
 
 // Global state
 const G = struct {
-    tab_vt: *editor.EditorTabTypeI = undefined,
+    tab_vt: *editor.TabTypeI = undefined,
 };
 var _g: *G = undefined;
 
 const ExplorerTab = struct {
-    tab_i: editor.EditorTabI,
+    tab_i: editor.TabI,
     db: cdb.Db,
     selection: coreui.SelectionItem = coreui.SelectionItem.empty(),
     inter_selection: coreui.Selection,
 };
 
 // Fill editor tab interface
-var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
+var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = EXPLORER_TAB_NAME,
     .tab_hash = strid.strId32(EXPLORER_TAB_NAME),
 
     .create_on_init = true,
     .show_pin_object = true,
     .show_sel_obj_in_title = true,
+    .ignore_selection_from_tab = &.{cetech1.strid.strId32("ct_editor_asset_browser_tab")},
 }, struct {
 
     // Can open tab
@@ -76,7 +77,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Create new FooTab instantce
-    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.EditorTabI {
+    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.TabI {
         _ = tab_id;
         var tab_inst = try _allocator.create(ExplorerTab);
 
@@ -92,7 +93,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Destroy FooTab instantce
-    pub fn destroy(tab_inst: *editor.EditorTabI) !void {
+    pub fn destroy(tab_inst: *editor.TabI) !void {
         const tab_o: *ExplorerTab = @alignCast(@ptrCast(tab_inst.inst));
         tab_o.inter_selection.deinit();
         _allocator.destroy(tab_o);
@@ -131,6 +132,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
                 tab_o.db,
                 tab_o,
                 &.{
+                    editor.Contexts.create,
                     editor.Contexts.open,
                     editor.Contexts.debug,
                 },
@@ -165,6 +167,7 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
                     tab_o.db,
                     tab_o,
                     &.{
+                        editor.Contexts.create,
                         editor.Contexts.open,
                         editor.Contexts.debug,
                     },
@@ -189,7 +192,8 @@ var explorer_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, db: cdb.Db, selection: []const coreui.SelectionItem) !void {
+    pub fn objSelected(inst: *editor.TabO, db: cdb.Db, selection: []const coreui.SelectionItem, sender_tab_hash: ?strid.StrId32) !void {
+        _ = sender_tab_hash; // autofix
         _ = db;
         var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
 
@@ -432,10 +436,10 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});
 
-    _g.tab_vt = try apidb.globalVarValue(editor.EditorTabTypeI, module_name, EXPLORER_TAB_NAME, explorer_tab);
+    _g.tab_vt = try apidb.globalVarValue(editor.TabTypeI, module_name, EXPLORER_TAB_NAME, explorer_tab);
 
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
-    try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &explorer_tab, load);
+    try apidb.implOrRemove(module_name, editor.TabTypeI, &explorer_tab, load);
     try apidb.implOrRemove(module_name, coreui.RegisterTestsI, &register_tests_i, load);
 
     return true;

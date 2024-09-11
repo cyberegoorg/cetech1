@@ -40,6 +40,9 @@
         .editor_log = .{ .path = "modules/editor_log" },
         .editor_graph = .{ .path = "modules/editor_graph" },
         .editor_metrics = .{ .path = "modules/editor_metrics" },
+        .editor_entity_asset = .{ .path = "modules/editor_entity_asset" },
+        .editor_entity = .{ .path = "modules/editor_entity" },
+        .editor_asset_preview = .{ .path = "modules/editor_asset_preview" },
 
         //
         // Externals

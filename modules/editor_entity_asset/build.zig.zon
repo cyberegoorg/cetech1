@@ -1,5 +1,5 @@
 .{
-    .name = "editor_graph",
+    .name = "editor_entity_asset",
     .version = "0.1.0",
     .paths = .{
         "build.zig",
@@ -8,7 +8,7 @@
     .dependencies = .{
         .cetech1 = .{ .path = "../../public/" },
         .editor = .{ .path = "../../modules/editor" },
-        .editor_inspector = .{ .path = "../../modules/editor_inspector" },
-        .editor_obj_buffer = .{ .path = "../editor_obj_buffer" },
+        .editor_tree = .{ .path = "../../modules/editor_tree" },
+        .editor_asset_preview = .{ .path = "../../modules/editor_asset_preview" },
     },
 }

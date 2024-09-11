@@ -378,6 +378,8 @@ const GraphBuilder = struct {
         // Main vieewr
         const fb_size = self.viewport.getSize();
         const aspect_ratio = fb_size[0] / fb_size[1];
+
+        // TODO: from camera
         const projMtx = zm.perspectiveFovRhGl(
             0.25 * std.math.pi,
             aspect_ratio,
@@ -559,6 +561,7 @@ const RenderGraph = struct {
 
 const RenderGraphPool = cetech1.mem.PoolWithLock(RenderGraph);
 const RenderGraphSet = std.AutoArrayHashMap(*RenderGraph, void);
+var _rg_lock: std.Thread.Mutex = undefined;
 var _rg_set: RenderGraphSet = undefined;
 var _rg_pool: RenderGraphPool = undefined;
 
@@ -567,6 +570,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
 
     _rg_set = RenderGraphSet.init(allocator);
     _rg_pool = RenderGraphPool.init(allocator);
+    _rg_lock = std.Thread.Mutex{};
 }
 
 pub fn deinit() void {
@@ -617,14 +621,26 @@ pub const api = public.GfxRGApi{
 fn create() !public.RenderGraph {
     const new_rg = try _rg_pool.create();
     new_rg.* = RenderGraph.init(_allocator);
-    try _rg_set.put(new_rg, {});
+
+    {
+        _rg_lock.lock();
+        defer _rg_lock.unlock();
+        try _rg_set.put(new_rg, {});
+    }
+
     return public.RenderGraph{ .ptr = new_rg, .vtable = &rg_vt };
 }
 
 fn destroy(rg: public.RenderGraph) void {
     const true_rg: *RenderGraph = @alignCast(@ptrCast(rg.ptr));
     true_rg.deinit();
-    _ = _rg_set.swapRemove(true_rg);
+
+    {
+        _rg_lock.lock();
+        defer _rg_lock.unlock();
+        _ = _rg_set.swapRemove(true_rg);
+    }
+
     _rg_pool.destroy(true_rg);
 }
 

@@ -5,12 +5,10 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const coreui = cetech1.coreui;
 const tempalloc = cetech1.tempalloc;
-const gpu = cetech1.gpu;
 const gfx = cetech1.gpu;
 const gfx_rg = cetech1.render_graph;
 const zm = cetech1.math;
 const ecs = cetech1.ecs;
-const primitives = cetech1.primitives;
 const actions = cetech1.actions;
 const graphvm = cetech1.graphvm;
 const assetdb = cetech1.assetdb;
@@ -25,7 +23,9 @@ const Viewport = renderer.Viewport;
 const editor = @import("editor");
 const Icons = coreui.CoreIcons;
 
-const module_name = .editor_foo_viewport_tab;
+const public = @import("asset_preview.zig");
+
+const module_name = .editor_asset_preview;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
@@ -34,7 +34,7 @@ pub const std_options: std.Options = .{
 // Log for module
 const log = std.log.scoped(module_name);
 
-const TAB_NAME = "ct_editor_foo_viewport_tab";
+const TAB_NAME = "ct_editor_asset_preview";
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
@@ -53,28 +53,29 @@ var _assetdb: *const assetdb.AssetDBAPI = undefined;
 var _uuid: *const uuid.UuidAPI = undefined;
 var _task: *const task.TaskAPI = undefined;
 var _viewport: *const cetech1.renderer.RendererApi = undefined;
-
-const World2CullingQuery = std.AutoArrayHashMap(ecs.World, ecs.Query);
+var _platform: *const cetech1.platform.PlatformApi = undefined;
+var _editor: *const editor.EditorAPI = undefined;
 
 // Global state that can surive hot-reload
 const G = struct {
     test_tab_vt_ptr: *editor.TabTypeI = undefined,
-    rg: gfx_rg.RenderGraph = undefined,
     db: cetech1.cdb.Db = undefined, // TODO: SHIT
 };
 var _g: *G = undefined;
 
-const SPHERE_COUNT = 1_000;
-
-const seed: u64 = 1111;
-var prng = std.rand.DefaultPrng.init(seed);
-
 // Struct for tab type
-const FooViewportTab = struct {
+const AssetPreviewTab = struct {
     tab_i: editor.TabI,
     viewport: Viewport = undefined,
+    db: cdb.Db,
     world: ecs.World,
     camera_look_activated: bool = false,
+
+    selection: coreui.SelectionItem = coreui.SelectionItem.empty(),
+    root_entity_obj: cdb.ObjId = .{},
+    root_entity: ?ecs.EntityId = null,
+
+    rg: gfx_rg.RenderGraph = undefined,
 
     camera: camera.SimpleFPSCamera = camera.SimpleFPSCamera.init(.{
         .position = .{ 0, 2, 12 },
@@ -84,62 +85,27 @@ const FooViewportTab = struct {
     flecs_port: ?u16 = null,
 };
 
-// Some components and systems
-
-const Velocity = struct {
-    x: f32,
-    y: f32,
-    z: f32,
-};
-const velocity_c = ecs.ComponentI.implement(Velocity, null, struct {});
-
-const move_system_i = ecs.SystemI.implement(
-    .{
-        .name = "move system",
-        .multi_threaded = false,
-        .phase = ecs.OnUpdate,
-        .query = &.{
-            .{ .id = ecs.id(transform.Position), .inout = .InOut },
-            .{ .id = ecs.id(Velocity), .inout = .In },
-        },
-    },
-    struct {
-        pub fn update(iter: *ecs.IterO) !void {
-            var it = _ecs.toIter(iter);
-
-            const p = it.field(transform.Position, 0).?;
-            const v = it.field(Velocity, 1).?;
-
-            for (0..it.count()) |i| {
-                p[i].x += v[i].x;
-                p[i].y += v[i].y;
-                p[i].z += v[i].z;
-            }
-        }
-    },
-);
-
-// Rendering component
-
-const ECS_WORLD_CONTEXT = cetech1.strid.strId32("ecs_world_context");
-const ECS_ENTITY_CONTEXT = cetech1.strid.strId32("ecs_entity_context");
-
 // Fill editor tab interface
 var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
     .tab_hash = .{ .id = cetech1.strid.strId32(TAB_NAME).id },
-    .category = "Examples",
+
+    // TODO: Bug on linux CI
+    .create_on_init = true,
+    .show_sel_obj_in_title = true,
+    .only_selection_from_tab = &.{cetech1.strid.strId32("ct_editor_asset_browser_tab")},
+    .show_pin_object = true,
 }, struct {
 
     // Return name for menu /Tabs/
     pub fn menuName() ![:0]const u8 {
-        return Icons.FA_ROBOT ++ "  " ++ "Foo viewport";
+        return Icons.FA_MAGNIFYING_GLASS ++ "  " ++ "Asset preview";
     }
 
     // Return tab title
     pub fn title(inst: *editor.TabO) ![:0]const u8 {
         _ = inst;
-        return Icons.FA_ROBOT ++ "  " ++ "Foo viewport";
+        return Icons.FA_MAGNIFYING_GLASS ++ "  " ++ "Asset preview";
     }
 
     // Create new tab instantce
@@ -147,47 +113,33 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         const w = try _ecs.createWorld();
         _g.db = db;
 
-        var buf: [128]u8 = undefined;
-        const name = try std.fmt.bufPrintZ(&buf, "Foo viewport {d}", .{tab_id});
+        var rg = try _gfx_rg.create();
+        try rg.addPass(simple_pass);
+        try rg.addPass(blit_pass);
 
-        var tab_inst = _allocator.create(FooViewportTab) catch undefined;
+        var buf: [128]u8 = undefined;
+        const name = try std.fmt.bufPrintZ(&buf, "Asset preview {d}", .{tab_id});
+
+        var tab_inst = _allocator.create(AssetPreviewTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _viewport.createViewport(name, _g.rg, w),
+            .viewport = try _viewport.createViewport(name, rg, w),
             .world = w,
+            .db = db,
+            .rg = rg,
             .tab_i = .{
                 .vt = _g.test_tab_vt_ptr,
                 .inst = @ptrCast(tab_inst),
             },
         };
 
-        var allocator = try _tempalloc.create();
-        defer _tempalloc.destroy(allocator);
-
-        // TODO: TEMP HARDCODE SHIT HACK - created in 2024... if you still read this and year is not 2024 am still idiot ;)
-        if (_assetdb.getObjId(_uuid.fromStr("0191e6d1-830a-73d8-992a-aa6f9add6d1e").?)) |e_obj| {
-            const entities = try _ecs.spawnManyFromCDB(allocator, w, db, e_obj, SPHERE_COUNT);
-            defer allocator.free(entities);
-
-            const rnd = prng.random();
-
-            for (entities, 0..) |ent, idx| {
-                _ = idx;
-
-                _ = w.setId(Velocity, ent, &Velocity{
-                    .x = (rnd.float(f32) * 2 - 1) * 0.1,
-                    .y = (rnd.float(f32) * 2 - 1) * 0.1,
-                    .z = (rnd.float(f32) * 2 - 1) * 0.1,
-                });
-            }
-        }
-
         return &tab_inst.tab_i;
     }
 
     // Destroy tab instantce
     pub fn destroy(tab_inst: *editor.TabI) !void {
-        const tab_o: *FooViewportTab = @alignCast(@ptrCast(tab_inst.inst));
+        const tab_o: *AssetPreviewTab = @alignCast(@ptrCast(tab_inst.inst));
         _viewport.destroyViewport(tab_o.viewport);
+        _gfx_rg.destroy(tab_o.rg);
         _ecs.destroyWorld(tab_o.world);
         _allocator.destroy(tab_o);
     }
@@ -196,55 +148,89 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
         _ = kernel_tick;
 
-        const tab_o: *FooViewportTab = @alignCast(@ptrCast(inst));
+        const tab_o: *AssetPreviewTab = @alignCast(@ptrCast(inst));
+
+        var selected_obj = cdb.ObjId{};
+
         const size = _coreui.getContentRegionAvail();
-        tab_o.viewport.setSize(size);
+        const wsize = _coreui.getContentRegionMax();
 
-        if (tab_o.viewport.getTexture()) |texture| {
-            _coreui.image(
-                texture,
-                .{
-                    .flags = 0,
-                    .mip = 0,
-                    .w = size[0],
-                    .h = size[1],
-                },
-            );
-            const hovered = _coreui.isItemHovered(.{});
-
-            var camera_look_activated = false;
-            {
-                _actions.pushSet(ViewportActionSet);
-                defer _actions.popSet();
-                camera_look_activated = _actions.isActionDown(LookActivationAction);
-            }
-
-            if (hovered and camera_look_activated) {
-                tab_o.camera_look_activated = true;
-                _kernel.getMainWindow().?.setCursorMode(.disabled);
-                _actions.pushSet(ActivatedViewportActionSet);
-            }
-
-            if (tab_o.camera_look_activated and !camera_look_activated) {
-                tab_o.camera_look_activated = false;
-                _kernel.getMainWindow().?.setCursorMode(.normal);
-                _actions.popSet();
-            }
-
-            if (tab_o.camera_look_activated) {
-                const move = _actions.getActionAxis(MoveAction);
-                const look = _actions.getActionAxis(LookAction);
-
-                tab_o.camera.update(move, look, dt);
-            }
+        selected_obj = tab_o.selection.top_level_obj;
+        if (selected_obj.isEmpty()) {
+            const txt = "Select asset";
+            const txt_size = _coreui.calcTextSize(txt, .{});
+            _coreui.setCursorPosX(wsize[0] / 2 - txt_size[0] / 2);
+            _coreui.setCursorPosY(wsize[1] / 2 + txt_size[1]);
+            _coreui.text(txt);
+            return;
         }
 
-        tab_o.viewport.setViewMtx(tab_o.camera.calcViewMtx());
+        const allocator = try _tempalloc.create();
+        defer _tempalloc.destroy(allocator);
+
+        if (tab_o.root_entity) |ent| {
+            _ = ent; // autofix
+
+            tab_o.viewport.setSize(size);
+
+            if (tab_o.viewport.getTexture()) |texture| {
+                _coreui.image(
+                    texture,
+                    .{
+                        .flags = 0,
+                        .mip = 0,
+                        .w = size[0],
+                        .h = size[1],
+                    },
+                );
+                const hovered = _coreui.isItemHovered(.{});
+
+                var camera_look_activated = false;
+                {
+                    _actions.pushSet(ViewportActionSet);
+                    defer _actions.popSet();
+                    camera_look_activated = _actions.isActionDown(LookActivationAction);
+                }
+
+                if (hovered and camera_look_activated) {
+                    tab_o.camera_look_activated = true;
+                    _kernel.getMainWindow().?.setCursorMode(.disabled);
+                    _actions.pushSet(ActivatedViewportActionSet);
+                }
+
+                if (tab_o.camera_look_activated and !camera_look_activated) {
+                    tab_o.camera_look_activated = false;
+                    _kernel.getMainWindow().?.setCursorMode(.normal);
+                    _actions.popSet();
+                }
+
+                if (tab_o.camera_look_activated) {
+                    const move = _actions.getActionAxis(MoveAction);
+                    const look = _actions.getActionAxis(LookAction);
+
+                    tab_o.camera.update(move, look, dt);
+                }
+            }
+
+            tab_o.viewport.setViewMtx(tab_o.camera.calcViewMtx());
+        } else {
+            if (tab_o.db.getAspect(public.AssetPreviewAspectI, selected_obj.type_idx)) |iface| {
+                if (iface.ui_preview) |ui_preview| {
+                    try ui_preview(allocator, tab_o.db, selected_obj);
+                }
+            } else {
+                const txt = "No preview";
+                const txt_size = _coreui.calcTextSize(txt, .{});
+                _coreui.setCursorPosX(wsize[0] / 2 - txt_size[0] / 2);
+                _coreui.setCursorPosY(wsize[1] / 2 + txt_size[1]);
+                _coreui.text(txt);
+            }
+        }
     }
 
     // Draw tab menu
     pub fn menu(inst: *editor.TabO) !void {
-        const tab_o: *FooViewportTab = @alignCast(@ptrCast(inst));
+        const tab_o: *AssetPreviewTab = @alignCast(@ptrCast(inst));
 
         const allocator = try _tempalloc.create();
         defer _tempalloc.destroy(allocator);
@@ -253,6 +239,55 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             defer _coreui.endMenu();
             tab_o.flecs_port = tab_o.world.uiRemoteDebugMenuItems(allocator, tab_o.flecs_port);
         }
+    }
+
+    // Selected object
+    pub fn objSelected(inst: *editor.TabO, db: cdb.Db, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.strid.StrId32) !void {
+        _ = sender_tab_hash; // autofix
+        var tab_o: *AssetPreviewTab = @alignCast(@ptrCast(inst));
+
+        const selected = selection[0];
+        var selected_obj = selected.top_level_obj;
+        var asset_obj = cdb.ObjId{};
+
+        if (selected_obj.type_idx.eql(assetdb.Asset.typeIdx(tab_o.db))) {
+            asset_obj = _assetdb.getObjForAsset(selected_obj).?;
+        } else {
+            asset_obj = selected_obj;
+        }
+
+        if (!tab_o.selection.top_level_obj.eql(selected.top_level_obj)) {
+            if (tab_o.root_entity) |ent| {
+                tab_o.world.destroyEntities(&.{ent});
+                tab_o.root_entity = null;
+            }
+
+            if (db.getAspect(public.AssetPreviewAspectI, asset_obj.type_idx)) |iface| {
+                const allocator = try _tempalloc.create();
+                defer _tempalloc.destroy(allocator);
+
+                if (iface.create_preview_entity) |create_preview_entity| {
+                    const ent = try create_preview_entity(allocator, db, asset_obj, tab_o.world);
+                    tab_o.root_entity = ent;
+                }
+            }
+
+            tab_o.selection = selected;
+
+            tab_o.camera = camera.SimpleFPSCamera.init(.{
+                .position = .{ 0, 2, 12 },
+                .yaw = std.math.degreesToRadians(180),
+            });
+        }
+    }
+
+    // Can open tab
+    pub fn canOpen(allocator: Allocator, db: cdb.Db, selection: []const coreui.SelectionItem) !bool {
+        _ = allocator; // autofix
+        _ = db; // autofix
+        _ = selection; // autofix
+        // TODO: implement
+        return true;
     }
 });
 
@@ -360,21 +395,17 @@ const blit_pass = gfx_rg.Pass.implement(struct {
     }
 });
 
-const ActivatedViewportActionSet = cetech1.strid.strId32("foo_activated_viewport");
-const ViewportActionSet = cetech1.strid.strId32("foo_viewport");
+const ActivatedViewportActionSet = cetech1.strid.strId32("preview_activated_viewport");
+const ViewportActionSet = cetech1.strid.strId32("preview_viewport");
 const MoveAction = cetech1.strid.strId32("move");
 const LookAction = cetech1.strid.strId32("look");
 const LookActivationAction = cetech1.strid.strId32("look_activation");
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
-    "FooViewportTab",
+    "AssetPreviewTab",
     &[_]cetech1.strid.StrId64{},
     struct {
         pub fn init() !void {
-            _g.rg = try _gfx_rg.create();
-            try _g.rg.addPass(simple_pass);
-            try _g.rg.addPass(blit_pass);
-
             try _actions.createActionSet(ViewportActionSet);
             try _actions.addActions(ViewportActionSet, &.{
                 .{ .name = LookActivationAction, .action = .{ .button = actions.ButtonAction{} } },
@@ -424,9 +455,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             });
         }
 
-        pub fn shutdown() !void {
-            _gfx_rg.destroy(_g.rg);
-        }
+        pub fn shutdown() !void {}
     },
 );
 
@@ -450,6 +479,8 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _uuid = apidb.getZigApi(module_name, uuid.UuidAPI).?;
     _task = apidb.getZigApi(module_name, task.TaskAPI).?;
     _viewport = apidb.getZigApi(module_name, cetech1.renderer.RendererApi).?;
+    _platform = apidb.getZigApi(module_name, cetech1.platform.PlatformApi).?;
+    _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
 
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});
@@ -461,16 +492,10 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
     try apidb.implOrRemove(module_name, editor.TabTypeI, &foo_tab, load);
 
-    // Components
-    try apidb.implOrRemove(module_name, ecs.ComponentI, &velocity_c, load);
-
-    // System
-    try apidb.implOrRemove(module_name, ecs.SystemI, &move_system_i, load);
-
     return true;
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_foo_viewport_tab(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor_asset_preview(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

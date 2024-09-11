@@ -28,17 +28,17 @@ var _coreui: *const coreui.CoreUIApi = undefined;
 
 // Global state that can surive hot-reload
 const G = struct {
-    test_tab_vt_ptr: *editor.EditorTabTypeI = undefined,
+    test_tab_vt_ptr: *editor.TabTypeI = undefined,
 };
 var _g: *G = undefined;
 
 // Struct for tab type
 const FooTab = struct {
-    tab_i: editor.EditorTabI,
+    tab_i: editor.TabI,
 };
 
 // Fill editor tab interface
-var foo_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
+var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
     .tab_hash = .{ .id = cetech1.strid.strId32(TAB_NAME).id },
     .category = "Examples",
@@ -56,7 +56,7 @@ var foo_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Create new tab instantce
-    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.EditorTabI {
+    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.TabI {
         _ = tab_id;
         _ = db;
         var tab_inst = _allocator.create(FooTab) catch undefined;
@@ -68,7 +68,7 @@ var foo_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Destroy tab instantce
-    pub fn destroy(tab_inst: *editor.EditorTabI) !void {
+    pub fn destroy(tab_inst: *editor.TabI) !void {
         const tab_o: *FooTab = @alignCast(@ptrCast(tab_inst.inst));
         _allocator.destroy(tab_o);
     }
@@ -112,9 +112,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.test_tab_vt_ptr = try apidb.globalVarValue(editor.EditorTabTypeI, module_name, TAB_NAME, foo_tab);
+    _g.test_tab_vt_ptr = try apidb.globalVarValue(editor.TabTypeI, module_name, TAB_NAME, foo_tab);
 
-    try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &foo_tab, load);
+    try apidb.implOrRemove(module_name, editor.TabTypeI, &foo_tab, load);
 
     return true;
 }

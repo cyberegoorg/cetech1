@@ -51,14 +51,14 @@ var _uuid: *const cetech1.uuid.UuidAPI = undefined;
 var _tags: *const editor_tags.EditorTagsApi = undefined;
 
 const G = struct {
-    tab_vt: *editor.EditorTabTypeI = undefined,
+    tab_vt: *editor.TabTypeI = undefined,
 };
 var _g: *G = undefined;
 
 var api = public.AssetBrowserAPI{};
 
 const AssetBrowserTab = struct {
-    tab_i: editor.EditorTabI,
+    tab_i: editor.TabI,
     db: cdb.Db,
     selection_obj: coreui.Selection,
     filter_buff: [256:0]u8 = std.mem.zeroes([256:0]u8),
@@ -68,9 +68,9 @@ const AssetBrowserTab = struct {
 
 // Fill editor tab interface
 
-var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
+var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = ASSET_BROWSER_NAME,
-    .tab_hash = .{ .id = strid.strId32(ASSET_BROWSER_NAME).id },
+    .tab_hash = strid.strId32(ASSET_BROWSER_NAME),
     .create_on_init = true,
 }, struct {
     pub fn menuName() ![:0]const u8 {
@@ -84,7 +84,7 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
     }
 
     // Create new FooTab instantce
-    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.EditorTabI {
+    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.TabI {
         _ = tab_id;
         var tab_inst = try _allocator.create(AssetBrowserTab);
 
@@ -101,7 +101,7 @@ var asset_browser_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArg
     }
 
     // Destroy FooTab instantce
-    pub fn destroy(tab_inst: *editor.EditorTabI) !void {
+    pub fn destroy(tab_inst: *editor.TabI) !void {
         var tab_o: *AssetBrowserTab = @alignCast(@ptrCast(tab_inst.inst));
         tab_o.db.destroyObject(tab_o.tags);
         tab_o.selection_obj.deinit();
@@ -284,7 +284,7 @@ fn uiAssetBrowser(
             if (new_filter != null and isUuid(new_filter.?)) {
                 if (_uuid.fromStr(new_filter.?)) |uuid| {
                     if (_assetdb.getObjId(uuid)) |asset| {
-                        _ = _editor_tree.cdbTreeView(
+                        _ = try _editor_tree.cdbTreeView(
                             allocator,
                             db,
                             tab,
@@ -293,7 +293,7 @@ fn uiAssetBrowser(
                             selectection,
                             0,
                             .{ .expand_object = args.expand_object, .multiselect = args.multiselect, .opened_obj = args.opened_obj },
-                        ) catch undefined;
+                        );
                     }
                 }
             } else {
@@ -302,7 +302,7 @@ fn uiAssetBrowser(
 
                 std.sort.insertion(assetdb.FilteredAsset, assets_filtered, {}, assetdb.FilteredAsset.lessThan);
                 for (assets_filtered) |asset| {
-                    _ = _editor_tree.cdbTreeView(
+                    _ = try _editor_tree.cdbTreeView(
                         allocator,
                         db,
                         tab,
@@ -311,7 +311,7 @@ fn uiAssetBrowser(
                         selectection,
                         0,
                         new_args,
-                    ) catch undefined;
+                    );
                 }
             }
 
@@ -319,7 +319,7 @@ fn uiAssetBrowser(
         } else {
             _coreui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 15 });
             defer _coreui.popStyleVar(.{});
-            _ = _editor_tree.cdbTreeView(
+            const new_selected = try _editor_tree.cdbTreeView(
                 allocator,
                 db,
                 tab,
@@ -328,7 +328,13 @@ fn uiAssetBrowser(
                 selectection,
                 0,
                 args,
-            ) catch undefined;
+            );
+            if (new_selected) {
+                const s = selectection.toSlice(allocator).?;
+                defer allocator.free(s);
+
+                _editor.propagateSelection(db, tab, s);
+            }
         }
     }
     return result;
@@ -458,9 +464,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});
 
-    _g.tab_vt = try apidb.globalVarValue(editor.EditorTabTypeI, module_name, ASSET_BROWSER_NAME, asset_browser_tab);
+    _g.tab_vt = try apidb.globalVarValue(editor.TabTypeI, module_name, ASSET_BROWSER_NAME, asset_browser_tab);
 
-    try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &asset_browser_tab, load);
+    try apidb.implOrRemove(module_name, editor.TabTypeI, &asset_browser_tab, load);
     try apidb.implOrRemove(module_name, coreui.RegisterTestsI, &register_tests_i, load);
     try apidb.implOrRemove(module_name, cdb.PostCreateTypesI, &post_create_types_i, load);
 

@@ -132,9 +132,11 @@ fn cdbObjTreeNode(
         if (_coreui.acceptDragDropPayload("obj", .{ .source_allow_null_id = true })) |payload| {
             const drag_obj: cdb.ObjId = std.mem.bytesToValue(cdb.ObjId, payload.data.?);
 
-            if (db.getAspect(public.UiTreeAspect, obj.obj.type_idx)) |aspect| {
-                if (aspect.ui_drop_obj) |ui_drop_obj| {
-                    ui_drop_obj(allocator, db, tab, obj.obj, drag_obj) catch undefined;
+            if (!drag_obj.eql(obj.obj)) {
+                if (db.getAspect(public.UiTreeAspect, obj.obj.type_idx)) |aspect| {
+                    if (aspect.ui_drop_obj) |ui_drop_obj| {
+                        ui_drop_obj(allocator, db, tab, obj.obj, drag_obj) catch undefined;
+                    }
                 }
             }
         }
@@ -221,14 +223,33 @@ fn cdbTreeView(
 
     const obj_r = db.readObj(obj.obj) orelse return false;
 
+    var root_open = true;
     if (args.show_root) {
-        _ = cdbObjTreeNode(allocator, db, tab, context, selection, obj, false, false, true, args);
-        defer cdbTreePop();
+        root_open = cdbObjTreeNode(
+            allocator,
+            db,
+            tab,
+            context,
+            selection,
+            obj,
+            false,
+            false,
+            false,
+            args,
+        );
         if (_coreui.isItemActivated()) {
             try _coreui.handleSelection(allocator, db, selection, obj, args.multiselect);
             result = true;
         }
     }
+
+    defer {
+        if (args.show_root and root_open) {
+            cdbTreePop();
+        }
+    }
+
+    if (!root_open) return result;
 
     if (!args.expand_object) return result;
 
@@ -285,7 +306,7 @@ fn cdbTreeView(
 
                 if (_coreui.beginPopupContextItem()) {
                     defer _coreui.endPopup();
-                    try _editor.showObjContextMenu(allocator, db, tab, &.{}, o);
+                    try _editor.showObjContextMenu(allocator, db, tab, &.{editor.Contexts.create}, o);
                 }
 
                 if (_coreui.isItemActivated()) {
@@ -316,21 +337,26 @@ fn cdbTreeView(
                 });
 
                 const o = coreui.SelectionItem{ .top_level_obj = obj.top_level_obj, .obj = obj.obj, .prop_idx = prop_idx };
-                const open = api.cdbTreeNode(prop_label, depth < args.max_autopen_depth, false, selection.isSelected(o), false, args);
+
+                const flaten_child = db.getPropertyAspect(public.UiTreeFlatenPropertyAspect, obj.obj.type_idx, prop_idx) != null;
+
+                const open = if (!flaten_child) api.cdbTreeNode(prop_label, depth < args.max_autopen_depth, false, selection.isSelected(o), false, args) else true;
                 _coreui.popStyleColor(.{});
 
-                if (_coreui.isItemActivated()) {
-                    try _coreui.handleSelection(allocator, db, selection, o, args.multiselect);
-                    result = true;
-                }
+                if (!flaten_child) {
+                    if (_coreui.isItemActivated()) {
+                        try _coreui.handleSelection(allocator, db, selection, o, args.multiselect);
+                        result = true;
+                    }
 
-                if (_coreui.beginPopupContextItem()) {
-                    defer _coreui.endPopup();
-                    try _editor.showObjContextMenu(allocator, db, tab, &.{}, o);
+                    if (_coreui.beginPopupContextItem()) {
+                        defer _coreui.endPopup();
+                        try _editor.showObjContextMenu(allocator, db, tab, &.{editor.Contexts.create}, o);
+                    }
                 }
 
                 if (open) {
-                    defer api.cdbTreePop();
+                    defer if (!flaten_child) api.cdbTreePop();
 
                     // added
                     var set: ?[]const cdb.ObjId = undefined;
@@ -342,6 +368,21 @@ fn cdbTreeView(
 
                     var inisiated_prototypes = std.AutoHashMap(cdb.ObjId, void).init(allocator);
                     defer inisiated_prototypes.deinit();
+
+                    if (!flaten_child) {
+                        if (db.getPropertyAspect(editor.UiDropObj, obj.obj.type_idx, prop_idx)) |aspect| {
+                            if (_coreui.beginDragDropTarget()) {
+                                defer _coreui.endDragDropTarget();
+                                if (_coreui.acceptDragDropPayload("obj", .{ .source_allow_null_id = true })) |payload| {
+                                    const drag_obj: cdb.ObjId = std.mem.bytesToValue(cdb.ObjId, payload.data.?);
+
+                                    if (!drag_obj.eql(obj.obj)) {
+                                        try aspect.ui_drop_obj(allocator, db, tab, obj.obj, prop_idx, drag_obj);
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     if (set) |s| {
                         defer allocator.free(set.?);
@@ -378,7 +419,7 @@ fn cdbTreeView(
 
                             if (_coreui.beginPopupContextItem()) {
                                 defer _coreui.endPopup();
-                                try _editor.showObjContextMenu(allocator, db, tab, &.{}, oo);
+                                try _editor.showObjContextMenu(allocator, db, tab, &.{editor.Contexts.create}, oo);
                             }
 
                             if (open_inset) {

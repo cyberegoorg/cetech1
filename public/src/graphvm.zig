@@ -376,10 +376,10 @@ pub const CALL_GRAPH_NODE_TYPE_STR = "call_graph";
 pub const CALL_GRAPH_NODE_TYPE = strid.strId32(CALL_GRAPH_NODE_TYPE_STR);
 
 pub const GraphVMApi = struct {
-    pub inline fn getNodeState(api: *const GraphVMApi, comptime T: type, allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: strid.StrId32) ![]*T {
+    pub inline fn getNodeState(api: *const GraphVMApi, comptime T: type, allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: strid.StrId32) ![]?*T {
         const result = try api.getNodeStateFn(allocator, instances, node_type);
 
-        var r: []*T = undefined;
+        var r: []?*T = undefined;
         r.ptr = @alignCast(@ptrCast(result.ptr));
         r.len = result.len;
 
@@ -420,5 +420,5 @@ pub const GraphVMApi = struct {
     getInputPins: *const fn (instance: GraphInstance) OutPins,
     getOutputPins: *const fn (instance: GraphInstance) OutPins,
 
-    getNodeStateFn: *const fn (allocator: std.mem.Allocator, containers: []const GraphInstance, node_type: strid.StrId32) anyerror![]*anyopaque,
+    getNodeStateFn: *const fn (allocator: std.mem.Allocator, containers: []const GraphInstance, node_type: strid.StrId32) anyerror![]?*anyopaque,
 };

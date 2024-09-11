@@ -26,6 +26,7 @@ const ecs = cetech1.ecs;
 const transform = cetech1.transform;
 const graphvm = cetech1.graphvm;
 const primitives = cetech1.primitives;
+const cdb = cetech1.cdb;
 
 const module_name = .viewport;
 const log = std.log.scoped(module_name);
@@ -108,43 +109,54 @@ const CullingSystem = struct {
         return self.cr_map.get(rq_type).?;
     }
 
-    pub fn doCulling(self: *Self, viewers: []gfx_rg.Viewer) !void {
+    pub fn doCulling(self: *Self, allocator: std.mem.Allocator, viewers: []gfx_rg.Viewer) !void {
         const frustrum_planes = primitives.buildFrustumPlanes(viewers[0].mtx);
 
+        self.tasks.clearRetainingCapacity();
+
         for (self.crq_map.keys(), self.crq_map.values()) |k, value| {
-            self.tasks.clearRetainingCapacity();
-
-            const result = self.getResult(k);
-
-            const items_count = value.mtx.items.len;
+            const items_count = value.volumes.items.len;
 
             if (items_count == 0) continue;
 
-            const batch_size: usize = 64;
-            const batch_count = @max(items_count / batch_size, 1);
-            const batch_rest = items_count - (batch_count * batch_size);
+            const result = self.getResult(k);
 
-            for (0..batch_count) |worker| {
-                var worker_items = batch_size;
-                if (worker == (batch_count - 1)) worker_items += batch_rest;
+            const ARGS = struct {
+                rq: *public.CullingRequest,
+                result: *public.CullingResult,
+                frustrum: *const primitives.FrustrumPlanes,
+            };
 
-                const t = value.mtx.items[worker * batch_size .. (worker * batch_size) + worker_items];
-                const cd = value.renderables.items[worker * batch_size * value.renderable_size .. ((worker * batch_size * value.renderable_size) + worker_items * value.renderable_size)];
-                const v = value.volumes.items[worker * batch_size .. (worker * batch_size) + worker_items];
+            if (try cetech1.task.batchWorkloadTask(
+                .{
+                    .allocator = allocator,
+                    .task_api = &task.api,
+                    .profiler_api = &profiler.api,
+                    .count = items_count,
+                },
+                ARGS{
+                    .rq = value,
+                    .result = result,
+                    .frustrum = &frustrum_planes,
+                },
+                struct {
+                    pub fn createTask(create_args: ARGS, batch_id: usize, args: cetech1.task.BatchWorkloadArgs, count: usize) CullingTask {
+                        const rq = create_args.rq;
 
-                const task_id = try task.api.schedule(
-                    cetech1.task.TaskID.none,
-                    CullingTask{
-                        .count = worker_items,
-                        .frustrum = &frustrum_planes,
-                        .result = result,
-                        .transforms = t,
-                        .components_data = cd,
-                        .volumes = v,
-                        .rq = value,
-                    },
-                );
-                try self.tasks.append(task_id);
+                        return CullingTask{
+                            .count = count,
+                            .frustrum = create_args.frustrum,
+                            .result = create_args.result,
+                            .rq = rq,
+
+                            .transforms = rq.mtx.items[batch_id * args.batch_size .. (batch_id * args.batch_size) + args.batch_size],
+                            .components_data = rq.renderables.items[batch_id * args.batch_size * rq.renderable_size .. ((batch_id * args.batch_size * rq.renderable_size) + args.batch_size * rq.renderable_size)],
+                            .volumes = rq.volumes.items[batch_id * args.batch_size .. (batch_id * args.batch_size) + args.batch_size],
+                        };
+                    }
+                },
+            )) |t| {
+                try self.tasks.append(t);
             }
         }
 
@@ -191,7 +203,7 @@ const query_onworld_i = ecs.OnWorldI.implement(struct {
 
 const init_render_graph_system_i = ecs.SystemI.implement(
     .{
-        .name = "init render component",
+        .name = "renderer.init_render_component",
         .multi_threaded = false,
         .phase = ecs.OnLoad,
         .query = &.{
@@ -213,6 +225,8 @@ const init_render_graph_system_i = ecs.SystemI.implement(
             const instances = try alloc.alloc(cetech1.graphvm.GraphInstance, render_component.len);
             defer alloc.free(instances);
 
+            if (render_component[0].graph.isEmpty()) return;
+
             try graph_private.api.createInstances(alloc, assetdb_private.getDb(), render_component[0].graph, instances);
             try graph_private.api.buildInstances(alloc, instances);
 
@@ -229,9 +243,25 @@ const init_render_graph_system_i = ecs.SystemI.implement(
     },
 );
 
-const render_component_c = cetech1.ecs.ComponentI.implement(public.RenderComponent, struct {});
+const render_component_c = ecs.ComponentI.implement(public.RenderComponent, public.RenderComponentCdb.type_hash, struct {
+    pub fn fromCdb(
+        allocator: std.mem.Allocator,
+        db: cdb.Db,
+        obj: cdb.ObjId,
+        data: []u8,
+    ) anyerror!void {
+        _ = allocator; // autofix
 
-const rc_initialized_c = ecs.ComponentI.implement(public.RenderComponentInstance, struct {
+        const r = db.readObj(obj) orelse return;
+
+        const position = std.mem.bytesAsValue(public.RenderComponent, data);
+        position.* = public.RenderComponent{
+            .graph = public.RenderComponentCdb.readSubObj(db, r, .graph) orelse .{},
+        };
+    }
+});
+
+const rc_initialized_c = ecs.ComponentI.implement(public.RenderComponentInstance, null, struct {
     pub fn onDestroy(components: []public.RenderComponentInstance) !void {
         for (components) |c| {
             if (c.graph_container.isValid()) {
@@ -261,7 +291,7 @@ const rc_initialized_c = ecs.ComponentI.implement(public.RenderComponentInstance
     }
 });
 
-pub fn toContanerSlice(from: anytype) []const graphvm.GraphInstance {
+pub fn toInstanceSlice(from: anytype) []const graphvm.GraphInstance {
     var containers: []const graphvm.GraphInstance = undefined;
     containers.ptr = @alignCast(@ptrCast(from.ptr));
     containers.len = from.len;
@@ -269,13 +299,14 @@ pub fn toContanerSlice(from: anytype) []const graphvm.GraphInstance {
 }
 
 const CullingTask = struct {
-    frustrum: *const primitives.FrustrumPlanes,
     count: usize,
     transforms: []const transform.WorldTransform,
     components_data: []u8,
     volumes: []const public.CullingVolume,
+
     rq: *public.CullingRequest,
     result: *public.CullingResult,
+    frustrum: *const primitives.FrustrumPlanes,
 
     pub fn exec(self: *@This()) !void {
         var zone = profiler.ztracy.ZoneN(@src(), "CullingTask");
@@ -310,26 +341,40 @@ const remder_component_renderer_i = cetech1.renderer.ComponentRendererI.implemen
         var renderables = std.ArrayList(public.CullingVolume).init(allocator);
         defer renderables.deinit();
 
+        var transforms = std.ArrayList(transform.WorldTransform).init(allocator);
+        defer transforms.deinit();
+
+        var render_components = std.ArrayList(graphvm.GraphInstance).init(allocator);
+        defer render_components.deinit();
+
         while (q.next(&it)) {
-            const transforms = it.field(transform.WorldTransform, 0).?;
-            const render_components = it.field(public.RenderComponentInstance, 1).?;
+            const t = it.field(transform.WorldTransform, 0).?;
+            const rc = it.field(public.RenderComponentInstance, 1).?;
 
-            const containers = toContanerSlice(render_components);
-            try graph_private.api.executeNode(allocator, containers, graphvm.CULLING_VOLUME_NODE_TYPE);
+            try transforms.appendSlice(t);
 
-            const states = try graph_private.api.getNodeState(public.CullingVolume, allocator, containers, graphvm.CULLING_VOLUME_NODE_TYPE);
-            defer allocator.free(states);
+            const containers = toInstanceSlice(rc);
+            try render_components.appendSlice(containers);
+        }
 
-            if (states.len == 0) continue;
+        try graph_private.api.executeNode(allocator, render_components.items, graphvm.CULLING_VOLUME_NODE_TYPE);
 
-            renderables.clearRetainingCapacity();
-            try renderables.ensureTotalCapacity(states.len);
-            for (states) |volume| {
-                const culling_volume: *public.CullingVolume = @alignCast(@ptrCast(volume));
+        const states = try graph_private.api.getNodeState(public.CullingVolume, allocator, render_components.items, graphvm.CULLING_VOLUME_NODE_TYPE);
+        defer allocator.free(states);
+
+        if (states.len == 0) return;
+
+        renderables.clearRetainingCapacity();
+        try renderables.ensureTotalCapacity(states.len);
+        for (states) |volume| {
+            if (volume) |v| {
+                const culling_volume: *public.CullingVolume = @alignCast(@ptrCast(v));
                 renderables.appendAssumeCapacity(culling_volume.*);
             }
+        }
 
-            try rq.append(transforms, renderables.items, std.mem.sliceAsBytes(render_components));
+        if (renderables.items.len != 0) {
+            try rq.append(transforms.items, renderables.items, std.mem.sliceAsBytes(render_components.items));
         }
     }
 
@@ -352,16 +397,18 @@ const remder_component_renderer_i = cetech1.renderer.ComponentRendererI.implemen
                     defer allocator.free(volumes);
 
                     for (volumes, result.mtx.items) |culling_volume, mtx| {
-                        const draw_bounding_volumes = true;
-                        const debug_draw = draw_bounding_volumes;
-                        if (debug_draw) {
-                            dd.pushTransform(@ptrCast(&mtx.mtx));
-                            defer dd.popTransform();
+                        if (culling_volume) |cv| {
+                            const draw_bounding_volumes = true;
+                            const debug_draw = draw_bounding_volumes;
+                            if (debug_draw) {
+                                dd.pushTransform(@ptrCast(&mtx.mtx));
+                                defer dd.popTransform();
 
-                            dd.drawAxis(.{ 0, 0, 0 }, 1.0, .Count, 0);
+                                dd.drawAxis(.{ 0, 0, 0 }, 1.0, .Count, 0);
 
-                            if (draw_bounding_volumes) {
-                                dd.drawSphere(.{ 0, 0, 0 }, culling_volume.radius);
+                                if (draw_bounding_volumes) {
+                                    dd.drawSphere(.{ 0, 0, 0 }, cv.radius);
+                                }
                             }
                         }
                     }
@@ -398,6 +445,50 @@ pub fn deinit() void {
     _viewport_pool.deinit();
 }
 
+// CDB
+var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(struct {
+    pub fn createTypes(db: cetech1.cdb.Db) !void {
+
+        // RenderComponentCdb
+        {
+            const type_idx = try db.addType(
+                public.RenderComponentCdb.name,
+                &[_]cetech1.cdb.PropDef{
+                    .{
+                        .prop_idx = public.RenderComponentCdb.propIdx(.graph),
+                        .name = "graph",
+                        .type = cetech1.cdb.PropType.SUBOBJECT,
+                        .type_hash = graphvm.GraphType.type_hash,
+                    },
+                },
+            );
+            _ = type_idx; // autofix
+        }
+    }
+});
+
+var _post_create_cdb_types_i = cetech1.cdb.PostCreateTypesI.implement(struct {
+    pub fn postCreateTypes(db: cetech1.cdb.Db) !void {
+        _ = db; // autofix
+
+        // RenderComponentCdb
+        {
+            // const default_obj = try db.createObject(public.RenderComponentCdb.typeIdx(db));
+            // const default_graph = try graphvm.GraphType.createObject(db);
+
+            // const default_obj_w = db.writeObj(default_obj).?;
+            // const default_graph_w = db.writeObj(default_graph).?;
+
+            // try public.RenderComponentCdb.setSubObj(db, default_obj_w, .graph, default_graph_w);
+
+            // try db.writeCommit(default_graph_w);
+            // try db.writeCommit(default_obj_w);
+
+            // db.setDefaultObject(default_obj);
+        }
+    }
+});
+
 pub fn registerToApi() !void {
     _ = @alignOf(public.RenderComponentInstance);
     _ = @alignOf(public.RenderComponent);
@@ -411,6 +502,9 @@ pub fn registerToApi() !void {
 
     try apidb.api.implOrRemove(module_name, public.ComponentRendererI, &remder_component_renderer_i, true);
     try apidb.api.implOrRemove(module_name, ecs.OnWorldI, &query_onworld_i, true);
+
+    try apidb.api.implOrRemove(module_name, cetech1.cdb.CreateTypesI, &create_cdb_types_i, true);
+    try apidb.api.implOrRemove(module_name, cetech1.cdb.PostCreateTypesI, &_post_create_cdb_types_i, true);
 }
 
 fn createViewport(name: [:0]const u8, render_graph: gfx_rg.RenderGraph, world: ?cetech1.ecs.World) !public.Viewport {
@@ -527,16 +621,17 @@ const RenderViewportTask = struct {
         var zone = profiler.ztracy.ZoneN(@src(), "RenderViewport");
         defer zone.End();
 
-        const tmp_alloc = try tempalloc.api.create();
-        defer tempalloc.api.destroy(tmp_alloc);
+        const allocator = try tempalloc.api.create();
+        defer tempalloc.api.destroy(allocator);
 
         const fb = s.viewport.fb;
         if (!fb.isValid()) return;
 
         const rg = s.viewport.rg;
+        if (@intFromPtr(rg.ptr) == 0) return;
 
         const vp = public.Viewport{ .ptr = s.viewport, .vtable = &viewport_vt };
-        const builder = try rg.createBuilder(tmp_alloc, vp);
+        const builder = try rg.createBuilder(allocator, vp);
         defer rg.destroyBuilder(builder);
 
         {
@@ -557,7 +652,7 @@ const RenderViewportTask = struct {
         };
 
         if (s.viewport.world) |world| {
-            var renderables = std.ArrayList(Renderables).init(tmp_alloc);
+            var renderables = std.ArrayList(Renderables).init(allocator);
             defer renderables.deinit();
 
             const viewers = builder.getViewers();
@@ -570,8 +665,8 @@ const RenderViewportTask = struct {
                 const counter = cetech1.metrics.MetricScopedDuration.begin(s.viewport.culling_collect_duration);
                 defer counter.end();
 
-                const impls = try apidb.api.getImpl(tmp_alloc, cetech1.renderer.ComponentRendererI);
-                defer tmp_alloc.free(impls);
+                const impls = try apidb.api.getImpl(allocator, cetech1.renderer.ComponentRendererI);
+                defer allocator.free(impls);
                 for (impls) |iface| {
                     const renderable = Renderables{ .iface = iface };
 
@@ -581,7 +676,7 @@ const RenderViewportTask = struct {
                         var zz = profiler.ztracy.ZoneN(@src(), "RenderViewport - Culling calback");
                         defer zz.End();
 
-                        _ = try culling(tmp_alloc, builder, world, viewers, cr);
+                        _ = try culling(allocator, builder, world, viewers, cr);
                     }
                     try renderables.append(renderable);
 
@@ -597,7 +692,7 @@ const RenderViewportTask = struct {
                 const counter = cetech1.metrics.MetricScopedDuration.begin(s.viewport.culling_duration);
                 defer counter.end();
 
-                try s.viewport.culling.doCulling(viewers);
+                try s.viewport.culling.doCulling(allocator, viewers);
             }
 
             // Render
@@ -617,7 +712,7 @@ const RenderViewportTask = struct {
                     s.viewport.rendered_counter.* += @floatFromInt(result.mtx.items.len);
 
                     if (result.renderables.items.len > 0) {
-                        try renderable.iface.render(tmp_alloc, builder, world, vp, result);
+                        try renderable.iface.render(allocator, builder, world, vp, result);
                     }
                 }
             }
@@ -664,13 +759,19 @@ fn renderAllViewports(allocator: std.mem.Allocator) !void {
             viewport.size = viewport.new_size;
         }
 
-        const task_id = try task.api.schedule(
-            cetech1.task.TaskID.none,
-            RenderViewportTask{
-                .viewport = viewport,
-            },
-        );
-        try tasks.append(task_id);
+        // TODO: task wait block thread and if you have more viewport than thread they can block whole app.
+        if (true) {
+            var render_task = RenderViewportTask{ .viewport = viewport };
+            try render_task.exec();
+        } else {
+            const task_id = try task.api.schedule(
+                cetech1.task.TaskID.none,
+                RenderViewportTask{
+                    .viewport = viewport,
+                },
+            );
+            try tasks.append(task_id);
+        }
     }
 
     if (tasks.items.len != 0) {

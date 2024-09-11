@@ -39,7 +39,7 @@ const LogBuffer = std.ArrayList(LogEntry);
 
 // Global state that can surive hot-reload
 const G = struct {
-    log_tab_vt_ptr: *editor.EditorTabTypeI = undefined,
+    log_tab_vt_ptr: *editor.TabTypeI = undefined,
 
     log_buffer: ?LogBuffer = null,
     log_buffer_lock: std.Thread.Mutex = .{},
@@ -48,7 +48,7 @@ var _g: *G = undefined;
 
 // Struct for tab type
 const LogTab = struct {
-    tab_i: editor.EditorTabI,
+    tab_i: editor.TabI,
 
     filter_buff: [256:0]u8 = std.mem.zeroes([256:0]u8),
     filter: ?[:0]const u8 = null,
@@ -95,7 +95,7 @@ pub fn levelColor(level: cetech1.log.LogAPI.Level) [4]f32 {
 }
 
 // Fill editor tab interface
-var log_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
+var log_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
     .tab_hash = cetech1.strid.strId32(TAB_NAME),
     .create_on_init = true,
@@ -114,7 +114,7 @@ var log_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Create new tab instantce
-    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.EditorTabI {
+    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.TabI {
         _ = tab_id;
         _ = db;
         var tab_inst = _allocator.create(LogTab) catch undefined;
@@ -129,7 +129,7 @@ var log_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Destroy tab instantce
-    pub fn destroy(tab_inst: *editor.EditorTabI) !void {
+    pub fn destroy(tab_inst: *editor.TabI) !void {
         const tab_o: *LogTab = @alignCast(@ptrCast(tab_inst.inst));
         _allocator.destroy(tab_o);
     }
@@ -258,9 +258,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.log_tab_vt_ptr = try apidb.globalVarValue(editor.EditorTabTypeI, module_name, TAB_NAME, log_tab);
+    _g.log_tab_vt_ptr = try apidb.globalVarValue(editor.TabTypeI, module_name, TAB_NAME, log_tab);
 
-    try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &log_tab, load);
+    try apidb.implOrRemove(module_name, editor.TabTypeI, &log_tab, load);
     try apidb.implOrRemove(module_name, cetech1.log.LogHandlerI, &handler, load);
 
     if (!reload and !load) {

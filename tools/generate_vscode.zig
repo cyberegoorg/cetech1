@@ -167,6 +167,13 @@ fn createOrUpdateSettingsJson(allocator: std.mem.Allocator, vscode_dir: std.fs.D
         try parsed.value.object.put("todo-tree.filtering.excludeGlobs", args_array);
     }
 
+    // files.associations
+    {
+        var files_map = std.json.Value{ .object = std.json.ObjectMap.init(parsed.arena.allocator()) };
+        try files_map.object.put("*.ct_*", std.json.Value{ .string = "json" });
+        try parsed.value.object.put("files.associations", files_map);
+    }
+
     const base_path = try vscode_dir.realpathAlloc(allocator, "..");
     defer allocator.free(base_path);
 

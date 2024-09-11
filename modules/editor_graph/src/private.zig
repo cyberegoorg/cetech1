@@ -42,7 +42,7 @@ var _editor_inspector: *const editor_inspector.InspectorAPI = undefined;
 
 // Global state that can surive hot-reload
 const G = struct {
-    test_tab_vt_ptr: *editor.EditorTabTypeI = undefined,
+    test_tab_vt_ptr: *editor.TabTypeI = undefined,
     graph_visual_aspect: *editor.UiVisualAspect = undefined,
     node_visual_aspect: *editor.UiVisualAspect = undefined,
     group_visual_aspect: *editor.UiVisualAspect = undefined,
@@ -94,7 +94,7 @@ const PinDataMap = std.AutoHashMap(struct { cdb.ObjId, cetech1.strid.StrId32 }, 
 
 // Struct for tab type
 const GraphEditorTab = struct {
-    tab_i: editor.EditorTabI,
+    tab_i: editor.TabI,
     editor: *node_editor.EditorContext,
 
     db: cdb.Db,
@@ -211,12 +211,13 @@ fn drawIcon(drawlist: coreui.DrawList, icon_type: PinIconType, a: [2]f32, b: [2]
 }
 
 // Fill editor tab interface
-var graph_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
+var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
     .tab_hash = cetech1.strid.strId32(TAB_NAME),
     .create_on_init = true,
     .show_pin_object = true,
     .show_sel_obj_in_title = true,
+    .ignore_selection_from_tab = &.{cetech1.strid.strId32("ct_editor_asset_browser_tab")},
 }, struct {
 
     // Return name for menu /Tabs/
@@ -243,7 +244,7 @@ var graph_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Create new tab instantce
-    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.EditorTabI {
+    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.TabI {
         _ = tab_id;
         var tab_inst = _allocator.create(GraphEditorTab) catch undefined;
 
@@ -267,7 +268,7 @@ var graph_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Destroy tab instantce
-    pub fn destroy(tab_inst: *editor.EditorTabI) !void {
+    pub fn destroy(tab_inst: *editor.TabI) !void {
         const tab_o: *GraphEditorTab = @alignCast(@ptrCast(tab_inst.inst));
 
         tab_o.pinhash_map.deinit();
@@ -319,7 +320,13 @@ var graph_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
             }
 
             const new_graph = !tab_o.root_graph_obj.eql(graph_obj);
-            tab_o.root_graph_obj = graph_obj;
+
+            if (tab_o.db.isAlive(graph_obj)) {
+                tab_o.root_graph_obj = graph_obj;
+            } else {
+                graph_obj = .{};
+                tab_o.root_graph_obj = .{};
+            }
 
             if (new_graph) {
                 tab_o.pinhash_map.clearRetainingCapacity();
@@ -329,7 +336,7 @@ var graph_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
 
             if (graph_obj.isEmpty()) return;
 
-            const graph_r = tab_o.db.readObj(graph_obj).?;
+            const graph_r = tab_o.db.readObj(graph_obj) orelse return;
             const style = _coreui.getStyle();
             const ne_style = _node_editor.getStyle();
 
@@ -551,8 +558,7 @@ var graph_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
                                     const data_r = graphvm.GraphDataType.read(tab_o.db, data.?).?;
 
                                     if (graphvm.GraphDataType.readSubObj(tab_o.db, data_r, .value)) |value_obj| {
-                                        const type_name = tab_o.db.getTypeName(value_obj.type_idx).?;
-                                        const value_i = _graph.findValueTypeIByCdb(cetech1.strid.strId32(type_name)).?;
+                                        const value_i = _graph.findValueTypeIByCdb(tab_o.db.getTypeHash(value_obj.type_idx).?).?;
                                         const one_value = tab_o.db.getTypePropDef(tab_o.db.getTypeIdx(value_i.cdb_type_hash).?).?.len == 1;
 
                                         try _editor_inspector.cdbPropertiesObj(
@@ -1111,7 +1117,8 @@ var graph_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, db: cdb.Db, selection: []const coreui.SelectionItem) !void {
+    pub fn objSelected(inst: *editor.TabO, db: cdb.Db, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.strid.StrId32) !void {
+        _ = sender_tab_hash; // autofix
         var tab_o: *GraphEditorTab = @alignCast(@ptrCast(inst));
 
         if (tab_o.inter_selection.isSelectedAll(selection)) return;
@@ -1142,7 +1149,7 @@ var graph_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 });
 
-// Create folder
+// Create graph asset
 var create_graph_i = editor.CreateAssetI.implement(
     graphvm.GraphType.type_hash,
     struct {
@@ -1655,9 +1662,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.test_tab_vt_ptr = try apidb.globalVarValue(editor.EditorTabTypeI, module_name, TAB_NAME, graph_tab);
+    _g.test_tab_vt_ptr = try apidb.globalVarValue(editor.TabTypeI, module_name, TAB_NAME, graph_tab);
 
-    try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &graph_tab, load);
+    try apidb.implOrRemove(module_name, editor.TabTypeI, &graph_tab, load);
     try apidb.implOrRemove(module_name, editor.CreateAssetI, &create_graph_i, load);
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
 

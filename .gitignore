@@ -46,3 +46,5 @@ _static.zig
 result.xml
 *.tracy
 NodeEditor.json
+
+*.zst

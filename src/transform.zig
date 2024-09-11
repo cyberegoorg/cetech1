@@ -3,20 +3,119 @@ const std = @import("std");
 const apidb = @import("apidb.zig");
 const ecs_private = @import("ecs.zig");
 const graphvm_private = @import("graphvm.zig");
+const profiler_private = @import("profiler.zig");
 
 const cetech1 = @import("cetech1");
 const public = cetech1.transform;
 const ecs = cetech1.ecs;
 const zm = cetech1.math;
 const graphvm = cetech1.graphvm;
+const coreui = cetech1.coreui;
+const cdb = cetech1.cdb;
 
 const module_name = .transform;
 const log = std.log.scoped(module_name);
 
-const position_c = ecs.ComponentI.implement(public.Position, struct {});
-const rotation_c = ecs.ComponentI.implement(public.Rotation, struct {});
-const scale_c = ecs.ComponentI.implement(public.Scale, struct {});
-const world_tranform_c = cetech1.ecs.ComponentI.implement(public.WorldTransform, struct {});
+const position_c = ecs.ComponentI.implement(public.Position, public.PositionCdb.type_hash, struct {
+    pub fn uiIcons(
+        buff: [:0]u8,
+        allocator: std.mem.Allocator,
+        db: cdb.Db,
+        obj: cdb.ObjId,
+    ) ![:0]const u8 {
+        _ = allocator; // autofix
+        _ = db; // autofix
+        _ = obj; // autofix
+        return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Position});
+    }
+
+    pub fn fromCdb(
+        allocator: std.mem.Allocator,
+        db: cdb.Db,
+        obj: cdb.ObjId,
+        data: []u8,
+    ) anyerror!void {
+        _ = allocator; // autofix
+
+        const r = db.readObj(obj) orelse return;
+
+        const position = std.mem.bytesAsValue(public.Position, data);
+        position.* = public.Position{
+            .x = public.PositionCdb.readValue(db, f32, r, .X),
+            .y = public.PositionCdb.readValue(db, f32, r, .Y),
+            .z = public.PositionCdb.readValue(db, f32, r, .Z),
+        };
+    }
+});
+
+const rotation_c = ecs.ComponentI.implement(public.Rotation, public.RotationCdb.type_hash, struct {
+    pub fn uiIcons(
+        buff: [:0]u8,
+        allocator: std.mem.Allocator,
+        db: cdb.Db,
+        obj: cdb.ObjId,
+    ) ![:0]const u8 {
+        _ = allocator; // autofix
+        _ = db; // autofix
+        _ = obj; // autofix
+        return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Rotation});
+    }
+
+    pub fn fromCdb(
+        allocator: std.mem.Allocator,
+        db: cdb.Db,
+        obj: cdb.ObjId,
+        data: []u8,
+    ) anyerror!void {
+        _ = allocator; // autofix
+
+        const r = db.readObj(obj) orelse return;
+
+        const position = std.mem.bytesAsValue(public.Rotation, data);
+        position.* = public.Rotation{
+            .q = .{
+                public.RotationCdb.readValue(db, f32, r, .X),
+                public.RotationCdb.readValue(db, f32, r, .Y),
+                public.RotationCdb.readValue(db, f32, r, .Z),
+                public.RotationCdb.readValue(db, f32, r, .W),
+            },
+        };
+    }
+});
+
+const scale_c = ecs.ComponentI.implement(public.Scale, public.ScaleCdb.type_hash, struct {
+    pub fn uiIcons(
+        buff: [:0]u8,
+        allocator: std.mem.Allocator,
+        db: cdb.Db,
+        obj: cdb.ObjId,
+    ) ![:0]const u8 {
+        _ = allocator; // autofix
+        _ = db; // autofix
+        _ = obj; // autofix
+        return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Scale});
+    }
+
+    pub fn fromCdb(
+        allocator: std.mem.Allocator,
+        db: cdb.Db,
+        obj: cdb.ObjId,
+        data: []u8,
+    ) anyerror!void {
+        _ = allocator; // autofix
+
+        const r = db.readObj(obj) orelse return;
+
+        const position = std.mem.bytesAsValue(public.Scale, data);
+        position.* = public.Scale{
+            .x = public.ScaleCdb.readValue(db, f32, r, .X),
+            .y = public.ScaleCdb.readValue(db, f32, r, .Y),
+            .z = public.ScaleCdb.readValue(db, f32, r, .Z),
+        };
+    }
+});
+
+const world_tranform_c = cetech1.ecs.ComponentI.implement(public.WorldTransform, null, struct {});
 
 const transform_system_i = ecs.SystemI.implement(
     .{
@@ -27,7 +126,7 @@ const transform_system_i = ecs.SystemI.implement(
         .query = &.{
             .{ .id = ecs.id(public.WorldTransform), .inout = .Out },
             .{ .id = ecs.id(public.WorldTransform), .inout = .In, .oper = .Optional, .src = .{ .id = ecs.Up | ecs.Cascade } },
-            .{ .id = ecs.id(public.Position), .inout = .In },
+            .{ .id = ecs.id(public.Position), .inout = .In }, // .src = .{ .id = ecs.Self_ | ecs.Up }
             .{ .id = ecs.id(public.Rotation), .inout = .In, .oper = .Optional },
             .{ .id = ecs.id(public.Scale), .inout = .In, .oper = .Optional },
         },
@@ -35,12 +134,17 @@ const transform_system_i = ecs.SystemI.implement(
     struct {
         pub fn iterate(iter: *ecs.IterO) !void {
             var it = ecs_private.api.toIter(iter);
+            var zone_ctx = profiler_private.api.ZoneN(@src(), "Transform system");
+            defer zone_ctx.End();
 
             while (it.next()) {
                 if (!it.changed()) {
                     it.skip();
                     continue;
                 }
+
+                var zone_iner_ctx = profiler_private.api.ZoneN(@src(), "Transform iner");
+                defer zone_iner_ctx.End();
 
                 const world_transform = it.field(public.WorldTransform, 0).?;
                 const parent_world_transform = it.field(public.WorldTransform, 1);
@@ -175,11 +279,71 @@ const set_position_node_i = graphvm.GraphNodeI.implement(
     },
 );
 
+// CDB
+var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(struct {
+    pub fn createTypes(db: cetech1.cdb.Db) !void {
+
+        // Position
+        {
+            _ = try db.addType(
+                public.PositionCdb.name,
+                &[_]cetech1.cdb.PropDef{
+                    .{ .prop_idx = public.PositionCdb.propIdx(.X), .name = "x", .type = cetech1.cdb.PropType.F32 },
+                    .{ .prop_idx = public.PositionCdb.propIdx(.Y), .name = "y", .type = cetech1.cdb.PropType.F32 },
+                    .{ .prop_idx = public.PositionCdb.propIdx(.Z), .name = "z", .type = cetech1.cdb.PropType.F32 },
+                },
+            );
+        }
+
+        // Scale
+        {
+            const scale_idx = try db.addType(
+                public.ScaleCdb.name,
+                &[_]cetech1.cdb.PropDef{
+                    .{ .prop_idx = public.ScaleCdb.propIdx(.X), .name = "x", .type = cetech1.cdb.PropType.F32 },
+                    .{ .prop_idx = public.ScaleCdb.propIdx(.Y), .name = "y", .type = cetech1.cdb.PropType.F32 },
+                    .{ .prop_idx = public.ScaleCdb.propIdx(.Z), .name = "z", .type = cetech1.cdb.PropType.F32 },
+                },
+            );
+
+            const default_scale = try db.createObject(scale_idx);
+            const default_scale_w = db.writeObj(default_scale).?;
+            public.ScaleCdb.setValue(db, f32, default_scale_w, .X, 1.0);
+            public.ScaleCdb.setValue(db, f32, default_scale_w, .Y, 1.0);
+            public.ScaleCdb.setValue(db, f32, default_scale_w, .Z, 1.0);
+            try db.writeCommit(default_scale_w);
+            db.setDefaultObject(default_scale);
+        }
+
+        // Rotation
+        {
+            const rot_idx = try db.addType(
+                public.RotationCdb.name,
+                &[_]cetech1.cdb.PropDef{
+                    .{ .prop_idx = public.RotationCdb.propIdx(.X), .name = "x", .type = cetech1.cdb.PropType.F32 },
+                    .{ .prop_idx = public.RotationCdb.propIdx(.Y), .name = "y", .type = cetech1.cdb.PropType.F32 },
+                    .{ .prop_idx = public.RotationCdb.propIdx(.Z), .name = "z", .type = cetech1.cdb.PropType.F32 },
+                    .{ .prop_idx = public.RotationCdb.propIdx(.W), .name = "w", .type = cetech1.cdb.PropType.F32 },
+                },
+            );
+
+            const default_quat = try db.createObject(rot_idx);
+            const default_quat_w = db.writeObj(default_quat).?;
+            public.RotationCdb.setValue(db, f32, default_quat_w, .X, 0.0);
+            public.RotationCdb.setValue(db, f32, default_quat_w, .Y, 0.0);
+            public.RotationCdb.setValue(db, f32, default_quat_w, .Z, 0.0);
+            public.RotationCdb.setValue(db, f32, default_quat_w, .W, 1.0);
+            try db.writeCommit(default_quat_w);
+            db.setDefaultObject(default_quat);
+        }
+    }
+});
+
 pub fn regsitreAll() !void {
-    _ = @alignOf(public.WorldTransform);
-    _ = @alignOf(public.Position);
-    _ = @alignOf(public.Rotation);
-    _ = @alignOf(public.Scale);
+    //_ = @alignOf(public.WorldTransform);
+    //_ = @alignOf(public.Position);
+    //_ = @alignOf(public.Rotation);
+    //_ = @alignOf(public.Scale);
 
     try apidb.api.implInterface(module_name, ecs.ComponentI, &world_tranform_c);
     try apidb.api.implInterface(module_name, ecs.ComponentI, &position_c);
@@ -190,4 +354,6 @@ pub fn regsitreAll() !void {
     try apidb.api.implInterface(module_name, ecs.SystemI, &spawn_transform_world_system_i);
 
     try apidb.api.implInterface(module_name, graphvm.GraphNodeI, &set_position_node_i);
+
+    try apidb.api.implOrRemove(module_name, cetech1.cdb.CreateTypesI, &create_cdb_types_i, true);
 }

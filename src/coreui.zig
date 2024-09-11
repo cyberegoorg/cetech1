@@ -222,6 +222,7 @@ pub var api = public.CoreUIApi{
     .getContentRegionMax = @ptrCast(&zgui.getContentRegionMax),
     .getContentRegionAvail = @ptrCast(&zgui.getContentRegionAvail),
     .setCursorPosX = @ptrCast(&zgui.setCursorPosX),
+    .setCursorPosY = @ptrCast(&zgui.setCursorPosY),
     .getStyle = @ptrCast(&zgui.getStyle),
     .pushStyleVar2f = @ptrCast(&zgui.pushStyleVar2f),
     .pushStyleVar1f = @ptrCast(&zgui.pushStyleVar1f),
@@ -326,7 +327,16 @@ pub var api = public.CoreUIApi{
 
     .beginDisabled = @ptrCast(&zgui.beginDisabled),
     .endDisabled = @ptrCast(&zgui.endDisabled),
+
+    // Gizmo
+    .gizmoSetRect = @ptrCast(&zgui.gizmo.setRect),
+    .gizmoManipulate = @ptrCast(&zgui.gizmo.manipulate),
+    .gizmoSetDrawList = gizmoSetDrawList,
 };
+
+pub fn gizmoSetDrawList(draw_list: ?public.DrawList) void {
+    zgui.gizmo.setDrawList(if (draw_list) |dl| @ptrCast(dl.ptr) else null);
+}
 
 fn getWindowDrawList() public.DrawList {
     return public.DrawList{
@@ -633,6 +643,7 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
             .thickness = args.thickness,
         });
     }
+
     pub fn addQuadFilled(draw_list: *anyopaque, args: struct {
         p1: [2]f32,
         p2: [2]f32,

@@ -27,7 +27,7 @@ const externals = .{
     .{ .name = "zf", .file = "externals/shared/lib/zf/LICENSE" },
 
     // zig-uuid
-    .{ .name = "zig-uuid", .file = "externals/shared/lib/zig-uuid/LICENSE.md" },
+    .{ .name = "zig-uuid", .file = "externals/shared/lib/zig-uuid/LICENSE" },
 
     // nativefiledialog-extended
     .{ .name = "nativefiledialog-extended", .file = "externals/shared/lib/znfde/nativefiledialog/LICENSE" },
@@ -52,6 +52,9 @@ const editor_modules = [_][]const u8{
     "editor_log",
     "editor_graph",
     "editor_metrics",
+    "editor_entity_asset",
+    "editor_entity",
+    "editor_asset_preview",
 };
 
 const samples_modules = [_][]const u8{
@@ -67,6 +70,9 @@ const samples_modules = [_][]const u8{
 
 pub fn build(b: *std.Build) !void {
     try ensureZigVersion();
+
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
 
     //
     // OPTIONS
@@ -88,6 +94,8 @@ pub fn build(b: *std.Build) !void {
         // NFD options
         .enable_nfd = b.option(bool, "with_nfd", "build with NFD (Native File Dialog).") orelse true,
         .nfd_portal = b.option(bool, "nfd_portal", "build NFD with xdg-desktop-portal instead of GTK. ( Linux, nice for steamdeck;) )") orelse true,
+
+        .externals_optimize = b.option(std.builtin.OptimizeMode, "externals_optimize", "Optimize for externals libs") orelse .ReleaseFast,
     };
 
     const options_step = b.addOptions();
@@ -96,9 +104,6 @@ pub fn build(b: *std.Build) !void {
     }
     options_step.addOption(std.SemanticVersion, "version", version);
     const options_module = options_step.createModule();
-
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
 
     //
     // Extrnals
@@ -109,7 +114,7 @@ pub fn build(b: *std.Build) !void {
         "uuid",
         .{
             .target = target,
-            .optimize = optimize,
+            .optimize = options.externals_optimize,
         },
     );
 
@@ -118,7 +123,7 @@ pub fn build(b: *std.Build) !void {
         "zf",
         .{
             .target = target,
-            .optimize = optimize,
+            .optimize = options.externals_optimize,
         },
     );
 
@@ -127,7 +132,7 @@ pub fn build(b: *std.Build) !void {
         "znfde",
         .{
             .target = target,
-            .optimize = optimize,
+            .optimize = options.externals_optimize,
             .with_portal = options.nfd_portal,
         },
     );
@@ -137,7 +142,7 @@ pub fn build(b: *std.Build) !void {
         "ztracy",
         .{
             .target = target,
-            .optimize = optimize,
+            .optimize = options.externals_optimize,
             .enable_ztracy = options.enable_tracy,
             .enable_fibers = false,
             .on_demand = options.tracy_on_demand,
@@ -149,7 +154,7 @@ pub fn build(b: *std.Build) !void {
         "zjobs",
         .{
             .target = target,
-            .optimize = optimize,
+            .optimize = options.externals_optimize,
         },
     );
 
@@ -158,9 +163,10 @@ pub fn build(b: *std.Build) !void {
         "zgui",
         .{
             .target = target,
-            .optimize = optimize,
+            .optimize = options.externals_optimize,
             .backend = .glfw,
             .with_te = true,
+            .with_freetype = true,
         },
     );
 
@@ -169,7 +175,7 @@ pub fn build(b: *std.Build) !void {
         "zglfw",
         .{
             .target = target,
-            .optimize = optimize,
+            .optimize = options.externals_optimize,
         },
     );
 
@@ -178,7 +184,7 @@ pub fn build(b: *std.Build) !void {
         "zpool",
         .{
             .target = target,
-            .optimize = optimize,
+            .optimize = options.externals_optimize,
         },
     );
 
@@ -187,7 +193,7 @@ pub fn build(b: *std.Build) !void {
         "zflecs",
         .{
             .target = target,
-            .optimize = optimize,
+            .optimize = options.externals_optimize,
         },
     );
 
@@ -196,7 +202,7 @@ pub fn build(b: *std.Build) !void {
         "zbgfx",
         .{
             .target = target,
-            .optimize = optimize,
+            .optimize = options.externals_optimize,
             .imgui_include = zgui.path("libs").getPath(b),
         },
     );
@@ -206,13 +212,13 @@ pub fn build(b: *std.Build) !void {
         "zmath",
         .{
             .target = target,
-            .optimize = optimize,
+            .optimize = options.externals_optimize,
         },
     );
 
     const ziglangSet = b.dependency("ziglangSet", .{
         .target = target,
-        .optimize = optimize,
+        .optimize = options.externals_optimize,
     });
 
     const zls = b.dependency("zls", .{
@@ -466,10 +472,15 @@ pub fn build(b: *std.Build) !void {
         var buff: [256:0]u8 = undefined;
         for (enabled_modules.items) |m| {
             const artifact_name = try std.fmt.bufPrintZ(&buff, "ct_{s}", .{m});
-            b.installArtifact(b.dependency(m, .{
+            const art = b.dependency(m, .{
                 .target = target,
                 .optimize = optimize,
-            }).artifact(artifact_name));
+            }).artifact(artifact_name);
+
+            const step = b.addInstallArtifact(art, .{
+                .dest_dir = .{ .override = .{ .lib = {} } },
+            });
+            b.default_step.dependOn(&step.step);
         }
     }
 }

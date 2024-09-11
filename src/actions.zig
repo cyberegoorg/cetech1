@@ -109,12 +109,12 @@ fn isSetActive(action_set: strid.StrId32) bool {
 fn isActionDown(action: strid.StrId32) bool {
     if (_active_set_stack.items.len == 0) return false;
 
-    const set = _action_set.getPtr(_active_set_stack.getLast()).?;
+    const set = _action_set.getPtr(_active_set_stack.getLast()) orelse return false;
     const a: Action = set.get(action) orelse return false;
 
     if (a.action.action != .button) return false;
 
-    const w = kernel.api.getMainWindow().?;
+    const w = kernel.api.getMainWindow() orelse return false;
 
     for (a.mapping.items) |maping| {
         switch (maping) {

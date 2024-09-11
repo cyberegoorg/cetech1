@@ -35,6 +35,8 @@ pub const debug_draw = @import("debug_draw.zig");
 
 pub const transform = @import("transform.zig");
 
+pub const camera = @import("camera.zig");
+
 test {
     // TODO: SHIT
     @setEvalBranchQuota(100000);

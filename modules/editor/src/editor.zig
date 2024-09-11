@@ -73,6 +73,28 @@ pub const UiVisualAspect = struct {
     }
 };
 
+pub const UiDropObj = struct {
+    pub const c_name = "ct_ui_drop_aspect";
+    pub const name_hash = strid.strId32(@This().c_name);
+
+    ui_drop_obj: *const fn (
+        allocator: std.mem.Allocator,
+        db: cdb.Db,
+        tab: *TabO,
+        obj: cdb.ObjId,
+        prop_idx: ?u32,
+        drag_obj: cdb.ObjId,
+    ) anyerror!void,
+
+    pub fn implement(comptime T: type) UiDropObj {
+        if (!std.meta.hasFn(T, "uiDropObj")) @compileError("implement me");
+
+        return UiDropObj{
+            .ui_drop_obj = T.uiDropObj,
+        };
+    }
+};
+
 pub const ObjContextMenuI = struct {
     pub const c_name = "ct_editor_obj_context_menu_i";
     pub const name_hash = strid.strId64(@This().c_name);
@@ -135,23 +157,25 @@ pub const CreateAssetI = struct {
 
 pub const TabO = anyopaque;
 
-pub const EditorTabI = struct {
-    vt: *EditorTabTypeI,
+pub const TabI = struct {
+    vt: *TabTypeI,
     inst: *TabO,
     tabid: u32 = 0,
     pinned_obj: coreui.SelectionItem = coreui.SelectionItem.empty(),
 };
 
-pub const EditorTabTypeIArgs = struct {
+pub const TabTypeIArgs = struct {
     tab_name: [:0]const u8,
     tab_hash: strid.StrId32,
     category: ?[:0]const u8 = null,
     create_on_init: bool = false,
     show_pin_object: bool = false,
     show_sel_obj_in_title: bool = false,
+    ignore_selection_from_tab: ?[]const strid.StrId32 = null,
+    only_selection_from_tab: ?[]const strid.StrId32 = null,
 };
 
-pub const EditorTabTypeI = struct {
+pub const TabTypeI = struct {
     pub const c_name = "ct_editor_tab_type_i";
     pub const name_hash = strid.strId64(@This().c_name);
 
@@ -161,17 +185,19 @@ pub const EditorTabTypeI = struct {
     create_on_init: bool = false,
     show_pin_object: bool = false,
     show_sel_obj_in_title: bool = false,
+    ignore_selection_from_tab: ?[]const strid.StrId32 = null,
+    only_selection_from_tab: ?[]const strid.StrId32 = null,
 
     menu_name: *const fn () anyerror![:0]const u8 = undefined,
     title: *const fn (*TabO) anyerror![:0]const u8 = undefined,
     can_open: ?*const fn (std.mem.Allocator, cdb.Db, []const coreui.SelectionItem) anyerror!bool = null,
 
-    create: *const fn (cdb.Db, tab_id: u32) anyerror!?*EditorTabI = undefined,
-    destroy: *const fn (*EditorTabI) anyerror!void = undefined,
+    create: *const fn (cdb.Db, tab_id: u32) anyerror!?*TabI = undefined,
+    destroy: *const fn (*TabI) anyerror!void = undefined,
 
     menu: ?*const fn (*TabO) anyerror!void = null,
     ui: *const fn (*TabO, kernel_tick: u64, dt: f32) anyerror!void = undefined,
-    obj_selected: ?*const fn (*TabO, cdb.Db, []const coreui.SelectionItem) anyerror!void = null,
+    obj_selected: ?*const fn (*TabO, cdb.Db, []const coreui.SelectionItem, sender_tab_hash: ?strid.StrId32) anyerror!void = null,
     focused: ?*const fn (*TabO) anyerror!void = null,
     asset_root_opened: ?*const fn (*TabO) anyerror!void = null,
 
@@ -183,20 +209,23 @@ pub const EditorTabTypeI = struct {
         allowed_type: cdb.TypeIdx,
     ) anyerror!cdb.ObjId = null,
 
-    pub fn implement(args: EditorTabTypeIArgs, comptime T: type) EditorTabTypeI {
+    pub fn implement(args: TabTypeIArgs, comptime T: type) TabTypeI {
         if (!std.meta.hasFn(T, "menuName")) @compileError("implement me");
         if (!std.meta.hasFn(T, "title")) @compileError("implement me");
         if (!std.meta.hasFn(T, "create")) @compileError("implement me");
         if (!std.meta.hasFn(T, "destroy")) @compileError("implement me");
         if (!std.meta.hasFn(T, "ui")) @compileError("implement me");
 
-        return EditorTabTypeI{
+        return TabTypeI{
             .tab_name = args.tab_name,
             .tab_hash = args.tab_hash,
             .category = args.category,
             .create_on_init = args.create_on_init,
             .show_pin_object = args.show_pin_object,
             .show_sel_obj_in_title = args.show_sel_obj_in_title,
+
+            .ignore_selection_from_tab = args.ignore_selection_from_tab,
+            .only_selection_from_tab = args.only_selection_from_tab,
 
             .select_obj_from_menu = if (std.meta.hasFn(T, "selectObjFromMenu")) T.selectObjFromMenu else null,
             .can_open = if (std.meta.hasFn(T, "canOpen")) T.canOpen else null,
@@ -220,7 +249,7 @@ pub const EditorAPI = struct {
 
     // Tabs
     openTabWithPinnedObj: *const fn (db: cdb.Db, tab_type_hash: strid.StrId32, obj: coreui.SelectionItem) void,
-    getAllTabsByType: *const fn (allocator: std.mem.Allocator, tab_type_hash: strid.StrId32) anyerror![]*EditorTabI,
+    getAllTabsByType: *const fn (allocator: std.mem.Allocator, tab_type_hash: strid.StrId32) anyerror![]*TabI,
 
     showObjContextMenu: *const fn (
         allocator: std.mem.Allocator,

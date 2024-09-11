@@ -793,7 +793,7 @@ var asset_ui_tree_aspect = editor_tree.UiTreeAspect.implement(struct {
         _ = allocator;
         _ = tab;
 
-        if (!drop_obj.eql(obj) and drop_obj.type_idx.eql(AssetTypeIdx)) {
+        if (drop_obj.type_idx.eql(AssetTypeIdx)) {
             const obj_r = db.readObj(obj) orelse return;
 
             const is_folder = _assetdb.isAssetFolder(obj);

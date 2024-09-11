@@ -65,13 +65,15 @@ pub const KernelTaskUpdateI = struct {
         phase: strid.StrId64,
         name: [:0]const u8,
         depends: []const strid.StrId64,
-        update: *const fn (kernel_tick: u64, dt: f32) anyerror!void,
+        comptime T: type,
     ) KernelTaskUpdateI {
+        if (!std.meta.hasFn(T, "update")) @compileError("implement me");
+
         return KernelTaskUpdateI{
             .phase = phase,
             .name = name,
             .depends = depends,
-            .update = update,
+            .update = T.update,
         };
     }
 };

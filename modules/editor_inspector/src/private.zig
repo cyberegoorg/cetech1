@@ -46,7 +46,7 @@ var _profiler: *const profiler.ProfilerAPI = undefined;
 
 // Global state
 const G = struct {
-    tab_vt: *editor.EditorTabTypeI = undefined,
+    tab_vt: *editor.TabTypeI = undefined,
     asset_prop_aspect: *public.UiPropertiesAspect = undefined,
     color4f_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
     hide_proto_property_config_aspect: *public.UiPropertiesConfigAspect = undefined,
@@ -355,6 +355,8 @@ fn cdbPropertiesObj(
     var zone_ctx = _profiler.Zone(@src());
     defer zone_ctx.End();
 
+    const enabled = if (args.parent_disabled) false else db.isChildOff(top_level_obj, obj);
+
     // Find properties asspect for obj type.
     const ui_aspect = db.getAspect(public.UiPropertiesAspect, obj.type_idx);
     if (ui_aspect) |aspect| {
@@ -388,8 +390,6 @@ fn cdbPropertiesObj(
     if (args.hide_proto) {
         show_proto = false;
     }
-
-    const enabled = if (args.parent_disabled) false else db.isChildOff(top_level_obj, obj);
 
     // Scalars valus
     if (beginPropTable("Inspector")) {
@@ -429,6 +429,8 @@ fn cdbPropertiesObj(
                     if (ui_embed_prop_aspect) |aspect| {
                         const lbl = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
                         if (uiPropLabel(allocator, lbl, prop_color, enabled, args)) {
+                            _coreui.beginDisabled(.{ .disabled = !enabled });
+                            defer _coreui.endDisabled();
                             try aspect.ui_properties(allocator, db, obj, prop_idx, args);
                             continue;
                         }
@@ -448,6 +450,8 @@ fn cdbPropertiesObj(
                                 if (subobj == null) {
                                     try objContextMenuBtn(allocator, db, tab, top_level_obj, obj, prop_idx, null);
                                 } else {
+                                    _coreui.beginDisabled(.{ .disabled = !enabled });
+                                    defer _coreui.endDisabled();
                                     try aspect.ui_properties(allocator, db, subobj.?, args);
                                 }
                             }
@@ -590,7 +594,7 @@ fn cdbPropertiesObj(
 
                 defer {
                     if (set) |s| {
-                        defer allocator.free(s);
+                        allocator.free(s);
                     }
                 }
                 const is_empty = if (set) |s| s.len == 0 else true;
@@ -1025,7 +1029,7 @@ var color4f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
 //
 
 const PropertyTab = struct {
-    tab_i: editor.EditorTabI,
+    tab_i: editor.TabI,
     db: cdb.Db,
     selected_obj: coreui.SelectionItem,
     filter_buff: [256:0]u8 = std.mem.zeroes([256:0]u8),
@@ -1033,13 +1037,14 @@ const PropertyTab = struct {
 };
 
 // Fill editor tab interface
-var inspector_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
+var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = INSPECTOR_TAB_NAME,
     .tab_hash = strid.strId32(INSPECTOR_TAB_NAME),
 
     .create_on_init = true,
     .show_pin_object = true,
     .show_sel_obj_in_title = true,
+    .ignore_selection_from_tab = &.{cetech1.strid.strId32("ct_editor_asset_browser_tab")},
 }, struct {
     pub fn menuName() ![:0]const u8 {
         return coreui.Icons.Properties ++ "  " ++ "Inspector";
@@ -1061,7 +1066,7 @@ var inspector_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Create new FooTab instantce
-    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.EditorTabI {
+    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.TabI {
         _ = tab_id;
         var tab_inst = try _allocator.create(PropertyTab);
         tab_inst.* = PropertyTab{
@@ -1077,7 +1082,7 @@ var inspector_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Destroy FooTab instantce
-    pub fn destroy(tab_inst: *editor.EditorTabI) !void {
+    pub fn destroy(tab_inst: *editor.TabI) !void {
         const tab_o: *PropertyTab = @alignCast(@ptrCast(tab_inst.inst));
         _allocator.destroy(tab_o);
     }
@@ -1113,7 +1118,8 @@ var inspector_tab = editor.EditorTabTypeI.implement(editor.EditorTabTypeIArgs{
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, db: cdb.Db, obj: []const coreui.SelectionItem) !void {
+    pub fn objSelected(inst: *editor.TabO, db: cdb.Db, obj: []const coreui.SelectionItem, sender_tab_hash: ?strid.StrId32) !void {
+        _ = sender_tab_hash; // autofix
         _ = db;
         var tab_o: *PropertyTab = @alignCast(@ptrCast(inst));
         tab_o.selected_obj = obj[0];
@@ -1806,7 +1812,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});
 
-    _g.tab_vt = try apidb.globalVarValue(editor.EditorTabTypeI, module_name, INSPECTOR_TAB_NAME, inspector_tab);
+    _g.tab_vt = try apidb.globalVarValue(editor.TabTypeI, module_name, INSPECTOR_TAB_NAME, inspector_tab);
 
     _g.asset_prop_aspect = try apidb.globalVarValue(public.UiPropertiesAspect, module_name, ASSET_PROPERTIES_ASPECT_NAME, asset_properties_aspec);
     _g.color4f_properties_aspec = try apidb.globalVarValue(public.UiEmbedPropertiesAspect, module_name, COLOR4F_PROPERTY_ASPECT_NAME, color4f_properties_aspec);
@@ -1815,7 +1821,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(module_name, cdb.PostCreateTypesI, &post_create_types_i, load);
     try apidb.implOrRemove(module_name, coreui.RegisterTestsI, &register_tests_i, load);
-    try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &inspector_tab, load);
+    try apidb.implOrRemove(module_name, editor.TabTypeI, &inspector_tab, load);
 
     try apidb.setOrRemoveZigApi(module_name, public.InspectorAPI, &api, load);
 

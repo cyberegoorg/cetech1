@@ -794,7 +794,7 @@ const GraphVM = struct {
                 const data_r = public.GraphDataType.read(self.db, data).?;
                 const value_obj = public.GraphDataType.readSubObj(self.db, data_r, .value).?;
 
-                const type_def = findValueTypeIByCdb(cetech1.strid.strId32(self.db.getTypeName(value_obj.type_idx).?)).?;
+                const type_def = findValueTypeIByCdb(self.db.getTypeHash(value_obj.type_idx).?).?;
 
                 const to_node = public.GraphDataType.readRef(self.db, data_r, .to_node).?;
                 const to_node_pin_str = public.GraphDataType.readStr(self.db, data_r, .to_node_pin).?;
@@ -901,6 +901,8 @@ const GraphVM = struct {
         defer zone_ctx.End();
 
         try self.clean();
+
+        _ = self.db.readObj(self.graph_obj);
 
         const graph_version = self.db.getVersion(self.graph_obj);
         self.graph_version = graph_version;
@@ -1596,9 +1598,11 @@ const GraphVM = struct {
         }
     }
 
-    pub fn getNodeStateMany(self: *Self, results: []*anyopaque, containers: []const public.GraphInstance, node_type: strid.StrId32) !void {
+    pub fn getNodeStateMany(self: *Self, results: []?*anyopaque, containers: []const public.GraphInstance, node_type: strid.StrId32) !void {
         var zone_ctx = profiler_private.ztracy.Zone(@src());
         defer zone_ctx.End();
+
+        @memset(results, null);
 
         if (self.findNodeByType(node_type)) |nodes| {
             for (containers, 0..) |container, idx| {
@@ -2045,9 +2049,7 @@ fn createInstance(allocator: std.mem.Allocator, db: cetech1.cdb.Db, graph: cetec
 }
 
 fn createInstances(allocator: std.mem.Allocator, db: cetech1.cdb.Db, graph: cetech1.cdb.ObjId, instances: []public.GraphInstance) !void {
-    _ = db; // autofix
-
-    var vm = _vm_map.get(graph).?;
+    var vm = _vm_map.get(graph) orelse try createVM(db, graph);
 
     const containers = try vm.createInstances(allocator, instances.len);
     defer allocator.free(containers);
@@ -2112,7 +2114,7 @@ fn clusterByGraph(allocator: std.mem.Allocator, sorted_instances: []const public
         if (inst.graph.eql(current_obj)) continue;
         try clusters.append(sorted_instances[cluster_begin_idx..idx]);
         current_obj = inst.graph;
-        cluster_begin_idx = idx - 1;
+        cluster_begin_idx = idx; //-1;
     }
     try clusters.append(sorted_instances[cluster_begin_idx..sorted_instances.len]);
 
@@ -2222,6 +2224,8 @@ fn buildInstances(allocator: std.mem.Allocator, instances: []const public.GraphI
 
 fn needCompile(graph: cetech1.cdb.ObjId) bool {
     var vm = _vm_map.get(graph) orelse return false;
+    if (graph.isEmpty()) return false;
+    if (!vm.db.isAlive(graph)) return false;
     return vm.graph_version != vm.db.getVersion(graph);
 }
 fn compile(allocator: std.mem.Allocator, graph: cetech1.cdb.ObjId) !void {
@@ -2232,18 +2236,18 @@ fn compile(allocator: std.mem.Allocator, graph: cetech1.cdb.ObjId) !void {
 const getNodeStateTask = struct {
     containers: []const public.GraphInstance,
     node_type: strid.StrId32,
-    output: []*anyopaque,
+    output: []?*anyopaque,
     pub fn exec(self: *const @This()) !void {
         var c: *VMInstance = @alignCast(@ptrCast(self.containers[0].inst));
         try c.vm.getNodeStateMany(self.output, self.containers, self.node_type);
     }
 };
 
-pub fn getNodeState(allocator: std.mem.Allocator, instances: []const public.GraphInstance, node_type: strid.StrId32) ![]*anyopaque {
+pub fn getNodeState(allocator: std.mem.Allocator, instances: []const public.GraphInstance, node_type: strid.StrId32) ![]?*anyopaque {
     var zone_ctx = profiler_private.ztracy.ZoneN(@src(), "GraphVM - get node state");
     defer zone_ctx.End();
 
-    var results = try std.ArrayList(*anyopaque).initCapacity(allocator, instances.len);
+    var results = try std.ArrayList(?*anyopaque).initCapacity(allocator, instances.len);
     try results.resize(instances.len);
 
     if (instances.len == 0) return results.toOwnedSlice();
@@ -2261,7 +2265,7 @@ pub fn getNodeState(allocator: std.mem.Allocator, instances: []const public.Grap
     const ARGS = struct {
         items: []const public.GraphInstance,
         node_type: strid.StrId32,
-        results: []*anyopaque,
+        results: []?*anyopaque,
     };
 
     var result_idx: usize = 0;
@@ -2330,93 +2334,92 @@ fn getOutputPins(instance: public.GraphInstance) public.OutPins {
 
 const ChangedObjsSet = std.AutoArrayHashMap(cetech1.cdb.ObjId, void);
 var _last_check: cetech1.cdb.TypeVersion = 0;
-const UpdateTask = struct {
-    pub fn update(kernel_tick: u64, dt: f32) !void {
-        _ = kernel_tick;
-        _ = dt;
 
-        const alloc = try tempalloc.api.create();
-        defer tempalloc.api.destroy(alloc);
+var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
+    cetech1.kernel.OnLoad,
+    "Graph",
+    &[_]cetech1.strid.StrId64{},
+    struct {
+        pub fn update(kernel_tick: u64, dt: f32) !void {
+            _ = kernel_tick;
+            _ = dt;
 
-        const nodetype_i_version = apidb.api.getInterafcesVersion(public.GraphNodeI);
-        if (nodetype_i_version != _nodetype_i_version) {
-            log.debug("Supported nodes:", .{});
-            const impls = try apidb.api.getImpl(alloc, public.GraphNodeI);
-            defer alloc.free(impls);
-            for (impls) |iface| {
-                log.debug("\t - {s} - {s} - {d}", .{ iface.name, iface.type_name, iface.type_hash.id });
-                try _node_type_iface_map.put(iface.type_hash, iface);
-            }
-            _nodetype_i_version = nodetype_i_version;
-        }
+            const alloc = try tempalloc.api.create();
+            defer tempalloc.api.destroy(alloc);
 
-        const valuetype_i_version = apidb.api.getInterafcesVersion(public.GraphValueTypeI);
-        if (valuetype_i_version != _valuetype_i_version) {
-            log.debug("Supported values:", .{});
-
-            const impls = try apidb.api.getImpl(alloc, public.GraphValueTypeI);
-            defer alloc.free(impls);
-            for (impls) |iface| {
-                log.debug("\t - {s} - {d}", .{ iface.name, iface.type_hash.id });
-
-                try _value_type_iface_map.put(iface.type_hash, iface);
-                try _value_type_iface_cdb_map.put(iface.cdb_type_hash, iface);
-            }
-            _valuetype_i_version = valuetype_i_version;
-        }
-
-        if (true) {
-            var processed_obj = ChangedObjsSet.init(alloc);
-            defer processed_obj.deinit();
-
-            var db = assetdb_private.getDb();
-
-            const changed = try db.getChangeObjects(alloc, public.GraphType.typeIdx(db), _last_check);
-            defer alloc.free(changed.objects);
-
-            if (!changed.need_fullscan) {
-                for (changed.objects) |graph| {
-                    if (processed_obj.contains(graph)) continue;
-
-                    if (!_vm_map.contains(graph)) {
-                        // Only asset
-                        const parent = db.getParent(graph);
-                        if (!parent.isEmpty()) {
-                            if (!parent.type_idx.eql(AssetTypeIdx)) continue;
-                        }
-
-                        const vm = try createVM(db, graph);
-                        _ = vm; // autofix
-                    }
-
-                    try processed_obj.put(graph, {});
+            const nodetype_i_version = apidb.api.getInterafcesVersion(public.GraphNodeI);
+            if (nodetype_i_version != _nodetype_i_version) {
+                log.debug("Supported nodes:", .{});
+                const impls = try apidb.api.getImpl(alloc, public.GraphNodeI);
+                defer alloc.free(impls);
+                for (impls) |iface| {
+                    log.debug("\t - {s} - {s} - {d}", .{ iface.name, iface.type_name, iface.type_hash.id });
+                    try _node_type_iface_map.put(iface.type_hash, iface);
                 }
-            } else {
-                if (db.getAllObjectByType(alloc, public.GraphType.typeIdx(db))) |objs| {
-                    for (objs) |graph| {
+                _nodetype_i_version = nodetype_i_version;
+            }
+
+            const valuetype_i_version = apidb.api.getInterafcesVersion(public.GraphValueTypeI);
+            if (valuetype_i_version != _valuetype_i_version) {
+                log.debug("Supported values:", .{});
+
+                const impls = try apidb.api.getImpl(alloc, public.GraphValueTypeI);
+                defer alloc.free(impls);
+                for (impls) |iface| {
+                    log.debug("\t - {s} - {d}", .{ iface.name, iface.type_hash.id });
+
+                    try _value_type_iface_map.put(iface.type_hash, iface);
+                    try _value_type_iface_cdb_map.put(iface.cdb_type_hash, iface);
+                }
+                _valuetype_i_version = valuetype_i_version;
+            }
+
+            if (true) {
+                var processed_obj = ChangedObjsSet.init(alloc);
+                defer processed_obj.deinit();
+
+                var db = assetdb_private.getDb();
+
+                const changed = try db.getChangeObjects(alloc, public.GraphType.typeIdx(db), _last_check);
+                defer alloc.free(changed.objects);
+
+                if (!changed.need_fullscan) {
+                    for (changed.objects) |graph| {
+                        if (processed_obj.contains(graph)) continue;
+
                         if (!_vm_map.contains(graph)) {
                             // Only asset
                             const parent = db.getParent(graph);
                             if (!parent.isEmpty()) {
                                 if (!parent.type_idx.eql(AssetTypeIdx)) continue;
                             }
+
                             const vm = try createVM(db, graph);
                             _ = vm; // autofix
                         }
+
+                        try processed_obj.put(graph, {});
+                    }
+                } else {
+                    if (db.getAllObjectByType(alloc, public.GraphType.typeIdx(db))) |objs| {
+                        for (objs) |graph| {
+                            if (!_vm_map.contains(graph)) {
+                                // Only asset
+                                const parent = db.getParent(graph);
+                                if (!parent.isEmpty()) {
+                                    if (!parent.type_idx.eql(AssetTypeIdx)) continue;
+                                }
+                                const vm = try createVM(db, graph);
+                                _ = vm; // autofix
+                            }
+                        }
                     }
                 }
+
+                _last_check = changed.last_version;
             }
-
-            _last_check = changed.last_version;
         }
-    }
-};
-
-var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
-    cetech1.kernel.OnLoad,
-    "Graph",
-    &[_]cetech1.strid.StrId64{},
-    UpdateTask.update,
+    },
 );
 
 //
@@ -2673,7 +2676,7 @@ const const_node_i = public.GraphNodeI.implement(
                 const settings_r = public.ConstNodeSettings.read(db, setting).?;
 
                 if (public.ConstNodeSettings.readSubObj(db, settings_r, .value)) |value_obj| {
-                    const value_type = findValueTypeIByCdb(cetech1.strid.strId32(db.getTypeName(value_obj.type_idx).?)).?;
+                    const value_type = findValueTypeIByCdb(db.getTypeHash(value_obj.type_idx).?).?;
 
                     return allocator.dupe(public.NodePin, &.{
                         public.NodePin.init("Value", public.NodePin.pinHash("value", true), value_type.type_hash),
@@ -2695,7 +2698,7 @@ const const_node_i = public.GraphNodeI.implement(
                 const settings_r = public.ConstNodeSettings.read(db, setting).?;
 
                 if (public.ConstNodeSettings.readSubObj(db, settings_r, .value)) |value_obj| {
-                    const value_type = findValueTypeIByCdb(cetech1.strid.strId32(db.getTypeName(value_obj.type_idx).?)).?;
+                    const value_type = findValueTypeIByCdb(db.getTypeHash(value_obj.type_idx).?).?;
                     real_state.value_type = value_type;
                     real_state.value_obj = value_obj;
                 }
@@ -2906,7 +2909,7 @@ const graph_inputs_i = public.GraphNodeI.implement(
                         var buffer: [128]u8 = undefined;
                         const str = try std.fmt.bufPrintZ(&buffer, "{s}", .{uuid});
 
-                        const value_type = findValueTypeIByCdb(cetech1.strid.strId32(db.getTypeName(value_obj.type_idx).?)).?;
+                        const value_type = findValueTypeIByCdb(db.getTypeHash(value_obj.type_idx).?).?;
 
                         try pins.append(public.NodePin.initRaw(
                             name,
@@ -2988,7 +2991,7 @@ const graph_outputs_i = public.GraphNodeI.implement(
                         var buffer: [128]u8 = undefined;
                         const str = try std.fmt.bufPrintZ(&buffer, "{s}", .{uuid});
 
-                        const value_type = findValueTypeIByCdb(cetech1.strid.strId32(db.getTypeName(value_obj.type_idx).?)).?;
+                        const value_type = findValueTypeIByCdb(db.getTypeHash(value_obj.type_idx).?).?;
 
                         try pins.append(
                             public.NodePin.initRaw(
@@ -3089,7 +3092,7 @@ const call_graph_node_i = public.GraphNodeI.implement(
                                 var buffer: [128]u8 = undefined;
                                 const str = try std.fmt.bufPrintZ(&buffer, "{s}", .{uuid});
 
-                                const value_type = findValueTypeIByCdb(cetech1.strid.strId32(db.getTypeName(value_obj.type_idx).?)).?;
+                                const value_type = findValueTypeIByCdb(db.getTypeHash(value_obj.type_idx).?).?;
 
                                 pins.appendAssumeCapacity(
                                     public.NodePin.initRaw(name, try _string_intern.intern(str), value_type.type_hash),
@@ -3131,7 +3134,7 @@ const call_graph_node_i = public.GraphNodeI.implement(
                                 var buffer: [128]u8 = undefined;
                                 const str = try std.fmt.bufPrintZ(&buffer, "{s}", .{uuid});
 
-                                const value_type = findValueTypeIByCdb(cetech1.strid.strId32(db.getTypeName(value_obj.type_idx).?)).?;
+                                const value_type = findValueTypeIByCdb(db.getTypeHash(value_obj.type_idx).?).?;
 
                                 pins.appendAssumeCapacity(
                                     public.NodePin.initRaw(name, try _string_intern.intern(str), value_type.type_hash),

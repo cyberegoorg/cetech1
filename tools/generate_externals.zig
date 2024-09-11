@@ -16,9 +16,10 @@ pub fn main() !void {
     };
     defer output_file.close();
 
-    var bw = std.io.bufferedWriter(output_file.writer());
-    defer bw.flush() catch undefined;
-    const w = bw.writer();
+    // var bw = std.io.bufferedWriter(output_file.writer());
+    // defer bw.flush() catch undefined;
+
+    const w = output_file.writer();
 
     try w.print("# Thanks to all ;)\n\n", .{});
 

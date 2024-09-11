@@ -2,6 +2,7 @@ const std = @import("std");
 
 const strid = @import("strid.zig");
 const math = @import("math.zig");
+const cdb = @import("cdb.zig");
 
 pub const Position = struct {
     x: f32 = 0,
@@ -22,3 +23,34 @@ pub const Scale = struct {
 pub const WorldTransform = struct {
     mtx: math.Mat = math.identity(),
 };
+
+pub const PositionCdb = cdb.CdbTypeDecl(
+    "ct_position",
+    enum(u32) {
+        X = 0,
+        Y,
+        Z,
+    },
+    struct {},
+);
+
+pub const ScaleCdb = cdb.CdbTypeDecl(
+    "ct_scale",
+    enum(u32) {
+        X = 0,
+        Y,
+        Z,
+    },
+    struct {},
+);
+
+pub const RotationCdb = cdb.CdbTypeDecl(
+    "ct_rotation",
+    enum(u32) {
+        X = 0,
+        Y,
+        Z,
+        W,
+    },
+    struct {},
+);

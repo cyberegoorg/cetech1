@@ -17,6 +17,16 @@ pub const PinTypes = struct {
     pub const World = strid.strId32("world");
 };
 
+pub const Entity = cdb.CdbTypeDecl(
+    "ct_entity",
+    enum(u32) {
+        name = 0,
+        components,
+        childrens,
+    },
+    struct {},
+);
+
 pub const Wildcard = strid.strId32("Wildcard");
 pub const Any = strid.strId32("Any");
 pub const Transitive = strid.strId32("Transitive");
@@ -131,6 +141,8 @@ pub const ComponentI = struct {
     size: usize,
     aligment: usize,
 
+    cdb_type_hash: cdb.TypeHash = .{},
+
     onAdd: ?*const fn (iter: *IterO) callconv(.C) void = null,
     onSet: ?*const fn (iter: *IterO) callconv(.C) void = null,
     onRemove: ?*const fn (iter: *IterO) callconv(.C) void = null,
@@ -140,13 +152,29 @@ pub const ComponentI = struct {
     onCopy: ?*const fn (dst_ptr: *anyopaque, src_ptr: *const anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void = null,
     onMove: ?*const fn (dst_ptr: *anyopaque, src_ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void = null,
 
-    pub fn implement(comptime T: type, comptime Hooks: type) Self {
+    uiIcons: ?*const fn (
+        buff: [:0]u8,
+        allocator: std.mem.Allocator,
+        db: cdb.Db,
+        obj: cdb.ObjId,
+    ) anyerror![:0]const u8 = null,
+
+    fromCdb: ?*const fn (
+        allocator: std.mem.Allocator,
+        db: cdb.Db,
+        obj: cdb.ObjId,
+        data: []u8,
+    ) anyerror!void = null,
+
+    pub fn implement(comptime T: type, cdb_type_hash: ?cdb.TypeHash, comptime Hooks: type) Self {
         return Self{
             .name = @typeName(T),
             .id = strid.strId32(@typeName(T)),
 
             .size = @sizeOf(T),
             .aligment = @alignOf(T),
+
+            .cdb_type_hash = cdb_type_hash orelse .{},
 
             .onAdd = if (std.meta.hasFn(Hooks, "onAdd")) struct {
                 fn f(iter: *IterO) callconv(.C) void {
@@ -221,6 +249,10 @@ pub const ComponentI = struct {
                     Hooks.onMove(dst_tptr, src_tptr) catch undefined;
                 }
             }.f else null,
+
+            .uiIcons = if (std.meta.hasFn(Hooks, "uiIcons")) Hooks.uiIcons else null,
+
+            .fromCdb = if (std.meta.hasFn(Hooks, "fromCdb")) Hooks.fromCdb else null,
         };
     }
 };
@@ -329,12 +361,20 @@ pub const World = struct {
         return self.vtable.newEntity(self.ptr, name);
     }
 
-    pub inline fn newEntities(self: World, allocator: std.mem.Allocator, count: usize) ?[]EntityId {
-        return self.vtable.newEntities(self.ptr, allocator, count);
+    pub inline fn newEntities(self: World, allocator: std.mem.Allocator, eid: EntityId, count: usize) ?[]EntityId {
+        return self.vtable.newEntities(self.ptr, allocator, eid, count);
+    }
+
+    pub inline fn destroyEntities(self: World, ents: []const EntityId) void {
+        return self.vtable.destroyEntities(self.ptr, ents);
     }
 
     pub inline fn setId(self: World, comptime T: type, entity: EntityId, ptr: ?*const T) EntityId {
         return self.vtable.setId(self.ptr, entity, id(T), @sizeOf(T), ptr);
+    }
+
+    pub inline fn setIdRaw(self: World, entity: EntityId, cid: strid.StrId32, size: usize, ptr: ?*const anyopaque) EntityId {
+        return self.vtable.setId(self.ptr, entity, cid, size, ptr);
     }
 
     pub inline fn progress(self: World, dt: f32) bool {
@@ -361,12 +401,25 @@ pub const World = struct {
         self.vtable.deferSuspend(self.ptr);
     }
 
+    pub fn isRemoteDebugActive(self: World) bool {
+        return self.vtable.isRemoteDebugActive(self.ptr);
+    }
+
+    pub fn setRemoteDebugActive(self: World, active: bool) ?u16 {
+        return self.vtable.setRemoteDebugActive(self.ptr, active);
+    }
+
+    pub fn uiRemoteDebugMenuItems(self: World, allocator: std.mem.Allocator, port: ?u16) ?u16 {
+        return self.vtable.uiRemoteDebugMenuItems(self.ptr, allocator, port);
+    }
+
     ptr: *anyopaque,
     vtable: *const VTable,
 
     pub const VTable = struct {
         newEntity: *const fn (world: *anyopaque, name: ?[:0]const u8) EntityId,
-        newEntities: *const fn (world: *anyopaque, allocator: std.mem.Allocator, count: usize) ?[]EntityId,
+        newEntities: *const fn (world: *anyopaque, allocator: std.mem.Allocator, id: EntityId, count: usize) ?[]EntityId,
+        destroyEntities: *const fn (self: *anyopaque, ents: []const EntityId) void,
 
         setId: *const fn (world: *anyopaque, entity: EntityId, id: strid.StrId32, size: usize, ptr: ?*const anyopaque) EntityId,
 
@@ -378,6 +431,10 @@ pub const World = struct {
         deferEnd: *const fn (world: *anyopaque) bool,
         deferSuspend: *const fn (world: *anyopaque) void,
         deferResume: *const fn (world: *anyopaque) void,
+
+        isRemoteDebugActive: *const fn (world: *anyopaque) bool,
+        setRemoteDebugActive: *const fn (world: *anyopaque, active: bool) ?u16,
+        uiRemoteDebugMenuItems: *const fn (world: *anyopaque, allocator: std.mem.Allocator, port: ?u16) ?u16,
     };
 };
 
@@ -471,6 +528,14 @@ pub const EntityLogicComponent = struct {
     graph: cdb.ObjId = .{},
 };
 
+pub const EntityLogicComponentCdb = cdb.CdbTypeDecl(
+    "ct_entity_logic_component",
+    enum(u32) {
+        graph = 0,
+    },
+    struct {},
+);
+
 pub const EntityLogicComponentInstance = struct {
     graph_container: graphvm.GraphInstance = .{},
 };
@@ -483,6 +548,9 @@ pub const EcsAPI = struct {
     destroyWorld: *const fn (world: World) void,
 
     toWorld: *const fn (world: *anyopaque) World,
-
     toIter: *const fn (iter: *IterO) Iter,
+
+    findComponentIByCdbHash: *const fn (cdb_hash: cdb.TypeHash) ?*const ComponentI,
+
+    spawnManyFromCDB: *const fn (allocator: std.mem.Allocator, world: World, db: cdb.Db, obj: cdb.ObjId, count: usize) anyerror![]EntityId,
 };

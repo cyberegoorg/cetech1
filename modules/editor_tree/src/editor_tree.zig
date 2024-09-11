@@ -41,6 +41,15 @@ pub const UiTreeAspect = struct {
     }
 };
 
+pub const UiTreeFlatenPropertyAspect = struct {
+    pub const c_name = "ct_ui_tree_flaten_aspect";
+    pub const name_hash = strid.strId32(@This().c_name);
+
+    pub fn implement() UiTreeFlatenPropertyAspect {
+        return UiTreeFlatenPropertyAspect{};
+    }
+};
+
 pub const CdbTreeViewArgs = struct {
     expand_object: bool = true,
     ignored_object: cdb.ObjId = .{},

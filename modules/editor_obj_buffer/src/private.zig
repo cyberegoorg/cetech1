@@ -31,7 +31,7 @@ var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 
 // Global state
 const G = struct {
-    tab_vt: *editor.EditorTabTypeI = undefined,
+    tab_vt: *editor.TabTypeI = undefined,
     last_focused: ?*ObjBufferTab = null,
 };
 var _g: *G = undefined;
@@ -65,15 +65,15 @@ fn addToFirst(allocator: std.mem.Allocator, db: cetech1.cdb.Db, obj: coreui.Sele
 }
 
 const ObjBufferTab = struct {
-    tab_i: editor.EditorTabI,
+    tab_i: editor.TabI,
     db: cetech1.cdb.Db,
     inter_selection: coreui.Selection,
     obj_buffer: coreui.Selection,
 };
 
 // Fill editor tab interface
-var obj_buffer_tab = editor.EditorTabTypeI.implement(
-    editor.EditorTabTypeIArgs{
+var obj_buffer_tab = editor.TabTypeI.implement(
+    editor.TabTypeIArgs{
         .tab_name = TAB_NAME,
         .tab_hash = cetech1.strid.strId32(TAB_NAME),
 
@@ -93,7 +93,7 @@ var obj_buffer_tab = editor.EditorTabTypeI.implement(
         }
 
         // Create new ObjBufferTab instantce
-        pub fn create(db: cetech1.cdb.Db, tab_id: u32) !?*editor.EditorTabI {
+        pub fn create(db: cetech1.cdb.Db, tab_id: u32) !?*editor.TabI {
             _ = tab_id;
             var tab_inst = try _allocator.create(ObjBufferTab);
             tab_inst.* = ObjBufferTab{
@@ -109,7 +109,7 @@ var obj_buffer_tab = editor.EditorTabTypeI.implement(
         }
 
         // Destroy ObjBufferTab instantce
-        pub fn destroy(tab_inst: *editor.EditorTabI) !void {
+        pub fn destroy(tab_inst: *editor.TabI) !void {
             const tab_o: *ObjBufferTab = @alignCast(@ptrCast(tab_inst.inst));
 
             tab_o.inter_selection.deinit();
@@ -415,9 +415,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});
 
-    _g.tab_vt = try apidb.globalVarValue(editor.EditorTabTypeI, module_name, TAB_NAME, obj_buffer_tab);
+    _g.tab_vt = try apidb.globalVarValue(editor.TabTypeI, module_name, TAB_NAME, obj_buffer_tab);
 
-    try apidb.implOrRemove(module_name, editor.EditorTabTypeI, &obj_buffer_tab, load);
+    try apidb.implOrRemove(module_name, editor.TabTypeI, &obj_buffer_tab, load);
     try apidb.implOrRemove(module_name, editor.ObjContextMenuI, &buffer_context_menu_i, load);
     try apidb.implOrRemove(module_name, editor.ObjContextMenuI, &add_to_buffer_context_menu_i, load);
     try apidb.implOrRemove(module_name, coreui.RegisterTestsI, &register_tests_i, load);

@@ -25,7 +25,7 @@ const Viewport = renderer.Viewport;
 const editor = @import("editor");
 const Icons = coreui.CoreIcons;
 
-const module_name = .editor_foo_viewport_tab;
+const module_name = .editor_entity;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
@@ -34,7 +34,7 @@ pub const std_options: std.Options = .{
 // Log for module
 const log = std.log.scoped(module_name);
 
-const TAB_NAME = "ct_editor_foo_viewport_tab";
+const TAB_NAME = "ct_editor_entity";
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
@@ -53,8 +53,8 @@ var _assetdb: *const assetdb.AssetDBAPI = undefined;
 var _uuid: *const uuid.UuidAPI = undefined;
 var _task: *const task.TaskAPI = undefined;
 var _viewport: *const cetech1.renderer.RendererApi = undefined;
-
-const World2CullingQuery = std.AutoArrayHashMap(ecs.World, ecs.Query);
+var _platform: *const cetech1.platform.PlatformApi = undefined;
+var _editor: *const editor.EditorAPI = undefined;
 
 // Global state that can surive hot-reload
 const G = struct {
@@ -64,17 +64,17 @@ const G = struct {
 };
 var _g: *G = undefined;
 
-const SPHERE_COUNT = 1_000;
-
-const seed: u64 = 1111;
-var prng = std.rand.DefaultPrng.init(seed);
-
 // Struct for tab type
-const FooViewportTab = struct {
+const EntityEditorTab = struct {
     tab_i: editor.TabI,
     viewport: Viewport = undefined,
+    db: cdb.Db,
     world: ecs.World,
     camera_look_activated: bool = false,
+
+    selection: coreui.SelectionItem = coreui.SelectionItem.empty(),
+    root_entity_obj: cdb.ObjId = .{},
+    root_entity: ?ecs.EntityId = null,
 
     camera: camera.SimpleFPSCamera = camera.SimpleFPSCamera.init(.{
         .position = .{ 0, 2, 12 },
@@ -82,64 +82,31 @@ const FooViewportTab = struct {
     }),
 
     flecs_port: ?u16 = null,
+
+    world_mtx: [16]f32 = zm.matToArr(zm.identity()),
 };
-
-// Some components and systems
-
-const Velocity = struct {
-    x: f32,
-    y: f32,
-    z: f32,
-};
-const velocity_c = ecs.ComponentI.implement(Velocity, null, struct {});
-
-const move_system_i = ecs.SystemI.implement(
-    .{
-        .name = "move system",
-        .multi_threaded = false,
-        .phase = ecs.OnUpdate,
-        .query = &.{
-            .{ .id = ecs.id(transform.Position), .inout = .InOut },
-            .{ .id = ecs.id(Velocity), .inout = .In },
-        },
-    },
-    struct {
-        pub fn update(iter: *ecs.IterO) !void {
-            var it = _ecs.toIter(iter);
-
-            const p = it.field(transform.Position, 0).?;
-            const v = it.field(Velocity, 1).?;
-
-            for (0..it.count()) |i| {
-                p[i].x += v[i].x;
-                p[i].y += v[i].y;
-                p[i].z += v[i].z;
-            }
-        }
-    },
-);
-
-// Rendering component
-
-const ECS_WORLD_CONTEXT = cetech1.strid.strId32("ecs_world_context");
-const ECS_ENTITY_CONTEXT = cetech1.strid.strId32("ecs_entity_context");
 
 // Fill editor tab interface
 var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
     .tab_hash = .{ .id = cetech1.strid.strId32(TAB_NAME).id },
-    .category = "Examples",
+
+    // TODO: Bug on linux CI
+    .create_on_init = true,
+    .show_sel_obj_in_title = true,
+
+    .ignore_selection_from_tab = &.{cetech1.strid.strId32("ct_editor_asset_browser_tab")},
 }, struct {
 
     // Return name for menu /Tabs/
     pub fn menuName() ![:0]const u8 {
-        return Icons.FA_ROBOT ++ "  " ++ "Foo viewport";
+        return Icons.FA_ROBOT ++ "  " ++ "Entity editor";
     }
 
     // Return tab title
     pub fn title(inst: *editor.TabO) ![:0]const u8 {
         _ = inst;
-        return Icons.FA_ROBOT ++ "  " ++ "Foo viewport";
+        return Icons.FA_ROBOT ++ "  " ++ "Entity editor";
     }
 
     // Create new tab instantce
@@ -148,45 +115,25 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         _g.db = db;
 
         var buf: [128]u8 = undefined;
-        const name = try std.fmt.bufPrintZ(&buf, "Foo viewport {d}", .{tab_id});
+        const name = try std.fmt.bufPrintZ(&buf, "Entity {d}", .{tab_id});
 
-        var tab_inst = _allocator.create(FooViewportTab) catch undefined;
+        var tab_inst = _allocator.create(EntityEditorTab) catch undefined;
         tab_inst.* = .{
             .viewport = try _viewport.createViewport(name, _g.rg, w),
             .world = w,
+            .db = db,
             .tab_i = .{
                 .vt = _g.test_tab_vt_ptr,
                 .inst = @ptrCast(tab_inst),
             },
         };
 
-        var allocator = try _tempalloc.create();
-        defer _tempalloc.destroy(allocator);
-
-        // TODO: TEMP HARDCODE SHIT HACK - created in 2024... if you still read this and year is not 2024 am still idiot ;)
-        if (_assetdb.getObjId(_uuid.fromStr("0191e6d1-830a-73d8-992a-aa6f9add6d1e").?)) |e_obj| {
-            const entities = try _ecs.spawnManyFromCDB(allocator, w, db, e_obj, SPHERE_COUNT);
-            defer allocator.free(entities);
-
-            const rnd = prng.random();
-
-            for (entities, 0..) |ent, idx| {
-                _ = idx;
-
-                _ = w.setId(Velocity, ent, &Velocity{
-                    .x = (rnd.float(f32) * 2 - 1) * 0.1,
-                    .y = (rnd.float(f32) * 2 - 1) * 0.1,
-                    .z = (rnd.float(f32) * 2 - 1) * 0.1,
-                });
-            }
-        }
-
         return &tab_inst.tab_i;
     }
 
     // Destroy tab instantce
     pub fn destroy(tab_inst: *editor.TabI) !void {
-        const tab_o: *FooViewportTab = @alignCast(@ptrCast(tab_inst.inst));
+        const tab_o: *EntityEditorTab = @alignCast(@ptrCast(tab_inst.inst));
         _viewport.destroyViewport(tab_o.viewport);
         _ecs.destroyWorld(tab_o.world);
         _allocator.destroy(tab_o);
@@ -196,10 +143,50 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
         _ = kernel_tick;
 
-        const tab_o: *FooViewportTab = @alignCast(@ptrCast(inst));
+        const tab_o: *EntityEditorTab = @alignCast(@ptrCast(inst));
+
+        var entiy_obj = cdb.ObjId{};
+        var selected_obj = cdb.ObjId{};
+
+        selected_obj = tab_o.selection.top_level_obj;
+        if (!selected_obj.isEmpty()) {
+            if (selected_obj.type_idx.eql(assetdb.Asset.typeIdx(tab_o.db))) {
+                if (!_assetdb.isAssetObjTypeOf(selected_obj, ecs.Entity.typeIdx(tab_o.db))) return;
+                entiy_obj = _assetdb.getObjForAsset(selected_obj).?;
+            } else if (selected_obj.type_idx.eql(ecs.Entity.typeIdx(tab_o.db))) {
+                entiy_obj = selected_obj;
+            }
+        }
+
+        const new_entity = !tab_o.root_entity_obj.eql(entiy_obj);
+        tab_o.root_entity_obj = entiy_obj;
+
+        const tmp_alloc = try _tempalloc.create();
+        defer _tempalloc.destroy(tmp_alloc);
+
+        if (new_entity) {
+            if (tab_o.root_entity) |root_ent| {
+                tab_o.world.destroyEntities(&.{root_ent});
+            }
+
+            const ents = try _ecs.spawnManyFromCDB(tmp_alloc, tab_o.world, tab_o.db, entiy_obj, 1);
+            defer tmp_alloc.free(ents);
+            tab_o.root_entity = ents[0];
+
+            tab_o.camera = camera.SimpleFPSCamera.init(.{
+                .position = .{ 0, 2, 12 },
+                .yaw = std.math.degreesToRadians(180),
+            });
+        }
+
         const size = _coreui.getContentRegionAvail();
         tab_o.viewport.setSize(size);
 
+        const wpos = _coreui.getWindowPos();
+        const cpos = _coreui.getCursorPos();
+        const wfocused = _coreui.isWindowFocused(coreui.FocusedFlags.root_and_child_windows);
+
+        var hovered = false;
         if (tab_o.viewport.getTexture()) |texture| {
             _coreui.image(
                 texture,
@@ -210,8 +197,64 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                     .h = size[1],
                 },
             );
-            const hovered = _coreui.isItemHovered(.{});
+            hovered = _coreui.isItemHovered(.{});
 
+            if (_coreui.beginDragDropTarget()) {
+                defer _coreui.endDragDropTarget();
+                if (_coreui.acceptDragDropPayload("obj", .{ .source_allow_null_id = true })) |payload| {
+                    const drag_obj: cdb.ObjId = std.mem.bytesToValue(cdb.ObjId, payload.data.?);
+
+                    if (drag_obj.type_idx.eql(assetdb.Asset.typeIdx(tab_o.db))) {
+                        const asset_entity_obj = _assetdb.getObjForAsset(drag_obj).?;
+                        if (!entiy_obj.eql(asset_entity_obj)) {
+                            if (asset_entity_obj.type_idx.eql(ecs.Entity.typeIdx(tab_o.db))) {
+                                const new_obj = try tab_o.db.createObjectFromPrototype(asset_entity_obj);
+
+                                const new_obj_w = ecs.Entity.write(tab_o.db, new_obj).?;
+                                const entiy_obj_w = ecs.Entity.write(tab_o.db, entiy_obj).?;
+
+                                try ecs.Entity.addSubObjToSet(tab_o.db, entiy_obj_w, .childrens, &.{new_obj_w});
+
+                                try ecs.Entity.commit(tab_o.db, new_obj_w);
+                                try ecs.Entity.commit(tab_o.db, entiy_obj_w);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        var gizmo_manipulate = false;
+        const gizmo_enabled = false;
+
+        // TODO: bug in imguizmo
+        if (gizmo_enabled) {
+            if (tab_o.root_entity != null and wfocused) {
+                _coreui.gizmoSetDrawList(_coreui.getWindowDrawList());
+                _coreui.gizmoSetRect(wpos[0] + cpos[0], wpos[1] + cpos[1], size[0], size[1]);
+
+                const view = tab_o.camera.calcViewMtx();
+                const projection = zm.matToArr(zm.perspectiveFovRhGl(
+                    0.25 * std.math.pi,
+                    size[0] / size[1],
+                    0.1,
+                    1000.0,
+                ));
+
+                // _coreui.pushPtrId(tab_o);
+                gizmo_manipulate = _coreui.gizmoManipulate(
+                    &view,
+                    &projection,
+                    coreui.Operation.translate(),
+                    .local,
+                    &tab_o.world_mtx,
+                    .{},
+                );
+                // _coreui.popId();
+            }
+        }
+
+        if (!gizmo_manipulate) {
             var camera_look_activated = false;
             {
                 _actions.pushSet(ViewportActionSet);
@@ -244,7 +287,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
     // Draw tab menu
     pub fn menu(inst: *editor.TabO) !void {
-        const tab_o: *FooViewportTab = @alignCast(@ptrCast(inst));
+        const tab_o: *EntityEditorTab = @alignCast(@ptrCast(inst));
 
         const allocator = try _tempalloc.create();
         defer _tempalloc.destroy(allocator);
@@ -253,6 +296,40 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             defer _coreui.endMenu();
             tab_o.flecs_port = tab_o.world.uiRemoteDebugMenuItems(allocator, tab_o.flecs_port);
         }
+    }
+
+    // Selected object
+    pub fn objSelected(inst: *editor.TabO, db: cdb.Db, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.strid.StrId32) !void {
+        _ = sender_tab_hash; // autofix
+        var tab_o: *EntityEditorTab = @alignCast(@ptrCast(inst));
+
+        const selected = selection[0];
+
+        if (_assetdb.isAssetObjTypeOf(selected.obj, ecs.Entity.typeIdx(db))) {
+            tab_o.selection = selected;
+        } else if (selected.obj.type_idx.eql(ecs.Entity.typeIdx(db))) {
+            tab_o.selection = selected;
+        }
+    }
+
+    pub fn focused(inst: *editor.TabO) !void {
+        const tab_o: *EntityEditorTab = @alignCast(@ptrCast(inst));
+
+        if (!tab_o.selection.isEmpty()) {
+            _editor.propagateSelection(tab_o.db, inst, &.{tab_o.selection});
+        }
+    }
+
+    // Can open tab
+    pub fn canOpen(allocator: Allocator, db: cdb.Db, selection: []const coreui.SelectionItem) !bool {
+        _ = allocator; // autofix
+        const EntityTypeIdx = ecs.Entity.typeIdx(db);
+        const AssetTypeIdx = assetdb.Asset.typeIdx(db);
+        for (selection) |obj| {
+            if (!obj.obj.type_idx.eql(EntityTypeIdx) and !obj.obj.type_idx.eql(AssetTypeIdx)) return false;
+            if (_assetdb.getObjForAsset(obj.obj)) |o| if (!o.type_idx.eql(EntityTypeIdx)) return false;
+        }
+        return true;
     }
 });
 
@@ -360,14 +437,14 @@ const blit_pass = gfx_rg.Pass.implement(struct {
     }
 });
 
-const ActivatedViewportActionSet = cetech1.strid.strId32("foo_activated_viewport");
-const ViewportActionSet = cetech1.strid.strId32("foo_viewport");
+const ActivatedViewportActionSet = cetech1.strid.strId32("entity_activated_viewport");
+const ViewportActionSet = cetech1.strid.strId32("entity_viewport");
 const MoveAction = cetech1.strid.strId32("move");
 const LookAction = cetech1.strid.strId32("look");
 const LookActivationAction = cetech1.strid.strId32("look_activation");
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
-    "FooViewportTab",
+    "EditorEntityTab",
     &[_]cetech1.strid.StrId64{},
     struct {
         pub fn init() !void {
@@ -450,6 +527,8 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _uuid = apidb.getZigApi(module_name, uuid.UuidAPI).?;
     _task = apidb.getZigApi(module_name, task.TaskAPI).?;
     _viewport = apidb.getZigApi(module_name, cetech1.renderer.RendererApi).?;
+    _platform = apidb.getZigApi(module_name, cetech1.platform.PlatformApi).?;
+    _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
 
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});
@@ -461,16 +540,10 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
     try apidb.implOrRemove(module_name, editor.TabTypeI, &foo_tab, load);
 
-    // Components
-    try apidb.implOrRemove(module_name, ecs.ComponentI, &velocity_c, load);
-
-    // System
-    try apidb.implOrRemove(module_name, ecs.SystemI, &move_system_i, load);
-
     return true;
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_foo_viewport_tab(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor_entity(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

@@ -8,6 +8,8 @@ pub const OBJID_ZERO = ObjId{};
 
 pub const ObjVersion = u64;
 
+pub const TypeHash = strid.StrId32;
+
 /// Type idx
 pub const TypeIdx = packed struct(u32) {
     idx: u32 = 0,
@@ -124,7 +126,7 @@ pub const PropDef = struct {
     type: PropType,
 
     /// Force type for ref/subobj base types
-    type_hash: strid.StrId32 = .{},
+    type_hash: TypeHash = .{},
 };
 
 pub const ObjRelation = enum {
@@ -598,8 +600,8 @@ pub const Db = struct {
     }
 
     //TODO: temporary
-    pub inline fn stressIt(self: Self, type_idx: TypeIdx, type_hash2: TypeIdx, ref_obj1: ObjId) anyerror!void {
-        try self.vtable.stressItFn(self.ptr, type_idx, type_hash2, ref_obj1);
+    pub inline fn stressIt(self: Self, type_idx: TypeIdx, type_idx2: TypeIdx, ref_obj1: ObjId) anyerror!void {
+        try self.vtable.stressItFn(self.ptr, type_idx, type_idx2, ref_obj1);
     }
 
     pub inline fn isIinisiated(self: Self, obj: *Obj, set_prop_idx: u32, inisiated_obj: *Obj) bool {
@@ -643,8 +645,12 @@ pub const Db = struct {
     }
 
     // For performance reason cache typeidx
-    pub inline fn getTypeIdx(self: Self, type_hash: strid.StrId32) ?TypeIdx {
+    pub inline fn getTypeIdx(self: Self, type_hash: TypeHash) ?TypeIdx {
         return self.vtable.getTypeIdxFn(self.ptr, type_hash);
+    }
+
+    pub inline fn getTypeHash(self: Self, type_idx: TypeIdx) ?TypeHash {
+        return self.vtable.getTypeHashFn(self.ptr, type_idx);
     }
 
     pub inline fn getChangeObjects(self: Self, allocator: std.mem.Allocator, type_idx: TypeIdx, since_version: TypeVersion) !ChangedObjects {
@@ -750,7 +756,7 @@ pub const Db = struct {
         createBlobFn: *const fn (db: *anyopaque, writer: *Obj, prop_idx: u32, size: usize) anyerror!?[]u8,
         readBlobFn: *const fn (db: *anyopaque, reader: *Obj, prop_idx: u32) []u8,
 
-        stressItFn: *const fn (db: *anyopaque, type_idx: TypeIdx, type_hash2: TypeIdx, ref_obj1: ObjId) anyerror!void,
+        stressItFn: *const fn (db: *anyopaque, type_idx: TypeIdx, type_idx2: TypeIdx, ref_obj1: ObjId) anyerror!void,
 
         gcFn: *const fn (db: *anyopaque, tmp_allocator: std.mem.Allocator) anyerror!void,
         dump: *const fn (db: *anyopaque) anyerror!void,
@@ -758,7 +764,8 @@ pub const Db = struct {
         hasTypeSetFn: *const fn (db: *anyopaque, type_idx: TypeIdx) bool,
         hasTypeSubobjectFn: *const fn (db: *anyopaque, type_idx: TypeIdx) bool,
 
-        getTypeIdxFn: *const fn (db: *anyopaque, type_hash: strid.StrId32) ?TypeIdx,
+        getTypeIdxFn: *const fn (db: *anyopaque, type_hash: TypeHash) ?TypeIdx,
+        getTypeHashFn: *const fn (db: *anyopaque, type_idx: TypeIdx) ?TypeHash,
 
         getChangeObjects: *const fn (db: *anyopaque, allocator: std.mem.Allocator, type_idx: TypeIdx, since_version: TypeVersion) anyerror!ChangedObjects,
         isAlive: *const fn (db: *anyopaque, obj: ObjId) bool,

@@ -29,6 +29,10 @@ pub const SelectionItem = struct {
     pub fn empty() SelectionItem {
         return .{ .top_level_obj = .{}, .obj = .{} };
     }
+
+    pub fn eql(self: SelectionItem, other: SelectionItem) SelectionItem {
+        return std.mem.eql(u8, std.mem.toBytes(self), std.mem.toBytes(other));
+    }
 };
 
 // TODO: TEMP solution. need api
@@ -187,6 +191,13 @@ pub const Icons = struct {
     pub const Output = CoreIcons.FA_RIGHT_FROM_BRACKET;
 
     pub const Metrics = CoreIcons.FA_CHART_LINE;
+
+    pub const Entity = CoreIcons.FA_ROBOT;
+    pub const Component = CoreIcons.FA_POO;
+
+    pub const Position = CoreIcons.FA_UP_DOWN_LEFT_RIGHT;
+    pub const Rotation = CoreIcons.FA_ROTATE;
+    pub const Scale = CoreIcons.FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER;
 };
 
 pub const CoreUII = struct {
@@ -508,6 +519,7 @@ pub const CoreUIApi = struct {
     getContentRegionMax: *const fn () [2]f32,
     getContentRegionAvail: *const fn () [2]f32,
     setCursorPosX: *const fn (x: f32) void,
+    setCursorPosY: *const fn (y: f32) void,
 
     beginDragDropSource: *const fn (flags: DragDropFlags) bool,
     setDragDropPayload: *const fn (payload_type: [*:0]const u8, data: []const u8, cond: Condition) bool,
@@ -580,6 +592,73 @@ pub const CoreUIApi = struct {
 
     beginDisabled: *const fn (args: BeginDisabled) void,
     endDisabled: *const fn () void,
+
+    // TODO: mode
+    gizmoSetRect: *const fn (x: f32, y: f32, width: f32, height: f32) void,
+    gizmoSetDrawList: *const fn (draw_list: ?DrawList) void,
+
+    gizmoManipulate: *const fn (
+        view: *const [16]f32,
+        projection: *const [16]f32,
+        operation: Operation,
+        mode: Mode,
+        matrix: *[16]f32,
+        opt: struct {
+            delta_matrix: ?*[16]f32 = null,
+            snap: ?*const [3]f32 = null,
+            local_bounds: ?*const [6]f32 = null,
+            bounds_snap: ?*const [3]f32 = null,
+        },
+    ) bool,
+};
+
+pub const Operation = packed struct(u32) {
+    translate_x: bool = false,
+    translate_y: bool = false,
+    translate_z: bool = false,
+    rotate_x: bool = false,
+    rotate_y: bool = false,
+    rotate_z: bool = false,
+    rotate_screen: bool = false,
+    scale_x: bool = false,
+    scale_y: bool = false,
+    scale_z: bool = false,
+    bounds: bool = false,
+    scale_xu: bool = false,
+    scale_yu: bool = false,
+    scale_zu: bool = false,
+    _padding: u18 = 0,
+
+    pub fn translate() Operation {
+        return .{ .translate_x = true, .translate_y = true, .translate_z = true };
+    }
+    pub fn rotate() Operation {
+        return .{ .rotate_x = true, .rotate_y = true, .rotate_z = true };
+    }
+    pub fn scale() Operation {
+        return .{ .scale_x = true, .scale_y = true, .scale_z = true };
+    }
+    pub fn scaleU() Operation {
+        return .{ .scale_xu = true, .scale_yu = true, .scale_zu = true };
+    }
+    pub fn universal() Operation {
+        return .{
+            .translate_x = true,
+            .translate_y = true,
+            .translate_z = true,
+            .rotate_x = true,
+            .rotate_y = true,
+            .rotate_z = true,
+            .scale_xu = true,
+            .scale_yu = true,
+            .scale_zu = true,
+        };
+    }
+};
+
+pub const Mode = enum(u32) {
+    local,
+    world,
 };
 
 pub const DrawCmd = extern struct {
