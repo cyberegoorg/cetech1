@@ -228,11 +228,11 @@ pub fn VirtualPool(comptime T: type) type {
             self.free_id_node_pool.deinit();
         }
 
-        pub fn index(self: *Self, id: *T) u32 {
+        pub inline fn index(self: *Self, id: *T) u32 {
             return @truncate((@intFromPtr(id) - @intFromPtr(self.mem.items)) / @sizeOf(T));
         }
 
-        pub fn get(self: *Self, idx: u32) *T {
+        pub inline fn get(self: *Self, idx: u32) *T {
             return &self.mem.items[idx];
         }
 

@@ -35,7 +35,7 @@ pub fn build(b: *std.Build) !void {
         l.root_module.addImport("editor", editor.module("editor"));
         l.root_module.addImport("asset_preview", asset_preview.module("asset_preview"));
         l.root_module.addImport("editor_tree", editor_tree.module("editor_tree"));
-        l.addIncludePath(cetech1.path("includes"));
+
         b.installArtifact(l);
     }
 }

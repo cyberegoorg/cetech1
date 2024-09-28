@@ -1,9 +1,6 @@
 [submodule "externals/shared/lib/zig-gamedev"]
 	path = externals/shared/lib/zig-gamedev
 	url = https://github.com/OndraVoves/zig-gamedev.git
-[submodule "externals/shared/lib/zf"]
-	path = externals/shared/lib/zf
-	url = https://github.com/natecraddock/zf.git
 [submodule "externals/shared/tools/zls"]
 	path = externals/shared/tools/zls
 	url = https://github.com/zigtools/zls.git
@@ -22,3 +19,6 @@
 [submodule "externals/shared/lib/zig-uuid"]
 	path = externals/shared/lib/zig-uuid
 	url = https://github.com/tensorush/zig-uuid.git
+[submodule "externals/shared/lib/zf"]
+	path = externals/shared/lib/zf
+	url = https://github.com/OndraVoves/zf.git

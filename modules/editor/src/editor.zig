@@ -21,7 +21,6 @@ pub const UiSetMenusAspect = struct {
 
     add_menu: *const fn (
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
         prop_idx: u32,
     ) anyerror!void = undefined,
@@ -41,25 +40,21 @@ pub const UiVisualAspect = struct {
     ui_name: ?*const fn (
         buff: [:0]u8,
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
     ) anyerror![:0]const u8 = null,
 
     ui_icons: ?*const fn (
         buff: [:0]u8,
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
     ) anyerror![:0]const u8 = null,
 
     ui_color: ?*const fn (
-        db: cdb.Db,
         obj: cdb.ObjId,
     ) anyerror![4]f32 = null,
 
     ui_tooltip: ?*const fn (
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
     ) anyerror!void = null,
 
@@ -79,7 +74,6 @@ pub const UiDropObj = struct {
 
     ui_drop_obj: *const fn (
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         tab: *TabO,
         obj: cdb.ObjId,
         prop_idx: ?u32,
@@ -101,7 +95,6 @@ pub const ObjContextMenuI = struct {
 
     is_valid: ?*const fn (
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         tab: *TabO,
         context: strid.StrId64,
         obj: []const coreui.SelectionItem,
@@ -110,7 +103,6 @@ pub const ObjContextMenuI = struct {
 
     menu: ?*const fn (
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         tab: *TabO,
         context: strid.StrId64,
         obj: []const coreui.SelectionItem,
@@ -138,7 +130,7 @@ pub const CreateAssetI = struct {
 
     create: *const fn (
         allocator: std.mem.Allocator,
-        db: cdb.Db,
+        db: cdb.DbId,
         folder: cdb.ObjId,
     ) anyerror!void,
 
@@ -190,21 +182,20 @@ pub const TabTypeI = struct {
 
     menu_name: *const fn () anyerror![:0]const u8 = undefined,
     title: *const fn (*TabO) anyerror![:0]const u8 = undefined,
-    can_open: ?*const fn (std.mem.Allocator, cdb.Db, []const coreui.SelectionItem) anyerror!bool = null,
+    can_open: ?*const fn (std.mem.Allocator, []const coreui.SelectionItem) anyerror!bool = null,
 
-    create: *const fn (cdb.Db, tab_id: u32) anyerror!?*TabI = undefined,
+    create: *const fn (tab_id: u32) anyerror!?*TabI = undefined,
     destroy: *const fn (*TabI) anyerror!void = undefined,
 
     menu: ?*const fn (*TabO) anyerror!void = null,
     ui: *const fn (*TabO, kernel_tick: u64, dt: f32) anyerror!void = undefined,
-    obj_selected: ?*const fn (*TabO, cdb.Db, []const coreui.SelectionItem, sender_tab_hash: ?strid.StrId32) anyerror!void = null,
+    obj_selected: ?*const fn (*TabO, []const coreui.SelectionItem, sender_tab_hash: ?strid.StrId32) anyerror!void = null,
     focused: ?*const fn (*TabO) anyerror!void = null,
     asset_root_opened: ?*const fn (*TabO) anyerror!void = null,
 
     select_obj_from_menu: ?*const fn (
         allocator: std.mem.Allocator,
         *TabO,
-        cdb.Db,
         ignored_obj: cdb.ObjId,
         allowed_type: cdb.TypeIdx,
     ) anyerror!cdb.ObjId = null,
@@ -245,26 +236,25 @@ pub const TabTypeI = struct {
 
 pub const EditorAPI = struct {
     // Selection
-    propagateSelection: *const fn (db: cdb.Db, tab: *TabO, obj: []const coreui.SelectionItem) void,
+    propagateSelection: *const fn (tab: *TabO, obj: []const coreui.SelectionItem) void,
 
     // Tabs
-    openTabWithPinnedObj: *const fn (db: cdb.Db, tab_type_hash: strid.StrId32, obj: coreui.SelectionItem) void,
+    openTabWithPinnedObj: *const fn (tab_type_hash: strid.StrId32, obj: coreui.SelectionItem) void,
     getAllTabsByType: *const fn (allocator: std.mem.Allocator, tab_type_hash: strid.StrId32) anyerror![]*TabI,
 
     showObjContextMenu: *const fn (
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         tab: *TabO,
         contexts: []const strid.StrId64,
         obj: coreui.SelectionItem,
     ) anyerror!void,
 
-    buffFormatObjLabel: *const fn (allocator: std.mem.Allocator, buff: [:0]u8, db: cdb.Db, obj: cdb.ObjId, with_id: bool, uuid_id: bool) ?[:0]u8,
+    buffFormatObjLabel: *const fn (allocator: std.mem.Allocator, buff: [:0]u8, obj: cdb.ObjId, with_id: bool, uuid_id: bool) ?[:0]u8,
 
     getStateColor: *const fn (state: cdb.ObjRelation) [4]f32,
-    getObjColor: *const fn (db: cdb.Db, obj: cdb.ObjId, in_set_obj: ?cdb.ObjId) ?[4]f32,
-    getAssetColor: *const fn (db: cdb.Db, obj: cdb.ObjId) [4]f32,
+    getObjColor: *const fn (obj: cdb.ObjId, in_set_obj: ?cdb.ObjId) ?[4]f32,
+    getAssetColor: *const fn (obj: cdb.ObjId) [4]f32,
 
     isColorsEnabled: *const fn () bool,
-    selectObjFromMenu: *const fn (allocator: std.mem.Allocator, db: cdb.Db, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) ?cdb.ObjId,
+    selectObjFromMenu: *const fn (allocator: std.mem.Allocator, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) ?cdb.ObjId,
 };

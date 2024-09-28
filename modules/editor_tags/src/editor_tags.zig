@@ -5,7 +5,6 @@ const cdb = cetech1.cdb;
 pub const EditorTagsApi = struct {
     tagsInput: *const fn (
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
         prop_idx: u32,
         in_table: bool,

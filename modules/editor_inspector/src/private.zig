@@ -70,10 +70,6 @@ var api = public.InspectorAPI{
     .endPropTabel = endPropTabel,
 };
 
-fn openNewInspectorForObj(db: cdb.Db, obj: cdb.ObjId) void {
-    _editor.openTabWithPinnedObj(db, INSPECTOR_TAB_NAME_HASH, obj);
-}
-
 fn formatedPropNameToBuff(buf: []u8, prop_name: [:0]const u8) ![]u8 {
     var split = std.mem.split(u8, prop_name, "_");
     const first = split.first();
@@ -101,22 +97,22 @@ fn formatedPropNameToBuff(buf: []u8, prop_name: [:0]const u8) ![]u8 {
 
 fn uiAssetInput(
     allocator: std.mem.Allocator,
-    db: cdb.Db,
     tab: *editor.TabO,
     obj: cdb.ObjId,
     prop_idx: u32,
     read_only: bool,
     in_table: bool,
 ) !void {
-    const obj_r = db.readObj(obj) orelse return;
+    const obj_r = _cdb.readObj(obj) orelse return;
+    const db = _cdb.getDbFromObjid(obj);
 
-    const defs = db.getTypePropDef(obj.type_idx).?;
+    const defs = _cdb.getTypePropDef(db, obj.type_idx).?;
     const prop_def = defs[prop_idx];
 
     var value_obj: cdb.ObjId = .{};
     switch (prop_def.type) {
         .REFERENCE => {
-            if (db.readRef(obj_r, prop_idx)) |o| {
+            if (_cdb.readRef(obj_r, prop_idx)) |o| {
                 value_obj = o;
             }
         },
@@ -138,7 +134,7 @@ fn uiAssetInput(
     );
 }
 
-fn uiAssetInputProto(allocator: std.mem.Allocator, db: cdb.Db, tab: *editor.TabO, obj: cdb.ObjId, value_obj: cdb.ObjId, read_only: bool) !void {
+fn uiAssetInputProto(allocator: std.mem.Allocator, db: cdb.DbId, tab: *editor.TabO, obj: cdb.ObjId, value_obj: cdb.ObjId, read_only: bool) !void {
     return uiAssetInputGeneric(
         allocator,
         db,
@@ -154,7 +150,7 @@ fn uiAssetInputProto(allocator: std.mem.Allocator, db: cdb.Db, tab: *editor.TabO
 
 fn uiAssetInputGeneric(
     allocator: std.mem.Allocator,
-    db: cdb.Db,
+    db: cdb.DbId,
     tab: *editor.TabO,
     obj: cdb.ObjId,
     value_obj: cdb.ObjId,
@@ -180,13 +176,13 @@ fn uiAssetInputGeneric(
         asset_name = try std.fmt.bufPrintZ(&buff, "", .{});
     }
 
-    const prop_def = db.getTypePropDef(obj.type_idx).?;
-    const allowed_type = if (is_proto) obj.type_idx else db.getTypeIdx(prop_def[prop_idx].type_hash) orelse cdb.TypeIdx{};
+    const prop_def = _cdb.getTypePropDef(db, obj.type_idx).?;
+    const allowed_type = if (is_proto) obj.type_idx else _cdb.getTypeIdx(db, prop_def[prop_idx].type_hash) orelse cdb.TypeIdx{};
 
     _coreui.pushObjUUID(obj);
     defer _coreui.popId();
 
-    if (!is_proto) _coreui.pushPropName(db, obj, prop_idx);
+    if (!is_proto) _coreui.pushPropName(obj, prop_idx);
     defer if (!is_proto) _coreui.popId();
 
     if (in_table) {
@@ -194,36 +190,36 @@ fn uiAssetInputGeneric(
     }
 
     if (!is_proto) {
-        try uiInputProtoBtns(db, obj, prop_idx);
+        try uiInputProtoBtns(obj, prop_idx);
     }
 
     if (_coreui.beginPopup("ui_asset_context_menu", .{})) {
         defer _coreui.endPopup();
-        if (_editor.selectObjFromMenu(allocator, db, _assetdb.getObjForAsset(obj) orelse obj, allowed_type)) |selected| {
+        if (_editor.selectObjFromMenu(allocator, _assetdb.getObjForAsset(obj) orelse obj, allowed_type)) |selected| {
             if (is_proto) {
-                try db.setPrototype(obj, selected);
+                try _cdb.setPrototype(obj, selected);
             } else {
-                const w = db.writeObj(obj).?;
-                try db.setRef(w, prop_idx, selected);
-                try db.writeCommit(w);
+                const w = _cdb.writeObj(obj).?;
+                try _cdb.setRef(w, prop_idx, selected);
+                try _cdb.writeCommit(w);
             }
         }
 
-        if (!_assetdb.isAssetObjTypeOf(obj, assetdb.Folder.typeIdx(db))) {
+        if (!_assetdb.isAssetObjTypeOf(obj, assetdb.Folder.typeIdx(_cdb, db))) {
             if (_coreui.menuItem(allocator, coreui.Icons.Clear ++ "  " ++ "Clear" ++ "###Clear", .{ .enabled = !read_only and value_asset != null }, null)) {
                 if (is_proto) {
-                    try db.setPrototype(obj, cdb.OBJID_ZERO);
+                    try _cdb.setPrototype(obj, cdb.OBJID_ZERO);
                 } else {
-                    const w = db.writeObj(obj).?;
-                    try db.clearRef(w, prop_idx);
-                    try db.writeCommit(w);
+                    const w = _cdb.writeObj(obj).?;
+                    try _cdb.clearRef(w, prop_idx);
+                    try _cdb.writeCommit(w);
                 }
             }
         }
 
         if (_coreui.beginMenu(allocator, coreui.Icons.ContextMenu ++ "  " ++ "Context", value_asset != null, null)) {
             defer _coreui.endMenu();
-            try _editor.showObjContextMenu(allocator, db, tab, &.{editor.Contexts.open}, .{ .top_level_obj = value_asset.?, .obj = value_asset.? });
+            try _editor.showObjContextMenu(allocator, tab, &.{editor.Contexts.open}, .{ .top_level_obj = value_asset.?, .obj = value_asset.? });
         }
     }
 
@@ -245,19 +241,19 @@ fn uiAssetInputGeneric(
         if (_coreui.acceptDragDropPayload("obj", .{ .source_allow_null_id = true })) |payload| {
             var drag_obj: cdb.ObjId = std.mem.bytesToValue(cdb.ObjId, payload.data.?);
             if (drag_obj.type_idx.eql(AssetTypeIdx)) {
-                drag_obj = assetdb.Asset.readSubObj(db, db.readObj(drag_obj).?, .Object).?;
+                drag_obj = assetdb.Asset.readSubObj(_cdb, _cdb.readObj(drag_obj).?, .Object).?;
             }
 
             if (is_proto) {
                 if (!drag_obj.eql(obj)) {
-                    try db.setPrototype(obj, drag_obj);
+                    try _cdb.setPrototype(obj, drag_obj);
                 }
             } else {
-                const allowed_type_hash = db.getTypeIdx(db.getTypePropDef(obj.type_idx).?[prop_idx].type_hash) orelse cdb.TypeIdx{};
+                const allowed_type_hash = _cdb.getTypeIdx(db, _cdb.getTypePropDef(db, obj.type_idx).?[prop_idx].type_hash) orelse cdb.TypeIdx{};
                 if (allowed_type_hash.isEmpty() or allowed_type_hash.eql(drag_obj.type_idx)) {
-                    const w = db.writeObj(obj).?;
-                    try db.setRef(w, prop_idx, drag_obj);
-                    try db.writeCommit(w);
+                    const w = _cdb.writeObj(obj).?;
+                    try _cdb.setRef(w, prop_idx, drag_obj);
+                    try _cdb.writeCommit(w);
                 }
             }
         }
@@ -320,17 +316,17 @@ fn endSection(open: bool, flat: bool) void {
     }
 }
 
-fn cdbPropertiesView(allocator: std.mem.Allocator, db: cdb.Db, tab: *editor.TabO, top_level_obj: cdb.ObjId, obj: cdb.ObjId, depth: u32, args: public.cdbPropertiesViewArgs) !void {
+fn cdbPropertiesView(allocator: std.mem.Allocator, tab: *editor.TabO, top_level_obj: cdb.ObjId, obj: cdb.ObjId, depth: u32, args: public.cdbPropertiesViewArgs) !void {
     _coreui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 10 });
     defer _coreui.popStyleVar(.{});
-    try cdbPropertiesObj(allocator, db, tab, top_level_obj, obj, depth, args);
+    try cdbPropertiesObj(allocator, tab, top_level_obj, obj, depth, args);
 }
 const REMOVED_COLOR = .{ 0.7, 0.0, 0.0, 1.0 };
 
-fn objContextMenuBtn(allocator: std.mem.Allocator, db: cdb.Db, tab: *editor.TabO, top_level_obj: cdb.ObjId, obj: cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cdb.ObjId) !void {
+fn objContextMenuBtn(allocator: std.mem.Allocator, tab: *editor.TabO, top_level_obj: cdb.ObjId, obj: cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cdb.ObjId) !void {
     if (_coreui.beginPopup("property_obj_menu", .{})) {
         defer _coreui.endPopup();
-        try _editor.showObjContextMenu(allocator, db, tab, &.{editor.Contexts.open}, .{
+        try _editor.showObjContextMenu(allocator, tab, &.{editor.Contexts.open}, .{
             .top_level_obj = top_level_obj,
             .obj = obj,
             .prop_idx = prop_idx,
@@ -345,7 +341,6 @@ fn objContextMenuBtn(allocator: std.mem.Allocator, db: cdb.Db, tab: *editor.TabO
 
 fn cdbPropertiesObj(
     allocator: std.mem.Allocator,
-    db: cdb.Db,
     tab: *editor.TabO,
     top_level_obj: cdb.ObjId,
     obj: cdb.ObjId,
@@ -355,27 +350,29 @@ fn cdbPropertiesObj(
     var zone_ctx = _profiler.Zone(@src());
     defer zone_ctx.End();
 
-    const enabled = if (args.parent_disabled) false else db.isChildOff(top_level_obj, obj);
+    const enabled = if (args.parent_disabled) false else _cdb.isChildOff(top_level_obj, obj);
+
+    const db = _cdb.getDbFromObjid(obj);
 
     // Find properties asspect for obj type.
-    const ui_aspect = db.getAspect(public.UiPropertiesAspect, obj.type_idx);
+    const ui_aspect = _cdb.getAspect(public.UiPropertiesAspect, db, obj.type_idx);
     if (ui_aspect) |aspect| {
-        try aspect.ui_properties(allocator, db, tab, top_level_obj, obj, depth, args);
+        try aspect.ui_properties(allocator, tab, top_level_obj, obj, depth, args);
         return;
     }
 
     _coreui.pushObjUUID(obj);
     defer _coreui.popId();
 
-    const obj_r = db.readObj(obj) orelse return;
+    const obj_r = _cdb.readObj(obj) orelse return;
 
     // Find properties config asspect for obj type.
-    const config_aspect = db.getAspect(public.UiPropertiesConfigAspect, obj.type_idx);
+    const config_aspect = _cdb.getAspect(public.UiPropertiesConfigAspect, db, obj.type_idx);
 
-    const prototype_obj = db.getPrototype(obj_r);
+    const prototype_obj = _cdb.getPrototype(obj_r);
     //const has_prototype = !prototype_obj.isEmpty();
 
-    const prop_defs = db.getTypePropDef(obj.type_idx).?;
+    const prop_defs = _cdb.getTypePropDef(db, obj.type_idx).?;
 
     var buff: [128:0]u8 = undefined;
     var prop_name_buff: [128:0]u8 = undefined;
@@ -408,7 +405,7 @@ fn cdbPropertiesObj(
             const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
 
             const prop_name = if (visible) try api.formatedPropNameToBuff(&prop_name_buff, prop_def.name) else "";
-            const prop_state = if (visible) db.getRelation(top_level_obj, obj, prop_idx, null) else .not_owned;
+            const prop_state = if (visible) _cdb.getRelation(top_level_obj, obj, prop_idx, null) else .not_owned;
             const prop_color = _editor.getStateColor(prop_state);
 
             switch (prop_def.type) {
@@ -416,22 +413,22 @@ fn cdbPropertiesObj(
             }
             var ui_prop_aspect: ?*public.UiPropertyAspect = null;
             if (prop_def.type != .REFERENCE_SET and prop_def.type != .SUBOBJECT_SET) {
-                ui_prop_aspect = db.getPropertyAspect(public.UiPropertyAspect, obj.type_idx, prop_idx);
+                ui_prop_aspect = _cdb.getPropertyAspect(public.UiPropertyAspect, db, obj.type_idx, prop_idx);
                 // If exist aspect and is empty hide property.
                 if (ui_prop_aspect) |aspect| {
-                    aspect.ui_property(allocator, db, obj, prop_idx, args) catch continue;
+                    aspect.ui_property(allocator, obj, prop_idx, args) catch continue;
                 }
             }
 
             switch (prop_def.type) {
                 .REFERENCE_SET, .SUBOBJECT_SET => {
-                    const ui_embed_prop_aspect = db.getPropertyAspect(public.UiEmbedPropertyAspect, obj.type_idx, prop_idx);
+                    const ui_embed_prop_aspect = _cdb.getPropertyAspect(public.UiEmbedPropertyAspect, db, obj.type_idx, prop_idx);
                     if (ui_embed_prop_aspect) |aspect| {
                         const lbl = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
                         if (uiPropLabel(allocator, lbl, prop_color, enabled, args)) {
                             _coreui.beginDisabled(.{ .disabled = !enabled });
                             defer _coreui.endDisabled();
-                            try aspect.ui_properties(allocator, db, obj, prop_idx, args);
+                            try aspect.ui_properties(allocator, obj, prop_idx, args);
                             continue;
                         }
                     }
@@ -440,19 +437,19 @@ fn cdbPropertiesObj(
                 // If subobject type implement UiEmbedPropertiesAspect show it in table
                 .SUBOBJECT => {
                     if (prop_def.type_hash.id == 0) continue;
-                    const subobj = db.readSubObj(obj_r, prop_idx);
-                    const ui_embed_prop_aspect = db.getAspect(public.UiEmbedPropertiesAspect, db.getTypeIdx(prop_def.type_hash).?);
+                    const subobj = _cdb.readSubObj(obj_r, prop_idx);
+                    const ui_embed_prop_aspect = _cdb.getAspect(public.UiEmbedPropertiesAspect, db, _cdb.getTypeIdx(db, prop_def.type_hash).?);
                     if (ui_embed_prop_aspect) |aspect| {
                         const lbl = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
                         if (visible) {
                             if (uiPropLabel(allocator, lbl, prop_color, enabled, args)) {
                                 _coreui.tableNextColumn();
                                 if (subobj == null) {
-                                    try objContextMenuBtn(allocator, db, tab, top_level_obj, obj, prop_idx, null);
+                                    try objContextMenuBtn(allocator, tab, top_level_obj, obj, prop_idx, null);
                                 } else {
                                     _coreui.beginDisabled(.{ .disabled = !enabled });
                                     defer _coreui.endDisabled();
-                                    try aspect.ui_properties(allocator, db, subobj.?, args);
+                                    try aspect.ui_properties(allocator, subobj.?, args);
                                 }
                             }
                         } else {
@@ -471,14 +468,14 @@ fn cdbPropertiesObj(
                         }
                     }
 
-                    ref = db.readRef(obj_r, prop_idx);
+                    ref = _cdb.readRef(obj_r, prop_idx);
 
                     const label = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
 
                     if (uiPropLabel(allocator, label, prop_color, enabled, args)) {
                         _coreui.beginDisabled(.{ .disabled = !enabled });
                         defer _coreui.endDisabled();
-                        try uiAssetInput(allocator, db, tab, obj, prop_idx, false, true);
+                        try uiAssetInput(allocator, tab, obj, prop_idx, false, true);
                     }
                 },
                 else => {
@@ -493,9 +490,9 @@ fn cdbPropertiesObj(
                         _coreui.beginDisabled(.{ .disabled = !enabled });
                         defer _coreui.endDisabled();
                         if (ui_prop_aspect) |aspect| {
-                            try aspect.ui_property(allocator, db, obj, prop_idx, args);
+                            try aspect.ui_property(allocator, obj, prop_idx, args);
                         } else {
-                            try api.uiPropInput(db, obj, prop_idx, enabled, args);
+                            try api.uiPropInput(obj, prop_idx, enabled, args);
                         }
                     }
                 },
@@ -512,22 +509,22 @@ fn cdbPropertiesObj(
 
         const prop_idx: u32 = @truncate(idx);
 
-        _coreui.pushPropName(db, obj, @truncate(idx));
+        _coreui.pushPropName(obj, @truncate(idx));
         defer _coreui.popId();
 
         const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
 
         const prop_name = if (visible) try api.formatedPropNameToBuff(&prop_name_buff, prop_def.name) else "";
-        const prop_state = if (visible) db.getRelation(top_level_obj, obj, prop_idx, null) else .not_owned;
+        const prop_state = if (visible) _cdb.getRelation(top_level_obj, obj, prop_idx, null) else .not_owned;
         const prop_color = _editor.getStateColor(prop_state);
 
-        const ui_prop_aspect = db.getPropertyAspect(public.UiPropertyAspect, obj.type_idx, prop_idx);
+        const ui_prop_aspect = _cdb.getPropertyAspect(public.UiPropertyAspect, db, obj.type_idx, prop_idx);
         // If exist aspect and is empty hide property.
         if (ui_prop_aspect) |aspect| {
             var a = args;
             a.parent_disabled = !enabled;
 
-            try aspect.ui_property(allocator, db, obj, prop_idx, a);
+            try aspect.ui_property(allocator, obj, prop_idx, a);
             continue;
         }
 
@@ -541,16 +538,16 @@ fn cdbPropertiesObj(
                     }
                 }
 
-                subobj = db.readSubObj(obj_r, prop_idx);
+                subobj = _cdb.readSubObj(obj_r, prop_idx);
 
-                if (db.getTypeIdx(prop_def.type_hash)) |type_idx| {
-                    if (db.getAspect(public.UiEmbedPropertiesAspect, type_idx) != null) continue;
+                if (_cdb.getTypeIdx(db, prop_def.type_hash)) |type_idx| {
+                    if (_cdb.getAspect(public.UiEmbedPropertiesAspect, db, type_idx) != null) continue;
                 }
 
                 const label = try std.fmt.bufPrintZ(&buff, "{s}  {s}", .{ prop_name, if (prop_def.type == .REFERENCE) "  " ++ Icons.FA_LINK else "" });
 
                 if (!args.flat) {
-                    try objContextMenuBtn(allocator, db, tab, top_level_obj, obj, prop_idx, null);
+                    try objContextMenuBtn(allocator, tab, top_level_obj, obj, prop_idx, null);
                     _coreui.sameLine(.{});
                 }
 
@@ -564,13 +561,13 @@ fn cdbPropertiesObj(
                         var a = args;
                         a.parent_disabled = !enabled;
 
-                        try cdbPropertiesObj(allocator, db, tab, top_level_obj, subobj.?, depth + 1, a);
+                        try cdbPropertiesObj(allocator, tab, top_level_obj, subobj.?, depth + 1, a);
                     }
                 }
             },
 
             .SUBOBJECT_SET, .REFERENCE_SET => {
-                if (db.getPropertyAspect(public.UiEmbedPropertyAspect, obj.type_idx, prop_idx) != null) {
+                if (_cdb.getPropertyAspect(public.UiEmbedPropertyAspect, db, obj.type_idx, prop_idx) != null) {
                     continue;
                 }
 
@@ -581,15 +578,15 @@ fn cdbPropertiesObj(
                 });
 
                 if (!args.flat) {
-                    try objContextMenuBtn(allocator, db, tab, top_level_obj, obj, prop_idx, null);
+                    try objContextMenuBtn(allocator, tab, top_level_obj, obj, prop_idx, null);
                     _coreui.sameLine(.{});
                 }
 
                 var set: ?[]const cdb.ObjId = undefined;
                 if (prop_def.type == .REFERENCE_SET) {
-                    set = db.readRefSet(obj_r, prop_idx, allocator);
+                    set = _cdb.readRefSet(obj_r, prop_idx, allocator);
                 } else {
-                    set = try db.readSubObjSet(obj_r, prop_idx, allocator);
+                    set = try _cdb.readSubObjSet(obj_r, prop_idx, allocator);
                 }
 
                 defer {
@@ -611,12 +608,12 @@ fn cdbPropertiesObj(
                             _coreui.pushIntId(@truncate(set_idx));
                             defer _coreui.popId();
 
-                            try objContextMenuBtn(allocator, db, tab, top_level_obj, obj, prop_idx, subobj);
+                            try objContextMenuBtn(allocator, tab, top_level_obj, obj, prop_idx, subobj);
                             _coreui.sameLine(.{});
 
                             const visible_item = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
-                            const label = if (visible_item) _editor.buffFormatObjLabel(allocator, &buff, db, subobj, true, false) orelse try std.fmt.bufPrintZ(&buff, "{d}", .{set_idx}) else "";
-                            const set_state = if (visible_item) db.getRelation(top_level_obj, obj, prop_idx, subobj) else .not_owned;
+                            const label = if (visible_item) _editor.buffFormatObjLabel(allocator, &buff, subobj, true, false) orelse try std.fmt.bufPrintZ(&buff, "{d}", .{set_idx}) else "";
+                            const set_state = if (visible_item) _cdb.getRelation(top_level_obj, obj, prop_idx, subobj) else .not_owned;
                             const set_color = _editor.getStateColor(set_state);
 
                             _coreui.pushStyleColor4f(.{ .idx = .text, .c = set_color });
@@ -630,7 +627,7 @@ fn cdbPropertiesObj(
                                 var a = args;
                                 a.parent_disabled = !enabled;
 
-                                try cdbPropertiesObj(allocator, db, tab, top_level_obj, subobj, depth + 1, a);
+                                try cdbPropertiesObj(allocator, tab, top_level_obj, subobj, depth + 1, a);
                             }
                         }
                     }
@@ -642,81 +639,83 @@ fn cdbPropertiesObj(
     }
 }
 
-fn uiInputProtoBtns(db: cdb.Db, obj: cdb.ObjId, prop_idx: u32) !void {
-    const proto_obj = db.getPrototype(db.readObj(obj).?);
+fn uiInputProtoBtns(obj: cdb.ObjId, prop_idx: u32) !void {
+    const proto_obj = _cdb.getPrototype(_cdb.readObj(obj).?);
     if (proto_obj.isEmpty()) return;
 
-    const types = db.getTypePropDef(obj.type_idx).?;
+    const db = _cdb.getDbFromObjid(obj);
+
+    const types = _cdb.getTypePropDef(db, obj.type_idx).?;
     const prop_def = types[prop_idx];
-    const is_overided = db.isPropertyOverrided(db.readObj(obj).?, prop_idx);
+    const is_overided = _cdb.isPropertyOverrided(_cdb.readObj(obj).?, prop_idx);
 
     if (prop_def.type == .BLOB) return;
 
     if (_coreui.beginPopup("property_protoypes_menu", .{})) {
         if (_coreui.menuItem(_allocator, Icons.FA_ARROW_ROTATE_LEFT ++ "  " ++ "Reset to prototype value" ++ "###ResetToPrototypeValue", .{ .enabled = is_overided }, null)) {
-            const w = db.writeObj(obj).?;
-            db.resetPropertyOveride(w, prop_idx);
-            try db.writeCommit(w);
+            const w = _cdb.writeObj(obj).?;
+            _cdb.resetPropertyOveride(w, prop_idx);
+            try _cdb.writeCommit(w);
         }
 
         if (_coreui.menuItem(_allocator, Icons.FA_ARROW_UP ++ "  " ++ "Propagate to prototype" ++ "###PropagateToPrototype", .{ .enabled = is_overided }, null)) {
             // TODO: TO CDB!!!
             // Set value from parent. This is probably not need.
             {
-                const w = db.writeObj(proto_obj).?;
-                const r = db.readObj(obj).?;
+                const w = _cdb.writeObj(proto_obj).?;
+                const r = _cdb.readObj(obj).?;
 
                 switch (prop_def.type) {
                     .BOOL => {
-                        const value = db.readValue(bool, r, prop_idx);
-                        db.setValue(bool, w, prop_idx, value);
+                        const value = _cdb.readValue(bool, r, prop_idx);
+                        _cdb.setValue(bool, w, prop_idx, value);
                     },
                     .F32 => {
-                        const value = db.readValue(f32, r, prop_idx);
-                        db.setValue(f32, w, prop_idx, value);
+                        const value = _cdb.readValue(f32, r, prop_idx);
+                        _cdb.setValue(f32, w, prop_idx, value);
                     },
                     .F64 => {
-                        const value = db.readValue(f64, r, prop_idx);
-                        db.setValue(f64, w, prop_idx, value);
+                        const value = _cdb.readValue(f64, r, prop_idx);
+                        _cdb.setValue(f64, w, prop_idx, value);
                     },
                     .I32 => {
-                        const value = db.readValue(i32, r, prop_idx);
-                        db.setValue(i32, w, prop_idx, value);
+                        const value = _cdb.readValue(i32, r, prop_idx);
+                        _cdb.setValue(i32, w, prop_idx, value);
                     },
                     .U32 => {
-                        const value = db.readValue(u32, r, prop_idx);
-                        db.setValue(u32, w, prop_idx, value);
+                        const value = _cdb.readValue(u32, r, prop_idx);
+                        _cdb.setValue(u32, w, prop_idx, value);
                     },
                     .I64 => {
-                        const value = db.readValue(i64, r, prop_idx);
-                        db.setValue(i64, w, prop_idx, value);
+                        const value = _cdb.readValue(i64, r, prop_idx);
+                        _cdb.setValue(i64, w, prop_idx, value);
                     },
                     .U64 => {
-                        const value = db.readValue(u64, r, prop_idx);
-                        db.setValue(u64, w, prop_idx, value);
+                        const value = _cdb.readValue(u64, r, prop_idx);
+                        _cdb.setValue(u64, w, prop_idx, value);
                     },
                     .STR => {
-                        if (db.readStr(r, prop_idx)) |str| {
-                            try db.setStr(w, prop_idx, str);
+                        if (_cdb.readStr(r, prop_idx)) |str| {
+                            try _cdb.setStr(w, prop_idx, str);
                         }
                     },
                     .REFERENCE => {
-                        if (db.readRef(r, prop_idx)) |ref| {
-                            try db.setRef(w, prop_idx, ref);
+                        if (_cdb.readRef(r, prop_idx)) |ref| {
+                            try _cdb.setRef(w, prop_idx, ref);
                         }
                     },
                     .BLOB => {},
                     else => {},
                 }
-                db.resetPropertyOveride(w, prop_idx);
-                try db.writeCommit(w);
+                _cdb.resetPropertyOveride(w, prop_idx);
+                try _cdb.writeCommit(w);
             }
 
             // reset value overide
             {
-                const w = db.writeObj(obj).?;
-                db.resetPropertyOveride(w, prop_idx);
-                try db.writeCommit(w);
+                const w = _cdb.writeObj(obj).?;
+                _cdb.resetPropertyOveride(w, prop_idx);
+                try _cdb.writeCommit(w);
             }
         }
 
@@ -730,14 +729,14 @@ fn uiInputProtoBtns(db: cdb.Db, obj: cdb.ObjId, prop_idx: u32) !void {
     _coreui.sameLine(.{});
 }
 
-fn uiPropInputBegin(db: cdb.Db, obj: cdb.ObjId, prop_idx: u32, enabled: bool) !void {
+fn uiPropInputBegin(obj: cdb.ObjId, prop_idx: u32, enabled: bool) !void {
     _ = enabled; // autofix
     _coreui.tableNextColumn();
 
     _coreui.pushObjUUID(obj);
-    _coreui.pushPropName(db, obj, prop_idx);
+    _coreui.pushPropName(obj, prop_idx);
 
-    try uiInputProtoBtns(db, obj, prop_idx);
+    try uiInputProtoBtns(obj, prop_idx);
 
     _coreui.setNextItemWidth(-std.math.floatMin(f32));
 }
@@ -747,13 +746,13 @@ fn uiPropInputEnd() void {
     _coreui.popId();
 }
 
-fn uiPropInput(db: cdb.Db, obj: cdb.ObjId, prop_idx: u32, enabled: bool, args: public.cdbPropertiesViewArgs) !void {
-    try uiPropInputBegin(db, obj, prop_idx, enabled);
+fn uiPropInput(obj: cdb.ObjId, prop_idx: u32, enabled: bool, args: public.cdbPropertiesViewArgs) !void {
+    try uiPropInputBegin(obj, prop_idx, enabled);
     defer uiPropInputEnd();
-    try uiPropInputRaw(db, obj, prop_idx, args);
+    try uiPropInputRaw(obj, prop_idx, args);
 }
 
-fn uiPropInputRaw(db: cdb.Db, obj: cdb.ObjId, prop_idx: u32, args: public.cdbPropertiesViewArgs) !void {
+fn uiPropInputRaw(obj: cdb.ObjId, prop_idx: u32, args: public.cdbPropertiesViewArgs) !void {
     _ = args; // autofix
 
     const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
@@ -765,106 +764,107 @@ fn uiPropInputRaw(db: cdb.Db, obj: cdb.ObjId, prop_idx: u32, args: public.cdbPro
     var buf: [128:0]u8 = undefined;
     @memset(&buf, 0);
 
-    const prop_defs = db.getTypePropDef(obj.type_idx).?;
+    const db = _cdb.getDbFromObjid(obj);
+    const prop_defs = _cdb.getTypePropDef(db, obj.type_idx).?;
     const prop_def = prop_defs[prop_idx];
 
     var buf_label: [128:0]u8 = undefined;
     @memset(&buf_label, 0);
     const label = try std.fmt.bufPrintZ(&buf_label, "###edit", .{});
 
-    const reader = db.readObj(obj) orelse return;
+    const reader = _cdb.readObj(obj) orelse return;
 
     switch (prop_def.type) {
         .BOOL => {
-            var value = if (visible) db.readValue(bool, reader, prop_idx) else false;
+            var value = if (visible) _cdb.readValue(bool, reader, prop_idx) else false;
             if (_coreui.checkbox(label, .{
                 .v = &value,
             })) {
-                const w = db.writeObj(obj).?;
-                db.setValue(bool, w, prop_idx, value);
-                try db.writeCommit(w);
+                const w = _cdb.writeObj(obj).?;
+                _cdb.setValue(bool, w, prop_idx, value);
+                try _cdb.writeCommit(w);
             }
         },
         .F32 => {
-            var value = if (visible) db.readValue(f32, reader, prop_idx) else 0;
+            var value = if (visible) _cdb.readValue(f32, reader, prop_idx) else 0;
             if (_coreui.dragF32(label, .{
                 .v = &value,
                 .flags = .{
                     //.enter_returns_true = true,
                 },
             })) {
-                const w = db.writeObj(obj).?;
-                db.setValue(f32, w, prop_idx, value);
-                try db.writeCommit(w);
+                const w = _cdb.writeObj(obj).?;
+                _cdb.setValue(f32, w, prop_idx, value);
+                try _cdb.writeCommit(w);
             }
         },
         .F64 => {
-            var value = if (visible) db.readValue(f64, reader, prop_idx) else 0;
+            var value = if (visible) _cdb.readValue(f64, reader, prop_idx) else 0;
             if (_coreui.dragF64(label, .{
                 .v = &value,
                 .flags = .{
                     //.enter_returns_true = true,
                 },
             })) {
-                const w = db.writeObj(obj).?;
-                db.setValue(f64, w, prop_idx, value);
-                try db.writeCommit(w);
+                const w = _cdb.writeObj(obj).?;
+                _cdb.setValue(f64, w, prop_idx, value);
+                try _cdb.writeCommit(w);
             }
         },
         .I32 => {
-            var value = if (visible) db.readValue(i32, reader, prop_idx) else 0;
+            var value = if (visible) _cdb.readValue(i32, reader, prop_idx) else 0;
             if (_coreui.dragI32(label, .{
                 .v = &value,
                 .flags = .{
                     //.enter_returns_true = true,
                 },
             })) {
-                const w = db.writeObj(obj).?;
-                db.setValue(i32, w, prop_idx, value);
-                try db.writeCommit(w);
+                const w = _cdb.writeObj(obj).?;
+                _cdb.setValue(i32, w, prop_idx, value);
+                try _cdb.writeCommit(w);
             }
         },
         .U32 => {
-            var value = if (visible) db.readValue(u32, reader, prop_idx) else 0;
+            var value = if (visible) _cdb.readValue(u32, reader, prop_idx) else 0;
             if (_coreui.dragU32(label, .{
                 .v = &value,
                 .flags = .{
                     //.enter_returns_true = true,
                 },
             })) {
-                const w = db.writeObj(obj).?;
-                db.setValue(u32, w, prop_idx, value);
-                try db.writeCommit(w);
+                const w = _cdb.writeObj(obj).?;
+                _cdb.setValue(u32, w, prop_idx, value);
+                try _cdb.writeCommit(w);
             }
         },
         .I64 => {
-            var value = if (visible) db.readValue(i64, reader, prop_idx) else 0;
+            var value = if (visible) _cdb.readValue(i64, reader, prop_idx) else 0;
             if (_coreui.dragI64(label, .{
                 .v = &value,
                 .flags = .{
                     //.enter_returns_true = true,
                 },
             })) {
-                const w = db.writeObj(obj).?;
-                db.setValue(i64, w, prop_idx, value);
-                try db.writeCommit(w);
+                const w = _cdb.writeObj(obj).?;
+                _cdb.setValue(i64, w, prop_idx, value);
+                try _cdb.writeCommit(w);
             }
         },
         .U64 => {
-            var value = if (visible) db.readValue(u64, reader, prop_idx) else 0;
+            var value = if (visible) _cdb.readValue(u64, reader, prop_idx) else 0;
             if (_coreui.dragU64(label, .{
                 .v = &value,
                 .flags = .{
                     //.enter_returns_true = true,
                 },
             })) {
-                const w = db.writeObj(obj).?;
-                db.setValue(u64, w, prop_idx, value);
-                try db.writeCommit(w);
+                const w = _cdb.writeObj(obj).?;
+                _cdb.setValue(u64, w, prop_idx, value);
+                try _cdb.writeCommit(w);
             }
         },
         .STR => {
-            const name = if (visible) db.readStr(reader, prop_idx) else "";
+            const name = if (visible) _cdb.readStr(reader, prop_idx) else "";
             if (name) |str| {
                 _ = try std.fmt.bufPrintZ(&buf, "{s}", .{str});
             }
@@ -874,11 +874,11 @@ fn uiPropInputRaw(db: cdb.Db, obj: cdb.ObjId, prop_idx: u32, args: public.cdbPro
                     .enter_returns_true = true,
                 },
             })) {
-                const w = db.writeObj(obj).?;
+                const w = _cdb.writeObj(obj).?;
                 var new_name_buf: [128:0]u8 = undefined;
                 const new_name = try std.fmt.bufPrintZ(&new_name_buf, "{s}", .{std.mem.sliceTo(&buf, 0)});
-                try db.setStr(w, prop_idx, new_name);
-                try db.writeCommit(w);
+                try _cdb.setStr(w, prop_idx, new_name);
+                try _cdb.writeCommit(w);
             }
         },
         .BLOB => {
@@ -928,14 +928,13 @@ fn uiPropLabel(allocator: std.mem.Allocator, name: [:0]const u8, color: ?[4]f32,
 var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         tab: *editor.TabO,
         top_level_obj: cdb.ObjId,
         obj: cdb.ObjId,
         depth: u32,
         args: public.cdbPropertiesViewArgs,
     ) !void {
-        const obj_r = db.readObj(obj) orelse return;
+        const obj_r = _cdb.readObj(obj) orelse return;
 
         var buf: [128:0]u8 = undefined;
 
@@ -965,29 +964,31 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
                 is_project = o.type_idx.eql(AssetTypeIdx);
             }
 
+            const db = _cdb.getDbFromObjid(obj);
+
             // Asset name
-            if (!is_project and !_assetdb.isRootFolder(db, obj) and api.uiPropLabel(allocator, "Name", null, true, args)) {
-                try api.uiPropInput(db, obj, assetdb.Asset.propIdx(.Name), true, args);
+            if (!is_project and !_assetdb.isRootFolder(obj) and api.uiPropLabel(allocator, "Name", null, true, args)) {
+                try api.uiPropInput(obj, assetdb.Asset.propIdx(.Name), true, args);
             }
 
             // Asset name
-            if (!_assetdb.isRootFolder(db, obj) and api.uiPropLabel(allocator, "Description", null, true, args)) {
-                try uiPropInput(db, obj, assetdb.Asset.propIdx(.Description), true, args);
+            if (!_assetdb.isRootFolder(obj) and api.uiPropLabel(allocator, "Description", null, true, args)) {
+                try uiPropInput(obj, assetdb.Asset.propIdx(.Description), true, args);
             }
 
             // Folder
-            if (!is_project and !_assetdb.isRootFolder(db, obj) and api.uiPropLabel(allocator, "Folder", null, true, args)) {
-                try uiAssetInput(allocator, db, tab, obj, assetdb.Asset.propIdx(.Folder), false, true);
+            if (!is_project and !_assetdb.isRootFolder(obj) and api.uiPropLabel(allocator, "Folder", null, true, args)) {
+                try uiAssetInput(allocator, tab, obj, assetdb.Asset.propIdx(.Folder), false, true);
             }
 
             // Tags
-            if (!is_project and !_assetdb.isRootFolder(db, obj)) {
+            if (!is_project and !_assetdb.isRootFolder(obj)) {
                 // TODO: SHIT HACK
-                const ui_prop_aspect = db.getPropertyAspect(public.UiEmbedPropertyAspect, obj.type_idx, assetdb.Asset.propIdx(.Tags));
+                const ui_prop_aspect = _cdb.getPropertyAspect(public.UiEmbedPropertyAspect, db, obj.type_idx, assetdb.Asset.propIdx(.Tags));
                 // If exist aspect and is empty hide property.
                 if (ui_prop_aspect) |aspect| {
                     if (api.uiPropLabel(allocator, "Tags", null, true, args)) {
-                        try aspect.ui_properties(allocator, db, obj, assetdb.Asset.propIdx(.Tags), args);
+                        try aspect.ui_properties(allocator, obj, assetdb.Asset.propIdx(.Tags), args);
                     }
                 }
             }
@@ -995,7 +996,7 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
 
         // Asset object
         _coreui.separatorText("Asset object");
-        try api.cdbPropertiesObj(allocator, db, tab, top_level_obj, assetdb.Asset.readSubObj(db, obj_r, .Object).?, depth + 1, args);
+        try api.cdbPropertiesObj(allocator, tab, top_level_obj, assetdb.Asset.readSubObj(_cdb, obj_r, .Object).?, depth + 1, args);
     }
 });
 
@@ -1005,7 +1006,6 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
 var color4f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
         args: public.cdbPropertiesViewArgs,
     ) !void {
@@ -1015,13 +1015,13 @@ var color4f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
         _coreui.pushObjUUID(obj);
         defer _coreui.popId();
 
-        var color = cetech1.cdb_types.Color4f.f.toSlice(db, obj);
+        var color = cetech1.cdb_types.Color4f.f.toSlice(_cdb, obj);
 
         _coreui.setNextItemWidth(-1);
         if (_coreui.colorEdit4("", .{ .col = &color })) {
-            const w = db.writeObj(obj).?;
-            cetech1.cdb_types.Color4f.f.fromSlice(db, w, color);
-            try db.writeCommit(w);
+            const w = _cdb.writeObj(obj).?;
+            cetech1.cdb_types.Color4f.f.fromSlice(_cdb, w, color);
+            try _cdb.writeCommit(w);
         }
     }
 });
@@ -1030,7 +1030,7 @@ var color4f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
 
 const PropertyTab = struct {
     tab_i: editor.TabI,
-    db: cdb.Db,
+
     selected_obj: coreui.SelectionItem,
     filter_buff: [256:0]u8 = std.mem.zeroes([256:0]u8),
     filter: ?[:0]const u8 = null,
@@ -1057,16 +1057,15 @@ var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Can open tab
-    pub fn canOpen(allocator: Allocator, db: cdb.Db, selection: []const coreui.SelectionItem) !bool {
+    pub fn canOpen(allocator: Allocator, selection: []const coreui.SelectionItem) !bool {
         _ = allocator; // autofix
-        _ = db;
         _ = selection;
 
         return true;
     }
 
     // Create new FooTab instantce
-    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.TabI {
+    pub fn create(tab_id: u32) !?*editor.TabI {
         _ = tab_id;
         var tab_inst = try _allocator.create(PropertyTab);
         tab_inst.* = PropertyTab{
@@ -1074,7 +1073,7 @@ var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 .vt = _g.tab_vt,
                 .inst = @ptrCast(tab_inst),
             },
-            .db = db,
+
             .selected_obj = coreui.SelectionItem.empty(),
         };
 
@@ -1113,14 +1112,13 @@ var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         defer _coreui.endChild();
         if (_coreui.beginChild("Inspector", .{ .child_flags = .{ .border = true } })) {
             const obj: cdb.ObjId = tab_o.selected_obj.obj;
-            try api.cdbPropertiesView(allocator, tab_o.db, tab_o, tab_o.selected_obj.top_level_obj, obj, 0, .{ .filter = tab_o.filter });
+            try api.cdbPropertiesView(allocator, tab_o, tab_o.selected_obj.top_level_obj, obj, 0, .{ .filter = tab_o.filter });
         }
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, db: cdb.Db, obj: []const coreui.SelectionItem, sender_tab_hash: ?strid.StrId32) !void {
+    pub fn objSelected(inst: *editor.TabO, obj: []const coreui.SelectionItem, sender_tab_hash: ?strid.StrId32) !void {
         _ = sender_tab_hash; // autofix
-        _ = db;
         var tab_o: *PropertyTab = @alignCast(@ptrCast(inst));
         tab_o.selected_obj = obj[0];
     }
@@ -1137,28 +1135,32 @@ var folder_properties_config_aspect = public.UiPropertiesConfigAspect{
 };
 
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
-    pub fn createTypes(db: cdb.Db) !void {
+    pub fn createTypes(db: cdb.DbId) !void {
         try assetdb.Folder.addAspect(
-            db,
             public.UiPropertiesConfigAspect,
+            _cdb,
+            db,
             _g.hide_proto_property_config_aspect,
         );
 
         try assetdb.Project.addAspect(
-            db,
             public.UiPropertiesConfigAspect,
+            _cdb,
+            db,
             _g.hide_proto_property_config_aspect,
         );
 
         try assetdb.Asset.addAspect(
-            db,
             public.UiPropertiesAspect,
+            _cdb,
+            db,
             _g.asset_prop_aspect,
         );
 
         try cetech1.cdb_types.Color4f.addAspect(
-            db,
             public.UiEmbedPropertiesAspect,
+            _cdb,
+            db,
             _g.color4f_properties_aspec,
         );
     }
@@ -1177,6 +1179,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.yield(_coreui, 1);
 
                     const db = _kernel.getDb();
+                    _ = db; // autofix
                     const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f").?).?;
 
                     ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
@@ -1190,8 +1193,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     {
                         ctx.itemAction(_coreui, .Check, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/bool/###edit", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, bool, obj_r, .Bool);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(bool, _cdb, obj_r, .Bool);
                         std.testing.expect(value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1201,8 +1204,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     // U64
                     {
                         ctx.itemInputIntValue(_coreui, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/u64/###edit", 666);
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, u64, obj_r, .U64);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(u64, _cdb, obj_r, .U64);
                         std.testing.expectEqual(666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1212,8 +1215,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     // I64
                     {
                         ctx.itemInputIntValue(_coreui, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/i64/###edit", -666);
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value: i64 = assetdb.FooAsset.readValue(db, i64, obj_r, .I64);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value: i64 = assetdb.FooAsset.readValue(i64, _cdb, obj_r, .I64);
                         std.testing.expectEqual(-666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1223,8 +1226,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     // U32
                     {
                         ctx.itemInputIntValue(_coreui, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/u32/###edit", 666);
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, u32, obj_r, .U32);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(u32, _cdb, obj_r, .U32);
                         std.testing.expectEqual(666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1234,8 +1237,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     // I32
                     {
                         ctx.itemInputIntValue(_coreui, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/i32/###edit", -666);
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, i32, obj_r, .I32);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(i32, _cdb, obj_r, .I32);
                         std.testing.expectEqual(-666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1245,8 +1248,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     // F32
                     {
                         ctx.itemInputIntValue(_coreui, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/f32/###edit", -666);
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, f32, obj_r, .F32);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(f32, _cdb, obj_r, .F32);
                         std.testing.expectEqual(-666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1256,8 +1259,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     // F64
                     {
                         ctx.itemInputIntValue(_coreui, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/f64/###edit", -666);
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, f64, obj_r, .F64);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(f64, _cdb, obj_r, .F64);
                         std.testing.expectEqual(-666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1267,8 +1270,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     // String
                     {
                         ctx.itemInputStrValue(_coreui, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/str/###edit", "foo");
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const str = assetdb.FooAsset.readStr(db, obj_r, .Str);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const str = assetdb.FooAsset.readStr(_cdb, obj_r, .Str);
                         std.testing.expect(str != null) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1285,8 +1288,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.yield(_coreui, 1);
                         ctx.menuAction(_coreui, .Click, "//$FOCUSED/###SelectFrom/###1");
 
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const ref = assetdb.FooAsset.readRef(db, obj_r, .Reference);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const ref = assetdb.FooAsset.readRef(_cdb, obj_r, .Reference);
                         std.testing.expect(ref != null) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return;
@@ -1317,6 +1320,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.windowFocus(_coreui, "");
 
                     const db = _kernel.getDb();
+                    _ = db; // autofix
 
                     // Bool
                     {
@@ -1326,8 +1330,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
 
                         const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, bool, obj_r, .Bool);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(bool, _cdb, obj_r, .Bool);
                         std.testing.expect(!value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1342,8 +1346,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
 
                         const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, u64, obj_r, .U64);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(u64, _cdb, obj_r, .U64);
                         std.testing.expectEqual(0, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1358,8 +1362,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
 
                         const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, i64, obj_r, .I64);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(i64, _cdb, obj_r, .I64);
                         std.testing.expectEqual(0, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1374,8 +1378,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
 
                         const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, u32, obj_r, .U32);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(u32, _cdb, obj_r, .U32);
                         std.testing.expectEqual(0, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1390,8 +1394,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
 
                         const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, i32, obj_r, .I32);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(i32, _cdb, obj_r, .I32);
                         std.testing.expectEqual(0, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1406,8 +1410,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
 
                         const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, f32, obj_r, .F32);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(f32, _cdb, obj_r, .F32);
                         std.testing.expectEqual(0, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1422,8 +1426,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
 
                         const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, f64, obj_r, .F64);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(f64, _cdb, obj_r, .F64);
                         std.testing.expectEqual(0, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1438,8 +1442,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
 
                         const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const str = assetdb.FooAsset.readStr(db, obj_r, .Str);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const str = assetdb.FooAsset.readStr(_cdb, obj_r, .Str);
                         std.testing.expect(str == null) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1456,8 +1460,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
 
                         const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const ref = assetdb.FooAsset.readRef(db, obj_r, .Reference);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const ref = assetdb.FooAsset.readRef(_cdb, obj_r, .Reference);
                         std.testing.expect(ref == null) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1484,6 +1488,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.windowFocus(_coreui, "");
 
                     const db = _kernel.getDb();
+                    _ = db; // autofix
                     const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f").?).?;
 
                     // Bool
@@ -1493,8 +1498,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/bool/###PrototypeButtons", .{}, null);
                         ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, bool, obj_r, .Bool);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(bool, _cdb, obj_r, .Bool);
                         std.testing.expect(value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1508,8 +1513,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/u64/###PrototypeButtons", .{}, null);
                         ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, u64, obj_r, .U64);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(u64, _cdb, obj_r, .U64);
                         std.testing.expectEqual(666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1523,8 +1528,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/i64/###PrototypeButtons", .{}, null);
                         ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, i64, obj_r, .I64);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(i64, _cdb, obj_r, .I64);
                         std.testing.expectEqual(-666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1538,8 +1543,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/u32/###PrototypeButtons", .{}, null);
                         ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, u32, obj_r, .U32);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(u32, _cdb, obj_r, .U32);
                         std.testing.expectEqual(666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1553,8 +1558,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/i32/###PrototypeButtons", .{}, null);
                         ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, i32, obj_r, .I32);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(i32, _cdb, obj_r, .I32);
                         std.testing.expectEqual(-666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1568,8 +1573,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/f32/###PrototypeButtons", .{}, null);
                         ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, f32, obj_r, .F32);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(f32, _cdb, obj_r, .F32);
                         std.testing.expectEqual(-666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1583,8 +1588,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/f64/###PrototypeButtons", .{}, null);
                         ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const value = assetdb.FooAsset.readValue(db, f64, obj_r, .F64);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const value = assetdb.FooAsset.readValue(f64, _cdb, obj_r, .F64);
                         std.testing.expectEqual(-666, value) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1598,8 +1603,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/str/###PrototypeButtons", .{}, null);
                         ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const str = assetdb.FooAsset.readStr(db, obj_r, .Str);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const str = assetdb.FooAsset.readStr(_cdb, obj_r, .Str);
                         std.testing.expect(str != null) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1619,8 +1624,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/reference/###PrototypeButtons", .{}, null);
                         ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(db, obj).?;
-                        const ref = assetdb.FooAsset.readRef(db, obj_r, .Reference);
+                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                        const ref = assetdb.FooAsset.readRef(_cdb, obj_r, .Reference);
                         std.testing.expect(ref != null) catch |err| {
                             _coreui.checkTestError(@src(), err);
                             return err;
@@ -1678,11 +1683,10 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.yield(_coreui, 1);
                     ctx.menuAction(_coreui, .Click, "//$FOCUSED/###SelectFrom/###1");
 
-                    const db = _kernel.getDb();
                     const obj = _assetdb.getObjId(_uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?;
                     const proto_obj = _assetdb.getObjId(_uuid.fromStr("018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f").?).?;
 
-                    std.testing.expect(proto_obj.eql(db.getPrototype(db.readObj(obj).?))) catch |err| {
+                    std.testing.expect(proto_obj.eql(_cdb.getPrototype(_cdb.readObj(obj).?))) catch |err| {
                         _coreui.checkTestError(@src(), err);
                         return err;
                     };
@@ -1709,9 +1713,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.yield(_coreui, 1);
                     ctx.menuAction(_coreui, .Click, "//$FOCUSED/###Clear");
 
-                    const db = _kernel.getDb();
                     const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                    std.testing.expect(db.getPrototype(db.readObj(obj).?).isEmpty()) catch |err| {
+                    std.testing.expect(_cdb.getPrototype(_cdb.readObj(obj).?).isEmpty()) catch |err| {
                         _coreui.checkTestError(@src(), err);
                         return err;
                     };
@@ -1762,10 +1765,9 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.yield(_coreui, 1);
                     ctx.menuAction(_coreui, .Click, "//$FOCUSED/###AddToSet/###SelectFrom/###1");
 
-                    const db = _kernel.getDb();
                     const obj = _assetdb.getObjId(_uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?;
 
-                    const set = try assetdb.FooAsset.readSubObjSet(db, db.readObj(obj).?, .ReferenceSet, _allocator);
+                    const set = try assetdb.FooAsset.readSubObjSet(_cdb, _cdb.readObj(obj).?, .ReferenceSet, _allocator);
                     std.testing.expect(set != null) catch |err| {
                         _coreui.checkTestError(@src(), err);
                         return err;
@@ -1787,9 +1789,9 @@ var AssetTypeIdx: cdb.TypeIdx = undefined;
 var ProjectTypeIdx: cdb.TypeIdx = undefined;
 
 const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
-    pub fn postCreateTypes(db: cdb.Db) !void {
-        AssetTypeIdx = assetdb.Asset.typeIdx(db);
-        ProjectTypeIdx = assetdb.Project.typeIdx(db);
+    pub fn postCreateTypes(db: cdb.DbId) !void {
+        AssetTypeIdx = assetdb.Asset.typeIdx(_cdb, db);
+        ProjectTypeIdx = assetdb.Project.typeIdx(_cdb, db);
     }
 });
 

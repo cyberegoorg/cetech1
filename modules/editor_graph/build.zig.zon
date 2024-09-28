@@ -10,5 +10,6 @@
         .editor = .{ .path = "../../modules/editor" },
         .editor_inspector = .{ .path = "../../modules/editor_inspector" },
         .editor_obj_buffer = .{ .path = "../editor_obj_buffer" },
+        .graphvm = .{ .path = "../graphvm" },
     },
 }

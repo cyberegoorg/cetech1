@@ -34,7 +34,8 @@ pub fn build(b: *std.Build) !void {
         l.root_module.addImport("editor", editor.module("editor"));
         l.root_module.addImport("editor_inspector", editor_inspector.module("editor_inspector"));
         l.root_module.addImport("editor_obj_buffer", b.dependency("editor_obj_buffer", .{}).module("editor_obj_buffer"));
-        l.addIncludePath(cetech1.path("includes"));
+        l.root_module.addImport("graphvm", b.dependency("graphvm", .{}).module("graphvm"));
+
         b.installArtifact(l);
     }
 }

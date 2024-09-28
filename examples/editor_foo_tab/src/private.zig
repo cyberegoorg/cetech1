@@ -56,9 +56,9 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Create new tab instantce
-    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.TabI {
+    pub fn create(tab_id: u32) !?*editor.TabI {
         _ = tab_id;
-        _ = db;
+
         var tab_inst = _allocator.create(FooTab) catch undefined;
         tab_inst.tab_i = .{
             .vt = _g.test_tab_vt_ptr,

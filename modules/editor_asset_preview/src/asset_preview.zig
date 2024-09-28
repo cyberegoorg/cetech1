@@ -11,14 +11,12 @@ pub const AssetPreviewAspectI = struct {
 
     create_preview_entity: ?*const fn (
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
         world: ecs.World,
     ) anyerror!ecs.EntityId = null,
 
     ui_preview: ?*const fn (
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
     ) anyerror!void = null,
 

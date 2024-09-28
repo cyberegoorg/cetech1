@@ -4,70 +4,6 @@ const builtin = @import("builtin");
 const min_zig_version = std.SemanticVersion.parse(@embedFile(".zigversion")) catch @panic("Where is .zigversion?");
 const version = std.SemanticVersion.parse(@embedFile(".version")) catch @panic("Where is .version?");
 
-const externals = .{
-    // ZIG
-    .{ .name = "zig", .file = "zig/LICENSE" },
-
-    // zig-gamedev
-    .{ .name = "zig-gamedev", .file = "externals/shared/lib/zig-gamedev/LICENSE" },
-
-    // ImGui
-    .{ .name = "imgui", .file = "externals/shared/lib/zig-gamedev/libs/zgui/libs/imgui/LICENSE.txt" },
-    .{ .name = "implot", .file = "externals/shared/lib/zig-gamedev/libs/zgui/libs/implot/LICENSE" },
-    .{ .name = "imgui_test_engine", .file = "externals/shared/lib/zig-gamedev/libs/zgui/libs/imgui_test_engine/LICENSE.txt" },
-    .{ .name = "imgui_node_editor", .file = "externals/shared/lib/zig-gamedev/libs/zgui/libs/node_editor/LICENSE" },
-
-    // GLFW
-    .{ .name = "glfw", .file = "externals/shared/lib/zig-gamedev/libs/zglfw/libs/glfw/LICENSE.md" },
-
-    // SDL_GameControllerDB
-    .{ .name = "SDL_GameControllerDB", .file = "externals/shared/lib/SDL_GameControllerDB/LICENSE" },
-
-    // zf
-    .{ .name = "zf", .file = "externals/shared/lib/zf/LICENSE" },
-
-    // zig-uuid
-    .{ .name = "zig-uuid", .file = "externals/shared/lib/zig-uuid/LICENSE" },
-
-    // nativefiledialog-extended
-    .{ .name = "nativefiledialog-extended", .file = "externals/shared/lib/znfde/nativefiledialog/LICENSE" },
-
-    // BGFX
-    .{ .name = "bgfx", .file = "externals/shared/lib/zbgfx/libs/bgfx/LICENSE" },
-
-    // ziglang-set
-    .{ .name = "ziglang-set", .file = "externals/shared/lib/ziglang-set/LICENSE" },
-};
-
-const editor_modules = [_][]const u8{
-    "editor",
-    "editor_asset",
-    "editor_asset_browser",
-    "editor_explorer",
-    "editor_fixtures",
-    "editor_inspector",
-    "editor_obj_buffer",
-    "editor_tags",
-    "editor_tree",
-    "editor_log",
-    "editor_graph",
-    "editor_metrics",
-    "editor_entity_asset",
-    "editor_entity",
-    "editor_asset_preview",
-};
-
-const samples_modules = [_][]const u8{
-    // Zig based module
-    "foo",
-
-    // Zig editor tab sample
-    "editor_foo_tab",
-
-    // Zig editor viewport tab sample
-    "editor_foo_viewport_tab",
-};
-
 pub fn build(b: *std.Build) !void {
     try ensureZigVersion();
 
@@ -124,6 +60,7 @@ pub fn build(b: *std.Build) !void {
         .{
             .target = target,
             .optimize = options.externals_optimize,
+            .with_tui = false,
         },
     );
 
@@ -207,20 +144,7 @@ pub fn build(b: *std.Build) !void {
         },
     );
 
-    // Zmath
-    const zmath = b.dependency(
-        "zmath",
-        .{
-            .target = target,
-            .optimize = options.externals_optimize,
-        },
-    );
-
-    const ziglangSet = b.dependency("ziglangSet", .{
-        .target = target,
-        .optimize = options.externals_optimize,
-    });
-
+    // ZLS
     const zls = b.dependency("zls", .{
         .target = target,
         .optimize = .ReleaseFast,
@@ -260,6 +184,9 @@ pub fn build(b: *std.Build) !void {
     // Modules
     var enabled_modules = std.ArrayList([]const u8).init(b.allocator);
     defer enabled_modules.deinit();
+
+    try enabled_modules.appendSlice(&core_modules);
+
     if (options.enable_samples) try enabled_modules.appendSlice(&samples_modules);
     if (options.enable_editor) try enabled_modules.appendSlice(&editor_modules);
 
@@ -275,6 +202,8 @@ pub fn build(b: *std.Build) !void {
     const gen_static = b.addRunArtifact(generate_static_tool);
     const _static_output_file = gen_static.addOutputFileArg("_static.zig");
     gen_static.addArg(modules_arg);
+
+    generated_files.addCopyFileToSource(_static_output_file, "src/_static.zig");
 
     // Extrenals credits/license
     const gen_externals = b.addRunArtifact(generate_externals_tool);
@@ -333,7 +262,6 @@ pub fn build(b: *std.Build) !void {
     //
     // CETech1 core build
     //
-
     const cetech1 = b.dependency(
         "cetech1",
         .{
@@ -342,18 +270,6 @@ pub fn build(b: *std.Build) !void {
             .with_tracy = options.enable_tracy,
         },
     );
-
-    // cetech1 static lib
-    // TODO: Is this needed this?
-    const core_lib_static = b.addStaticLibrary(.{
-        .name = "cetech1_static",
-        .version = version,
-        .root_source_file = b.path("src/private.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    core_lib_static.addIncludePath(cetech1.path("includes"));
-    core_lib_static.linkLibC();
 
     // cetech1 standalone exe
     const exe = b.addExecutable(.{
@@ -364,7 +280,6 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     b.installArtifact(exe);
-    exe.linkLibrary(core_lib_static);
     exe.linkLibC();
 
     const run_exe = b.addRunArtifact(exe);
@@ -385,7 +300,6 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     b.installArtifact(tests);
-    tests.linkLibrary(core_lib_static);
     tests.linkLibC();
 
     const run_unit_tests = b.addRunArtifact(tests);
@@ -399,9 +313,26 @@ pub fn build(b: *std.Build) !void {
     const testui_step = b.step("test-ui", "Run UI headless test");
     testui_step.dependOn(&run_tests_ui.step);
 
+    //b.installArtifact(zbgfx.artifact("shaderc"));
+
+    if (options.dynamic_modules) {
+        var buff: [256:0]u8 = undefined;
+        for (enabled_modules.items) |m| {
+            const artifact_name = try std.fmt.bufPrintZ(&buff, "ct_{s}", .{m});
+            const art = b.dependency(m, .{
+                .target = target,
+                .optimize = optimize,
+            }).artifact(artifact_name);
+
+            const step = b.addInstallArtifact(art, .{
+                .dest_dir = .{ .override = .{ .lib = {} } },
+            });
+            b.default_step.dependOn(&step.step);
+        }
+    }
+
     // Libs, moduels etc..
-    const executables = [_]*std.Build.Step.Compile{ exe, tests };
-    inline for (executables) |e| {
+    inline for (.{ exe, tests }) |e| {
         @import("system_sdk").addLibraryPathsTo(e);
 
         // Make exe depends on generated files.
@@ -415,19 +346,18 @@ pub fn build(b: *std.Build) !void {
             .root_source_file = external_credits_file,
         });
 
-        e.root_module.addAnonymousImport("static_modules", .{
-            .root_source_file = _static_output_file,
-            .imports = &.{
-                .{ .name = "cetech1", .module = cetech1.module("cetech1") },
-            },
-        });
+        // e.root_module.addAnonymousImport("static_modules", .{
+        //     .root_source_file = _static_output_file,
+        //     .imports = &.{
+        //         // .{ .name = "cetech1", .module = cetech1.module("cetech1") },
+        //     },
+        // });
 
         e.root_module.addAnonymousImport("gamecontrollerdb", .{
             .root_source_file = b.path("externals/shared/lib/SDL_GameControllerDB/gamecontrollerdb.txt"),
         });
 
         e.root_module.addImport("cetech1", cetech1.module("cetech1"));
-        e.addIncludePath(cetech1.path("includes"));
 
         e.root_module.addImport("cetech1_options", options_module);
 
@@ -441,9 +371,6 @@ pub fn build(b: *std.Build) !void {
         e.root_module.addImport("zf", zf.module("zf"));
         e.root_module.addImport("Uuid", uuid.module("Uuid"));
         e.root_module.addImport("zbgfx", zbgfx.module("zbgfx"));
-
-        e.root_module.addImport("zmath", zmath.module("root"));
-        e.root_module.addImport("ziglangSet", ziglangSet.module("ziglangSet"));
 
         e.linkLibrary(ztracy.artifact("tracy"));
         e.linkLibrary(zglfw.artifact("glfw"));
@@ -463,24 +390,6 @@ pub fn build(b: *std.Build) !void {
                     .optimize = optimize,
                 }).artifact("static"));
             }
-        }
-    }
-
-    //b.installArtifact(zbgfx.artifact("shaderc"));
-
-    if (options.dynamic_modules) {
-        var buff: [256:0]u8 = undefined;
-        for (enabled_modules.items) |m| {
-            const artifact_name = try std.fmt.bufPrintZ(&buff, "ct_{s}", .{m});
-            const art = b.dependency(m, .{
-                .target = target,
-                .optimize = optimize,
-            }).artifact(artifact_name);
-
-            const step = b.addInstallArtifact(art, .{
-                .dest_dir = .{ .override = .{ .lib = {} } },
-            });
-            b.default_step.dependOn(&step.step);
         }
     }
 }
@@ -507,3 +416,74 @@ fn ensureZigVersion() !void {
         return error.ZigIsTooOld;
     }
 }
+
+const externals = .{
+    // ZIG
+    .{ .name = "zig", .file = "zig/LICENSE" },
+
+    // zig-gamedev
+    .{ .name = "zig-gamedev", .file = "externals/shared/lib/zig-gamedev/LICENSE" },
+
+    // ImGui
+    .{ .name = "imgui", .file = "externals/shared/lib/zig-gamedev/libs/zgui/libs/imgui/LICENSE.txt" },
+    .{ .name = "implot", .file = "externals/shared/lib/zig-gamedev/libs/zgui/libs/implot/LICENSE" },
+    .{ .name = "imgui_test_engine", .file = "externals/shared/lib/zig-gamedev/libs/zgui/libs/imgui_test_engine/LICENSE.txt" },
+    .{ .name = "imgui_node_editor", .file = "externals/shared/lib/zig-gamedev/libs/zgui/libs/node_editor/LICENSE" },
+
+    // GLFW
+    .{ .name = "glfw", .file = "externals/shared/lib/zig-gamedev/libs/zglfw/libs/glfw/LICENSE.md" },
+
+    // SDL_GameControllerDB
+    .{ .name = "SDL_GameControllerDB", .file = "externals/shared/lib/SDL_GameControllerDB/LICENSE" },
+
+    // zf
+    .{ .name = "zf", .file = "externals/shared/lib/zf/LICENSE" },
+
+    // zig-uuid
+    .{ .name = "zig-uuid", .file = "externals/shared/lib/zig-uuid/LICENSE" },
+
+    // nativefiledialog-extended
+    .{ .name = "nativefiledialog-extended", .file = "externals/shared/lib/znfde/nativefiledialog/LICENSE" },
+
+    // BGFX
+    .{ .name = "bgfx", .file = "externals/shared/lib/zbgfx/libs/bgfx/LICENSE" },
+
+    // ziglang-set
+    .{ .name = "ziglang-set", .file = "externals/shared/lib/ziglang-set/LICENSE" },
+};
+
+const editor_modules = [_][]const u8{
+    "editor",
+    "editor_asset",
+    "editor_asset_browser",
+    "editor_explorer",
+    "editor_fixtures",
+    "editor_inspector",
+    "editor_obj_buffer",
+    "editor_tags",
+    "editor_tree",
+    "editor_log",
+    "editor_graph",
+    "editor_metrics",
+    "editor_entity_asset",
+    "editor_entity",
+    "editor_asset_preview",
+};
+
+const core_modules = [_][]const u8{
+    "render_component",
+    "entity_logic_component",
+    "graphvm",
+    "default_rg",
+};
+
+const samples_modules = [_][]const u8{
+    // Zig based module
+    "foo",
+
+    // Zig editor tab sample
+    "editor_foo_tab",
+
+    // Zig editor viewport tab sample
+    "editor_foo_viewport_tab",
+};

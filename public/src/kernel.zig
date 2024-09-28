@@ -99,6 +99,24 @@ pub const KernelLoopHookI = struct {
     }
 };
 
+// TODO: TEMP SHIT
+pub const KernelRenderI = struct {
+    pub const c_name = "ct_kernel_render_i";
+    pub const name_hash = strid.strId64(@This().c_name);
+
+    render: *const fn (ctx: *gpu.GpuContext, kernel_tick: u64, dt: f32, vsync: bool) anyerror!void,
+
+    pub inline fn implment(
+        comptime T: type,
+    ) KernelRenderI {
+        if (!std.meta.hasFn(T, "render")) @compileError("implement me");
+
+        return KernelRenderI{
+            .render = T.render,
+        };
+    }
+};
+
 pub const KernelApi = struct {
     quit: *const fn () void,
     setCanQuit: *const fn (can_quit: *const fn () bool) void,
@@ -115,6 +133,6 @@ pub const KernelApi = struct {
     getAuthors: *const fn () [:0]const u8,
 
     // TODO: !!!GLOBAL SHIT WARNING !!!
-    getDb: *const fn () cdb.Db,
+    getDb: *const fn () cdb.DbId,
     //
 };

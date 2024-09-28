@@ -6,5 +6,5 @@ const coreui = cetech1.coreui;
 pub const objectBufferContext = cetech1.strid.strId64("ct_object_buffer_context");
 
 pub const EditorObjBufferAPI = struct {
-    addToFirst: *const fn (allocator: std.mem.Allocator, db: cdb.Db, obj: coreui.SelectionItem) anyerror!void,
+    addToFirst: *const fn (allocator: std.mem.Allocator, db: cdb.DbId, obj: coreui.SelectionItem) anyerror!void,
 };

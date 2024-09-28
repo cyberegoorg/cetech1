@@ -1,10 +1,9 @@
 const std = @import("std");
+const cetech1 = @import("cetech1");
 
-const cdb = @import("cdb.zig");
-const modules = @import("modules.zig");
-const strid = @import("strid.zig");
-
-const log = std.log.scoped(.graphvm);
+const cdb = cetech1.cdb;
+const modules = cetech1.modules;
+const strid = cetech1.strid;
 
 // TODO: MOVE
 pub const EVENT_INIT_NODE_TYPE_STR = "event_init";
@@ -49,7 +48,7 @@ pub const NodeType = cdb.CdbTypeDecl(
         pos_y,
     },
     struct {
-        pub fn getNodeTypeId(db: cdb.Db, reader: *cdb.Obj) strid.StrId32 {
+        pub fn getNodeTypeId(db: *const cdb.CdbAPI, reader: *cdb.Obj) strid.StrId32 {
             const str = NodeType.readStr(db, reader, .node_type) orelse return .{};
             return strid.strId32(str);
         }
@@ -78,12 +77,12 @@ pub const ConnectionType = cdb.CdbTypeDecl(
         to_pin,
     },
     struct {
-        pub fn getFromPinId(db: cdb.Db, reader: *cdb.Obj) strid.StrId32 {
+        pub fn getFromPinId(db: *const cdb.CdbAPI, reader: *cdb.Obj) strid.StrId32 {
             const str = ConnectionType.readStr(db, reader, .from_pin) orelse return .{};
             return strid.strId32(str);
         }
 
-        pub fn getToPinId(db: cdb.Db, reader: *cdb.Obj) strid.StrId32 {
+        pub fn getToPinId(db: *const cdb.CdbAPI, reader: *cdb.Obj) strid.StrId32 {
             const str = ConnectionType.readStr(db, reader, .to_pin) orelse return .{};
             return strid.strId32(str);
         }
@@ -202,7 +201,6 @@ pub const NodePin = struct {
 
 pub const ExecuteArgs = struct {
     allocator: std.mem.Allocator,
-    db: cdb.Db,
     graph: cdb.ObjId,
     settings: ?cdb.ObjId,
     state: ?*anyopaque,
@@ -235,27 +233,25 @@ pub const GraphNodeI = struct {
     settings_type: strid.StrId32 = .{},
     sidefect: bool = false,
 
-    getInputPins: *const fn (allocator: std.mem.Allocator, db: cdb.Db, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) anyerror![]const NodePin = undefined,
-    getOutputPins: *const fn (allocator: std.mem.Allocator, db: cdb.Db, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) anyerror![]const NodePin = undefined,
+    getInputPins: *const fn (allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) anyerror![]const NodePin = undefined,
+    getOutputPins: *const fn (allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) anyerror![]const NodePin = undefined,
 
     state_size: usize = 0,
     state_align: u8 = 0,
 
-    create: ?*const fn (allocator: std.mem.Allocator, state: *anyopaque, db: cdb.Db, node_obj: cdb.ObjId, reload: bool) anyerror!void = null,
-    destroy: ?*const fn (state: *anyopaque, db: cdb.Db, reload: bool) anyerror!void = null,
+    create: ?*const fn (allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool) anyerror!void = null,
+    destroy: ?*const fn (state: *anyopaque, reload: bool) anyerror!void = null,
 
     execute: *const fn (args: ExecuteArgs, in_pins: InPins, out_pins: OutPins) anyerror!void = undefined,
 
     title: ?*const fn (
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         node_obj: cdb.ObjId,
     ) anyerror![:0]const u8 = null,
 
     icon: ?*const fn (
         buff: [:0]u8,
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         node_obj: cdb.ObjId,
     ) anyerror![:0]u8 = null,
 
@@ -340,7 +336,7 @@ pub const GraphValueTypeI = struct {
     size: usize = undefined,
     alignn: usize = undefined,
 
-    valueFromCdb: *const fn (db: cdb.Db, obj: cdb.ObjId, value: []u8) anyerror!void = undefined,
+    valueFromCdb: *const fn (obj: cdb.ObjId, value: []u8) anyerror!void = undefined,
     calcValidityHash: *const fn (value: []const u8) anyerror!ValidityHash = undefined,
 
     valueToString: *const fn (allocator: std.mem.Allocator, value: []const u8) anyerror![:0]u8 = undefined,
@@ -395,12 +391,12 @@ pub const GraphVMApi = struct {
     findValueTypeI: *const fn (type_hash: strid.StrId32) ?*const GraphValueTypeI,
     findValueTypeIByCdb: *const fn (type_hash: strid.StrId32) ?*const GraphValueTypeI,
 
-    createCdbNode: *const fn (db: cdb.Db, type_hash: strid.StrId32, pos: ?[2]f32) anyerror!cdb.ObjId,
+    createCdbNode: *const fn (db: cdb.DbId, type_hash: strid.StrId32, pos: ?[2]f32) anyerror!cdb.ObjId,
 
-    isOutputPin: *const fn (allocator: std.mem.Allocator, db: cdb.Db, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: strid.StrId32, pin_hash: strid.StrId32) anyerror!bool,
-    isInputPin: *const fn (allocator: std.mem.Allocator, db: cdb.Db, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: strid.StrId32, pin_hash: strid.StrId32) anyerror!bool,
-    getInputPin: *const fn (allocator: std.mem.Allocator, db: cdb.Db, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, ype_hash: strid.StrId32, pin_hash: strid.StrId32) anyerror!?NodePin,
-    getOutputPin: *const fn (allocator: std.mem.Allocator, db: cdb.Db, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: strid.StrId32, pin_hash: strid.StrId32) anyerror!?NodePin,
+    isOutputPin: *const fn (allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: strid.StrId32, pin_hash: strid.StrId32) anyerror!bool,
+    isInputPin: *const fn (allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: strid.StrId32, pin_hash: strid.StrId32) anyerror!bool,
+    getInputPin: *const fn (allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, ype_hash: strid.StrId32, pin_hash: strid.StrId32) anyerror!?NodePin,
+    getOutputPin: *const fn (allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: strid.StrId32, pin_hash: strid.StrId32) anyerror!?NodePin,
 
     // TODO: move to editor_graph?
     getTypeColor: *const fn (type_hash: strid.StrId32) [4]f32,
@@ -408,8 +404,11 @@ pub const GraphVMApi = struct {
     needCompile: *const fn (graph: cdb.ObjId) bool,
     compile: *const fn (allocator: std.mem.Allocator, graph: cdb.ObjId) anyerror!void,
 
-    createInstance: *const fn (allocator: std.mem.Allocator, db: cdb.Db, graph: cdb.ObjId) anyerror!GraphInstance,
-    createInstances: *const fn (allocator: std.mem.Allocator, db: cdb.Db, graph: cdb.ObjId, instances: []GraphInstance) anyerror!void,
+    needCompileAny: *const fn () bool,
+    compileAllChanged: *const fn (allocator: std.mem.Allocator) anyerror!void,
+
+    createInstance: *const fn (allocator: std.mem.Allocator, graph: cdb.ObjId) anyerror!GraphInstance,
+    createInstances: *const fn (allocator: std.mem.Allocator, graph: cdb.ObjId, instances: []GraphInstance) anyerror!void,
     destroyInstance: *const fn (instance: GraphInstance) void,
     executeNode: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: strid.StrId32) anyerror!void,
     buildInstances: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance) anyerror!void,

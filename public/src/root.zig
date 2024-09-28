@@ -19,8 +19,11 @@ pub const cdb = @import("cdb.zig");
 pub const cdb_types = @import("cdb_types.zig");
 
 pub const assetdb = @import("assetdb.zig");
+
 pub const gpu = @import("gpu.zig");
+
 pub const renderer = @import("renderer.zig");
+
 pub const coreui = @import("coreui.zig");
 pub const coreui_node_editor = @import("coreui_node_editor.zig");
 
@@ -29,12 +32,7 @@ pub const primitives = @import("primitives.zig");
 
 pub const actions = @import("actions.zig");
 
-pub const graphvm = @import("graphvm.zig");
-pub const render_graph = @import("render_graph.zig");
-pub const debug_draw = @import("debug_draw.zig");
-
 pub const transform = @import("transform.zig");
-
 pub const camera = @import("camera.zig");
 
 test {

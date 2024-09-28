@@ -32,7 +32,7 @@ pub fn build(b: *std.Build) !void {
         l.root_module.addImport("editor_inspector", b.dependency("editor_inspector", .{}).module("editor_inspector"));
         l.root_module.addImport("editor_tree", b.dependency("editor_tree", .{}).module("editor_tree"));
         l.root_module.addImport("editor_obj_buffer", b.dependency("editor_obj_buffer", .{}).module("editor_obj_buffer"));
-        l.addIncludePath(cetech1.path("includes"));
+
         b.installArtifact(l);
     }
 }

@@ -42,7 +42,7 @@ const ONLINE_DOCUMENTATION = "https://cyberegoorg.github.io/cetech1/about.html";
 
 // Global state
 const G = struct {
-    main_db: cdb.Db = undefined,
+    main_db: cdb.DbId = undefined,
     show_demos: bool = false,
     show_metrics: bool = false,
     show_testing_window: bool = false,
@@ -77,11 +77,11 @@ pub var api = public.EditorAPI{
     .getObjColor = getObjColor,
 };
 
-fn selectObjFromMenu(allocator: std.mem.Allocator, db: cdb.Db, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) ?cdb.ObjId {
+fn selectObjFromMenu(allocator: std.mem.Allocator, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) ?cdb.ObjId {
     const tabs = _g.tabs.values();
     for (tabs) |tab| {
         if (tab.vt.select_obj_from_menu) |select_obj_from_menu| {
-            const result = select_obj_from_menu(allocator, tab.inst, db, ignored_obj, allowed_type) catch return null;
+            const result = select_obj_from_menu(allocator, tab.inst, ignored_obj, allowed_type) catch return null;
             if (!result.isEmpty()) return result;
         }
     }
@@ -110,24 +110,26 @@ fn getStateColor(state: cdb.ObjRelation) [4]f32 {
     };
 }
 
-fn getObjColor(db: cdb.Db, obj: cdb.ObjId, in_set_obj: ?cdb.ObjId) ?[4]f32 {
+fn getObjColor(obj: cdb.ObjId, in_set_obj: ?cdb.ObjId) ?[4]f32 {
+    const db = _cdb.getDbFromObjid(obj);
+
     if (in_set_obj) |s_obj| {
-        if (db.getAspect(public.UiVisualAspect, s_obj.type_idx)) |aspect| {
+        if (_cdb.getAspect(public.UiVisualAspect, db, s_obj.type_idx)) |aspect| {
             if (aspect.ui_color) |color| {
-                return color(db, s_obj) catch _coreui.getStyle().getColor(.text);
+                return color(s_obj) catch _coreui.getStyle().getColor(.text);
             }
         }
     } else {
-        if (db.getAspect(public.UiVisualAspect, obj.type_idx)) |aspect| {
+        if (_cdb.getAspect(public.UiVisualAspect, db, obj.type_idx)) |aspect| {
             if (aspect.ui_color) |color| {
-                return color(db, obj) catch _coreui.getStyle().getColor(.text);
+                return color(obj) catch _coreui.getStyle().getColor(.text);
             }
         }
     }
     return null;
 }
 
-fn getAssetColor(db: cdb.Db, obj: cdb.ObjId) [4]f32 {
+fn getAssetColor(obj: cdb.ObjId) [4]f32 {
     if (!_g.enable_colors) return _coreui.getStyle().getColor(.text);
 
     if (obj.type_idx.eql(AssetTypeIdx)) {
@@ -139,34 +141,35 @@ fn getAssetColor(db: cdb.Db, obj: cdb.ObjId) [4]f32 {
         } else if (is_deleted) {
             return coreui.Colors.Deleted;
         }
-        const r = db.readObj(obj).?;
+        const r = _cdb.readObj(obj).?;
 
-        if (assetdb.Asset.readSubObj(db, r, .Object)) |asset_obj| {
-            return getObjColor(db, asset_obj, null) orelse _coreui.getStyle().getColor(.text);
+        if (assetdb.Asset.readSubObj(_cdb, r, .Object)) |asset_obj| {
+            return getObjColor(asset_obj, null) orelse _coreui.getStyle().getColor(.text);
         }
     }
 
     return _coreui.getStyle().getColor(.text);
 }
 
-fn buffFormatObjLabel(allocator: std.mem.Allocator, buff: [:0]u8, db: cdb.Db, obj: cdb.ObjId, with_id: bool, uuid_id: bool) ?[:0]u8 {
+fn buffFormatObjLabel(allocator: std.mem.Allocator, buff: [:0]u8, obj: cdb.ObjId, with_id: bool, uuid_id: bool) ?[:0]u8 {
     var name_buff: [128:0]u8 = undefined;
 
-    if (db.getAspect(public.UiVisualAspect, obj.type_idx)) |aspect| {
+    const db = _cdb.getDbFromObjid(obj);
+    if (_cdb.getAspect(public.UiVisualAspect, db, obj.type_idx)) |aspect| {
         var name: []const u8 = undefined;
 
         if (aspect.ui_name) |ui_name| {
-            name = ui_name(&name_buff, allocator, db, obj) catch return null;
+            name = ui_name(&name_buff, allocator, obj) catch return null;
         } else {
             const asset_obj = _assetdb.getAssetForObj(obj).?;
-            const obj_r = db.readObj(asset_obj).?;
+            const obj_r = _cdb.readObj(asset_obj).?;
 
             if (_assetdb.isAssetFolder(obj)) {
-                const asset_name = assetdb.Asset.readStr(db, obj_r, .Name) orelse "ROOT";
+                const asset_name = assetdb.Asset.readStr(_cdb, obj_r, .Name) orelse "ROOT";
                 name = std.fmt.bufPrintZ(&name_buff, "{s}", .{asset_name}) catch "";
             } else {
-                const asset_name = assetdb.Asset.readStr(db, obj_r, .Name) orelse "No NAME =()";
-                const type_name = db.getTypeName(asset_obj.type_idx).?;
+                const asset_name = assetdb.Asset.readStr(_cdb, obj_r, .Name) orelse "No NAME =()";
+                const type_name = _cdb.getTypeName(db, asset_obj.type_idx).?;
                 name = std.fmt.bufPrintZ(&name_buff, "{s}.{s}", .{ asset_name, type_name }) catch "";
             }
         }
@@ -174,7 +177,7 @@ fn buffFormatObjLabel(allocator: std.mem.Allocator, buff: [:0]u8, db: cdb.Db, ob
         if (aspect.ui_icons) |icons| {
             var icon_buf: [16:0]u8 = undefined;
 
-            const icon = icons(&icon_buf, allocator, db, obj) catch return null;
+            const icon = icons(&icon_buf, allocator, obj) catch return null;
 
             if (with_id) {
                 if (uuid_id) {
@@ -203,7 +206,6 @@ fn buffFormatObjLabel(allocator: std.mem.Allocator, buff: [:0]u8, db: cdb.Db, ob
 
 fn showObjContextMenu(
     allocator: std.mem.Allocator,
-    db: cdb.Db,
     tab: *public.TabO,
     contexts: []const strid.StrId64,
     selection: coreui.SelectionItem,
@@ -214,23 +216,25 @@ fn showObjContextMenu(
 
     _g.filter = _coreui.uiFilter(&_g.filter_buff, _g.filter);
 
-    const is_child = db.isChildOff(selection.top_level_obj, selection.in_set_obj orelse selection.obj);
+    const db = _cdb.getDbFromObjid(obj);
+
+    const is_child = _cdb.isChildOff(selection.top_level_obj, selection.in_set_obj orelse selection.obj);
     const enabled = is_child;
 
     // Property based context
     if (selection.prop_idx) |pidx| {
-        const prop_defs = db.getTypePropDef(obj.type_idx).?;
+        const prop_defs = _cdb.getTypePropDef(db, obj.type_idx).?;
         const prop_def = prop_defs[pidx];
 
         if (selection.in_set_obj) |set_obj| {
-            const obj_r = db.readObj(obj) orelse return;
-            const has_prototype = !db.getPrototype(obj_r).isEmpty();
-            const set_obj_r = db.readObj(set_obj) orelse return;
-            if (db.canIinisiated(obj_r, set_obj_r)) {
+            const obj_r = _cdb.readObj(obj) orelse return;
+            const has_prototype = !_cdb.getPrototype(obj_r).isEmpty();
+            const set_obj_r = _cdb.readObj(set_obj) orelse return;
+            if (_cdb.canIinisiated(obj_r, set_obj_r)) {
                 if (_coreui.menuItem(allocator, coreui.Icons.Instansiate ++ "  " ++ "Instansiate" ++ "###Inisiate", .{}, null)) {
-                    const w = db.writeObj(obj).?;
-                    _ = try db.instantiateSubObjFromSet(w, pidx, set_obj);
-                    try db.writeCommit(w);
+                    const w = _cdb.writeObj(obj).?;
+                    _ = try _cdb.instantiateSubObjFromSet(w, pidx, set_obj);
+                    try _cdb.writeCommit(w);
                 }
 
                 _coreui.separator();
@@ -240,18 +244,18 @@ fn showObjContextMenu(
                 _coreui.pushStyleColor4f(.{ .idx = .text, .c = coreui.Colors.Remove });
                 defer _coreui.popStyleColor(.{});
                 if (_coreui.menuItem(allocator, coreui.Icons.Remove ++ "  " ++ "Remove" ++ "###Remove", .{
-                    .enabled = !has_prototype or db.canIinisiated(obj_r, set_obj_r),
+                    .enabled = !has_prototype or _cdb.canIinisiated(obj_r, set_obj_r),
                 }, null)) {
-                    const w = db.writeObj(obj).?;
+                    const w = _cdb.writeObj(obj).?;
                     if (prop_def.type == .REFERENCE_SET) {
-                        try db.removeFromRefSet(w, pidx, set_obj);
+                        try _cdb.removeFromRefSet(w, pidx, set_obj);
                     } else {
-                        const subobj_w = db.writeObj(set_obj).?;
-                        try db.removeFromSubObjSet(w, pidx, subobj_w);
-                        try db.writeCommit(subobj_w);
+                        const subobj_w = _cdb.writeObj(set_obj).?;
+                        try _cdb.removeFromSubObjSet(w, pidx, subobj_w);
+                        try _cdb.writeCommit(subobj_w);
                     }
 
-                    try db.writeCommit(w);
+                    try _cdb.writeCommit(w);
                 }
             }
         } else {
@@ -259,66 +263,65 @@ fn showObjContextMenu(
                 if (_coreui.beginMenu(allocator, coreui.Icons.Add ++ "  " ++ "Add to set" ++ "###AddToSet", enabled, null)) {
                     defer _coreui.endMenu();
 
-                    const set_menus_aspect = db.getPropertyAspect(public.UiSetMenusAspect, obj.type_idx, pidx);
+                    const set_menus_aspect = _cdb.getPropertyAspect(public.UiSetMenusAspect, db, obj.type_idx, pidx);
                     if (set_menus_aspect) |aspect| {
-                        try aspect.add_menu(allocator, db, obj, pidx);
+                        try aspect.add_menu(allocator, obj, pidx);
                     } else {
                         if (prop_def.type == .REFERENCE_SET) {
                             if (selectObjFromMenu(
                                 allocator,
-                                db,
                                 _assetdb.getObjForAsset(obj) orelse obj,
-                                db.getTypeIdx(prop_def.type_hash) orelse .{},
+                                _cdb.getTypeIdx(db, prop_def.type_hash) orelse .{},
                             )) |selected| {
-                                const w = db.writeObj(obj).?;
-                                try db.addRefToSet(w, pidx, &.{selected});
-                                try db.writeCommit(w);
+                                const w = _cdb.writeObj(obj).?;
+                                try _cdb.addRefToSet(w, pidx, &.{selected});
+                                try _cdb.writeCommit(w);
                             }
                         } else {
                             if (prop_def.type_hash.id != 0) {
                                 if (_coreui.menuItem(allocator, coreui.Icons.Add ++ "  " ++ "Add new" ++ "###AddNew", .{ .enabled = enabled }, null)) {
-                                    const w = db.writeObj(obj).?;
+                                    const w = _cdb.writeObj(obj).?;
 
-                                    const new_obj = try db.createObject(db.getTypeIdx(prop_def.type_hash).?);
-                                    const new_obj_w = db.writeObj(new_obj).?;
+                                    const new_obj = try _cdb.createObject(db, _cdb.getTypeIdx(db, prop_def.type_hash).?);
+                                    const new_obj_w = _cdb.writeObj(new_obj).?;
 
-                                    try db.addSubObjToSet(w, pidx, &.{new_obj_w});
+                                    try _cdb.addSubObjToSet(w, pidx, &.{new_obj_w});
 
-                                    try db.writeCommit(new_obj_w);
-                                    try db.writeCommit(w);
+                                    try _cdb.writeCommit(new_obj_w);
+                                    try _cdb.writeCommit(w);
                                 }
                             }
                         }
                     }
                 }
             } else if (prop_def.type == .SUBOBJECT) {
-                const obj_r = db.readObj(obj) orelse return;
+                const obj_r = _cdb.readObj(obj) orelse return;
 
-                const set_menus_aspect = db.getPropertyAspect(public.UiSetMenusAspect, obj.type_idx, pidx);
+                const set_menus_aspect = _cdb.getPropertyAspect(public.UiSetMenusAspect, db, obj.type_idx, pidx);
                 if (set_menus_aspect) |aspect| {
-                    try aspect.add_menu(allocator, db, obj, pidx);
-                } else if (db.readSubObj(obj_r, pidx)) |subobj| {
-                    const subobj_r = db.readObj(subobj).?;
+                    try aspect.add_menu(allocator, obj, pidx);
+                } else if (_cdb.readSubObj(obj_r, pidx)) |subobj| {
+                    const subobj_r = _cdb.readObj(subobj).?;
 
-                    if (db.canIinisiated(obj_r, subobj_r)) {
+                    if (_cdb.canIinisiated(obj_r, subobj_r)) {
                         if (_coreui.menuItem(allocator, coreui.Icons.Add ++ "  " ++ "Inisiate" ++ "###Inisiate", .{}, null)) {
-                            const w = db.writeObj(obj).?;
-                            _ = try db.instantiateSubObj(w, pidx);
-                            try db.writeCommit(w);
+                            const w = _cdb.writeObj(obj).?;
+                            _ = try _cdb.instantiateSubObj(w, pidx);
+                            try _cdb.writeCommit(w);
                         }
                     }
                 } else {
                     if (prop_def.type_hash.id != 0) {
                         if (_coreui.menuItem(allocator, coreui.Icons.Add ++ "  " ++ "Add new", .{ .enabled = enabled }, null)) {
-                            const w = db.writeObj(obj).?;
+                            const w = _cdb.writeObj(obj).?;
 
-                            const new_obj = try db.createObject(db.getTypeIdx(prop_def.type_hash).?);
-                            const new_obj_w = db.writeObj(new_obj).?;
+                            const new_obj = try _cdb.createObject(db, _cdb.getTypeIdx(db, prop_def.type_hash).?);
+                            const new_obj_w = _cdb.writeObj(new_obj).?;
 
-                            try db.setSubObj(w, pidx, new_obj_w);
+                            try _cdb.setSubObj(w, pidx, new_obj_w);
 
-                            try db.writeCommit(new_obj_w);
-                            try db.writeCommit(w);
+                            try _cdb.writeCommit(new_obj_w);
+                            try _cdb.writeCommit(w);
                         }
                     }
                 }
@@ -342,7 +345,6 @@ fn showObjContextMenu(
                 for (contexts) |context| {
                     if (is_valid(
                         allocator,
-                        db,
                         tab,
                         context,
                         &.{selection},
@@ -371,7 +373,6 @@ fn showObjContextMenu(
                     if (iface.*.menu) |menu| {
                         try menu(
                             allocator,
-                            db,
                             tab,
                             context,
                             &.{selection},
@@ -398,10 +399,9 @@ fn getAllTabsByType(allocator: std.mem.Allocator, tab_type_hash: strid.StrId32) 
     return result.toOwnedSlice();
 }
 
-fn openTabWithPinnedObj(db: cdb.Db, tab_type_hash: strid.StrId32, obj: coreui.SelectionItem) void {
+fn openTabWithPinnedObj(tab_type_hash: strid.StrId32, obj: coreui.SelectionItem) void {
     if (createNewTab(tab_type_hash)) |new_tab| {
         tabSelectObj(
-            db,
             &.{obj},
             new_tab,
             null,
@@ -410,7 +410,7 @@ fn openTabWithPinnedObj(db: cdb.Db, tab_type_hash: strid.StrId32, obj: coreui.Se
     }
 }
 
-fn tabSelectObj(db: cdb.Db, obj: []const coreui.SelectionItem, tab: *public.TabI, sender_tab: ?*public.TabI) void {
+fn tabSelectObj(obj: []const coreui.SelectionItem, tab: *public.TabI, sender_tab: ?*public.TabI) void {
     const o: []const coreui.SelectionItem = if (obj.len == 0) &.{.{ .top_level_obj = .{}, .obj = cdb.OBJID_ZERO }} else obj;
 
     _g.tab2selectedobj.put(tab, o[0]) catch undefined;
@@ -419,7 +419,6 @@ fn tabSelectObj(db: cdb.Db, obj: []const coreui.SelectionItem, tab: *public.TabI
         //log.debug("Selectedobj: {s} {any}", .{o[0]});
         obj_selected(
             tab.inst,
-            db,
             o,
             if (sender_tab) |st| st.vt.tab_hash else null,
         ) catch undefined;
@@ -434,7 +433,7 @@ fn findTabFromTabO(tab: *public.TabO) ?*public.TabI {
     return null;
 }
 
-fn propagateSelection(db: cdb.Db, tab_inst: *public.TabO, obj: []const coreui.SelectionItem) void {
+fn propagateSelection(tab_inst: *public.TabO, obj: []const coreui.SelectionItem) void {
     const tab = findTabFromTabO(tab_inst);
 
     tab_loop: for (_g.tabs.values()) |t| {
@@ -456,7 +455,6 @@ fn propagateSelection(db: cdb.Db, tab_inst: *public.TabO, obj: []const coreui.Se
         }
 
         tabSelectObj(
-            db,
             obj,
             t,
             tab,
@@ -490,7 +488,7 @@ fn createNewTab(tab_hash: strid.StrId32) ?*public.TabI {
         const tabid = alocateTabId(iface.tab_hash) catch undefined;
         errdefer dealocateTabId(iface.tab_hash, tabid);
 
-        const tab_inst = (iface.*.create(_g.main_db, tabid) catch null) orelse continue;
+        const tab_inst = (iface.*.create(tabid) catch null) orelse continue;
         _g.tabs.put(tab_inst.*.inst, tab_inst) catch undefined;
         tab_inst.*.tabid = tabid;
 
@@ -778,8 +776,8 @@ fn doTabs(tmp_allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
                     const fo = selected_obj;
                     if (!fo.isEmpty()) {
                         if (_assetdb.getAssetForObj(fo.top_level_obj)) |asset| {
-                            if (assetdb.Asset.readStr(_g.main_db, _g.main_db.readObj(asset) orelse continue, .Name)) |asset_name_str| {
-                                const type_name = _g.main_db.getTypeName(asset.type_idx).?;
+                            if (assetdb.Asset.readStr(_cdb, _cdb.readObj(asset) orelse continue, .Name)) |asset_name_str| {
+                                const type_name = _cdb.getTypeName(_g.main_db, asset.type_idx).?;
                                 asset_name = try std.fmt.bufPrint(&asset_name_buf, "- {s}.{s}", .{ asset_name_str, type_name });
                             }
                         }
@@ -829,11 +827,11 @@ fn doTabs(tmp_allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
                         // Unpin
                         if (!new_pinned) {
                             tab.pinned_obj = coreui.SelectionItem.empty();
-                            tabSelectObj(_g.main_db, &.{_g.last_selected_obj}, tab, null);
+                            tabSelectObj(&.{_g.last_selected_obj}, tab, null);
                         } else {
                             const tab_selection = _g.last_selected_obj; //_g.tab2selectedobj.get(tab) orelse continue;
 
-                            tabSelectObj(_g.main_db, &.{tab_selection}, tab, null);
+                            tabSelectObj(&.{tab_selection}, tab, null);
                             tab.pinned_obj = tab_selection;
                         }
                     }
@@ -927,7 +925,6 @@ fn kernelQuitHandler() bool {
 var open_in_context_menu_i = public.ObjContextMenuI.implement(struct {
     pub fn isValid(
         allocator: std.mem.Allocator,
-        db: cetech1.cdb.Db,
         tab: *public.TabO,
         context: cetech1.strid.StrId64,
         selection: []const coreui.SelectionItem,
@@ -944,7 +941,7 @@ var open_in_context_menu_i = public.ObjContextMenuI.implement(struct {
             defer allocator.free(impls);
             for (impls) |iface| {
                 if (iface.can_open) |can_open| {
-                    if (try can_open(allocator, db, selection)) {
+                    if (try can_open(allocator, selection)) {
                         const name = try iface.menu_name();
                         if (_coreui.uiFilterPass(allocator, f, name, false) != null) {
                             pass = true;
@@ -959,7 +956,6 @@ var open_in_context_menu_i = public.ObjContextMenuI.implement(struct {
 
     pub fn menu(
         allocator: std.mem.Allocator,
-        db: cetech1.cdb.Db,
         tab: *public.TabO,
         context: cetech1.strid.StrId64,
         selection: []const coreui.SelectionItem,
@@ -972,7 +968,7 @@ var open_in_context_menu_i = public.ObjContextMenuI.implement(struct {
         defer allocator.free(impls);
         for (impls) |iface| {
             if (iface.can_open) |can_open| {
-                if (try can_open(allocator, db, selection)) {
+                if (try can_open(allocator, selection)) {
                     const name = try iface.menu_name();
 
                     var buff: [128]u8 = undefined;
@@ -980,7 +976,7 @@ var open_in_context_menu_i = public.ObjContextMenuI.implement(struct {
 
                     if (_coreui.menuItem(allocator, label, .{}, filter)) {
                         for (selection) |obj| {
-                            openTabWithPinnedObj(db, iface.tab_hash, obj);
+                            openTabWithPinnedObj(iface.tab_hash, obj);
                         }
                     }
                 }
@@ -1028,8 +1024,8 @@ var asset_root_opened_i = assetdb.AssetRootOpenedI.implement(struct {
 var AssetTypeIdx: cdb.TypeIdx = undefined;
 
 const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
-    pub fn postCreateTypes(db: cdb.Db) !void {
-        AssetTypeIdx = assetdb.Asset.typeIdx(db);
+    pub fn postCreateTypes(db: cdb.DbId) !void {
+        AssetTypeIdx = assetdb.Asset.typeIdx(_cdb, db);
     }
 });
 

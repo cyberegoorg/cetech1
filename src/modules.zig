@@ -192,11 +192,12 @@ fn _loadDynLib(path: []const u8) !DynLibInfo {
     };
 }
 
-pub fn loadDynModules() !void {
-    var buffer: [256]u8 = undefined;
-    var fba = std.heap.FixedBufferAllocator.init(&buffer);
-    const tmp_allocator = fba.allocator();
+fn lessThanStr(ctx: void, lhs: []const u8, rhs: []const u8) bool {
+    _ = ctx; // autofix
+    return std.ascii.lessThanIgnoreCase(lhs, rhs);
+}
 
+pub fn loadDynModules() !void {
     const tmp_allocator2 = _allocator;
 
     // TODO remove this fucking long alloc hell
@@ -218,21 +219,29 @@ pub fn loadDynModules() !void {
     };
     defer dir.close();
 
+    var modules = std.ArrayList([:0]const u8).init(tmp_allocator2);
+    defer modules.deinit();
+
     var iterator = dir.iterate();
     while (try iterator.next()) |path| {
-        fba.reset();
-
         const basename = std.fs.path.basename(path.name);
         if (!isDynamicModule(basename)) continue;
 
-        const full_path = try std.fs.path.joinZ(tmp_allocator, &[_][]const u8{ module_dir_relat, path.name });
+        const full_path = try std.fs.path.joinZ(tmp_allocator2, &[_][]const u8{ module_dir_relat, path.name });
 
+        try modules.append(full_path);
+    }
+
+    std.sort.insertion([:0]const u8, modules.items, {}, lessThanStr);
+    for (modules.items) |full_path| {
         log.warn("Loading dynamic module from {s}", .{full_path});
 
         const dyn_lib_info = _loadDynLib(full_path) catch continue;
 
         try _dyn_modules_map.put(dyn_lib_info.full_path, dyn_lib_info);
         try addDynamicModule(.{ .name = dyn_lib_info.name, .module_fce = dyn_lib_info.symbol }, dyn_lib_info.full_path);
+
+        tmp_allocator2.free(full_path);
     }
 }
 

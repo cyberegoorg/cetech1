@@ -26,7 +26,15 @@
         .editor_foo_viewport_tab = .{ .path = "examples/editor_foo_viewport_tab" },
 
         //
-        // CETech1 bundled modules
+        // CETech1 bundled  modules
+        //
+        .graphvm = .{ .path = "modules/graphvm" },
+        .default_rg = .{ .path = "modules/default_rg" },
+        .render_component = .{ .path = "modules/render_component" },
+        .entity_logic_component = .{ .path = "modules/entity_logic_component" },
+
+        //
+        // CETech1 bundled editor modules
         //
         .editor = .{ .path = "modules/editor" },
         .editor_asset = .{ .path = "modules/editor_asset" },
@@ -60,11 +68,7 @@
         .zjobs = .{ .path = "externals/shared/lib/zig-gamedev/libs/zjobs" },
         .ztracy = .{ .path = "externals/shared/lib/zig-gamedev/libs/ztracy" },
         .zgui = .{ .path = "externals/shared/lib/zig-gamedev/libs/zgui" },
-        .zmath = .{ .path = "externals/shared/lib/zig-gamedev/libs/zmath" },
-        //.znfde = .{ .path = "externals/shared/lib/zig-gamedev/libs/znfde" },
-
         .zflecs = .{ .path = "externals/shared/lib/zig-gamedev/libs/zflecs" },
-
-        .ziglangSet = .{ .path = "externals/shared/lib/ziglang-set" },
+        //.znfde = .{ .path = "externals/shared/lib/zig-gamedev/libs/znfde" },
     },
 }

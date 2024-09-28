@@ -2,9 +2,7 @@ const std = @import("std");
 const platform = @import("platform.zig");
 const strid = @import("strid.zig");
 const cdb = @import("cdb.zig");
-const gfx = @import("zig");
-const gfx_rg = @import("render_graph.zig");
-const gfx_dd = @import("debug_draw.zig");
+
 const ecs = @import("ecs.zig");
 
 const log = std.log.scoped(.gpu);
@@ -53,15 +51,10 @@ pub const Backend = enum(c_int) {
 pub const GpuApi = struct {
     createContext: *const fn (window: ?platform.Window, backend: ?Backend, vsync: bool, headles: bool) anyerror!*GpuContext,
     destroyContext: *const fn (ctx: *GpuContext) void,
-
-    renderFrame: *const fn (ctx: *GpuContext, kernel_tick: u64, dt: f32, vsync: bool) void,
-
-    // TODO: use platform api
-    getContentScale: *const fn (ctx: *GpuContext) [2]f32,
     getWindow: *const fn (ctx: *GpuContext) ?platform.Window,
-};
 
-pub const GfxApi = struct {
+    getResolution: *const fn () Resolution,
+
     addPaletteColor: *const fn (color: u32) u8,
 
     vertexPack: *const fn (_input: [4]f32, _inputNormalized: bool, _attr: Attrib, _layout: [*c]const VertexLayout, _data: ?*anyopaque, _index: u32) void,
@@ -376,6 +369,293 @@ pub const Encoder = struct {
         encoderDiscard: *const fn (self: *anyopaque, _flags: u8) void,
         encoderBlit: *const fn (self: *anyopaque, _id: ViewId, _dst: TextureHandle, _dstMip: u8, _dstX: u16, _dstY: u16, _dstZ: u16, _src: TextureHandle, _srcMip: u8, _srcX: u16, _srcY: u16, _srcZ: u16, _width: u16, _height: u16, _depth: u16) void,
     };
+};
+
+pub const DDAxis = enum(c_int) {
+    X,
+    Y,
+    Z,
+    Count,
+};
+
+pub const DDVertex = extern struct {
+    x: f32,
+    y: f32,
+    z: f32,
+};
+
+pub const DDSpriteHandle = extern struct {
+    idx: u16,
+
+    fn isValid(sprite: DDSpriteHandle) bool {
+        return sprite.idx != std.math.maxInt(u16);
+    }
+};
+
+pub const DDGeometryHandle = extern struct {
+    idx: u16,
+
+    fn isValid(geometry: DDGeometryHandle) bool {
+        return geometry.idx != std.math.maxInt(u16);
+    }
+};
+
+pub const DDEncoder = struct {
+    //
+    pub inline fn begin(dde: DDEncoder, _viewId: u16, _depthTestLess: bool, _encoder: Encoder) void {
+        dde.vtable.encoderBegin(dde.ptr, _viewId, _depthTestLess, _encoder.ptr);
+    }
+
+    //
+    pub inline fn end(dde: DDEncoder) void {
+        dde.vtable.encoderEnd(dde.ptr);
+    }
+
+    //
+    pub inline fn push(dde: DDEncoder) void {
+        dde.vtable.encoderPush(dde.ptr);
+    }
+
+    //
+    pub inline fn pop(dde: DDEncoder) void {
+        dde.vtable.encoderPop(dde.ptr);
+    }
+
+    //
+    pub inline fn setDepthTestLess(dde: DDEncoder, _depthTestLess: bool) void {
+        dde.vtable.encoderSetDepthTestLess(dde.ptr, _depthTestLess);
+    }
+
+    //
+    pub inline fn setState(dde: DDEncoder, _depthTest: bool, _depthWrite: bool, _clockwise: bool) void {
+        dde.vtable.encoderSetState(dde.ptr, _depthTest, _depthWrite, _clockwise);
+    }
+
+    //
+    pub inline fn setColor(dde: DDEncoder, _abgr: u32) void {
+        dde.vtable.encoderSetColor(dde.ptr, _abgr);
+    }
+
+    //
+    pub inline fn setLod(dde: DDEncoder, _lod: u8) void {
+        dde.vtable.encoderSetLod(dde.ptr, _lod);
+    }
+
+    //
+    pub inline fn setWireframe(dde: DDEncoder, _wireframe: bool) void {
+        dde.vtable.encoderSetWireframe(dde.ptr, _wireframe);
+    }
+
+    //
+    pub inline fn setStipple(dde: DDEncoder, _stipple: bool, _scale: f32, _offset: f32) void {
+        dde.vtable.encoderSetStipple(dde.ptr, _stipple, _scale, _offset);
+    }
+
+    //
+    pub inline fn setSpin(dde: DDEncoder, _spin: f32) void {
+        dde.vtable.encoderSetSpin(dde, _spin);
+    }
+
+    //
+    pub inline fn setTransform(dde: DDEncoder, _mtx: ?*const anyopaque) void {
+        dde.vtable.encoderSetTransform(dde.ptr, _mtx);
+    }
+
+    //
+    pub inline fn setTranslate(dde: DDEncoder, _xyz: [3]f32) void {
+        dde.vtable.encoderSetTranslate(dde.ptr, _xyz[0], _xyz[1], _xyz[2]);
+    }
+
+    //
+    pub inline fn pushTransform(dde: DDEncoder, _mtx: *const anyopaque) void {
+        dde.vtable.encoderPushTransform(dde.ptr, _mtx);
+    }
+
+    //
+    pub inline fn popTransform(dde: DDEncoder) void {
+        dde.vtable.encoderPopTransform(dde.ptr);
+    }
+
+    //
+    pub inline fn moveTo(dde: DDEncoder, _xyz: [3]f32) void {
+        dde.vtable.encoderMoveTo(dde.ptr, _xyz[0], _xyz[1], _xyz[2]);
+    }
+
+    //
+    pub inline fn lineTo(dde: DDEncoder, _xyz: [3]f32) void {
+        dde.vtable.encoderLineTo(dde.ptr, _xyz[0], _xyz[1], _xyz[2]);
+    }
+
+    //
+    pub inline fn close(dde: DDEncoder) void {
+        dde.vtable.encoderClose(dde.ptr);
+    }
+
+    ///
+    pub inline fn drawAABB(dde: DDEncoder, min: [3]f32, max: [3]f32) void {
+        dde.vtable.encoderDrawAABB(dde.ptr, min, max);
+    }
+
+    ///
+    pub inline fn drawCylinder(dde: DDEncoder, pos: [3]f32, _end: [3]f32, radius: f32) void {
+        dde.vtable.encoderDrawCylinder(dde.ptr, pos, _end, radius);
+    }
+
+    ///
+    pub inline fn drawCapsule(dde: DDEncoder, pos: [3]f32, _end: [3]f32, radius: f32) void {
+        dde.vtable.encoderDrawCapsule(dde.ptr, pos, _end, radius);
+    }
+
+    ///
+    pub inline fn drawDisk(dde: DDEncoder, center: [3]f32, normal: [3]f32, radius: f32) void {
+        dde.vtable.encoderDrawDisk(dde.ptr, center, normal, radius);
+    }
+
+    ///
+    pub inline fn drawObb(dde: DDEncoder, _obb: [3]f32) void {
+        dde.vtable.encoderDrawObb(dde.ptr, _obb);
+    }
+
+    ///
+    pub inline fn drawSphere(dde: DDEncoder, center: [3]f32, radius: f32) void {
+        dde.vtable.encoderDrawSphere(dde.ptr, center, radius);
+    }
+
+    ///
+    pub inline fn drawTriangle(dde: DDEncoder, v0: [3]f32, v1: [3]f32, v2: [3]f32) void {
+        dde.vtable.encoderDrawTriangle(dde.ptr, &v0, &v1, &v2);
+    }
+
+    ///
+    pub inline fn drawCone(dde: DDEncoder, pos: [3]f32, _end: [3]f32, radius: f32) void {
+        dde.vtable.encoderDrawCone(dde.ptr, pos, _end, radius);
+    }
+
+    //
+    pub inline fn drawGeometry(dde: DDEncoder, _handle: DDGeometryHandle) void {
+        dde.vtable.encoderDrawGeometry(dde.ptr, _handle);
+    }
+
+    ///
+    pub inline fn drawLineList(dde: DDEncoder, _numVertices: u32, _vertices: []const DDVertex, _numIndices: u32, _indices: ?[*]const u16) void {
+        dde.vtable.encoderDrawLineList(dde.ptr, _numVertices, _vertices.ptr, _numIndices, _indices);
+    }
+
+    ///
+    pub inline fn drawTriList(dde: DDEncoder, _numVertices: u32, _vertices: []const DDVertex, _numIndices: u32, _indices: ?[*]const u16) void {
+        dde.vtable.encoderDrawTriList(dde.ptr, _numVertices, _vertices.ptr, _numIndices, _indices.?);
+    }
+
+    ///
+    pub inline fn drawFrustum(dde: DDEncoder, _viewProj: []f32) void {
+        dde.vtable.encoderDrawFrustum(dde.ptr, _viewProj.ptr);
+    }
+
+    ///
+    pub inline fn drawArc(dde: DDEncoder, _axis: DDAxis, _xyz: [3]f32, _radius: f32, _degrees: f32) void {
+        dde.vtable.encoderDrawArc(dde.ptr, _axis, _xyz[0], _xyz[1], _xyz[2], _radius, _degrees);
+    }
+
+    ///
+    pub inline fn drawCircle(dde: DDEncoder, _normal: [3]f32, _center: [3]f32, _radius: f32, _weight: f32) void {
+        dde.vtable.encoderDrawCircle(dde.ptr, _normal, _center, _radius, _weight);
+    }
+
+    ///
+    pub inline fn drawCircleAxis(dde: DDEncoder, _axis: DDAxis, _xyz: [3]f32, _radius: f32, _weight: f32) void {
+        dde.vtable.encoderDrawCircleAxis(dde.ptr, _axis, _xyz, _radius, _weight);
+    }
+
+    ///
+    pub inline fn drawQuad(dde: DDEncoder, _normal: [3]f32, _center: [3]f32, _size: f32) void {
+        dde.vtable.encoderDrawQuad(dde.ptr, _normal, _center, _size);
+    }
+
+    ///
+    pub inline fn drawQuadSprite(dde: DDEncoder, _handle: DDSpriteHandle, _normal: [3]f32, _center: [3]f32, _size: f32) void {
+        dde.vtable.encoderDrawQuadSprite(dde.ptr, _handle, _normal, _center, _size);
+    }
+
+    ///
+    pub inline fn drawQuadTexture(dde: DDEncoder, _handle: TextureHandle, _normal: [3]f32, _center: [3]f32, _size: f32) void {
+        dde.vtable.encoderDrawQuadTexture(dde.ptr, _handle, _normal, _center, _size);
+    }
+
+    ///
+    pub inline fn drawAxis(dde: DDEncoder, _xyz: [3]f32, _len: f32, _highlight: DDAxis, _thickness: f32) void {
+        dde.vtable.encoderDrawAxis(dde.ptr, _xyz, _len, _highlight, _thickness);
+    }
+
+    ///
+    pub inline fn drawGrid(dde: DDEncoder, _normal: [3]f32, _center: [3]f32, _size: u32, _step: f32) void {
+        dde.vtable.encoderDrawGrid(dde.ptr, _normal, _center, _size, _step);
+    }
+
+    ///
+    pub inline fn drawGridAxis(dde: DDEncoder, _axis: DDAxis, _center: [3]f32, _size: u32, _step: f32) void {
+        dde.vtable.encoderDrawGridAxis(dde.ptr, _axis, _center, _size, _step);
+    }
+
+    ///
+    pub inline fn drawOrb(dde: DDEncoder, _xyz: [3]f32, _radius: f32, _highlight: DDAxis) void {
+        dde.vtable.encoderDrawOrb(dde.ptr, _xyz, _radius, _highlight);
+    }
+
+    ptr: *anyopaque,
+    vtable: *const VTable,
+
+    pub const VTable = struct {
+        encoderBegin: *const fn (dde: *anyopaque, _viewId: u16, _depthTestLess: bool, _encoder: *anyopaque) void,
+        encoderEnd: *const fn (dde: *anyopaque) void,
+        encoderPush: *const fn (dde: *anyopaque) void,
+        encoderPop: *const fn (dde: *anyopaque) void,
+        encoderSetDepthTestLess: *const fn (dde: *anyopaque, _depthTestLess: bool) void,
+        encoderSetState: *const fn (dde: *anyopaque, _depthTest: bool, _depthWrite: bool, _clockwise: bool) void,
+        encoderSetColor: *const fn (dde: *anyopaque, _abgr: u32) void,
+        encoderSetLod: *const fn (dde: *anyopaque, _lod: u8) void,
+        encoderSetWireframe: *const fn (dde: *anyopaque, _wireframe: bool) void,
+        encoderSetStipple: *const fn (dde: *anyopaque, _stipple: bool, _scale: f32, _offset: f32) void,
+        encoderSetSpin: *const fn (dde: *anyopaque, _spin: f32) void,
+        encoderSetTransform: *const fn (dde: *anyopaque, _mtx: ?*const anyopaque) void,
+        encoderSetTranslate: *const fn (dde: *anyopaque, _xyz: [3]f32) void,
+        encoderPushTransform: *const fn (dde: *anyopaque, _mtx: *const anyopaque) void,
+        encoderPopTransform: *const fn (dde: *anyopaque) void,
+        encoderMoveTo: *const fn (dde: *anyopaque, _xyz: [3]f32) void,
+        encoderLineTo: *const fn (dde: *anyopaque, _xyz: [3]f32) void,
+        encoderClose: *const fn (dde: *anyopaque) void,
+        encoderDrawAABB: *const fn (dde: *anyopaque, min: [3]f32, max: [3]f32) void,
+        encoderDrawCylinder: *const fn (dde: *anyopaque, pos: [3]f32, _end: [3]f32, radius: f32) void,
+        encoderDrawCapsule: *const fn (dde: *anyopaque, pos: [3]f32, _end: [3]f32, radius: f32) void,
+        encoderDrawDisk: *const fn (dde: *anyopaque, center: [3]f32, normal: [3]f32, radius: f32) void,
+        encoderDrawObb: *const fn (dde: *anyopaque, _obb: [3]f32) void,
+        encoderDrawSphere: *const fn (dde: *anyopaque, center: [3]f32, radius: f32) void,
+        encoderDrawTriangle: *const fn (dde: *anyopaque, v0: [3]f32, v1: [3]f32, v2: [3]f32) void,
+        encoderDrawCone: *const fn (dde: *anyopaque, pos: [3]f32, _end: [3]f32, radius: f32) void,
+        encoderDrawGeometry: *const fn (dde: *anyopaque, _handle: DDGeometryHandle) void,
+        encoderDrawLineList: *const fn (dde: *anyopaque, _numVertices: u32, _vertices: []const DDVertex, _numIndices: u32, _indices: ?[*]const u16) void,
+        encoderDrawTriList: *const fn (dde: *anyopaque, _numVertices: u32, _vertices: []const DDVertex, _numIndices: u32, _indices: ?[*]const u16) void,
+        encoderDrawFrustum: *const fn (dde: *anyopaque, _viewProj: []f32) void,
+        encoderDrawArc: *const fn (dde: *anyopaque, _axis: DDAxis, _xyz: [3]f32, _radius: f32, _degrees: f32) void,
+        encoderDrawCircle: *const fn (dde: *anyopaque, _normal: [3]f32, _center: [3]f32, _radius: f32, _weight: f32) void,
+        encoderDrawCircleAxis: *const fn (dde: *anyopaque, _axis: DDAxis, _xyz: [3]f32, _radius: f32, _weight: f32) void,
+        encoderDrawQuad: *const fn (dde: *anyopaque, _normal: [3]f32, _center: [3]f32, _size: f32) void,
+        encoderDrawQuadSprite: *const fn (dde: *anyopaque, _handle: DDSpriteHandle, _normal: [3]f32, _center: [3]f32, _size: f32) void,
+        encoderDrawQuadTexture: *const fn (dde: *anyopaque, _handle: TextureHandle, _normal: [3]f32, _center: [3]f32, _size: f32) void,
+        encoderDrawAxis: *const fn (dde: *anyopaque, _xyz: [3]f32, _len: f32, _highlight: DDAxis, _thickness: f32) void,
+        encoderDrawGrid: *const fn (dde: *anyopaque, _normal: [3]f32, _center: [3]f32, _size: u32, _step: f32) void,
+        encoderDrawGridAxis: *const fn (dde: *anyopaque, _axis: DDAxis, _center: [3]f32, _size: u32, _step: f32) void,
+        encoderDrawOrb: *const fn (dde: *anyopaque, _xyz: [3]f32, _radius: f32, _highlight: DDAxis) void,
+    };
+};
+
+pub const GpuDDApi = struct {
+    createSprite: *const fn (width: u16, height: u16, _data: []const u8) DDSpriteHandle,
+    destroySprite: *const fn (handle: DDSpriteHandle) void,
+    createGeometry: *const fn (numVertices: u32, vertices: []const DDVertex, numIndices: u32, indices: ?[*]const u8, index32: bool) DDGeometryHandle,
+    destroyGeometry: *const fn (handle: DDGeometryHandle) void,
+
+    encoderCreate: *const fn () DDEncoder,
+    encoderDestroy: *const fn (encoder: DDEncoder) void,
 };
 
 pub const ViewId = u16;
@@ -731,7 +1011,7 @@ pub const DebugFlags_None: DebugFlags = 0x00000000;
 pub const DebugFlags_Wireframe: DebugFlags = 0x00000001;
 
 /// Enable infinitely fast hardware test. No draw calls will be submitted to driver.
-/// It's useful when profiling to quickly assess bottleneck between CPU and GPU.
+/// It's useful when profiling to quickly assess bottleneck between CPU and
 pub const DebugFlags_Ifh: DebugFlags = 0x00000002;
 
 /// Enable statistics display.
@@ -819,7 +1099,7 @@ pub const TextureFlags_Srgb: TextureFlags = 0x0000200000000000;
 /// Texture will be used as blit destination.
 pub const TextureFlags_BlitDst: TextureFlags = 0x0000400000000000;
 
-/// Texture will be used for read back from GPU.
+/// Texture will be used for read back from
 pub const TextureFlags_ReadBack: TextureFlags = 0x0000800000000000;
 
 /// Render target MSAAx2 mode.
@@ -965,7 +1245,7 @@ pub const ResetFlags_Maxanisotropy: ResetFlags = 0x00000100;
 /// Begin screen capture.
 pub const ResetFlags_Capture: ResetFlags = 0x00000200;
 
-/// Flush rendering after submitting to GPU.
+/// Flush rendering after submitting to
 pub const ResetFlags_FlushAfterRender: ResetFlags = 0x00002000;
 
 /// This flag specifies where flip occurs. Default behaviour is that flip occurs
@@ -1276,6 +1556,16 @@ pub const VertexLayout = extern struct {
     stride: u16,
     offset: [18]u16,
     attributes: [18]u16,
+};
+
+pub const Resolution = extern struct {
+    format: TextureFormat,
+    width: u32,
+    height: u32,
+    reset: u32,
+    numBackBuffers: u8,
+    maxFrameLatency: u8,
+    debugTextScale: u8,
 };
 
 pub const Access = enum(c_int) {

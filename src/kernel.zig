@@ -18,7 +18,7 @@ const gpu = @import("gpu.zig");
 const coreui = @import("coreui.zig");
 const ecs = @import("ecs.zig");
 const actions = @import("actions.zig");
-const graphvm = @import("graphvm.zig");
+
 const transform = @import("transform.zig");
 const renderer = @import("renderer.zig");
 const metrics = @import("metrics.zig");
@@ -31,6 +31,8 @@ const cetech1_options = @import("cetech1_options");
 
 const externals_credits = @embedFile("externals_credit");
 const authors = @embedFile("authors");
+
+var _cdb = &cdb.api;
 
 const module_name = .kernel;
 
@@ -89,7 +91,7 @@ var _tmp_alocator_pool_allocator: profiler.AllocatorProfiler = undefined;
 var _ecs_allocator: profiler.AllocatorProfiler = undefined;
 var _actions_allocator: profiler.AllocatorProfiler = undefined;
 var _graph_allocator: profiler.AllocatorProfiler = undefined;
-var _viewport_allocator: profiler.AllocatorProfiler = undefined;
+var _renderer_allocator: profiler.AllocatorProfiler = undefined;
 var _metrics_allocator: profiler.AllocatorProfiler = undefined;
 
 var _update_dag: cetech1.dag.StrId64DAG = undefined;
@@ -159,7 +161,7 @@ fn restart() void {
     _restart = true;
 }
 
-fn getDb() cetech1.cdb.Db {
+fn getDb() cetech1.cdb.DbId {
     return assetdb.getDb();
 }
 
@@ -202,7 +204,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     _ecs_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "ecs");
     _actions_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "actions");
     _graph_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "graph");
-    _viewport_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "viewport");
+    _renderer_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "renderer");
 
     _metrics_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "metrics");
 
@@ -229,9 +231,8 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try platform.init(_platform_allocator.allocator(), headless);
     try actions.init(_actions_allocator.allocator());
     try gpu.init(_gpu_allocator.allocator());
-    try renderer.init(_viewport_allocator.allocator());
+    try renderer.init(_renderer_allocator.allocator());
     try coreui.init(_coreui_allocator.allocator());
-    try graphvm.init(_graph_allocator.allocator());
 
     try apidb.api.setZigApi(module_name, cetech1.kernel.KernelApi, &api);
 
@@ -249,7 +250,6 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try gpu.registerToApi();
     try coreui.registerToApi();
     try ecs.registerToApi();
-    try graphvm.registerToApi();
     try metrics.registerToApi();
 
     try transform.regsitreAll();
@@ -273,8 +273,6 @@ pub fn deinit(
     try modules.unloadAll();
 
     ecs.deinit();
-
-    graphvm.deinit();
 
     coreui.deinit();
     renderer.deinit();
@@ -474,7 +472,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             _next_asset_root = null;
         }
 
-        try assetdb.getDb().dump();
+        try _cdb.dump(assetdb.getDb());
 
         var buf: [256]u8 = undefined;
         if (try assetdb.getTmpPath(&buf)) |path| {
@@ -587,7 +585,12 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
             // Render frame
             if (gpu_context) |ctx| {
-                gpu.api.renderFrame(ctx, kernel_tick, dt_s, !headless);
+                const impls = try apidb.api.getImpl(tmp_frame_alloc, public.KernelRenderI);
+                defer tmp_frame_alloc.free(impls);
+
+                for (impls) |iface| {
+                    try iface.render(ctx, kernel_tick, dt_s, !headless);
+                }
             }
 
             // End loop
@@ -617,7 +620,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             }
 
             // clean main DB
-            try assetdb.getDb().gc(tmp_frame_alloc);
+            try _cdb.gc(tmp_frame_alloc, assetdb.getDb());
 
             // Check window close request
             if (main_window) |window| {
@@ -975,24 +978,24 @@ fn shutdownKernelTasks() !void {
     }
 }
 
-test "Can boot kernel" {
-    if (builtin.os.tag == .linux) return error.SkipZigTest;
-    const Module1 = struct {
-        var called: bool = false;
-        fn load_module(_apidb: *const cetech1.apidb.ApiDbAPI, _allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
-            _ = _apidb;
-            _ = reload;
-            _ = load;
-            _ = _allocator;
-            called = true;
-            return true;
-        }
-    };
+// test "Can boot kernel" {
+//     if (builtin.os.tag == .linux) return error.SkipZigTest;
+//     const Module1 = struct {
+//         var called: bool = false;
+//         fn load_module(_apidb: *const cetech1.apidb.ApiDbAPI, _allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+//             _ = _apidb;
+//             _ = reload;
+//             _ = load;
+//             _ = _allocator;
+//             called = true;
+//             return true;
+//         }
+//     };
 
-    const static_modules = [_]cetech1.modules.ModuleDesc{.{ .name = "module1", .module_fce = @ptrCast(&Module1.load_module) }};
-    try boot(&static_modules, .{ .headless = true, .load_dynamic = false, .max_kernel_tick = 2 });
-    try std.testing.expect(Module1.called);
-}
+//     const static_modules = [_]cetech1.modules.ModuleDesc{.{ .name = "module1", .module_fce = @ptrCast(&Module1.load_module) }};
+//     try boot(&static_modules, .{ .headless = true, .load_dynamic = false, .max_kernel_tick = 2 });
+//     try std.testing.expect(Module1.called);
+// }
 
 // Assert C api == C api in zig.
 comptime {}

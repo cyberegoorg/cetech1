@@ -24,8 +24,6 @@ var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 
-var _db: cdb.Db = undefined;
-
 // Play with this constants to enable some features
 const spam_log = false;
 const do_tasks = false;
@@ -57,8 +55,9 @@ const FooCDB = cdb.CdbTypeDecl(
 // Register all cdb stuff in this method
 
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
-    pub fn createTypes(db: cdb.Db) !void {
-        _ = try db.addType(
+    pub fn createTypes(db: cdb.DbId) !void {
+        _ = try _cdb.addType(
+            db,
             FooCDB.name,
             &[_]cdb.PropDef{
                 .{ .prop_idx = FooCDB.propIdx(.PROP1), .name = "prop1", .type = cdb.PropType.F32 },
@@ -67,17 +66,17 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
             },
         );
 
-        _g.type_hash = cetech1.cdb_types.addBigType(db, "stress_foo_1", null) catch unreachable;
-        _g.type_hash2 = cetech1.cdb_types.addBigType(db, "stress_foo_2", null) catch unreachable;
+        _g.type_hash = cetech1.cdb_types.addBigType(_cdb, db, "stress_foo_1", null) catch unreachable;
+        _g.type_hash2 = cetech1.cdb_types.addBigType(_cdb, db, "stress_foo_2", null) catch unreachable;
 
-        _g.ref_obj1 = db.createObject(_g.type_hash2) catch undefined;
+        _g.ref_obj1 = _cdb.createObject(db, _g.type_hash2) catch undefined;
     }
 });
 
 // Create simple update kernel task
 const KernelTask = struct {
     pub fn update(kernel_tick: u64, dt: f32) !void {
-        _db = _kernel.getDb();
+        _cdb = _kernel.getDb();
         _g.var_1 += 1;
 
         const tmp_alloc = try _tmpalloc.create();
@@ -92,23 +91,23 @@ const KernelTask = struct {
         defer tmp_alloc.destroy(foo);
 
         // Cdb object create test
-        if (do_cdb) {
-            try _db.stressIt(_g.type_hash, _g.type_hash2, _g.ref_obj1);
+        // if (do_cdb) {
+        //     try _db.stressIt(_g.type_hash, _g.type_hash2, _g.ref_obj1);
 
-            const obj1 = try FooCDB.createObject(_db);
-            if (spam_log) log.debug("obj1 id {d}", .{obj1.id});
+        //     const obj1 = try FooCDB.createObject(_cdb);
+        //     if (spam_log) log.debug("obj1 id {d}", .{obj1.id});
 
-            if (_db.writeObj(obj1)) |writer| {
-                defer _db.writeCommit(writer);
+        //     if (_cdb.writeObj(obj1)) |writer| {
+        //         defer _cdb.writeCommit(writer);
 
-                FooCDB.setValue(_db, f32, writer, .PROP1, @floatFromInt(kernel_tick));
-                FooCDB.setValue(_db, u64, writer, .KERNEL_TICK, kernel_tick);
-            }
+        //         FooCDB.setValue(_cdb, f32, writer, .PROP1, @floatFromInt(kernel_tick));
+        //         FooCDB.setValue(_cdb, u64, writer, .KERNEL_TICK, kernel_tick);
+        //     }
 
-            const version = _db.getVersion(obj1);
-            if (spam_log) log.debug("obj1 version {d}", .{version});
-            _db.destroyObject(obj1);
-        }
+        //     const version = _cdb.getVersion(obj1);
+        //     if (spam_log) log.debug("obj1 version {d}", .{version});
+        //     _db.destroyObject(obj1);
+        // }
 
         //std.time.sleep(1 * std.time.ns_per_ms);
     }

@@ -3,7 +3,6 @@ const builtin = @import("builtin");
 const strid = @import("strid.zig");
 
 const cdb = @import("cdb.zig");
-const graphvm = @import("graphvm.zig");
 
 const log = std.log.scoped(.ecs);
 
@@ -155,13 +154,11 @@ pub const ComponentI = struct {
     uiIcons: ?*const fn (
         buff: [:0]u8,
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
     ) anyerror![:0]const u8 = null,
 
     fromCdb: ?*const fn (
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
         data: []u8,
     ) anyerror!void = null,
@@ -524,22 +521,6 @@ pub const Iter = struct {
     };
 };
 
-pub const EntityLogicComponent = struct {
-    graph: cdb.ObjId = .{},
-};
-
-pub const EntityLogicComponentCdb = cdb.CdbTypeDecl(
-    "ct_entity_logic_component",
-    enum(u32) {
-        graph = 0,
-    },
-    struct {},
-);
-
-pub const EntityLogicComponentInstance = struct {
-    graph_container: graphvm.GraphInstance = .{},
-};
-
 pub const ECS_WORLD_CONTEXT = strid.strId32("ecs_world_context");
 pub const ECS_ENTITY_CONTEXT = strid.strId32("ecs_entity_context");
 
@@ -552,5 +533,5 @@ pub const EcsAPI = struct {
 
     findComponentIByCdbHash: *const fn (cdb_hash: cdb.TypeHash) ?*const ComponentI,
 
-    spawnManyFromCDB: *const fn (allocator: std.mem.Allocator, world: World, db: cdb.Db, obj: cdb.ObjId, count: usize) anyerror![]EntityId,
+    spawnManyFromCDB: *const fn (allocator: std.mem.Allocator, world: World, obj: cdb.ObjId, count: usize) anyerror![]EntityId,
 };

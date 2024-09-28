@@ -6,13 +6,12 @@ const cdb = cetech1.cdb;
 const coreui = cetech1.coreui;
 const tempalloc = cetech1.tempalloc;
 const gpu = cetech1.gpu;
-const gfx = cetech1.gpu;
-const gfx_rg = cetech1.render_graph;
+
 const zm = cetech1.math;
 const ecs = cetech1.ecs;
 const primitives = cetech1.primitives;
 const actions = cetech1.actions;
-const graphvm = cetech1.graphvm;
+const graphvm = graphvm;
 const assetdb = cetech1.assetdb;
 const uuid = cetech1.uuid;
 const task = cetech1.task;
@@ -42,25 +41,23 @@ var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
 var _log: *const cetech1.log.LogAPI = undefined;
 var _cdb: *const cdb.CdbAPI = undefined;
 var _coreui: *const coreui.CoreUIApi = undefined;
-var _gfx: *const gfx.GfxApi = undefined;
-var _gfx_rg: *const gfx_rg.GfxRGApi = undefined;
+var _gpu: *const gpu.GpuApi = undefined;
+var _render_graph: *const renderer.RenderGraphApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _ecs: *const ecs.EcsAPI = undefined;
 var _tempalloc: *const tempalloc.TempAllocApi = undefined;
 var _actions: *const actions.ActionsAPI = undefined;
-var _graph: *const graphvm.GraphVMApi = undefined;
 var _assetdb: *const assetdb.AssetDBAPI = undefined;
 var _uuid: *const uuid.UuidAPI = undefined;
 var _task: *const task.TaskAPI = undefined;
-var _viewport: *const cetech1.renderer.RendererApi = undefined;
+var _renderer: *const cetech1.renderer.RendererApi = undefined;
 var _platform: *const cetech1.platform.PlatformApi = undefined;
 var _editor: *const editor.EditorAPI = undefined;
 
 // Global state that can surive hot-reload
 const G = struct {
     test_tab_vt_ptr: *editor.TabTypeI = undefined,
-    rg: gfx_rg.RenderGraph = undefined,
-    db: cetech1.cdb.Db = undefined, // TODO: SHIT
+    rg: renderer.Graph = undefined,
 };
 var _g: *G = undefined;
 
@@ -68,7 +65,7 @@ var _g: *G = undefined;
 const EntityEditorTab = struct {
     tab_i: editor.TabI,
     viewport: Viewport = undefined,
-    db: cdb.Db,
+
     world: ecs.World,
     camera_look_activated: bool = false,
 
@@ -110,18 +107,17 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Create new tab instantce
-    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.TabI {
+    pub fn create(tab_id: u32) !?*editor.TabI {
         const w = try _ecs.createWorld();
-        _g.db = db;
 
         var buf: [128]u8 = undefined;
         const name = try std.fmt.bufPrintZ(&buf, "Entity {d}", .{tab_id});
 
         var tab_inst = _allocator.create(EntityEditorTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _viewport.createViewport(name, _g.rg, w),
+            .viewport = try _renderer.createViewport(name, _g.rg, w),
             .world = w,
-            .db = db,
+
             .tab_i = .{
                 .vt = _g.test_tab_vt_ptr,
                 .inst = @ptrCast(tab_inst),
@@ -134,7 +130,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     // Destroy tab instantce
     pub fn destroy(tab_inst: *editor.TabI) !void {
         const tab_o: *EntityEditorTab = @alignCast(@ptrCast(tab_inst.inst));
-        _viewport.destroyViewport(tab_o.viewport);
+        _renderer.destroyViewport(tab_o.viewport);
         _ecs.destroyWorld(tab_o.world);
         _allocator.destroy(tab_o);
     }
@@ -149,11 +145,14 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         var selected_obj = cdb.ObjId{};
 
         selected_obj = tab_o.selection.top_level_obj;
+        var db: cdb.DbId = undefined;
         if (!selected_obj.isEmpty()) {
-            if (selected_obj.type_idx.eql(assetdb.Asset.typeIdx(tab_o.db))) {
-                if (!_assetdb.isAssetObjTypeOf(selected_obj, ecs.Entity.typeIdx(tab_o.db))) return;
+            db = _cdb.getDbFromObjid(selected_obj);
+
+            if (selected_obj.type_idx.eql(assetdb.Asset.typeIdx(_cdb, db))) {
+                if (!_assetdb.isAssetObjTypeOf(selected_obj, ecs.Entity.typeIdx(_cdb, db))) return;
                 entiy_obj = _assetdb.getObjForAsset(selected_obj).?;
-            } else if (selected_obj.type_idx.eql(ecs.Entity.typeIdx(tab_o.db))) {
+            } else if (selected_obj.type_idx.eql(ecs.Entity.typeIdx(_cdb, db))) {
                 entiy_obj = selected_obj;
             }
         }
@@ -169,7 +168,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 tab_o.world.destroyEntities(&.{root_ent});
             }
 
-            const ents = try _ecs.spawnManyFromCDB(tmp_alloc, tab_o.world, tab_o.db, entiy_obj, 1);
+            const ents = try _ecs.spawnManyFromCDB(tmp_alloc, tab_o.world, entiy_obj, 1);
             defer tmp_alloc.free(ents);
             tab_o.root_entity = ents[0];
 
@@ -204,19 +203,19 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 if (_coreui.acceptDragDropPayload("obj", .{ .source_allow_null_id = true })) |payload| {
                     const drag_obj: cdb.ObjId = std.mem.bytesToValue(cdb.ObjId, payload.data.?);
 
-                    if (drag_obj.type_idx.eql(assetdb.Asset.typeIdx(tab_o.db))) {
+                    if (drag_obj.type_idx.eql(assetdb.Asset.typeIdx(_cdb, db))) {
                         const asset_entity_obj = _assetdb.getObjForAsset(drag_obj).?;
                         if (!entiy_obj.eql(asset_entity_obj)) {
-                            if (asset_entity_obj.type_idx.eql(ecs.Entity.typeIdx(tab_o.db))) {
-                                const new_obj = try tab_o.db.createObjectFromPrototype(asset_entity_obj);
+                            if (asset_entity_obj.type_idx.eql(ecs.Entity.typeIdx(_cdb, db))) {
+                                const new_obj = try _cdb.createObjectFromPrototype(asset_entity_obj);
 
-                                const new_obj_w = ecs.Entity.write(tab_o.db, new_obj).?;
-                                const entiy_obj_w = ecs.Entity.write(tab_o.db, entiy_obj).?;
+                                const new_obj_w = ecs.Entity.write(_cdb, new_obj).?;
+                                const entiy_obj_w = ecs.Entity.write(_cdb, entiy_obj).?;
 
-                                try ecs.Entity.addSubObjToSet(tab_o.db, entiy_obj_w, .childrens, &.{new_obj_w});
+                                try ecs.Entity.addSubObjToSet(_cdb, entiy_obj_w, .childrens, &.{new_obj_w});
 
-                                try ecs.Entity.commit(tab_o.db, new_obj_w);
-                                try ecs.Entity.commit(tab_o.db, entiy_obj_w);
+                                try ecs.Entity.commit(_cdb, new_obj_w);
+                                try ecs.Entity.commit(_cdb, entiy_obj_w);
                             }
                         }
                     }
@@ -299,15 +298,17 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, db: cdb.Db, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.strid.StrId32) !void {
+    pub fn objSelected(inst: *editor.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.strid.StrId32) !void {
         _ = sender_tab_hash; // autofix
         var tab_o: *EntityEditorTab = @alignCast(@ptrCast(inst));
 
         const selected = selection[0];
+        if (selected.isEmpty()) return;
 
-        if (_assetdb.isAssetObjTypeOf(selected.obj, ecs.Entity.typeIdx(db))) {
+        const db = _cdb.getDbFromObjid(selected.obj);
+        if (_assetdb.isAssetObjTypeOf(selected.obj, ecs.Entity.typeIdx(_cdb, db))) {
             tab_o.selection = selected;
-        } else if (selected.obj.type_idx.eql(ecs.Entity.typeIdx(db))) {
+        } else if (selected.obj.type_idx.eql(ecs.Entity.typeIdx(_cdb, db))) {
             tab_o.selection = selected;
         }
     }
@@ -316,124 +317,21 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         const tab_o: *EntityEditorTab = @alignCast(@ptrCast(inst));
 
         if (!tab_o.selection.isEmpty()) {
-            _editor.propagateSelection(tab_o.db, inst, &.{tab_o.selection});
+            _editor.propagateSelection(inst, &.{tab_o.selection});
         }
     }
 
     // Can open tab
-    pub fn canOpen(allocator: Allocator, db: cdb.Db, selection: []const coreui.SelectionItem) !bool {
+    pub fn canOpen(allocator: Allocator, selection: []const coreui.SelectionItem) !bool {
         _ = allocator; // autofix
-        const EntityTypeIdx = ecs.Entity.typeIdx(db);
-        const AssetTypeIdx = assetdb.Asset.typeIdx(db);
+        const db = _cdb.getDbFromObjid(selection[0].obj);
+        const EntityTypeIdx = ecs.Entity.typeIdx(_cdb, db);
+        const AssetTypeIdx = assetdb.Asset.typeIdx(_cdb, db);
         for (selection) |obj| {
             if (!obj.obj.type_idx.eql(EntityTypeIdx) and !obj.obj.type_idx.eql(AssetTypeIdx)) return false;
             if (_assetdb.getObjForAsset(obj.obj)) |o| if (!o.type_idx.eql(EntityTypeIdx)) return false;
         }
         return true;
-    }
-});
-
-const simple_pass = gfx_rg.Pass.implement(struct {
-    pub fn setup(pass: *gfx_rg.Pass, builder: gfx_rg.GraphBuilder) !void {
-        try builder.exportLayer(pass, "color");
-
-        try builder.createTexture2D(
-            pass,
-            "foo",
-            .{
-                .format = gfx.TextureFormat.BGRA8,
-                .flags = 0 |
-                    gfx.TextureFlags_Rt |
-                    gfx.SamplerFlags_MinPoint |
-                    gfx.SamplerFlags_MipMask |
-                    gfx.SamplerFlags_MagPoint |
-                    gfx.SamplerFlags_MipPoint |
-                    gfx.SamplerFlags_UClamp |
-                    gfx.SamplerFlags_VClamp,
-
-                .clear_color = 0x66CCFFff,
-            },
-        );
-        try builder.createTexture2D(
-            pass,
-            "foo_depth",
-            .{
-                .format = gfx.TextureFormat.D24,
-                .flags = 0 |
-                    gfx.TextureFlags_Rt |
-                    gfx.SamplerFlags_MinPoint |
-                    gfx.SamplerFlags_MagPoint |
-                    gfx.SamplerFlags_MipPoint |
-                    gfx.SamplerFlags_UClamp |
-                    gfx.SamplerFlags_VClamp,
-
-                .clear_depth = 1.0,
-            },
-        );
-
-        try builder.addPass("simple_pass", pass);
-    }
-
-    pub fn render(builder: gfx_rg.GraphBuilder, gfx_api: *const gfx.GfxApi, viewport: Viewport, viewid: gfx.ViewId) !void {
-        _ = builder;
-
-        const fb_size = viewport.getSize();
-        const aspect_ratio = fb_size[0] / fb_size[1];
-        const projMtx = zm.perspectiveFovRhGl(
-            0.25 * std.math.pi,
-            aspect_ratio,
-            0.1,
-            1000.0,
-        );
-
-        const viewMtx = viewport.getViewMtx();
-        gfx_api.setViewTransform(viewid, &viewMtx, &zm.matToArr(projMtx));
-
-        if (gfx_api.getEncoder()) |e| {
-            e.touch(viewid);
-
-            const dd = viewport.getDD();
-            {
-                dd.begin(viewid, true, e);
-                defer dd.end();
-
-                dd.drawGridAxis(.Y, .{ 0, -2, 0 }, 128, 1);
-                dd.drawAxis(.{ 0, 0, 0 }, 1.0, .Count, 0);
-            }
-        }
-    }
-});
-
-const blit_pass = gfx_rg.Pass.implement(struct {
-    pub fn setup(pass: *gfx_rg.Pass, builder: gfx_rg.GraphBuilder) !void {
-        try builder.writeTexture(pass, gfx_rg.ViewportColorResource);
-        try builder.readTexture(pass, "foo");
-        try builder.addPass("blit", pass);
-    }
-
-    pub fn render(builder: gfx_rg.GraphBuilder, gfx_api: *const gfx.GfxApi, viewport: Viewport, viewid: gfx.ViewId) !void {
-        const fb_size = viewport.getSize();
-
-        if (gfx_api.getEncoder()) |e| {
-            const out_tex = builder.getTexture(gfx_rg.ViewportColorResource).?;
-            const foo_tex = builder.getTexture("foo").?;
-            e.blit(
-                viewid,
-                out_tex,
-                0,
-                0,
-                0,
-                0,
-                foo_tex,
-                0,
-                0,
-                0,
-                0,
-                @intFromFloat(fb_size[0]),
-                @intFromFloat(fb_size[1]),
-                0,
-            );
-        }
     }
 });
 
@@ -448,9 +346,8 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
     &[_]cetech1.strid.StrId64{},
     struct {
         pub fn init() !void {
-            _g.rg = try _gfx_rg.create();
-            try _g.rg.addPass(simple_pass);
-            try _g.rg.addPass(blit_pass);
+            _g.rg = try _render_graph.create();
+            try _render_graph.createDefault(_allocator, _g.rg);
 
             try _actions.createActionSet(ViewportActionSet);
             try _actions.addActions(ViewportActionSet, &.{
@@ -502,7 +399,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
         }
 
         pub fn shutdown() !void {
-            _gfx_rg.destroy(_g.rg);
+            _render_graph.destroy(_g.rg);
         }
     },
 );
@@ -516,17 +413,16 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _apidb = apidb;
     _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
     _coreui = apidb.getZigApi(module_name, coreui.CoreUIApi).?;
-    _gfx = apidb.getZigApi(module_name, gfx.GfxApi).?;
-    _gfx_rg = apidb.getZigApi(module_name, gfx_rg.GfxRGApi).?;
+    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
+    _render_graph = apidb.getZigApi(module_name, renderer.RenderGraphApi).?;
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
     _tempalloc = apidb.getZigApi(module_name, tempalloc.TempAllocApi).?;
     _actions = apidb.getZigApi(module_name, actions.ActionsAPI).?;
-    _graph = apidb.getZigApi(module_name, graphvm.GraphVMApi).?;
     _assetdb = apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
     _uuid = apidb.getZigApi(module_name, uuid.UuidAPI).?;
     _task = apidb.getZigApi(module_name, task.TaskAPI).?;
-    _viewport = apidb.getZigApi(module_name, cetech1.renderer.RendererApi).?;
+    _renderer = apidb.getZigApi(module_name, cetech1.renderer.RendererApi).?;
     _platform = apidb.getZigApi(module_name, cetech1.platform.PlatformApi).?;
     _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
 

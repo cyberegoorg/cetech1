@@ -6,13 +6,11 @@ const cdb = cetech1.cdb;
 const coreui = cetech1.coreui;
 const tempalloc = cetech1.tempalloc;
 const gpu = cetech1.gpu;
-const gfx = cetech1.gpu;
-const gfx_rg = cetech1.render_graph;
+
 const zm = cetech1.math;
 const ecs = cetech1.ecs;
 const primitives = cetech1.primitives;
 const actions = cetech1.actions;
-const graphvm = cetech1.graphvm;
 const assetdb = cetech1.assetdb;
 const uuid = cetech1.uuid;
 const task = cetech1.task;
@@ -42,25 +40,24 @@ var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
 var _log: *const cetech1.log.LogAPI = undefined;
 var _cdb: *const cdb.CdbAPI = undefined;
 var _coreui: *const coreui.CoreUIApi = undefined;
-var _gfx: *const gfx.GfxApi = undefined;
-var _gfx_rg: *const gfx_rg.GfxRGApi = undefined;
+var _gpu: *const gpu.GpuApi = undefined;
+var _render_graph: *const renderer.RenderGraphApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _ecs: *const ecs.EcsAPI = undefined;
 var _tempalloc: *const tempalloc.TempAllocApi = undefined;
 var _actions: *const actions.ActionsAPI = undefined;
-var _graph: *const graphvm.GraphVMApi = undefined;
 var _assetdb: *const assetdb.AssetDBAPI = undefined;
 var _uuid: *const uuid.UuidAPI = undefined;
 var _task: *const task.TaskAPI = undefined;
-var _viewport: *const cetech1.renderer.RendererApi = undefined;
+var _renderer: *const cetech1.renderer.RendererApi = undefined;
 
 const World2CullingQuery = std.AutoArrayHashMap(ecs.World, ecs.Query);
 
 // Global state that can surive hot-reload
 const G = struct {
     test_tab_vt_ptr: *editor.TabTypeI = undefined,
-    rg: gfx_rg.RenderGraph = undefined,
-    db: cetech1.cdb.Db = undefined, // TODO: SHIT
+    rg: renderer.Graph = undefined,
+    db: cetech1.cdb.DbId = undefined, // TODO: SHIT
 };
 var _g: *G = undefined;
 
@@ -143,16 +140,15 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Create new tab instantce
-    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.TabI {
+    pub fn create(tab_id: u32) !?*editor.TabI {
         const w = try _ecs.createWorld();
-        _g.db = db;
 
         var buf: [128]u8 = undefined;
         const name = try std.fmt.bufPrintZ(&buf, "Foo viewport {d}", .{tab_id});
 
         var tab_inst = _allocator.create(FooViewportTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _viewport.createViewport(name, _g.rg, w),
+            .viewport = try _renderer.createViewport(name, _g.rg, w),
             .world = w,
             .tab_i = .{
                 .vt = _g.test_tab_vt_ptr,
@@ -165,7 +161,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         // TODO: TEMP HARDCODE SHIT HACK - created in 2024... if you still read this and year is not 2024 am still idiot ;)
         if (_assetdb.getObjId(_uuid.fromStr("0191e6d1-830a-73d8-992a-aa6f9add6d1e").?)) |e_obj| {
-            const entities = try _ecs.spawnManyFromCDB(allocator, w, db, e_obj, SPHERE_COUNT);
+            const entities = try _ecs.spawnManyFromCDB(allocator, w, e_obj, SPHERE_COUNT);
             defer allocator.free(entities);
 
             const rnd = prng.random();
@@ -187,7 +183,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     // Destroy tab instantce
     pub fn destroy(tab_inst: *editor.TabI) !void {
         const tab_o: *FooViewportTab = @alignCast(@ptrCast(tab_inst.inst));
-        _viewport.destroyViewport(tab_o.viewport);
+        _renderer.destroyViewport(tab_o.viewport);
         _ecs.destroyWorld(tab_o.world);
         _allocator.destroy(tab_o);
     }
@@ -256,110 +252,6 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 });
 
-const simple_pass = gfx_rg.Pass.implement(struct {
-    pub fn setup(pass: *gfx_rg.Pass, builder: gfx_rg.GraphBuilder) !void {
-        try builder.exportLayer(pass, "color");
-
-        try builder.createTexture2D(
-            pass,
-            "foo",
-            .{
-                .format = gfx.TextureFormat.BGRA8,
-                .flags = 0 |
-                    gfx.TextureFlags_Rt |
-                    gfx.SamplerFlags_MinPoint |
-                    gfx.SamplerFlags_MipMask |
-                    gfx.SamplerFlags_MagPoint |
-                    gfx.SamplerFlags_MipPoint |
-                    gfx.SamplerFlags_UClamp |
-                    gfx.SamplerFlags_VClamp,
-
-                .clear_color = 0x66CCFFff,
-            },
-        );
-        try builder.createTexture2D(
-            pass,
-            "foo_depth",
-            .{
-                .format = gfx.TextureFormat.D24,
-                .flags = 0 |
-                    gfx.TextureFlags_Rt |
-                    gfx.SamplerFlags_MinPoint |
-                    gfx.SamplerFlags_MagPoint |
-                    gfx.SamplerFlags_MipPoint |
-                    gfx.SamplerFlags_UClamp |
-                    gfx.SamplerFlags_VClamp,
-
-                .clear_depth = 1.0,
-            },
-        );
-
-        try builder.addPass("simple_pass", pass);
-    }
-
-    pub fn render(builder: gfx_rg.GraphBuilder, gfx_api: *const gfx.GfxApi, viewport: Viewport, viewid: gfx.ViewId) !void {
-        _ = builder;
-
-        const fb_size = viewport.getSize();
-        const aspect_ratio = fb_size[0] / fb_size[1];
-        const projMtx = zm.perspectiveFovRhGl(
-            0.25 * std.math.pi,
-            aspect_ratio,
-            0.1,
-            1000.0,
-        );
-
-        const viewMtx = viewport.getViewMtx();
-        gfx_api.setViewTransform(viewid, &viewMtx, &zm.matToArr(projMtx));
-
-        if (gfx_api.getEncoder()) |e| {
-            e.touch(viewid);
-
-            const dd = viewport.getDD();
-            {
-                dd.begin(viewid, true, e);
-                defer dd.end();
-
-                dd.drawGridAxis(.Y, .{ 0, -2, 0 }, 128, 1);
-                dd.drawAxis(.{ 0, 0, 0 }, 1.0, .Count, 0);
-            }
-        }
-    }
-});
-
-const blit_pass = gfx_rg.Pass.implement(struct {
-    pub fn setup(pass: *gfx_rg.Pass, builder: gfx_rg.GraphBuilder) !void {
-        try builder.writeTexture(pass, gfx_rg.ViewportColorResource);
-        try builder.readTexture(pass, "foo");
-        try builder.addPass("blit", pass);
-    }
-
-    pub fn render(builder: gfx_rg.GraphBuilder, gfx_api: *const gfx.GfxApi, viewport: Viewport, viewid: gfx.ViewId) !void {
-        const fb_size = viewport.getSize();
-
-        if (gfx_api.getEncoder()) |e| {
-            const out_tex = builder.getTexture(gfx_rg.ViewportColorResource).?;
-            const foo_tex = builder.getTexture("foo").?;
-            e.blit(
-                viewid,
-                out_tex,
-                0,
-                0,
-                0,
-                0,
-                foo_tex,
-                0,
-                0,
-                0,
-                0,
-                @intFromFloat(fb_size[0]),
-                @intFromFloat(fb_size[1]),
-                0,
-            );
-        }
-    }
-});
-
 const ActivatedViewportActionSet = cetech1.strid.strId32("foo_activated_viewport");
 const ViewportActionSet = cetech1.strid.strId32("foo_viewport");
 const MoveAction = cetech1.strid.strId32("move");
@@ -371,9 +263,8 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
     &[_]cetech1.strid.StrId64{},
     struct {
         pub fn init() !void {
-            _g.rg = try _gfx_rg.create();
-            try _g.rg.addPass(simple_pass);
-            try _g.rg.addPass(blit_pass);
+            _g.rg = try _render_graph.create();
+            try _render_graph.createDefault(_allocator, _g.rg);
 
             try _actions.createActionSet(ViewportActionSet);
             try _actions.addActions(ViewportActionSet, &.{
@@ -425,7 +316,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
         }
 
         pub fn shutdown() !void {
-            _gfx_rg.destroy(_g.rg);
+            _render_graph.destroy(_g.rg);
         }
     },
 );
@@ -439,17 +330,17 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _apidb = apidb;
     _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
     _coreui = apidb.getZigApi(module_name, coreui.CoreUIApi).?;
-    _gfx = apidb.getZigApi(module_name, gfx.GfxApi).?;
-    _gfx_rg = apidb.getZigApi(module_name, gfx_rg.GfxRGApi).?;
+    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
+    _render_graph = apidb.getZigApi(module_name, renderer.RenderGraphApi).?;
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
     _tempalloc = apidb.getZigApi(module_name, tempalloc.TempAllocApi).?;
     _actions = apidb.getZigApi(module_name, actions.ActionsAPI).?;
-    _graph = apidb.getZigApi(module_name, graphvm.GraphVMApi).?;
+
     _assetdb = apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
     _uuid = apidb.getZigApi(module_name, uuid.UuidAPI).?;
     _task = apidb.getZigApi(module_name, task.TaskAPI).?;
-    _viewport = apidb.getZigApi(module_name, cetech1.renderer.RendererApi).?;
+    _renderer = apidb.getZigApi(module_name, cetech1.renderer.RendererApi).?;
 
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});

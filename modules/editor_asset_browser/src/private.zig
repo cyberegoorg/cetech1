@@ -59,7 +59,7 @@ var api = public.AssetBrowserAPI{};
 
 const AssetBrowserTab = struct {
     tab_i: editor.TabI,
-    db: cdb.Db,
+
     selection_obj: coreui.Selection,
     filter_buff: [256:0]u8 = std.mem.zeroes([256:0]u8),
     filter: ?[:0]const u8 = null,
@@ -84,7 +84,7 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Create new FooTab instantce
-    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.TabI {
+    pub fn create(tab_id: u32) !?*editor.TabI {
         _ = tab_id;
         var tab_inst = try _allocator.create(AssetBrowserTab);
 
@@ -93,8 +93,8 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 .vt = _g.tab_vt,
                 .inst = @ptrCast(tab_inst),
             },
-            .db = db,
-            .tags = try assetdb.Tags.createObject(db),
+
+            .tags = try assetdb.Tags.createObject(_cdb, _assetdb.getDb()),
             .selection_obj = coreui.Selection.init(_allocator),
         };
         return &tab_inst.tab_i;
@@ -103,7 +103,7 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     // Destroy FooTab instantce
     pub fn destroy(tab_inst: *editor.TabI) !void {
         var tab_o: *AssetBrowserTab = @alignCast(@ptrCast(tab_inst.inst));
-        tab_o.db.destroyObject(tab_o.tags);
+        _cdb.destroyObject(tab_o.tags);
         tab_o.selection_obj.deinit();
 
         _allocator.destroy(tab_o);
@@ -122,7 +122,6 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             defer _coreui.endMenu();
             _editor.showObjContextMenu(
                 allocator,
-                tab_o.db,
                 tab_o,
                 MAIN_CONTEXTS,
                 first_selected_obj,
@@ -134,7 +133,6 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
             try _editor.showObjContextMenu(
                 allocator,
-                tab_o.db,
                 tab_o,
                 &.{editor.Contexts.create},
                 first_selected_obj,
@@ -159,7 +157,6 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         const r = try uiAssetBrowser(
             allocator,
-            tab_o.db,
             tab_o,
             MAIN_CONTEXTS,
             root_folder,
@@ -186,7 +183,7 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         tab_o.selection_obj.clear();
     }
 
-    pub fn selectObjFromMenu(allocator: std.mem.Allocator, tab: *editor.TabO, db: cdb.Db, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) !cdb.ObjId {
+    pub fn selectObjFromMenu(allocator: std.mem.Allocator, tab: *editor.TabO, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) !cdb.ObjId {
         const tabs = _editor.getAllTabsByType(allocator, _g.tab_vt.tab_hash) catch return .{};
         defer allocator.free(tabs);
 
@@ -201,9 +198,9 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         var label: [:0]u8 = undefined;
 
         var real_obj = selected_obj.obj;
-        if (db.readObj(selected_obj.obj)) |r| {
+        if (_cdb.readObj(selected_obj.obj)) |r| {
             if (selected_obj.obj.type_idx.eql(AssetTypeIdx)) {
-                real_obj = assetdb.Asset.readSubObj(db, r, .Object).?;
+                real_obj = assetdb.Asset.readSubObj(_cdb, r, .Object).?;
 
                 var buff: [1024]u8 = undefined;
                 const path = _assetdb.getFilePathForAsset(&buff, selected_obj.obj) catch undefined;
@@ -237,19 +234,8 @@ const UiAssetBrowserResult = struct {
     filter: ?[:0]const u8 = null,
 };
 
-fn getTagColor(db: cdb.Db, tag_r: *cdb.Obj) [4]f32 {
-    const tag_color_obj = assetdb.Tag.readSubObj(db, tag_r, .Color);
-    var color: [4]f32 = .{ 1.0, 1.0, 1.0, 1.0 };
-    if (tag_color_obj) |color_obj| {
-        color = cetech1.cdb_types.toSlice(db, color_obj);
-    }
-
-    return color;
-}
-
 fn uiAssetBrowser(
     allocator: std.mem.Allocator,
-    db: cdb.Db,
     tab: *editor.TabO,
     context: []const strid.StrId64,
     root_folder: cdb.ObjId,
@@ -264,7 +250,7 @@ fn uiAssetBrowser(
     const filter = args.filter;
 
     const new_filter = _coreui.uiFilter(filter_buff, filter);
-    const tag_filter_used = try _tags.tagsInput(allocator, db, tags_filter, assetdb.Tags.propIdx(.Tags), false, null);
+    const tag_filter_used = try _tags.tagsInput(allocator, tags_filter, assetdb.Tags.propIdx(.Tags), false, null);
 
     var buff: [128]u8 = undefined;
     const final_label = try std.fmt.bufPrintZ(
@@ -286,7 +272,6 @@ fn uiAssetBrowser(
                     if (_assetdb.getObjId(uuid)) |asset| {
                         _ = try _editor_tree.cdbTreeView(
                             allocator,
-                            db,
                             tab,
                             context,
                             .{ .top_level_obj = asset, .obj = asset },
@@ -304,7 +289,6 @@ fn uiAssetBrowser(
                 for (assets_filtered) |asset| {
                     _ = try _editor_tree.cdbTreeView(
                         allocator,
-                        db,
                         tab,
                         context,
                         .{ .top_level_obj = asset.obj, .obj = asset.obj },
@@ -321,7 +305,6 @@ fn uiAssetBrowser(
             defer _coreui.popStyleVar(.{});
             const new_selected = try _editor_tree.cdbTreeView(
                 allocator,
-                db,
                 tab,
                 context,
                 .{ .top_level_obj = root_folder, .obj = root_folder },
@@ -333,7 +316,7 @@ fn uiAssetBrowser(
                 const s = selectection.toSlice(allocator).?;
                 defer allocator.free(s);
 
-                _editor.propagateSelection(db, tab, s);
+                _editor.propagateSelection(tab, s);
             }
         }
     }
@@ -438,8 +421,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 var AssetTypeIdx: cdb.TypeIdx = undefined;
 
 const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
-    pub fn postCreateTypes(db: cdb.Db) !void {
-        AssetTypeIdx = assetdb.Asset.typeIdx(db);
+    pub fn postCreateTypes(db: cdb.DbId) !void {
+        AssetTypeIdx = assetdb.Asset.typeIdx(_cdb, db);
     }
 });
 

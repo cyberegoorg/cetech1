@@ -10,6 +10,7 @@ const zf = @import("zf");
 const tempalloc = @import("tempalloc.zig");
 const kernel = @import("kernel.zig");
 const gpu_private = @import("gpu.zig");
+const cdb_private = @import("cdb.zig");
 
 const node_editor = zgui.node_editor;
 
@@ -28,6 +29,8 @@ const ui_node_editor = cetech1.coreui_node_editor;
 
 const module_name = .coreui;
 const log = std.log.scoped(module_name);
+
+var _cdb = &cdb_private.api;
 
 const _main_font = @embedFile("embed/fonts/Roboto-Medium.ttf");
 const _fa_solid_font = @embedFile("embed/fonts/fa-solid-900.ttf");
@@ -69,16 +72,18 @@ const _kernel_hook_i = cetech1.kernel.KernelLoopHookI.implement(struct {
         defer update_zone_ctx.End();
 
         const ctx = kernel.api.getGpuCtx();
+        _ = ctx; // autofix
+        const window = kernel.api.getMainWindow();
 
-        if (!_enabled_ui and ctx != null) {
-            try enableWithWindow(ctx.?);
+        if (!_enabled_ui) {
+            try enableWithWindow(window);
             _enabled_ui = true;
         }
 
-        if (_enabled_ui and ctx != null) {
+        if (_enabled_ui) {
             var size = [2]i32{ 0, 0 };
 
-            if (gpu_private.api.getWindow(ctx.?)) |w| {
+            if (window) |w| {
                 size = w.getFramebufferSize();
             }
 
@@ -103,7 +108,7 @@ const _kernel_hook_i = cetech1.kernel.KernelLoopHookI.implement(struct {
 });
 
 var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(struct {
-    pub fn createTypes(db: cetech1.cdb.Db) !void {
+    pub fn createTypes(db: cetech1.cdb.DbId) !void {
         _ = db; // autofix
 
         // Obj selections
@@ -1112,8 +1117,9 @@ fn openFolderDialog(allocator: std.mem.Allocator, default_path: ?[:0]const u8) !
     return null;
 }
 
-fn pushPropName(db: cetech1.cdb.Db, obj: cetech1.cdb.ObjId, prop_idx: u32) void {
-    const props_def = db.getTypePropDef(obj.type_idx).?;
+fn pushPropName(obj: cetech1.cdb.ObjId, prop_idx: u32) void {
+    const db = _cdb.getDbFromObjid(obj);
+    const props_def = _cdb.getTypePropDef(db, obj.type_idx).?;
     zgui.pushStrIdZ(props_def[prop_idx].name);
 }
 
@@ -1234,26 +1240,6 @@ fn menuItemPtr(allocator: std.mem.Allocator, label: [:0]const u8, args: public.M
     });
 }
 
-fn clearSelection(
-    allocator: std.mem.Allocator,
-    db: cetech1.cdb.Db,
-    selection: cetech1.cdb.ObjId,
-) !void {
-    const r = db.readObj(selection).?;
-
-    const w = db.writeObj(selection).?;
-
-    // TODO: clear to cdb
-    if (public.ObjSelection.readRefSet(db, r, .Selection, allocator)) |set| {
-        defer allocator.free(set);
-        for (set) |ref| {
-            try public.ObjSelection.removeFromRefSet(db, w, .Selection, ref);
-        }
-    }
-
-    try db.writeCommit(w);
-}
-
 fn pushObjUUID(obj: cetech1.cdb.ObjId) void {
     const uuid = assetdb.api.getOrCreateUuid(obj) catch undefined;
     var buff: [128]u8 = undefined;
@@ -1280,7 +1266,7 @@ fn uiFilterPass(allocator: std.mem.Allocator, filter: [:0]const u8, value: [:0]c
     }
     //return 0;
 
-    return zf.rank(value, tokens.items, false, !is_path);
+    return zf.rank(value, tokens.items, .{ .to_lower = false, .plain = !is_path });
 }
 
 fn uiFilter(buf: []u8, filter: ?[:0]const u8) ?[:0]const u8 {
@@ -1359,9 +1345,9 @@ pub fn initFonts(font_size: f32, scale_factor: f32) void {
     style.scaleAllSizes(scale_factor);
 }
 
-pub fn enableWithWindow(gpuctx: *cetech1.gpu.GpuContext) !void {
+pub fn enableWithWindow(window: ?cetech1.platform.Window) !void {
     _scale_factor = _scale_factor orelse scale_factor: {
-        const scale = gpu_private.api.getContentScale(gpuctx);
+        const scale = if (window) |w| w.getContentScale() else .{ 1, 1 };
         break :scale_factor @max(scale[0], scale[1]);
     };
     //_scale_factor = 2;
@@ -1379,7 +1365,7 @@ pub fn enableWithWindow(gpuctx: *cetech1.gpu.GpuContext) !void {
     _backed_initialised = true;
 
     initFonts(16, _scale_factor.?);
-    backend.init(if (gpu_private.api.getWindow(gpuctx)) |w| w.getInternal(anyopaque) else null);
+    backend.init(if (window) |w| w.getInternal(anyopaque) else null);
 
     //TODO:
     _te_engine = zguite.getTestEngine().?;
@@ -1679,15 +1665,14 @@ fn inputU64(label: [:0]const u8, args: public.InputScalarGen(u64)) bool {
     });
 }
 
-fn removeFromSelection(db: cetech1.cdb.Db, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) !void {
-    const w = db.writeObj(selection).?;
+fn removeFromSelection(db: cetech1.cdb.DbId, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) !void {
+    const w = _cdb.writeObj(selection).?;
     try public.ObjSelection.removeFromRefSet(db, w, .Selection, obj);
-    try db.writeCommit(w);
+    try _cdb.writeCommit(w);
 }
 
-fn handleSelection(allocator: std.mem.Allocator, db: cetech1.cdb.Db, selection: *public.Selection, obj: cetech1.coreui.SelectionItem, multiselect_enabled: bool) !void {
+fn handleSelection(allocator: std.mem.Allocator, selection: *public.Selection, obj: cetech1.coreui.SelectionItem, multiselect_enabled: bool) !void {
     _ = allocator; // autofix
-    _ = db; // autofix
 
     if (multiselect_enabled and api.isKeyDown(.mod_ctrl)) {
         if (selection.isSelected(obj)) {
@@ -1742,7 +1727,6 @@ fn plotLineValuesF64(label_id: [:0]const u8, args: public.PlotLineValuesGen(f64)
 }
 
 const cdb_tests = @import("cdb_test.zig");
-const cdb_private = @import("cdb.zig");
 
 // test "coreui: should do basic operatino with selection" {
 //     try cdb_tests.testInit();

@@ -41,7 +41,7 @@ var _g: *G = undefined;
 
 const ExplorerTab = struct {
     tab_i: editor.TabI,
-    db: cdb.Db,
+
     selection: coreui.SelectionItem = coreui.SelectionItem.empty(),
     inter_selection: coreui.Selection,
 };
@@ -58,9 +58,8 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 }, struct {
 
     // Can open tab
-    pub fn canOpen(allocator: Allocator, db: cdb.Db, selection: []const coreui.SelectionItem) !bool {
+    pub fn canOpen(allocator: Allocator, selection: []const coreui.SelectionItem) !bool {
         _ = allocator; // autofix
-        _ = db;
         _ = selection;
 
         return true;
@@ -77,7 +76,7 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Create new FooTab instantce
-    pub fn create(db: cdb.Db, tab_id: u32) !?*editor.TabI {
+    pub fn create(tab_id: u32) !?*editor.TabI {
         _ = tab_id;
         var tab_inst = try _allocator.create(ExplorerTab);
 
@@ -86,7 +85,7 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 .vt = _g.tab_vt,
                 .inst = @ptrCast(tab_inst),
             },
-            .db = db,
+
             .inter_selection = coreui.Selection.init(_allocator),
         };
         return &tab_inst.tab_i;
@@ -107,7 +106,7 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         if (tab_o.inter_selection.toSlice(allocator)) |objs| {
             defer allocator.free(objs);
-            _editor.propagateSelection(tab_o.db, inst, objs);
+            _editor.propagateSelection(inst, objs);
         }
     }
 
@@ -129,7 +128,6 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             const first_selected_obj = tab_o.inter_selection.first();
             try _editor.showObjContextMenu(
                 allocator,
-                tab_o.db,
                 tab_o,
                 &.{
                     editor.Contexts.create,
@@ -164,7 +162,6 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
                 const r = try _editortree.cdbTreeView(
                     allocator,
-                    tab_o.db,
                     tab_o,
                     &.{
                         editor.Contexts.create,
@@ -184,7 +181,7 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 if (r) {
                     if (tab_o.inter_selection.toSlice(allocator)) |objs| {
                         defer allocator.free(objs);
-                        _editor.propagateSelection(tab_o.db, inst, objs);
+                        _editor.propagateSelection(inst, objs);
                     }
                 }
             }
@@ -192,9 +189,9 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, db: cdb.Db, selection: []const coreui.SelectionItem, sender_tab_hash: ?strid.StrId32) !void {
+    pub fn objSelected(inst: *editor.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?strid.StrId32) !void {
         _ = sender_tab_hash; // autofix
-        _ = db;
+
         var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
 
         if (tab_o.inter_selection.isSelectedAll(selection)) return;
@@ -269,10 +266,9 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.itemAction(_coreui, .Click, "**/###empty.ct_foo_asset/###subobject_set", .{}, null);
                     ctx.menuAction(_coreui, .Click, "###ObjContextMenu/###AddToSet/###AddNew");
 
-                    const db = _kernel.getDb();
                     const obj = _assetdb.getObjId(_uuid.fromStr("018e7ba0-571a-71e9-a03e-cbe1fdcf2581").?).?;
 
-                    const set = try assetdb.FooAsset.readSubObjSet(db, db.readObj(obj).?, .SubobjectSet, _allocator);
+                    const set = try assetdb.FooAsset.readSubObjSet(_cdb, _cdb.readObj(obj).?, .SubobjectSet, _allocator);
                     std.testing.expect(set != null) catch |err| {
                         _coreui.checkTestError(@src(), err);
                         return err;
@@ -306,10 +302,9 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.itemAction(_coreui, .Click, "**/###child_asset.ct_foo_asset/###subobject_set/###018e7ba3-4f75-7e4f-bb0a-697eff5b21e2", .{}, null);
                     ctx.menuAction(_coreui, .Click, "###ObjContextMenu/###Inisiate");
 
-                    const db = _kernel.getDb();
                     const obj = _assetdb.getObjId(_uuid.fromStr("018e7ba2-d04a-7176-8374-c38cca68b3ab").?).?;
 
-                    const set = try assetdb.FooAsset.readSubObjSet(db, db.readObj(obj).?, .SubobjectSet, _allocator);
+                    const set = try assetdb.FooAsset.readSubObjSet(_cdb, _cdb.readObj(obj).?, .SubobjectSet, _allocator);
                     std.testing.expect(set != null) catch |err| {
                         _coreui.checkTestError(@src(), err);
                         return err;
@@ -321,9 +316,9 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         return err;
                     };
                     const inisiated_obj = set.?[0];
-                    const inisiated_obj_r = assetdb.FooAsset.read(db, inisiated_obj).?;
-                    const obj_r = assetdb.FooAsset.read(db, obj).?;
-                    const is_inisiated = db.isIinisiated(obj_r, assetdb.FooAsset.propIdx(.SubobjectSet), inisiated_obj_r);
+                    const inisiated_obj_r = assetdb.FooAsset.read(_cdb, inisiated_obj).?;
+                    const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                    const is_inisiated = _cdb.isIinisiated(obj_r, assetdb.FooAsset.propIdx(.SubobjectSet), inisiated_obj_r);
                     std.testing.expect(is_inisiated) catch |err| {
                         _coreui.checkTestError(@src(), err);
                         return err;
@@ -350,10 +345,9 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
                     ctx.menuAction(_coreui, .Click, "###ObjContextMenu/###Remove");
 
-                    const db = _kernel.getDb();
                     const obj = _assetdb.getObjId(_uuid.fromStr("018e7ba3-3540-7790-bb65-3e63081a76f7").?).?;
 
-                    const set = try assetdb.FooAsset.readSubObjSet(db, db.readObj(obj).?, .SubobjectSet, _allocator);
+                    const set = try assetdb.FooAsset.readSubObjSet(_cdb, _cdb.readObj(obj).?, .SubobjectSet, _allocator);
                     std.testing.expect(set != null) catch |err| {
                         _coreui.checkTestError(@src(), err);
                         return err;
@@ -387,19 +381,18 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.itemAction(_coreui, .Click, "**/###child_asset.ct_foo_asset/###subobject", .{}, null);
                     ctx.menuAction(_coreui, .Click, "###ObjContextMenu/###Inisiate");
 
-                    const db = _kernel.getDb();
                     const obj = _assetdb.getObjId(_uuid.fromStr("018e7ba2-d04a-7176-8374-c38cca68b3ab").?).?;
 
-                    const subobj = assetdb.FooAsset.readSubObj(db, db.readObj(obj).?, .Subobject);
+                    const subobj = assetdb.FooAsset.readSubObj(_cdb, _cdb.readObj(obj).?, .Subobject);
                     std.testing.expect(subobj != null) catch |err| {
                         _coreui.checkTestError(@src(), err);
                         return err;
                     };
 
                     const inisiated_obj = subobj.?;
-                    const inisiated_obj_r = assetdb.FooAsset.read(db, inisiated_obj).?;
-                    const obj_r = assetdb.FooAsset.read(db, obj).?;
-                    const is_inisiated = db.isIinisiated(obj_r, assetdb.FooAsset.propIdx(.Subobject), inisiated_obj_r);
+                    const inisiated_obj_r = assetdb.FooAsset.read(_cdb, inisiated_obj).?;
+                    const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
+                    const is_inisiated = _cdb.isIinisiated(obj_r, assetdb.FooAsset.propIdx(.Subobject), inisiated_obj_r);
                     std.testing.expect(is_inisiated) catch |err| {
                         _coreui.checkTestError(@src(), err);
                         return err;
@@ -412,7 +405,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
 // Create cdb types
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
-    pub fn createTypes(db_: cdb.Db) !void {
+    pub fn createTypes(db_: cdb.DbId) !void {
         _ = db_;
     }
 });

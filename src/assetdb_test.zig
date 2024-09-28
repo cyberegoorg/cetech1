@@ -16,6 +16,8 @@ const cetech1 = @import("cetech1");
 const public = cetech1.assetdb;
 const propIdx = cetech1.cdb.propIdx;
 
+var _cdb = &cdb.api;
+
 const FooAsset = public.FooAsset;
 
 pub fn WriteBlobToNull(
@@ -74,71 +76,75 @@ test "asset: Should save asset to json" {
     try private.init(std.testing.allocator);
     defer private.deinit();
 
-    var db = private.getDb();
+    const db = private.getDb();
 
-    const prototype_obj = try private.createObjectWithUuid(FooAsset.typeIdx(db), uuid.fromStr("9c49cfdb-0d31-485f-8623-24248b53c30f").?);
-    const proto_ref_obj1 = try FooAsset.createObject(db);
-    const proto_ref_obj2 = try FooAsset.createObject(db);
-    const proto_sub_obj1 = try FooAsset.createObject(db);
-    const proto_sub_obj2 = try FooAsset.createObject(db);
+    const prototype_obj = try private.createObjectWithUuid(
+        FooAsset.typeIdx(_cdb, db),
+        uuid.fromStr("9c49cfdb-0d31-485f-8623-24248b53c30f").?,
+    );
 
-    const proto_w = db.writeObj(prototype_obj).?;
-    const proto_sub_obj1_w = db.writeObj(proto_sub_obj1).?;
-    const proto_sub_obj2_w = db.writeObj(proto_sub_obj2).?;
-    try FooAsset.addRefToSet(db, proto_w, .ReferenceSet, &.{ proto_ref_obj1, proto_ref_obj2 });
+    const proto_ref_obj1 = try FooAsset.createObject(_cdb, db);
+    const proto_ref_obj2 = try FooAsset.createObject(_cdb, db);
+    const proto_sub_obj1 = try FooAsset.createObject(_cdb, db);
+    const proto_sub_obj2 = try FooAsset.createObject(_cdb, db);
+
+    const proto_w = _cdb.writeObj(prototype_obj).?;
+    const proto_sub_obj1_w = _cdb.writeObj(proto_sub_obj1).?;
+    const proto_sub_obj2_w = _cdb.writeObj(proto_sub_obj2).?;
+    try FooAsset.addRefToSet(_cdb, proto_w, .ReferenceSet, &.{ proto_ref_obj1, proto_ref_obj2 });
 
     try FooAsset.addSubObjToSet(
-        db,
+        _cdb,
         proto_w,
         .SubobjectSet,
         &.{ proto_sub_obj1_w, proto_sub_obj2_w },
     );
 
-    try db.writeCommit(proto_sub_obj2_w);
-    try db.writeCommit(proto_sub_obj1_w);
-    try db.writeCommit(proto_w);
+    try _cdb.writeCommit(proto_sub_obj2_w);
+    try _cdb.writeCommit(proto_sub_obj1_w);
+    try _cdb.writeCommit(proto_w);
 
-    const asset_obj = try db.createObjectFromPrototype(prototype_obj);
+    const asset_obj = try _cdb.createObjectFromPrototype(prototype_obj);
     const asset = private.api.createAsset("foo", private.api.getRootFolder(), asset_obj).?;
 
-    const ref_obj1 = try FooAsset.createObject(db);
-    const ref_obj2 = try FooAsset.createObject(db);
-    const sub_obj1 = try FooAsset.createObject(db);
-    const sub_obj2 = try FooAsset.createObject(db);
+    const ref_obj1 = try FooAsset.createObject(_cdb, db);
+    const ref_obj2 = try FooAsset.createObject(_cdb, db);
+    const sub_obj1 = try FooAsset.createObject(_cdb, db);
+    const sub_obj2 = try FooAsset.createObject(_cdb, db);
 
-    const asset_w = db.writeObj(asset).?;
-    const prototype_obj_w = db.writeObj(prototype_obj).?;
-    const asset_obj_w = db.writeObj(asset_obj).?;
-    const sub_obj1_w = db.writeObj(sub_obj1).?;
-    const sub_obj2_w = db.writeObj(sub_obj2).?;
+    const asset_w = _cdb.writeObj(asset).?;
+    const prototype_obj_w = _cdb.writeObj(prototype_obj).?;
+    const asset_obj_w = _cdb.writeObj(asset_obj).?;
+    const sub_obj1_w = _cdb.writeObj(sub_obj1).?;
+    const sub_obj2_w = _cdb.writeObj(sub_obj2).?;
 
     // Prototype value
-    FooAsset.setValue(db, u64, prototype_obj_w, .U64, 10);
-    FooAsset.setValue(db, i64, prototype_obj_w, .I64, 20);
+    FooAsset.setValue(u64, _cdb, prototype_obj_w, .U64, 10);
+    FooAsset.setValue(i64, _cdb, prototype_obj_w, .I64, 20);
 
-    try FooAsset.setStr(db, asset_obj_w, .Str, "foo");
-    FooAsset.setValue(db, bool, asset_obj_w, .Bool, true);
-    FooAsset.setValue(db, u32, asset_obj_w, .U32, 10);
-    FooAsset.setValue(db, i32, asset_obj_w, .I32, 20);
-    FooAsset.setValue(db, f64, asset_obj_w, .F64, 20.0);
-    FooAsset.setValue(db, f32, asset_obj_w, .F32, 30.0);
+    try FooAsset.setStr(_cdb, asset_obj_w, .Str, "foo");
+    FooAsset.setValue(bool, _cdb, asset_obj_w, .Bool, true);
+    FooAsset.setValue(u32, _cdb, asset_obj_w, .U32, 10);
+    FooAsset.setValue(i32, _cdb, asset_obj_w, .I32, 20);
+    FooAsset.setValue(f64, _cdb, asset_obj_w, .F64, 20.0);
+    FooAsset.setValue(f32, _cdb, asset_obj_w, .F32, 30.0);
 
-    try FooAsset.setRef(db, asset_obj_w, .Reference, ref_obj1);
-    try FooAsset.addRefToSet(db, asset_obj_w, .ReferenceSet, &.{ref_obj2});
-    try FooAsset.removeFromRefSet(db, asset_obj_w, .ReferenceSet, proto_ref_obj1);
+    try FooAsset.setRef(_cdb, asset_obj_w, .Reference, ref_obj1);
+    try FooAsset.addRefToSet(_cdb, asset_obj_w, .ReferenceSet, &.{ref_obj2});
+    try FooAsset.removeFromRefSet(_cdb, asset_obj_w, .ReferenceSet, proto_ref_obj1);
 
-    try FooAsset.setSubObj(db, asset_obj_w, .Subobject, sub_obj1_w);
-    const inisiated_subobj1 = try db.instantiateSubObjFromSet(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.SubobjectSet), proto_sub_obj1);
-    try FooAsset.addSubObjToSet(db, asset_obj_w, .SubobjectSet, &.{sub_obj2_w});
+    try FooAsset.setSubObj(_cdb, asset_obj_w, .Subobject, sub_obj1_w);
+    const inisiated_subobj1 = try _cdb.instantiateSubObjFromSet(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.SubobjectSet), proto_sub_obj1);
+    try FooAsset.addSubObjToSet(_cdb, asset_obj_w, .SubobjectSet, &.{sub_obj2_w});
 
-    const blob = (try FooAsset.createBlob(db, asset_obj_w, .Blob, "hello blob".len)).?;
+    const blob = (try FooAsset.createBlob(_cdb, asset_obj_w, .Blob, "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    try db.writeCommit(sub_obj1_w);
-    try db.writeCommit(sub_obj2_w);
-    try db.writeCommit(asset_obj_w);
-    try db.writeCommit(prototype_obj_w);
-    try db.writeCommit(asset_w);
+    try _cdb.writeCommit(sub_obj1_w);
+    try _cdb.writeCommit(sub_obj2_w);
+    try _cdb.writeCommit(asset_obj_w);
+    try _cdb.writeCommit(prototype_obj_w);
+    try _cdb.writeCommit(asset_w);
 
     var expect_buffer: [2048]u8 = undefined;
     const expected_fmt =
@@ -217,10 +223,10 @@ test "asset: Should save asset to json" {
 
     //std.debug.print("\n {s} \n", .{fixed_buffer_stream.getWritten()});
 
-    db.destroyObject(asset);
-    db.destroyObject(ref_obj1);
-    db.destroyObject(ref_obj2);
-    try db.gc(std.testing.allocator);
+    _cdb.destroyObject(asset);
+    _cdb.destroyObject(ref_obj1);
+    _cdb.destroyObject(ref_obj2);
+    try _cdb.gc(std.testing.allocator, db);
 }
 
 test "asset: Should read asset from json reader" {
@@ -229,41 +235,41 @@ test "asset: Should read asset from json reader" {
 
     try private.init(std.testing.allocator);
     defer private.deinit();
-    var db = private.getDb();
+    const db = private.getDb();
 
-    const prototype_obj = try private.createObjectWithUuid(FooAsset.typeIdx(db), uuid.fromStr("9c49cfdb-0d31-485f-8623-24248b53c30f").?);
-    const proto_ref_obj1 = try private.createObjectWithUuid(FooAsset.typeIdx(db), uuid.fromStr("965a0c48-f166-4f66-a894-9f8d750c7c28").?);
-    const proto_ref_obj2 = try private.createObjectWithUuid(FooAsset.typeIdx(db), uuid.fromStr("8c709979-23ca-4542-90ca-0a9b7a96f3c5").?);
-    const proto_sub_obj1 = try private.createObjectWithUuid(FooAsset.typeIdx(db), uuid.fromStr("16e130f3-f21d-4fa7-8974-b90e607ce640").?);
-    const proto_sub_obj2 = try private.createObjectWithUuid(FooAsset.typeIdx(db), uuid.fromStr("bee0d651-e624-4b78-8500-00cbeeeecf44").?);
+    const prototype_obj = try private.createObjectWithUuid(FooAsset.typeIdx(_cdb, db), uuid.fromStr("9c49cfdb-0d31-485f-8623-24248b53c30f").?);
+    const proto_ref_obj1 = try private.createObjectWithUuid(FooAsset.typeIdx(_cdb, db), uuid.fromStr("965a0c48-f166-4f66-a894-9f8d750c7c28").?);
+    const proto_ref_obj2 = try private.createObjectWithUuid(FooAsset.typeIdx(_cdb, db), uuid.fromStr("8c709979-23ca-4542-90ca-0a9b7a96f3c5").?);
+    const proto_sub_obj1 = try private.createObjectWithUuid(FooAsset.typeIdx(_cdb, db), uuid.fromStr("16e130f3-f21d-4fa7-8974-b90e607ce640").?);
+    const proto_sub_obj2 = try private.createObjectWithUuid(FooAsset.typeIdx(_cdb, db), uuid.fromStr("bee0d651-e624-4b78-8500-00cbeeeecf44").?);
 
-    const proto_w = db.writeObj(prototype_obj).?;
-    const proto_sub_obj1_w = db.writeObj(proto_sub_obj1).?;
-    const proto_sub_obj2_w = db.writeObj(proto_sub_obj2).?;
+    const proto_w = _cdb.writeObj(prototype_obj).?;
+    const proto_sub_obj1_w = _cdb.writeObj(proto_sub_obj1).?;
+    const proto_sub_obj2_w = _cdb.writeObj(proto_sub_obj2).?;
 
-    try FooAsset.addRefToSet(db, proto_w, .ReferenceSet, &.{ proto_ref_obj1, proto_ref_obj2 });
-    try FooAsset.addSubObjToSet(db, proto_w, .SubobjectSet, &.{ proto_sub_obj1_w, proto_sub_obj2_w });
+    try FooAsset.addRefToSet(_cdb, proto_w, .ReferenceSet, &.{ proto_ref_obj1, proto_ref_obj2 });
+    try FooAsset.addSubObjToSet(_cdb, proto_w, .SubobjectSet, &.{ proto_sub_obj1_w, proto_sub_obj2_w });
 
-    try db.writeCommit(proto_sub_obj2_w);
-    try db.writeCommit(proto_sub_obj1_w);
-    try db.writeCommit(proto_w);
+    try _cdb.writeCommit(proto_sub_obj2_w);
+    try _cdb.writeCommit(proto_sub_obj1_w);
+    try _cdb.writeCommit(proto_w);
 
-    const folder1_asset = try public.Asset.createObject(db);
-    const folder1 = try public.Folder.createObject(db);
-    const folder1_w = public.Folder.write(db, folder1).?;
-    const folder1_asset_w = db.writeObj(folder1_asset).?;
-    try public.Asset.setSubObj(db, folder1_asset_w, .Object, folder1_w);
-    try db.writeCommit(folder1_w);
-    try db.writeCommit(folder1_asset_w);
+    const folder1_asset = try public.Asset.createObject(_cdb, db);
+    const folder1 = try public.Folder.createObject(_cdb, db);
+    const folder1_w = public.Folder.write(_cdb, folder1).?;
+    const folder1_asset_w = _cdb.writeObj(folder1_asset).?;
+    try public.Asset.setSubObj(_cdb, folder1_asset_w, .Object, folder1_w);
+    try _cdb.writeCommit(folder1_w);
+    try _cdb.writeCommit(folder1_asset_w);
 
-    const prototype_obj_w = db.writeObj(prototype_obj).?;
+    const prototype_obj_w = _cdb.writeObj(prototype_obj).?;
     // Prototype value
-    db.setValue(u64, prototype_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.U64), 10);
-    db.setValue(i64, prototype_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.I64), 20);
-    try db.writeCommit(prototype_obj_w);
+    _cdb.setValue(u64, prototype_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.U64), 10);
+    _cdb.setValue(i64, prototype_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.I64), 20);
+    try _cdb.writeCommit(prototype_obj_w);
 
-    const ref_obj1 = try private.createObjectWithUuid(FooAsset.typeIdx(db), uuid.fromStr("018b5846-c2d5-7921-823a-60d80f9285de").?);
-    const ref_obj2 = try private.createObjectWithUuid(FooAsset.typeIdx(db), uuid.fromStr("018b5846-c2d5-74f2-a050-c9375ad9a1f6").?);
+    const ref_obj1 = try private.createObjectWithUuid(FooAsset.typeIdx(_cdb, db), uuid.fromStr("018b5846-c2d5-7921-823a-60d80f9285de").?);
+    const ref_obj2 = try private.createObjectWithUuid(FooAsset.typeIdx(_cdb, db), uuid.fromStr("018b5846-c2d5-74f2-a050-c9375ad9a1f6").?);
 
     const input_json =
         \\{
@@ -318,7 +324,7 @@ test "asset: Should read asset from json reader" {
     );
     try std.testing.expectEqual(uuid.fromStr("018b5846-c2d5-7b88-95f9-a7538a00e76b").?, private.api.getUuid(asset).?);
 
-    const asset_obj = public.Asset.readSubObj(db, db.readObj(asset).?, .Object);
+    const asset_obj = public.Asset.readSubObj(_cdb, _cdb.readObj(asset).?, .Object);
     try std.testing.expect(asset_obj != null);
 
     try std.testing.expectEqual(uuid.fromStr("018b5846-c2d5-712f-bb12-9d9d15321ecb").?, private.api.getUuid(asset_obj.?).?);
@@ -338,11 +344,11 @@ test "asset: Should read asset from json reader" {
 
     try std.testing.expectEqualStrings(input_json, fixed_out_buffer_stream.getWritten());
 
-    db.destroyObject(asset);
-    db.destroyObject(ref_obj1);
-    db.destroyObject(ref_obj2);
-    db.destroyObject(prototype_obj);
-    db.destroyObject(folder1);
+    _cdb.destroyObject(asset);
+    _cdb.destroyObject(ref_obj1);
+    _cdb.destroyObject(ref_obj2);
+    _cdb.destroyObject(prototype_obj);
+    _cdb.destroyObject(folder1);
 }
 
 test "asset: Should create asset" {
@@ -366,9 +372,9 @@ test "asset: Should open asset root dir" {
     try private.init(std.testing.allocator);
     defer private.deinit();
 
-    var db = private.getDb();
+    const db = private.getDb();
 
-    const asset_type_hash = try cetech1.cdb_types.addBigType(db, "ct_foo_asset", null);
+    const asset_type_hash = try cetech1.cdb_types.addBigType(_cdb, db, "ct_foo_asset", null);
     _ = asset_type_hash;
 
     try private.api.openAssetRootFolder("fixtures/test_asset", std.testing.allocator);
@@ -382,24 +388,24 @@ test "asset: Should open asset root dir" {
         const foo_obj = private.api.getObjId(uuid.fromStr("018b5846-c2d5-712f-bb12-9d9d15321ecb").?);
         try std.testing.expect(foo_obj != null);
 
-        var foo_obj_asset = db.getParent(foo_obj.?);
+        var foo_obj_asset = _cdb.getParent(foo_obj.?);
         try std.testing.expect(!foo_obj_asset.isEmpty());
 
         const expect_name = "foo";
         try std.testing.expectEqualStrings(
             expect_name,
-            public.Asset.readStr(db, db.readObj(foo_obj_asset).?, .Name).?,
+            public.Asset.readStr(_cdb, _cdb.readObj(foo_obj_asset).?, .Name).?,
         );
 
-        const blob = db.readBlob(db.readObj(foo_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.Blob));
+        const blob = _cdb.readBlob(_cdb.readObj(foo_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.Blob));
         try std.testing.expectEqualSlices(u8, "hello blob", blob);
 
-        root_folder = public.Asset.readRef(db, db.readObj(foo_obj_asset).?, .Folder);
+        root_folder = public.Asset.readRef(_cdb, _cdb.readObj(foo_obj_asset).?, .Folder);
         try std.testing.expect(root_folder != null);
-        try std.testing.expect(null == public.Asset.readStr(db, db.readObj(private.api.getAssetForObj(root_folder.?).?).?, .Name));
+        try std.testing.expect(null == public.Asset.readStr(_cdb, _cdb.readObj(private.api.getAssetForObj(root_folder.?).?).?, .Name));
 
         try std.testing.expectEqual(private.api.getAssetForObj(root_folder.?).?, private.api.getRootFolder());
-        const set = try db.getReferencerSet(root_folder.?, std.testing.allocator);
+        const set = try _cdb.getReferencerSet(std.testing.allocator, root_folder.?);
         defer std.testing.allocator.free(set);
         // TODO: try std.testing.expectEqual(@as(usize, 3), set.len);
 
@@ -410,8 +416,8 @@ test "asset: Should open asset root dir" {
         // Check refenced objects
         const expect_name2 = "foo core";
         try std.testing.expectEqualStrings(expect_name2, FooAsset.readStr(
-            db,
-            db.readObj(FooAsset.readRef(db, db.readObj(foo_obj.?).?, .Reference).?).?,
+            _cdb,
+            _cdb.readObj(FooAsset.readRef(_cdb, _cdb.readObj(foo_obj.?).?, .Reference).?).?,
             .Str,
         ).?);
     }
@@ -421,25 +427,25 @@ test "asset: Should open asset root dir" {
     {
         try std.testing.expect(foo_core_obj != null);
 
-        var foo_core_obj_asset = db.getParent(foo_core_obj.?);
+        var foo_core_obj_asset = _cdb.getParent(foo_core_obj.?);
         try std.testing.expect(!foo_core_obj_asset.isEmpty());
 
         const expect_name = "foo_core";
         try std.testing.expectEqualStrings(
             expect_name,
-            public.Asset.readStr(db, db.readObj(foo_core_obj_asset).?, .Name).?,
+            public.Asset.readStr(_cdb, _cdb.readObj(foo_core_obj_asset).?, .Name).?,
         );
 
-        const blob = db.readBlob(db.readObj(foo_core_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.Blob));
+        const blob = _cdb.readBlob(_cdb.readObj(foo_core_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.Blob));
         try std.testing.expectEqualSlices(u8, "hello core blob", blob);
 
-        core_folder = public.Asset.readRef(db, db.readObj(foo_core_obj_asset).?, .Folder);
+        core_folder = public.Asset.readRef(_cdb, _cdb.readObj(foo_core_obj_asset).?, .Folder);
         try std.testing.expect(core_folder != null);
 
         const expect_folder_name = "core";
         try std.testing.expectEqualStrings(
             expect_folder_name,
-            public.Asset.readStr(db, db.readObj(private.api.getAssetForObj(core_folder.?).?).?, .Name).?,
+            public.Asset.readStr(_cdb, _cdb.readObj(private.api.getAssetForObj(core_folder.?).?).?, .Name).?,
         );
 
         var buff: [128]u8 = undefined;
@@ -457,19 +463,19 @@ test "asset: Should open asset root dir" {
         const foo_subcore_obj = private.api.getObjId(uuid.fromStr("018b5c74-06f7-79fd-a6ad-3678552795a1").?);
         try std.testing.expect(foo_subcore_obj != null);
 
-        var foo_subcore_obj_asset = db.getParent(foo_subcore_obj.?);
+        var foo_subcore_obj_asset = _cdb.getParent(foo_subcore_obj.?);
         try std.testing.expect(!foo_subcore_obj_asset.isEmpty());
 
         const expect_name = "foo_subcore";
         try std.testing.expectEqualStrings(
             expect_name,
-            public.Asset.readStr(db, db.readObj(foo_subcore_obj_asset).?, .Name).?,
+            public.Asset.readStr(_cdb, _cdb.readObj(foo_subcore_obj_asset).?, .Name).?,
         );
 
-        const blob = db.readBlob(db.readObj(foo_subcore_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.Blob));
+        const blob = _cdb.readBlob(_cdb.readObj(foo_subcore_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.Blob));
         try std.testing.expectEqualSlices(u8, "hello subcore blob", blob);
 
-        const ref_set = db.readRefSet(db.readObj(foo_subcore_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.ReferenceSet), std.testing.allocator);
+        const ref_set = _cdb.readRefSet(_cdb.readObj(foo_subcore_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.ReferenceSet), std.testing.allocator);
         defer std.testing.allocator.free(ref_set.?);
         try std.testing.expect(ref_set != null);
         try std.testing.expectEqualSlices(
@@ -480,7 +486,7 @@ test "asset: Should open asset root dir" {
 
         const subobj = private.api.getObjId(uuid.fromStr("018b5c74-06f7-70bb-94e3-10a2a8619d31").?);
         const inisiated_subobj = private.api.getObjId(uuid.fromStr("7d0d10ce-128e-45ab-8c14-c5d486542d4f").?);
-        const subobj_set = db.readRefSet(db.readObj(foo_subcore_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.SubobjectSet), std.testing.allocator);
+        const subobj_set = _cdb.readRefSet(_cdb.readObj(foo_subcore_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.SubobjectSet), std.testing.allocator);
         defer std.testing.allocator.free(subobj_set.?);
         try std.testing.expect(subobj_set != null);
         try std.testing.expectEqualSlices(
@@ -489,13 +495,13 @@ test "asset: Should open asset root dir" {
             subobj_set.?,
         );
 
-        core_subfolder_folder = public.Asset.readRef(db, db.readObj(foo_subcore_obj_asset).?, .Folder);
+        core_subfolder_folder = public.Asset.readRef(_cdb, _cdb.readObj(foo_subcore_obj_asset).?, .Folder);
         try std.testing.expect(core_subfolder_folder != null);
 
         const expect_folder_name = "core_subfolder";
         try std.testing.expectEqualStrings(
             expect_folder_name,
-            public.Asset.readStr(db, db.readObj(private.api.getAssetForObj(core_subfolder_folder.?).?).?, .Name).?,
+            public.Asset.readStr(_cdb, _cdb.readObj(private.api.getAssetForObj(core_subfolder_folder.?).?).?, .Name).?,
         );
 
         var buff: [128]u8 = undefined;
@@ -510,8 +516,8 @@ test "asset: Should open asset root dir" {
         // Check refenced objects
         const expect_name2 = "foo core";
         try std.testing.expectEqualStrings(expect_name2, FooAsset.readStr(
-            db,
-            db.readObj(FooAsset.readRef(db, db.readObj(foo_subcore_obj.?).?, .Reference).?).?,
+            _cdb,
+            _cdb.readObj(FooAsset.readRef(_cdb, _cdb.readObj(foo_subcore_obj.?).?, .Reference).?).?,
             .Str,
         ).?);
     }
@@ -526,7 +532,7 @@ test "asset: Should save asset root dir" {
 
     try private.init(std.testing.allocator);
     defer private.deinit();
-    var db = private.getDb();
+    const db = private.getDb();
 
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
@@ -537,21 +543,21 @@ test "asset: Should save asset root dir" {
     const root_dir = try std.fs.path.join(std.testing.allocator, &.{tmp_dir_path});
     defer std.testing.allocator.free(root_dir);
 
-    const asset_type_hash = try cetech1.cdb_types.addBigType(db, "ct_foo_asset", null);
+    const asset_type_hash = try cetech1.cdb_types.addBigType(_cdb, db, "ct_foo_asset", null);
 
     try private.api.openAssetRootFolder(root_dir, allocator);
 
-    const asset_obj = try db.createObject(asset_type_hash);
+    const asset_obj = try _cdb.createObject(db, asset_type_hash);
     const asset = private.api.createAsset("foo", private.api.getRootFolder(), asset_obj).?;
 
-    const asset_obj_w = db.writeObj(asset_obj).?;
-    const asset_w = db.writeObj(asset).?;
+    const asset_obj_w = _cdb.writeObj(asset_obj).?;
+    const asset_w = _cdb.writeObj(asset).?;
 
-    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
+    const blob = (try _cdb.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    try db.writeCommit(asset_w);
-    try db.writeCommit(asset_obj_w);
+    try _cdb.writeCommit(asset_w);
+    try _cdb.writeCommit(asset_obj_w);
 
     try std.testing.expect(private.api.isAssetModified(asset));
     try private.api.saveAllAssets(allocator);
@@ -594,7 +600,7 @@ test "asset: Should save modified asset" {
 
     try private.init(std.testing.allocator);
     defer private.deinit();
-    var db = private.getDb();
+    const db = private.getDb();
 
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
@@ -605,21 +611,21 @@ test "asset: Should save modified asset" {
     const root_dir = try std.fs.path.join(std.testing.allocator, &.{tmp_dir_path});
     defer std.testing.allocator.free(root_dir);
 
-    const asset_type_hash = try cetech1.cdb_types.addBigType(db, "ct_foo_asset", null);
+    const asset_type_hash = try cetech1.cdb_types.addBigType(_cdb, db, "ct_foo_asset", null);
 
     try private.api.openAssetRootFolder(root_dir, tmpalloc);
 
-    const asset_obj = try db.createObject(asset_type_hash);
+    const asset_obj = try _cdb.createObject(db, asset_type_hash);
     const asset = private.api.createAsset("foo", private.api.getRootFolder(), asset_obj).?;
 
-    const asset_obj_w = db.writeObj(asset_obj).?;
-    const asset_w = db.writeObj(asset).?;
+    const asset_obj_w = _cdb.writeObj(asset_obj).?;
+    const asset_w = _cdb.writeObj(asset).?;
 
-    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
+    const blob = (try _cdb.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    try db.writeCommit(asset_w);
-    try db.writeCommit(asset_obj_w);
+    try _cdb.writeCommit(asset_w);
+    try _cdb.writeCommit(asset_obj_w);
 
     try std.testing.expect(private.api.isAssetModified(asset));
     try private.api.saveAllModifiedAssets(tmpalloc);
@@ -662,7 +668,7 @@ test "asset: Should rename asset" {
 
     try private.init(std.testing.allocator);
     defer private.deinit();
-    var db = private.getDb();
+    const db = private.getDb();
 
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
@@ -673,21 +679,21 @@ test "asset: Should rename asset" {
     const root_dir = try std.fs.path.join(std.testing.allocator, &.{tmp_dir_path});
     defer std.testing.allocator.free(root_dir);
 
-    const asset_type_hash = try cetech1.cdb_types.addBigType(db, "ct_foo_asset", null);
+    const asset_type_hash = try cetech1.cdb_types.addBigType(_cdb, db, "ct_foo_asset", null);
 
     try private.api.openAssetRootFolder(root_dir, allocator);
 
-    const asset_obj = try db.createObject(asset_type_hash);
+    const asset_obj = try _cdb.createObject(db, asset_type_hash);
     const asset = private.api.createAsset("foo", private.api.getRootFolder(), asset_obj).?;
 
-    const asset_obj_w = db.writeObj(asset_obj).?;
-    const asset_w = db.writeObj(asset).?;
+    const asset_obj_w = _cdb.writeObj(asset_obj).?;
+    const asset_w = _cdb.writeObj(asset).?;
 
-    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
+    const blob = (try _cdb.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    try db.writeCommit(asset_w);
-    try db.writeCommit(asset_obj_w);
+    try _cdb.writeCommit(asset_w);
+    try _cdb.writeCommit(asset_obj_w);
 
     try std.testing.expect(private.api.isAssetModified(asset));
     try private.api.saveAllAssets(allocator);
@@ -695,9 +701,9 @@ test "asset: Should rename asset" {
 
     // Change name to new name
     {
-        const w = db.writeObj(asset).?;
-        try cetech1.assetdb.Asset.setStr(db, w, .Name, "bar");
-        try db.writeCommit(w);
+        const w = _cdb.writeObj(asset).?;
+        try cetech1.assetdb.Asset.setStr(_cdb, w, .Name, "bar");
+        try _cdb.writeCommit(w);
     }
 
     // Save all assets
@@ -753,7 +759,7 @@ test "asset: Should move asset" {
 
     try private.init(std.testing.allocator);
     defer private.deinit();
-    var db = private.getDb();
+    const db = private.getDb();
 
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
@@ -764,21 +770,21 @@ test "asset: Should move asset" {
     const root_dir = try std.fs.path.join(std.testing.allocator, &.{tmp_dir_path});
     defer std.testing.allocator.free(root_dir);
 
-    const asset_type_hash = try cetech1.cdb_types.addBigType(db, "ct_foo_asset", null);
+    const asset_type_hash = try cetech1.cdb_types.addBigType(_cdb, db, "ct_foo_asset", null);
 
     try private.api.openAssetRootFolder(root_dir, allocator);
 
-    const asset_obj = try db.createObject(asset_type_hash);
+    const asset_obj = try _cdb.createObject(db, asset_type_hash);
     const asset = private.api.createAsset("foo", private.api.getRootFolder(), asset_obj).?;
 
-    const asset_obj_w = db.writeObj(asset_obj).?;
-    const asset_w = db.writeObj(asset).?;
+    const asset_obj_w = _cdb.writeObj(asset_obj).?;
+    const asset_w = _cdb.writeObj(asset).?;
 
-    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
+    const blob = (try _cdb.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    try db.writeCommit(asset_w);
-    try db.writeCommit(asset_obj_w);
+    try _cdb.writeCommit(asset_w);
+    try _cdb.writeCommit(asset_obj_w);
 
     const bar_folder = try private.api.createNewFolder(db, private.api.getRootFolder(), "bar");
 
@@ -788,9 +794,9 @@ test "asset: Should move asset" {
 
     // Change folder
     {
-        const w = db.writeObj(asset).?;
-        try cetech1.assetdb.Asset.setRef(db, w, .Folder, bar_folder);
-        try db.writeCommit(w);
+        const w = _cdb.writeObj(asset).?;
+        try cetech1.assetdb.Asset.setRef(_cdb, w, .Folder, bar_folder);
+        try _cdb.writeCommit(w);
     }
 
     // Save all assets
@@ -846,7 +852,7 @@ test "asset: Should delete asset" {
 
     try private.init(std.testing.allocator);
     defer private.deinit();
-    var db = private.getDb();
+    const db = private.getDb();
 
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
@@ -857,27 +863,27 @@ test "asset: Should delete asset" {
     const root_dir = try std.fs.path.join(std.testing.allocator, &.{tmp_dir_path});
     defer std.testing.allocator.free(root_dir);
 
-    const asset_type_hash = try cetech1.cdb_types.addBigType(db, "ct_foo_asset", null);
+    const asset_type_hash = try cetech1.cdb_types.addBigType(_cdb, db, "ct_foo_asset", null);
 
     try private.api.openAssetRootFolder(root_dir, allocator);
 
-    const asset_obj = try db.createObject(asset_type_hash);
+    const asset_obj = try _cdb.createObject(db, asset_type_hash);
     const asset = private.api.createAsset("foo", private.api.getRootFolder(), asset_obj).?;
 
-    const asset_obj_w = db.writeObj(asset_obj).?;
-    const asset_w = db.writeObj(asset).?;
+    const asset_obj_w = _cdb.writeObj(asset_obj).?;
+    const asset_w = _cdb.writeObj(asset).?;
 
-    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
+    const blob = (try _cdb.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    try db.writeCommit(asset_w);
-    try db.writeCommit(asset_obj_w);
+    try _cdb.writeCommit(asset_w);
+    try _cdb.writeCommit(asset_obj_w);
 
     try std.testing.expect(private.api.isAssetModified(asset));
     try private.api.saveAllAssets(allocator);
     try std.testing.expect(!private.api.isAssetModified(asset));
 
-    try private.api.deleteAsset(db, asset);
+    try private.api.deleteAsset(asset);
 
     // Save all assets
     try std.testing.expect(private.api.isToDeleted(asset));
@@ -912,7 +918,7 @@ test "asset: Should revive asset" {
 
     try private.init(std.testing.allocator);
     defer private.deinit();
-    var db = private.getDb();
+    const db = private.getDb();
 
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
@@ -923,27 +929,27 @@ test "asset: Should revive asset" {
     const root_dir = try std.fs.path.join(std.testing.allocator, &.{tmp_dir_path});
     defer std.testing.allocator.free(root_dir);
 
-    const asset_type_hash = try cetech1.cdb_types.addBigType(db, "ct_foo_asset", null);
+    const asset_type_hash = try cetech1.cdb_types.addBigType(_cdb, db, "ct_foo_asset", null);
 
     try private.api.openAssetRootFolder(root_dir, allocator);
 
-    const asset_obj = try db.createObject(asset_type_hash);
+    const asset_obj = try _cdb.createObject(db, asset_type_hash);
     const asset = private.api.createAsset("foo", private.api.getRootFolder(), asset_obj).?;
 
-    const asset_obj_w = db.writeObj(asset_obj).?;
-    const asset_w = db.writeObj(asset).?;
+    const asset_obj_w = _cdb.writeObj(asset_obj).?;
+    const asset_w = _cdb.writeObj(asset).?;
 
-    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
+    const blob = (try _cdb.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    try db.writeCommit(asset_w);
-    try db.writeCommit(asset_obj_w);
+    try _cdb.writeCommit(asset_w);
+    try _cdb.writeCommit(asset_obj_w);
 
     try std.testing.expect(private.api.isAssetModified(asset));
     try private.api.saveAllAssets(allocator);
     try std.testing.expect(!private.api.isAssetModified(asset));
 
-    try private.api.deleteAsset(db, asset);
+    try private.api.deleteAsset(asset);
     private.api.reviveDeleted(asset);
 
     // Save all assets
@@ -981,7 +987,7 @@ test "asset: Should create asset without asset root" {
 
     try private.init(std.testing.allocator);
     defer private.deinit();
-    var db = private.getDb();
+    const db = private.getDb();
 
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
@@ -992,19 +998,19 @@ test "asset: Should create asset without asset root" {
     const root_dir = try std.fs.path.join(std.testing.allocator, &.{tmp_dir_path});
     defer std.testing.allocator.free(root_dir);
 
-    const asset_type_hash = try cetech1.cdb_types.addBigType(db, "ct_foo_asset", null);
+    const asset_type_hash = try cetech1.cdb_types.addBigType(_cdb, db, "ct_foo_asset", null);
 
-    const asset_obj = try db.createObject(asset_type_hash);
+    const asset_obj = try _cdb.createObject(db, asset_type_hash);
     const asset = private.api.createAsset("foo", private.api.getRootFolder(), asset_obj).?;
 
-    const asset_obj_w = db.writeObj(asset_obj).?;
-    const asset_w = db.writeObj(asset).?;
+    const asset_obj_w = _cdb.writeObj(asset_obj).?;
+    const asset_w = _cdb.writeObj(asset).?;
 
-    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
+    const blob = (try _cdb.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    try db.writeCommit(asset_w);
-    try db.writeCommit(asset_obj_w);
+    try _cdb.writeCommit(asset_w);
+    try _cdb.writeCommit(asset_obj_w);
 
     try std.testing.expect(private.api.isAssetModified(asset));
     try private.api.saveAsAllAssets(allocator, root_dir);
@@ -1040,7 +1046,7 @@ test "asset: Should create folder without asset root" {
 
     try private.init(std.testing.allocator);
     defer private.deinit();
-    var db = private.getDb();
+    const db = private.getDb();
 
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
@@ -1054,19 +1060,19 @@ test "asset: Should create folder without asset root" {
     const foo_folder = try private.api.createNewFolder(db, private.api.getRootFolder(), "foo");
     const foo_folder_asset = private.api.getAssetForObj(foo_folder).?;
 
-    const asset_type_hash = try cetech1.cdb_types.addBigType(db, "ct_foo_asset", null);
+    const asset_type_hash = try cetech1.cdb_types.addBigType(_cdb, db, "ct_foo_asset", null);
 
-    const asset_obj = try db.createObject(asset_type_hash);
+    const asset_obj = try _cdb.createObject(db, asset_type_hash);
     const asset = private.api.createAsset("foo", foo_folder_asset, asset_obj).?;
 
-    const asset_obj_w = db.writeObj(asset_obj).?;
-    const asset_w = db.writeObj(asset).?;
+    const asset_obj_w = _cdb.writeObj(asset_obj).?;
+    const asset_w = _cdb.writeObj(asset).?;
 
-    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
+    const blob = (try _cdb.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    try db.writeCommit(asset_w);
-    try db.writeCommit(asset_obj_w);
+    try _cdb.writeCommit(asset_w);
+    try _cdb.writeCommit(asset_obj_w);
 
     try std.testing.expect(private.api.isAssetModified(asset));
     try private.api.saveAsAllAssets(allocator, root_dir);
@@ -1102,7 +1108,7 @@ test "asset: Should rename folder" {
 
     try private.init(std.testing.allocator);
     defer private.deinit();
-    var db = private.getDb();
+    const db = private.getDb();
 
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
@@ -1113,24 +1119,24 @@ test "asset: Should rename folder" {
     const root_dir = try std.fs.path.join(std.testing.allocator, &.{tmp_dir_path});
     defer std.testing.allocator.free(root_dir);
 
-    const asset_type_hash = try cetech1.cdb_types.addBigType(db, "ct_foo_asset", null);
+    const asset_type_hash = try cetech1.cdb_types.addBigType(_cdb, db, "ct_foo_asset", null);
 
     try private.api.openAssetRootFolder(root_dir, allocator);
 
     const foo_folder = try private.api.createNewFolder(db, private.api.getRootFolder(), "foo");
     const foo_folder_asset = private.api.getAssetForObj(foo_folder).?;
 
-    const asset_obj = try db.createObject(asset_type_hash);
+    const asset_obj = try _cdb.createObject(db, asset_type_hash);
     const asset = private.api.createAsset("foo", foo_folder_asset, asset_obj).?;
 
-    const asset_obj_w = db.writeObj(asset_obj).?;
-    const asset_w = db.writeObj(asset).?;
+    const asset_obj_w = _cdb.writeObj(asset_obj).?;
+    const asset_w = _cdb.writeObj(asset).?;
 
-    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
+    const blob = (try _cdb.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    try db.writeCommit(asset_w);
-    try db.writeCommit(asset_obj_w);
+    try _cdb.writeCommit(asset_w);
+    try _cdb.writeCommit(asset_obj_w);
 
     try std.testing.expect(private.api.isAssetModified(asset));
     try private.api.saveAllAssets(allocator);
@@ -1138,9 +1144,9 @@ test "asset: Should rename folder" {
 
     // Change folder
     {
-        const w = db.writeObj(foo_folder_asset).?;
-        try cetech1.assetdb.Asset.setStr(db, w, .Name, "bar");
-        try db.writeCommit(w);
+        const w = _cdb.writeObj(foo_folder_asset).?;
+        try cetech1.assetdb.Asset.setStr(_cdb, w, .Name, "bar");
+        try _cdb.writeCommit(w);
     }
 
     // Save all assets
@@ -1196,7 +1202,7 @@ test "asset: Should move folder" {
 
     try private.init(std.testing.allocator);
     defer private.deinit();
-    var db = private.getDb();
+    const db = private.getDb();
 
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
@@ -1207,7 +1213,7 @@ test "asset: Should move folder" {
     const root_dir = try std.fs.path.join(std.testing.allocator, &.{tmp_dir_path});
     defer std.testing.allocator.free(root_dir);
 
-    const asset_type_hash = try cetech1.cdb_types.addBigType(db, "ct_foo_asset", null);
+    const asset_type_hash = try cetech1.cdb_types.addBigType(_cdb, db, "ct_foo_asset", null);
 
     try private.api.openAssetRootFolder(root_dir, allocator);
 
@@ -1216,17 +1222,17 @@ test "asset: Should move folder" {
 
     const bar_folder = try private.api.createNewFolder(db, private.api.getRootFolder(), "bar");
 
-    const asset_obj = try db.createObject(asset_type_hash);
+    const asset_obj = try _cdb.createObject(db, asset_type_hash);
     const asset = private.api.createAsset("foo", foo_folder_asset, asset_obj).?;
 
-    const asset_obj_w = db.writeObj(asset_obj).?;
-    const asset_w = db.writeObj(asset).?;
+    const asset_obj_w = _cdb.writeObj(asset_obj).?;
+    const asset_w = _cdb.writeObj(asset).?;
 
-    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
+    const blob = (try _cdb.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    try db.writeCommit(asset_w);
-    try db.writeCommit(asset_obj_w);
+    try _cdb.writeCommit(asset_w);
+    try _cdb.writeCommit(asset_obj_w);
 
     try std.testing.expect(private.api.isAssetModified(asset));
     try private.api.saveAllAssets(allocator);
@@ -1234,9 +1240,9 @@ test "asset: Should move folder" {
 
     // Change folder
     {
-        const w = db.writeObj(foo_folder_asset).?;
-        try cetech1.assetdb.Asset.setRef(db, w, .Folder, bar_folder);
-        try db.writeCommit(w);
+        const w = _cdb.writeObj(foo_folder_asset).?;
+        try cetech1.assetdb.Asset.setRef(_cdb, w, .Folder, bar_folder);
+        try _cdb.writeCommit(w);
     }
 
     // Save all assets
@@ -1292,7 +1298,7 @@ test "asset: Should delete folder" {
 
     try private.init(std.testing.allocator);
     defer private.deinit();
-    var db = private.getDb();
+    const db = private.getDb();
 
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
@@ -1303,24 +1309,24 @@ test "asset: Should delete folder" {
     const root_dir = try std.fs.path.join(std.testing.allocator, &.{tmp_dir_path});
     defer std.testing.allocator.free(root_dir);
 
-    const asset_type_hash = try cetech1.cdb_types.addBigType(db, "ct_foo_asset", null);
+    const asset_type_hash = try cetech1.cdb_types.addBigType(_cdb, db, "ct_foo_asset", null);
 
     try private.api.openAssetRootFolder(root_dir, allocator);
 
     const foo_folder = try private.api.createNewFolder(db, private.api.getRootFolder(), "foo");
     const foo_folder_asset = private.api.getAssetForObj(foo_folder).?;
 
-    const asset_obj = try db.createObject(asset_type_hash);
+    const asset_obj = try _cdb.createObject(db, asset_type_hash);
     const asset = private.api.createAsset("foo", foo_folder_asset, asset_obj).?;
 
-    const asset_obj_w = db.writeObj(asset_obj).?;
-    const asset_w = db.writeObj(asset).?;
+    const asset_obj_w = _cdb.writeObj(asset_obj).?;
+    const asset_w = _cdb.writeObj(asset).?;
 
-    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
+    const blob = (try _cdb.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    try db.writeCommit(asset_w);
-    try db.writeCommit(asset_obj_w);
+    try _cdb.writeCommit(asset_w);
+    try _cdb.writeCommit(asset_obj_w);
 
     try std.testing.expect(private.api.isAssetModified(asset));
     try private.api.saveAllAssets(allocator);
@@ -1329,13 +1335,13 @@ test "asset: Should delete folder" {
     // Change folder
     //TODO
     // {
-    //     const w = db.writeObj(foo_folder_asset).?;
+    //     const w = _cdb.writeObj(foo_folder_asset).?;
     //     try cetech1.assetdb.Asset.setStr(db, w, .Name, "bar");
-    //     try db.writeCommit(w);
+    //     try _cdb.writeCommit(w);
     // }
 
     // And delete folder
-    try private.api.deleteFolder(db, foo_folder_asset);
+    try private.api.deleteFolder(foo_folder_asset);
 
     // Save all assets
     try std.testing.expect(private.api.isToDeleted(foo_folder_asset));
@@ -1379,7 +1385,7 @@ test "asset: Should crate new asset from prototype" {
 
     try private.init(std.testing.allocator);
     defer private.deinit();
-    var db = private.getDb();
+    const db = private.getDb();
 
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
@@ -1390,27 +1396,27 @@ test "asset: Should crate new asset from prototype" {
     const root_dir = try std.fs.path.join(std.testing.allocator, &.{tmp_dir_path});
     defer std.testing.allocator.free(root_dir);
 
-    const asset_type_hash = try cetech1.cdb_types.addBigType(db, "ct_foo_asset", null);
+    const asset_type_hash = try cetech1.cdb_types.addBigType(_cdb, db, "ct_foo_asset", null);
 
     try private.api.openAssetRootFolder(root_dir, allocator);
 
-    const asset_obj = try db.createObject(asset_type_hash);
+    const asset_obj = try _cdb.createObject(db, asset_type_hash);
     const asset = private.api.createAsset("foo", private.api.getRootFolder(), asset_obj).?;
 
-    const asset_obj_w = db.writeObj(asset_obj).?;
-    const asset_w = db.writeObj(asset).?;
+    const asset_obj_w = _cdb.writeObj(asset_obj).?;
+    const asset_w = _cdb.writeObj(asset).?;
 
-    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
+    const blob = (try _cdb.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    try db.writeCommit(asset_w);
-    try db.writeCommit(asset_obj_w);
+    try _cdb.writeCommit(asset_w);
+    try _cdb.writeCommit(asset_obj_w);
 
     const new_object_asset = try private.api.createNewAssetFromPrototype(asset);
     const new_object_asset_obj = private.api.getObjForAsset(new_object_asset).?;
-    const new_object_asset_obj_r = FooAsset.read(db, new_object_asset_obj).?;
+    const new_object_asset_obj_r = FooAsset.read(_cdb, new_object_asset_obj).?;
 
-    const prototype = db.getPrototype(new_object_asset_obj_r);
+    const prototype = _cdb.getPrototype(new_object_asset_obj_r);
     try std.testing.expectEqual(asset_obj, prototype);
 }
 
@@ -1423,7 +1429,7 @@ test "asset: Should clone new asset from" {
 
     try private.init(std.testing.allocator);
     defer private.deinit();
-    var db = private.getDb();
+    const db = private.getDb();
 
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
@@ -1434,21 +1440,21 @@ test "asset: Should clone new asset from" {
     const root_dir = try std.fs.path.join(std.testing.allocator, &.{tmp_dir_path});
     defer std.testing.allocator.free(root_dir);
 
-    const asset_type_hash = try cetech1.cdb_types.addBigType(db, "ct_foo_asset", null);
+    const asset_type_hash = try cetech1.cdb_types.addBigType(_cdb, db, "ct_foo_asset", null);
 
     try private.api.openAssetRootFolder(root_dir, allocator);
 
-    const asset_obj = try db.createObject(asset_type_hash);
+    const asset_obj = try _cdb.createObject(db, asset_type_hash);
     const asset = private.api.createAsset("foo", private.api.getRootFolder(), asset_obj).?;
 
-    const asset_obj_w = db.writeObj(asset_obj).?;
-    const asset_w = db.writeObj(asset).?;
+    const asset_obj_w = _cdb.writeObj(asset_obj).?;
+    const asset_w = _cdb.writeObj(asset).?;
 
-    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
+    const blob = (try _cdb.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    try db.writeCommit(asset_w);
-    try db.writeCommit(asset_obj_w);
+    try _cdb.writeCommit(asset_w);
+    try _cdb.writeCommit(asset_obj_w);
 
     _ = try private.api.cloneNewAssetFrom(asset);
 }
@@ -1462,7 +1468,7 @@ test "asset: Should get new valid name for asset" {
 
     try private.init(std.testing.allocator);
     defer private.deinit();
-    var db = private.getDb();
+    const db = private.getDb();
 
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
@@ -1473,30 +1479,29 @@ test "asset: Should get new valid name for asset" {
     const root_dir = try std.fs.path.join(std.testing.allocator, &.{tmp_dir_path});
     defer std.testing.allocator.free(root_dir);
 
-    const asset_type_hash = try cetech1.cdb_types.addBigType(db, "ct_foo_asset", null);
+    const asset_type_hash = try cetech1.cdb_types.addBigType(_cdb, db, "ct_foo_asset", null);
 
     const foo_folder = try private.api.createNewFolder(db, private.api.getRootFolder(), "foo");
     const foo_folder_asset = private.api.getAssetForObj(foo_folder).?;
 
-    const asset_obj = try db.createObject(asset_type_hash);
+    const asset_obj = try _cdb.createObject(db, asset_type_hash);
     const asset = private.api.createAsset("foo", foo_folder_asset, asset_obj).?;
 
-    const asset_obj_w = db.writeObj(asset_obj).?;
-    const asset_w = db.writeObj(asset).?;
+    const asset_obj_w = _cdb.writeObj(asset_obj).?;
+    const asset_w = _cdb.writeObj(asset).?;
 
-    const blob = (try db.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
+    const blob = (try _cdb.createBlob(asset_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.Blob), "hello blob".len)).?;
     @memcpy(blob, "hello blob");
 
-    try db.writeCommit(asset_w);
-    try db.writeCommit(asset_obj_w);
+    try _cdb.writeCommit(asset_w);
+    try _cdb.writeCommit(asset_obj_w);
 
     var buff: [256:0]u8 = undefined;
     const name = try private.api.buffGetValidName(
         std.testing.allocator,
         &buff,
-        db,
         foo_folder_asset,
-        db.getTypeIdx(cetech1.assetdb.FooAsset.type_hash).?,
+        _cdb.getTypeIdx(db, cetech1.assetdb.FooAsset.type_hash).?,
         "foo",
     );
 

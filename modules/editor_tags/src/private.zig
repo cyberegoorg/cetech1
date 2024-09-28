@@ -50,10 +50,10 @@ var api = public.EditorTagsApi{
     .tagsInput = tagsInput,
 };
 
-fn tagButton(db: cdb.Db, filter: ?[:0]const u8, tag: cdb.ObjId, wrap: bool) bool {
+fn tagButton(db: cdb.DbId, filter: ?[:0]const u8, tag: cdb.ObjId, wrap: bool) bool {
     var buff: [128:0]u8 = undefined;
-    const tag_r = db.readObj(tag) orelse return false;
-    const tag_name = Tag.readStr(db, tag_r, .Name) orelse "NO NAME =(";
+    const tag_r = _cdb.readObj(tag) orelse return false;
+    const tag_name = Tag.readStr(_cdb, tag_r, .Name) orelse "NO NAME =(";
     const tag_color = getTagColor(db, tag_r);
 
     const color_scale = 0.80;
@@ -94,14 +94,14 @@ fn tagButton(db: cdb.Db, filter: ?[:0]const u8, tag: cdb.ObjId, wrap: bool) bool
 
 fn tagsInput(
     allocator: std.mem.Allocator,
-    db: cdb.Db,
     obj: cdb.ObjId,
     prop_idx: u32,
     in_table: bool,
     filter: ?[:0]const u8,
 ) !bool {
     _ = filter;
-    const obj_r = db.readObj(obj) orelse return false;
+    const obj_r = _cdb.readObj(obj) orelse return false;
+    const db = _cdb.getDbFromObjid(obj);
 
     if (in_table) {
         _coreui.tableNextColumn();
@@ -112,13 +112,13 @@ fn tagsInput(
     }
 
     var any_tag_set = false;
-    if (db.readRefSet(obj_r, prop_idx, allocator)) |tags| {
+    if (_cdb.readRefSet(obj_r, prop_idx, allocator)) |tags| {
         for (tags) |tag| {
             any_tag_set = true;
             if (tagButton(db, null, tag, true)) {
-                const obj_w = db.writeObj(obj).?;
-                try db.removeFromRefSet(obj_w, prop_idx, tag);
-                try db.writeCommit(obj_w);
+                const obj_w = _cdb.writeObj(obj).?;
+                try _cdb.removeFromRefSet(obj_w, prop_idx, tag);
+                try _cdb.writeCommit(obj_w);
             }
         }
     }
@@ -128,14 +128,14 @@ fn tagsInput(
 
         _g.filter = _coreui.uiFilter(&_g.filter_buff, _g.filter);
 
-        if (db.getAllObjectByType(allocator, assetdb.Tag.typeIdx(db))) |tags| {
+        if (_cdb.getAllObjectByType(allocator, db, assetdb.Tag.typeIdx(_cdb, db))) |tags| {
             for (tags) |tag| {
-                if (db.isInSet(obj_r, prop_idx, tag)) continue;
+                if (_cdb.isInSet(obj_r, prop_idx, tag)) continue;
                 if (tagButton(db, _g.filter, tag, true)) {
-                    const obj_w = db.writeObj(obj).?;
-                    try db.addRefToSet(obj_w, prop_idx, &.{tag});
+                    const obj_w = _cdb.writeObj(obj).?;
+                    try _cdb.addRefToSet(obj_w, prop_idx, &.{tag});
                     _coreui.closeCurrentPopup();
-                    try db.writeCommit(obj_w);
+                    try _cdb.writeCommit(obj_w);
                 }
             }
         }
@@ -152,23 +152,22 @@ var create_tag_asset_i = editor.CreateAssetI.implement(
     struct {
         pub fn create(
             allocator: std.mem.Allocator,
-            db: cdb.Db,
+            db: cdb.DbId,
             folder: cdb.ObjId,
         ) !void {
             var buff: [256:0]u8 = undefined;
             const name = try _assetdb.buffGetValidName(
                 allocator,
                 &buff,
-                db,
                 folder,
-                db.getTypeIdx(assetdb.Tag.type_hash).?,
+                _cdb.getTypeIdx(db, assetdb.Tag.type_hash).?,
                 "NewTag",
             );
-            const new_obj = try assetdb.Tag.createObject(db);
+            const new_obj = try assetdb.Tag.createObject(_cdb, db);
             {
-                const w = db.writeObj(new_obj).?;
-                try assetdb.Tag.setStr(db, w, .Name, name);
-                try db.writeCommit(w);
+                const w = _cdb.writeObj(new_obj).?;
+                try assetdb.Tag.setStr(_cdb, w, .Name, name);
+                try _cdb.writeCommit(w);
             }
 
             _ = _assetdb.createAsset(name, folder, new_obj);
@@ -184,24 +183,24 @@ var create_tag_asset_i = editor.CreateAssetI.implement(
 var tag_prop_aspect = editor_inspector.UiEmbedPropertyAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
         prop_idx: u32,
         args: editor_inspector.cdbPropertiesViewArgs,
     ) !void {
-        _ = try tagsInput(allocator, db, obj, prop_idx, true, args.filter);
+        _ = try tagsInput(allocator, obj, prop_idx, true, args.filter);
     }
 });
 
 //
 
-fn getTagColor(db: cdb.Db, tag_r: *cdb.Obj) [4]f32 {
+fn getTagColor(db: cdb.DbId, tag_r: *cdb.Obj) [4]f32 {
+    _ = db; // autofix
     if (!_editor.isColorsEnabled()) return .{ 1.0, 1.0, 1.0, 1.0 };
 
-    const tag_color_obj = Tag.readSubObj(db, tag_r, .Color);
+    const tag_color_obj = Tag.readSubObj(_cdb, tag_r, .Color);
     var color: [4]f32 = .{ 1.0, 1.0, 1.0, 1.0 };
     if (tag_color_obj) |color_obj| {
-        color = cetech1.cdb_types.Color4f.f.toSlice(db, color_obj);
+        color = cetech1.cdb_types.Color4f.f.toSlice(_cdb, color_obj);
     }
     return color;
 }
@@ -211,35 +210,31 @@ var tag_visual_aspect = editor.UiVisualAspect.implement(struct {
     pub fn uiName(
         buff: [:0]u8,
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
     ) ![:0]const u8 {
         _ = allocator; // autofix
-        const obj_r = db.readObj(obj).?;
+        const obj_r = _cdb.readObj(obj).?;
         return std.fmt.bufPrintZ(buff, "{s}", .{
-            Tag.readStr(db, obj_r, .Name) orelse "No NAME =()",
+            Tag.readStr(_cdb, obj_r, .Name) orelse "No NAME =()",
         });
     }
 
     pub fn uiIcons(
         buff: [:0]u8,
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
     ) ![:0]const u8 {
         _ = allocator; // autofix
-        _ = db; // autofix
 
         _ = obj;
         return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Tag});
     }
 
     pub fn uiColor(
-        db: cdb.Db,
         obj: cdb.ObjId,
     ) ![4]f32 {
-        if (Tag.readSubObj(db, db.readObj(obj).?, .Color)) |color_obj| {
-            return cetech1.cdb_types.Color4f.f.toSlice(db, color_obj);
+        if (Tag.readSubObj(_cdb, _cdb.readObj(obj).?, .Color)) |color_obj| {
+            return cetech1.cdb_types.Color4f.f.toSlice(_cdb, color_obj);
         }
         return .{ 1.0, 1.0, 1.0, 1.0 };
     }
@@ -249,22 +244,25 @@ var tag_visual_aspect = editor.UiVisualAspect.implement(struct {
 
 // Create cdb types
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
-    pub fn createTypes(db: cdb.Db) !void {
+    pub fn createTypes(db: cdb.DbId) !void {
         try assetdb.Tag.addAspect(
-            db,
             editor_inspector.UiPropertiesConfigAspect,
+            _cdb,
+            db,
             _g.noproto_config_aspect,
         );
 
         try assetdb.Tag.addAspect(
-            db,
             editor.UiVisualAspect,
+            _cdb,
+            db,
             _g.tag_visual_aspect,
         );
 
         try assetdb.Asset.addPropertyAspect(
-            db,
             editor_inspector.UiEmbedPropertyAspect,
+            _cdb,
+            db,
             .Tags,
             _g.tag_prop_aspect,
         );

@@ -40,7 +40,7 @@ pub var api = public.EditorObjBufferAPI{
     .addToFirst = addToFirst,
 };
 
-fn addToFirst(allocator: std.mem.Allocator, db: cetech1.cdb.Db, obj: coreui.SelectionItem) !void {
+fn addToFirst(allocator: std.mem.Allocator, db: cetech1.cdb.DbId, obj: coreui.SelectionItem) !void {
     _ = db; // autofix
     var tab: ?*ObjBufferTab = null;
     if (_g.last_focused) |lf| {
@@ -59,14 +59,14 @@ fn addToFirst(allocator: std.mem.Allocator, db: cetech1.cdb.Db, obj: coreui.Sele
         try tab_o.inter_selection.set(&.{obj});
 
         if (tab_o.inter_selection.toSlice(allocator)) |objs| {
-            _editor.propagateSelection(tab_o.db, tab_o, objs);
+            _editor.propagateSelection(tab_o, objs);
         }
     }
 }
 
 const ObjBufferTab = struct {
     tab_i: editor.TabI,
-    db: cetech1.cdb.Db,
+
     inter_selection: coreui.Selection,
     obj_buffer: coreui.Selection,
 };
@@ -93,7 +93,7 @@ var obj_buffer_tab = editor.TabTypeI.implement(
         }
 
         // Create new ObjBufferTab instantce
-        pub fn create(db: cetech1.cdb.Db, tab_id: u32) !?*editor.TabI {
+        pub fn create(tab_id: u32) !?*editor.TabI {
             _ = tab_id;
             var tab_inst = try _allocator.create(ObjBufferTab);
             tab_inst.* = ObjBufferTab{
@@ -101,7 +101,7 @@ var obj_buffer_tab = editor.TabTypeI.implement(
                     .vt = _g.tab_vt,
                     .inst = @ptrCast(tab_inst),
                 },
-                .db = db,
+
                 .inter_selection = coreui.Selection.init(_allocator),
                 .obj_buffer = coreui.Selection.init(_allocator),
             };
@@ -115,7 +115,7 @@ var obj_buffer_tab = editor.TabTypeI.implement(
             tab_o.inter_selection.deinit();
             tab_o.obj_buffer.deinit();
 
-            _editor.propagateSelection(tab_o.db, tab_inst, &.{.{ .top_level_obj = .{}, .obj = cetech1.cdb.OBJID_ZERO }});
+            _editor.propagateSelection(tab_inst, &.{.{ .top_level_obj = .{}, .obj = cetech1.cdb.OBJID_ZERO }});
 
             if (_g.last_focused == tab_o) {
                 _g.last_focused = null;
@@ -130,10 +130,6 @@ var obj_buffer_tab = editor.TabTypeI.implement(
             const allocator = try _tempalloc.create();
             defer _tempalloc.destroy(allocator);
 
-            // if (tab_o.inter_selection.toSlice(allocator)) |objs| {
-            //     defer allocator.free(objs);
-            //     _editor.propagateSelection(tab_o.db, objs);
-            // }
             _g.last_focused = tab_o;
         }
 
@@ -152,7 +148,7 @@ var obj_buffer_tab = editor.TabTypeI.implement(
                 const allocator = try _tempalloc.create();
                 defer _tempalloc.destroy(allocator);
 
-                try _editor.showObjContextMenu(allocator, tab_o.db, tab_o, &.{public.objectBufferContext}, tab_o.inter_selection.first());
+                try _editor.showObjContextMenu(allocator, tab_o, &.{public.objectBufferContext}, tab_o.inter_selection.first());
             }
         }
 
@@ -176,7 +172,6 @@ var obj_buffer_tab = editor.TabTypeI.implement(
                     for (selected_objs) |obj| {
                         _ = try _editortree.cdbTreeView(
                             allocator,
-                            tab_o.db,
                             tab_o,
                             &.{ public.objectBufferContext, editor.Contexts.open },
                             obj,
@@ -197,13 +192,11 @@ var obj_buffer_tab = editor.TabTypeI.implement(
 
 fn objContextMenu(
     allocator: std.mem.Allocator,
-    db: cetech1.cdb.Db,
     obj_buffer: *coreui.Selection,
     inter_selection: *coreui.Selection,
     selection: []const coreui.SelectionItem,
     filter: ?[:0]const u8,
 ) !void {
-    _ = db; // autofix
     // Open
 
     if (_coreui.menuItem(
@@ -236,13 +229,11 @@ const ASSET_ICON = Icons.FA_FILE;
 var buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn isValid(
         allocator: std.mem.Allocator,
-        db: cetech1.cdb.Db,
         tab: *editor.TabO,
         contexts: cetech1.strid.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !bool {
-        _ = db; // autofix
         _ = tab;
         _ = selection;
 
@@ -259,7 +250,6 @@ var buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
 
     pub fn menu(
         allocator: std.mem.Allocator,
-        db: cetech1.cdb.Db,
         tab: *editor.TabO,
         contexts: cetech1.strid.StrId64,
         selection: []const coreui.SelectionItem,
@@ -269,20 +259,18 @@ var buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
         const tab_o: *ObjBufferTab = @alignCast(@ptrCast(tab));
 
         _coreui.separatorText("Obj buffer");
-        objContextMenu(allocator, db, &tab_o.obj_buffer, &tab_o.inter_selection, selection, filter) catch undefined;
+        objContextMenu(allocator, &tab_o.obj_buffer, &tab_o.inter_selection, selection, filter) catch undefined;
     }
 });
 
 var add_to_buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn isValid(
         allocator: std.mem.Allocator,
-        db: cetech1.cdb.Db,
         tab: *editor.TabO,
         contexts: cetech1.strid.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !bool {
-        _ = db; // autofix
         _ = tab;
         _ = selection;
 
@@ -304,13 +292,11 @@ var add_to_buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
 
     pub fn menu(
         allocator: std.mem.Allocator,
-        db: cetech1.cdb.Db,
         tab_: *editor.TabO,
         contexts: cetech1.strid.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !void {
-        _ = db; // autofix
         _ = tab_;
         _ = contexts;
 
@@ -335,7 +321,7 @@ var add_to_buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
 
                 if (tab_o.inter_selection.toSlice(allocator)) |objs| {
                     defer allocator.free(objs);
-                    _editor.propagateSelection(tab_o.db, tab.inst, objs);
+                    _editor.propagateSelection(tab.inst, objs);
                 }
             }
         }

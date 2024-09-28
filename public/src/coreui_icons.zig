@@ -1,6 +1,4 @@
-pub const c = @cImport({
-    @cInclude("cetech1/core/faicons.h");
-});
+const c = @import("icons_c");
 
 pub const Icons = struct {
     pub const ICON_MIN_FA = c.ICON_MIN_FA;

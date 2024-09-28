@@ -439,7 +439,7 @@ pub const CoreUIApi = struct {
     pushPtrId: *const fn (ptr_id: *const anyopaque) void,
     pushIntId: *const fn (int_id: u32) void,
     pushObjUUID: *const fn (obj: cdb.ObjId) void,
-    pushPropName: *const fn (db: cdb.Db, obj: cdb.ObjId, prop_idx: u32) void,
+    pushPropName: *const fn (obj: cdb.ObjId, prop_idx: u32) void,
 
     popId: *const fn () void,
 
@@ -533,7 +533,7 @@ pub const CoreUIApi = struct {
     isMouseDown: *const fn (mouse_button: MouseButton) bool,
     isMouseClicked: *const fn (mouse_button: MouseButton) bool,
 
-    handleSelection: *const fn (allocator: std.mem.Allocator, db: cdb.Db, selection: *Selection, obj: SelectionItem, multiselect_enabled: bool) anyerror!void,
+    handleSelection: *const fn (allocator: std.mem.Allocator, selection: *Selection, obj: SelectionItem, multiselect_enabled: bool) anyerror!void,
 
     // TODO: MOVE?
     // Tests

@@ -54,20 +54,19 @@ var create_entity_i = editor.CreateAssetI.implement(
     struct {
         pub fn create(
             allocator: std.mem.Allocator,
-            db: cdb.Db,
+            db: cdb.DbId,
             folder: cdb.ObjId,
         ) !void {
             var buff: [256:0]u8 = undefined;
             const name = try _assetdb.buffGetValidName(
                 allocator,
                 &buff,
-                db,
                 folder,
-                db.getTypeIdx(ecs.Entity.type_hash).?,
+                _cdb.getTypeIdx(db, ecs.Entity.type_hash).?,
                 "NewEntity",
             );
 
-            const new_obj = try ecs.Entity.createObject(db);
+            const new_obj = try ecs.Entity.createObject(_cdb, db);
 
             _ = _assetdb.createAsset(name, folder, new_obj);
         }
@@ -81,7 +80,6 @@ var create_entity_i = editor.CreateAssetI.implement(
 var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn isValid(
         allocator: std.mem.Allocator,
-        db: cetech1.cdb.Db,
         tab: *editor.TabO,
         context: cetech1.strid.StrId64,
         selection: []const coreui.SelectionItem,
@@ -92,9 +90,10 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
         if (context.id != editor.Contexts.create.id) return false;
 
         for (selection) |obj| {
+            const db = _cdb.getDbFromObjid(obj.obj);
             const ent_obj = _assetdb.getObjForAsset(obj.obj) orelse obj.obj;
 
-            if (!ent_obj.type_idx.eql(ecs.Entity.typeIdx(db))) return false;
+            if (!ent_obj.type_idx.eql(ecs.Entity.typeIdx(_cdb, db))) return false;
         }
 
         var valid = true;
@@ -107,7 +106,6 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
 
     pub fn menu(
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         tab: *editor.TabO,
         context: strid.StrId64,
         selection: []const coreui.SelectionItem,
@@ -117,11 +115,12 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
         _ = tab;
 
         const obj = selection[0];
+
         const ent_obj = _assetdb.getObjForAsset(obj.obj) orelse obj.obj;
         if (_coreui.beginMenu(allocator, coreui.Icons.Add ++ "  " ++ "Add component", true, filter)) {
             defer _coreui.endMenu();
 
-            try entity_component_menu_aspect.add_menu(allocator, db, ent_obj, ecs.Entity.propIdx(.components));
+            try entity_component_menu_aspect.add_menu(allocator, ent_obj, ecs.Entity.propIdx(.components));
         }
     }
 });
@@ -130,18 +129,17 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
 const entity_component_menu_aspect = editor.UiSetMenusAspect.implement(struct {
     pub fn addMenu(
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
         prop_idx: u32,
     ) !void {
         _ = prop_idx; // autofix
-
-        const entity_r = ecs.Entity.read(db, obj).?;
+        const db = _cdb.getDbFromObjid(obj);
+        const entity_r = ecs.Entity.read(_cdb, obj).?;
 
         var components_set = cetech1.mem.Set(cdb.TypeIdx).init(allocator);
         defer components_set.deinit();
 
-        if (try ecs.Entity.readSubObjSet(db, entity_r, .components, allocator)) |components| {
+        if (try ecs.Entity.readSubObjSet(_cdb, entity_r, .components, allocator)) |components| {
             defer allocator.free(components);
             //try components_set.ensureTotalCapacity(components.len);
 
@@ -158,24 +156,24 @@ const entity_component_menu_aspect = editor.UiSetMenusAspect.implement(struct {
 
         for (impls) |iface| {
             if (iface.cdb_type_hash.isEmpty()) continue;
-            if (components_set.contains(db.getTypeIdx(iface.cdb_type_hash).?)) continue;
+            if (components_set.contains(_cdb.getTypeIdx(db, iface.cdb_type_hash).?)) continue;
 
             var icon: [:0]const u8 = coreui.Icons.Component;
             if (iface.uiIcons) |ui_icons| {
-                icon = try ui_icons(&icon_buff, allocator, db, .{});
+                icon = try ui_icons(&icon_buff, allocator, .{});
             }
 
             const label = try std.fmt.bufPrintZ(&labbel_buff, "{s}  {s}", .{ icon, iface.name });
             if (_coreui.menuItem(allocator, label, .{}, null)) {
-                const obj_w = ecs.Entity.write(db, obj).?;
+                const obj_w = ecs.Entity.write(_cdb, obj).?;
 
-                const value_obj = try db.createObject(db.getTypeIdx(iface.cdb_type_hash).?);
-                const value_obj_w = db.writeObj(value_obj).?;
+                const value_obj = try _cdb.createObject(db, _cdb.getTypeIdx(db, iface.cdb_type_hash).?);
+                const value_obj_w = _cdb.writeObj(value_obj).?;
 
-                try ecs.Entity.addSubObjToSet(db, obj_w, .components, &.{value_obj_w});
+                try ecs.Entity.addSubObjToSet(_cdb, obj_w, .components, &.{value_obj_w});
 
-                try db.writeCommit(value_obj_w);
-                try db.writeCommit(obj_w);
+                try _cdb.writeCommit(value_obj_w);
+                try _cdb.writeCommit(obj_w);
             }
         }
     }
@@ -185,13 +183,12 @@ var entity_visual_aspect = editor.UiVisualAspect.implement(struct {
     pub fn uiName(
         buff: [:0]u8,
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
     ) ![:0]const u8 {
         _ = allocator; // autofix
-        const obj_r = db.readObj(obj).?;
+        const obj_r = _cdb.readObj(obj).?;
 
-        if (ecs.Entity.readStr(db, obj_r, .name)) |name| {
+        if (ecs.Entity.readStr(_cdb, obj_r, .name)) |name| {
             return std.fmt.bufPrintZ(
                 buff,
                 "{s}",
@@ -213,10 +210,8 @@ var entity_visual_aspect = editor.UiVisualAspect.implement(struct {
     pub fn uiIcons(
         buff: [:0]u8,
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
     ) ![:0]const u8 {
-        _ = db; // autofix
         _ = obj; // autofix
         _ = allocator; // autofix
 
@@ -227,11 +222,10 @@ var entity_visual_aspect = editor.UiVisualAspect.implement(struct {
 var entity_preview_aspect = asset_preview.AssetPreviewAspectI.implement(struct {
     pub fn createPreviewEntity(
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
         world: ecs.World,
     ) anyerror!ecs.EntityId {
-        const ents = try _ecs.spawnManyFromCDB(allocator, world, db, obj, 1);
+        const ents = try _ecs.spawnManyFromCDB(allocator, world, obj, 1);
         return ents[0];
     }
 });
@@ -239,7 +233,6 @@ var entity_preview_aspect = asset_preview.AssetPreviewAspectI.implement(struct {
 var entity_children_drop_aspect = editor.UiDropObj.implement(struct {
     pub fn uiDropObj(
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         tab: *editor.TabO,
         obj: cdb.ObjId,
         prop_idx: ?u32,
@@ -249,19 +242,21 @@ var entity_children_drop_aspect = editor.UiDropObj.implement(struct {
         _ = tab; // autofix
         _ = prop_idx; // autofix
 
-        if (drag_obj.type_idx.eql(assetdb.Asset.typeIdx(db))) {
+        const db = _cdb.getDbFromObjid(obj);
+
+        if (drag_obj.type_idx.eql(assetdb.Asset.typeIdx(_cdb, db))) {
             const asset_entity_obj = _assetdb.getObjForAsset(drag_obj).?;
 
-            if (asset_entity_obj.type_idx.eql(ecs.Entity.typeIdx(db))) {
-                const new_obj = try db.createObjectFromPrototype(asset_entity_obj);
+            if (asset_entity_obj.type_idx.eql(ecs.Entity.typeIdx(_cdb, db))) {
+                const new_obj = try _cdb.createObjectFromPrototype(asset_entity_obj);
 
-                const new_obj_w = ecs.Entity.write(db, new_obj).?;
-                const entiy_obj_w = ecs.Entity.write(db, obj).?;
+                const new_obj_w = ecs.Entity.write(_cdb, new_obj).?;
+                const entiy_obj_w = ecs.Entity.write(_cdb, obj).?;
 
-                try ecs.Entity.addSubObjToSet(db, entiy_obj_w, .childrens, &.{new_obj_w});
+                try ecs.Entity.addSubObjToSet(_cdb, entiy_obj_w, .childrens, &.{new_obj_w});
 
-                try ecs.Entity.commit(db, new_obj_w);
-                try ecs.Entity.commit(db, entiy_obj_w);
+                try ecs.Entity.commit(_cdb, new_obj_w);
+                try ecs.Entity.commit(_cdb, entiy_obj_w);
             }
         }
     }
@@ -273,12 +268,12 @@ var component_visual_aspect = editor.UiVisualAspect.implement(struct {
     pub fn uiName(
         buff: [:0]u8,
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
     ) ![:0]const u8 {
         _ = allocator; // autofix
 
-        const component_cdb_type = db.getTypeHash(obj.type_idx).?;
+        const db = _cdb.getDbFromObjid(obj);
+        const component_cdb_type = _cdb.getTypeHash(db, obj.type_idx).?;
         const iface = _ecs.findComponentIByCdbHash(component_cdb_type).?;
 
         return std.fmt.bufPrintZ(
@@ -293,14 +288,14 @@ var component_visual_aspect = editor.UiVisualAspect.implement(struct {
     pub fn uiIcons(
         buff: [:0]u8,
         allocator: std.mem.Allocator,
-        db: cdb.Db,
         obj: cdb.ObjId,
     ) ![:0]const u8 {
-        const component_cdb_type = db.getTypeHash(obj.type_idx).?;
+        const db = _cdb.getDbFromObjid(obj);
+        const component_cdb_type = _cdb.getTypeHash(db, obj.type_idx).?;
         const iface = _ecs.findComponentIByCdbHash(component_cdb_type).?;
 
         if (iface.uiIcons) |ui_icons| {
-            return ui_icons(buff, allocator, db, obj);
+            return ui_icons(buff, allocator, obj);
         }
 
         return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Component});
@@ -308,36 +303,41 @@ var component_visual_aspect = editor.UiVisualAspect.implement(struct {
 });
 
 const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
-    pub fn postCreateTypes(db: cdb.Db) !void {
+    pub fn postCreateTypes(db: cdb.DbId) !void {
         try ecs.Entity.addPropertyAspect(
-            db,
             editor.UiSetMenusAspect,
+            _cdb,
+            db,
             .components,
             _g.component_value_menu_aspect,
         );
 
         try ecs.Entity.addAspect(
-            db,
             editor.UiVisualAspect,
+            _cdb,
+            db,
             _g.entity_visual_aspect,
         );
 
         try ecs.Entity.addAspect(
-            db,
             asset_preview.AssetPreviewAspectI,
+            _cdb,
+            db,
             _g.entity_preview_aspect,
         );
 
         try ecs.Entity.addPropertyAspect(
-            db,
             editor.UiDropObj,
+            _cdb,
+            db,
             .childrens,
             _g.entity_children_drop_aspect,
         );
 
         try ecs.Entity.addPropertyAspect(
-            db,
             editor_tree.UiTreeFlatenPropertyAspect,
+            _cdb,
+            db,
             .components,
             _g.entity_flaten_aspect,
         );
@@ -347,7 +347,7 @@ const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
         defer _allocator.free(impls);
         for (impls) |iface| {
             if (iface.cdb_type_hash.isEmpty()) continue;
-            try db.addAspect(editor.UiVisualAspect, db.getTypeIdx(iface.cdb_type_hash).?, _g.component_visual_aspect);
+            try _cdb.addAspect(editor.UiVisualAspect, db, _cdb.getTypeIdx(db, iface.cdb_type_hash).?, _g.component_visual_aspect);
         }
     }
 });

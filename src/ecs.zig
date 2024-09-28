@@ -7,18 +7,21 @@ const apidb = @import("apidb.zig");
 const task = @import("task.zig");
 const tempalloc = @import("tempalloc.zig");
 const profiler_private = @import("profiler.zig");
-const graphvm_private = @import("graphvm.zig");
+
 const assetdb_private = @import("assetdb.zig");
 const coreui_private = @import("coreui.zig");
+const cdb_private = @import("cdb.zig");
 
 const public = cetech1.ecs;
 const cdb_types = cetech1.cdb_types;
 const cdb = cetech1.cdb;
-const graphvm = cetech1.graphvm;
+
 const coreui = cetech1.coreui;
 
 const zflecs = @import("zflecs");
 const entity_t = zflecs.entity_t;
+
+var _cdb = &cdb_private.api;
 
 const module_name = .ecs;
 const log = std.log.scoped(module_name);
@@ -290,24 +293,24 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(cetech1.kernel.OnLoa
         var deleted_ent_obj = ChangedObjsSet.init(alloc);
         defer deleted_ent_obj.deinit();
 
-        var db = assetdb_private.getDb();
+        const db = assetdb_private.getDb();
 
         // Components
         const impls = apidb.api.getImpl(_allocator, public.ComponentI) catch undefined;
         defer _allocator.free(impls);
         for (impls) |iface| {
             if (iface.cdb_type_hash.isEmpty()) continue;
-            const type_idx = db.getTypeIdx(iface.cdb_type_hash).?;
+            const type_idx = _cdb.getTypeIdx(db, iface.cdb_type_hash).?;
 
             const last_check = _component_version.get(type_idx) orelse 0;
 
-            const changed = try db.getChangeObjects(alloc, type_idx, last_check);
+            const changed = try _cdb.getChangeObjects(db, alloc, type_idx, last_check);
             defer alloc.free(changed.objects);
             if (!changed.need_fullscan) {
                 for (changed.objects) |component_obj| {
-                    const is_alive = db.isAlive(component_obj);
-                    const entity_obj = db.getParent(component_obj);
-                    const deleted_entity = !db.isAlive(entity_obj);
+                    const is_alive = _cdb.isAlive(component_obj);
+                    const entity_obj = _cdb.getParent(component_obj);
+                    const deleted_entity = !_cdb.isAlive(entity_obj);
 
                     //if (deleted_ent_obj.contains()) continue;
 
@@ -327,7 +330,7 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(cetech1.kernel.OnLoa
                             @memset(component_data, 0);
 
                             if (iface.fromCdb) |fromCdb| {
-                                try fromCdb(alloc, db, component_obj, component_data);
+                                try fromCdb(alloc, component_obj, component_data);
                             }
 
                             // Propagate to prefab
@@ -371,7 +374,7 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(cetech1.kernel.OnLoa
                     try processed_obj.put(component_obj, {});
                 }
             } else {
-                if (db.getAllObjectByType(alloc, type_idx)) |objs| {
+                if (_cdb.getAllObjectByType(alloc, db, type_idx)) |objs| {
                     for (objs) |graph| {
                         _ = graph; // autofix
                     }
@@ -383,11 +386,11 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(cetech1.kernel.OnLoa
 
         // TODO: clean maps on delete components and entities
         {
-            const changed = try db.getChangeObjects(alloc, public.Entity.typeIdx(db), _entity_version);
+            const changed = try _cdb.getChangeObjects(db, alloc, public.Entity.typeIdx(_cdb, db), _entity_version);
             defer alloc.free(changed.objects);
             if (!changed.need_fullscan) {
                 for (changed.objects) |entity_obj| {
-                    const is_alive = db.isAlive(entity_obj);
+                    const is_alive = _cdb.isAlive(entity_obj);
                     if (!is_alive) {
                         try deleted_ent_obj.put(entity_obj, {});
                     }
@@ -401,7 +404,7 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(cetech1.kernel.OnLoa
                     for (_world_data.keys()) |world| {
                         const w = toWorld(world);
 
-                        const parent_obj = db.getParent(entity_obj);
+                        const parent_obj = _cdb.getParent(entity_obj);
                         const parent_prefab_ent = _obj2prefab.get(.{ .world = w, .obj = parent_obj }) orelse continue;
 
                         // _ = prefab_ent; // autofix
@@ -439,7 +442,7 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(cetech1.kernel.OnLoa
                     try processed_obj.put(entity_obj, {});
                 }
             } else {
-                if (db.getAllObjectByType(alloc, public.Entity.typeIdx(db))) |objs| {
+                if (_cdb.getAllObjectByType(alloc, db, public.Entity.typeIdx(_cdb, db))) |objs| {
                     for (objs) |graph| {
                         _ = graph; // autofix
                     }
@@ -454,10 +457,11 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(cetech1.kernel.OnLoa
 // CDB
 var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(
     struct {
-        pub fn createTypes(db: cetech1.cdb.Db) !void {
+        pub fn createTypes(db: cetech1.cdb.DbId) !void {
             // Entity
             {
-                _ = try db.addType(
+                _ = try _cdb.addType(
+                    db,
                     public.Entity.name,
                     &[_]cetech1.cdb.PropDef{
                         .{ .prop_idx = public.Entity.propIdx(.name), .name = "name", .type = cetech1.cdb.PropType.STR },
@@ -466,39 +470,15 @@ var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(
                     },
                 );
             }
-
-            // EntityLogicComponentCdb
-            {
-                _ = try db.addType(
-                    public.EntityLogicComponentCdb.name,
-                    &[_]cetech1.cdb.PropDef{
-                        .{
-                            .prop_idx = public.EntityLogicComponentCdb.propIdx(.graph),
-                            .name = "graph",
-                            .type = cetech1.cdb.PropType.SUBOBJECT,
-                            .type_hash = graphvm.GraphType.type_hash,
-                        },
-                    },
-                );
-            }
         }
     },
 );
 
 pub fn registerToApi() !void {
-    _ = @alignOf(public.EntityLogicComponent);
-    _ = @alignOf(public.EntityLogicComponentInstance);
-
     try apidb.api.setZigApi(module_name, public.EcsAPI, &api);
 
-    try apidb.api.implOrRemove(module_name, public.ComponentI, &logic_c, true);
-    try apidb.api.implOrRemove(module_name, public.ComponentI, &logic_instance_c, true);
-
-    try apidb.api.implOrRemove(module_name, public.SystemI, &init_logic_system_i, true);
-    try apidb.api.implOrRemove(module_name, public.SystemI, &tick_logic_system_i, true);
-
-    try apidb.api.implOrRemove(module_name, graphvm.GraphValueTypeI, &entity_value_type_i, true);
-    try apidb.api.implOrRemove(module_name, graphvm.GraphNodeI, &get_entity_node_i, true);
+    // try apidb.api.implOrRemove(module_name, graphvm.GraphValueTypeI, &entity_value_type_i, true);
+    // try apidb.api.implOrRemove(module_name, graphvm.GraphNodeI, &get_entity_node_i, true);
 
     try apidb.api.implOrRemove(module_name, cetech1.cdb.CreateTypesI, &create_cdb_types_i, true);
     try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task, true);
@@ -526,12 +506,12 @@ fn findComponentIByCdbHash(cdb_hash: cdb.TypeHash) ?*const public.ComponentI {
     return null;
 }
 
-fn getOrCreatePrefab(allocator: std.mem.Allocator, world: public.World, db: cdb.Db, obj: cdb.ObjId) !public.EntityId {
+fn getOrCreatePrefab(allocator: std.mem.Allocator, world: public.World, db: cdb.DbId, obj: cdb.ObjId) !public.EntityId {
     const get_or_put = try _obj2prefab.getOrPut(.{ .world = world, .obj = obj });
     if (get_or_put.found_existing) return get_or_put.value_ptr.*;
 
-    const top_level_obj_r = public.Entity.read(db, obj).?;
-    const name = public.Entity.readStr(db, top_level_obj_r, .name);
+    const top_level_obj_r = public.Entity.read(_cdb, obj).?;
+    const name = public.Entity.readStr(_cdb, top_level_obj_r, .name);
 
     const prefab_ent = world.newEntity(name);
     zflecs.add_id(@ptrCast(world.ptr), prefab_ent, EcsPrefab);
@@ -541,11 +521,11 @@ fn getOrCreatePrefab(allocator: std.mem.Allocator, world: public.World, db: cdb.
     // try _obj2parent_obj.put(.{ .world = world, .obj = obj }, .{});
 
     // Create components
-    if (try public.Entity.readSubObjSet(db, top_level_obj_r, .components, allocator)) |components| {
+    if (try public.Entity.readSubObjSet(_cdb, top_level_obj_r, .components, allocator)) |components| {
         defer allocator.free(components);
 
         for (components) |component_obj| {
-            const component_hash = db.getTypeHash(component_obj.type_idx).?;
+            const component_hash = _cdb.getTypeHash(db, component_obj.type_idx).?;
 
             try _obj2parent_obj.put(.{ .world = world, .obj = component_obj }, obj);
 
@@ -556,14 +536,14 @@ fn getOrCreatePrefab(allocator: std.mem.Allocator, world: public.World, db: cdb.
             @memset(component_data, 0);
 
             if (iface.fromCdb) |fromCdb| {
-                try fromCdb(allocator, db, component_obj, component_data);
+                try fromCdb(allocator, component_obj, component_data);
             }
 
             _ = world.setIdRaw(prefab_ent, iface.id, iface.size, component_data.ptr);
         }
     }
 
-    if (try public.Entity.readSubObjSet(db, top_level_obj_r, .childrens, allocator)) |childrens| {
+    if (try public.Entity.readSubObjSet(_cdb, top_level_obj_r, .childrens, allocator)) |childrens| {
         defer allocator.free(childrens);
         for (childrens) |child| {
             try _obj2parent_obj.put(.{ .world = world, .obj = child }, obj);
@@ -576,7 +556,8 @@ fn getOrCreatePrefab(allocator: std.mem.Allocator, world: public.World, db: cdb.
     return prefab_ent;
 }
 
-fn spawnManyFromCDB(allocator: std.mem.Allocator, world: public.World, db: cdb.Db, obj: cdb.ObjId, count: usize) anyerror![]public.EntityId {
+fn spawnManyFromCDB(allocator: std.mem.Allocator, world: public.World, obj: cdb.ObjId, count: usize) anyerror![]public.EntityId {
+    const db = _cdb.getDbFromObjid(obj);
     const prefab = try getOrCreatePrefab(allocator, world, db, obj);
     const top_level_entities = world.newEntities(allocator, zflecs.make_pair(EcsIsA, prefab), count).?;
     return top_level_entities;
@@ -1234,205 +1215,72 @@ const FlecsAllocator = struct {
     }
 };
 
-const init_logic_system_i = public.SystemI.implement(
-    .{
-        .name = "init entity logic component",
-        .multi_threaded = false,
-        .phase = public.OnLoad,
-        .immediate = false,
-        .query = &.{
-            .{ .id = public.id(public.EntityLogicComponentInstance), .inout = .Out, .oper = .Not },
-            .{ .id = public.id(public.EntityLogicComponent), .inout = .In },
-        },
-    },
-    struct {
-        pub fn update(iter: *public.IterO) !void {
-            var it = toIter(iter);
+// const entity_value_type_i = graphvm.GraphValueTypeI.implement(
+//     public.EntityId,
+//     .{
+//         .name = "entity",
+//         .type_hash = public.PinTypes.Entity,
+//         .cdb_type_hash = cdb_types.u64Type.type_hash,
+//     },
+//     struct {
+//         pub fn valueFromCdb(obj: cetech1.cdb.ObjId, value: []u8) !void {
+//             const v = cdb_types.u64Type.readValue(u64, _cdb, _cdb.readObj(obj).?, .value);
+//             @memcpy(value, std.mem.asBytes(&v));
+//         }
 
-            const alloc = try tempalloc.api.create();
-            defer tempalloc.api.destroy(alloc);
+//         pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
+//             const v = std.mem.bytesAsValue(u64, value);
+//             return @intCast(v.*);
+//         }
 
-            const world = it.getWorld();
-            const ents = it.entities();
-            const render_component = it.field(public.EntityLogicComponent, 1).?;
+//         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
+//             return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(u64, value)});
+//         }
+//     },
+// );
 
-            const instances = try alloc.alloc(graphvm.GraphInstance, render_component.len);
-            defer alloc.free(instances);
+// const get_entity_node_i = graphvm.GraphNodeI.implement(
+//     .{
+//         .name = "Get entity",
+//         .type_name = "get_entity",
+//         .category = "ECS",
+//     },
+//     null,
+//     struct {
+//         pub fn getInputPins(allocator: std.mem.Allocator, graph_obj: cetech1.cdb.ObjId, node_obj: cetech1.cdb.ObjId) ![]const graphvm.NodePin {
+//             _ = node_obj; // autofix
+//             _ = graph_obj; // autofix
+//             return allocator.dupe(graphvm.NodePin, &.{});
+//         }
 
-            try graphvm_private.api.createInstances(alloc, assetdb_private.getDb(), render_component[0].graph, instances);
+//         pub fn getOutputPins(allocator: std.mem.Allocator, graph_obj: cetech1.cdb.ObjId, node_obj: cetech1.cdb.ObjId) ![]const graphvm.NodePin {
+//             _ = node_obj; // autofix
+//             _ = graph_obj; // autofix
+//             return allocator.dupe(graphvm.NodePin, &.{
+//                 graphvm.NodePin.init("Entity", graphvm.NodePin.pinHash("entity", true), public.PinTypes.Entity),
+//             });
+//         }
 
-            try graphvm_private.api.buildInstances(alloc, instances);
+//         pub fn execute(args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: graphvm.OutPins) !void {
+//             _ = in_pins; // autofix
 
-            for (0..it.count()) |idx| {
-                _ = world.setId(public.EntityLogicComponentInstance, ents[idx], &public.EntityLogicComponentInstance{ .graph_container = instances[idx] });
+//             if (graphvm_private.api.getContext(anyopaque, args.instance, public.ECS_ENTITY_CONTEXT)) |ent| {
+//                 const ent_id = @intFromPtr(ent);
+//                 try out_pins.writeTyped(public.EntityId, 0, ent_id, ent_id);
+//             }
+//         }
 
-                try graphvm_private.api.setInstanceContext(instances[idx], public.ECS_WORLD_CONTEXT, world.ptr);
-                try graphvm_private.api.setInstanceContext(instances[idx], public.ECS_ENTITY_CONTEXT, @ptrFromInt(ents[idx]));
-            }
+//         // pub fn icon(
+//         //     buff: [:0]u8,
+//         //     allocator: std.mem.Allocator,
+//         //     db: cetech1.cdb.DbId,
+//         //     node_obj: cetech1.cdb.ObjId,
+//         // ) ![:0]u8 {
+//         //     _ = allocator; // autofix
+//         //     _ = db; // autofix
+//         //     _ = node_obj; // autofix
 
-            world.deferSuspend();
-            //_ = world.deferBegin();
-            try graphvm_private.api.executeNode(alloc, instances, graphvm.EVENT_INIT_NODE_TYPE);
-            //_ = world.deferEnd();
-            world.deferResume();
-        }
-    },
-);
-
-pub fn toContanerSlice(from: anytype) []const graphvm.GraphInstance {
-    var containers: []const graphvm.GraphInstance = undefined;
-    containers.ptr = @alignCast(@ptrCast(from.ptr));
-    containers.len = from.len;
-    return containers;
-}
-
-const tick_logic_system_i = public.SystemI.implement(
-    .{
-        .name = "tick logic component",
-        .multi_threaded = false,
-        .phase = public.OnLoad,
-        .query = &.{
-            .{ .id = public.id(public.EntityLogicComponentInstance), .inout = .In },
-            .{ .id = public.id(public.EntityLogicComponent), .inout = .In },
-        },
-    },
-    struct {
-        pub fn update(iter: *public.IterO) !void {
-            var it = toIter(iter);
-
-            const alloc = try tempalloc.api.create();
-            defer tempalloc.api.destroy(alloc);
-
-            const world = it.getWorld();
-            const render_component = it.field(public.EntityLogicComponentInstance, 0).?;
-
-            for (0..it.count()) |idx| {
-                try graphvm_private.api.setInstanceContext(toContanerSlice(render_component)[idx], public.ECS_WORLD_CONTEXT, world.ptr);
-            }
-
-            world.deferSuspend();
-            try graphvm_private.api.executeNode(alloc, toContanerSlice(render_component), graphvm.EVENT_TICK_NODE_TYPE);
-            world.deferResume();
-        }
-    },
-);
-
-const logic_c = public.ComponentI.implement(public.EntityLogicComponent, public.EntityLogicComponentCdb.type_hash, struct {
-    pub fn fromCdb(
-        allocator: std.mem.Allocator,
-        db: cdb.Db,
-        obj: cdb.ObjId,
-        data: []u8,
-    ) anyerror!void {
-        _ = allocator; // autofix
-
-        const r = db.readObj(obj) orelse return;
-
-        const position = std.mem.bytesAsValue(public.EntityLogicComponent, data);
-        position.* = public.EntityLogicComponent{
-            .graph = public.EntityLogicComponentCdb.readSubObj(db, r, .graph).?,
-        };
-    }
-});
-
-const logic_instance_c = public.ComponentI.implement(public.EntityLogicComponentInstance, null, struct {
-    pub fn onDestroy(components: []public.EntityLogicComponentInstance) !void {
-        for (components) |c| {
-            if (c.graph_container.isValid()) {
-                graphvm_private.api.destroyInstance(c.graph_container);
-            }
-        }
-    }
-
-    pub fn onMove(dsts: []public.EntityLogicComponentInstance, srcs: []public.EntityLogicComponentInstance) !void {
-        for (dsts, srcs) |*dst, *src| {
-            dst.* = src.*;
-
-            // Prevent double delete
-            src.graph_container = .{};
-        }
-    }
-
-    pub fn onRemove(iter: *public.IterO) !void {
-        var it = toIter(iter);
-        const alloc = try tempalloc.api.create();
-        defer tempalloc.api.destroy(alloc);
-        const components = it.field(public.EntityLogicComponentInstance, 0).?;
-        for (components) |component| {
-            // TODO: real multi call
-            try graphvm_private.api.executeNode(alloc, &.{component.graph_container}, graphvm.EVENT_SHUTDOWN_NODE_TYPE);
-        }
-    }
-});
-
-const entity_value_type_i = graphvm.GraphValueTypeI.implement(
-    public.EntityId,
-    .{
-        .name = "entity",
-        .type_hash = public.PinTypes.Entity,
-        .cdb_type_hash = cdb_types.u64Type.type_hash,
-    },
-    struct {
-        pub fn valueFromCdb(db: cetech1.cdb.Db, obj: cetech1.cdb.ObjId, value: []u8) !void {
-            const v = cdb_types.u64Type.readValue(db, u64, db.readObj(obj).?, .value);
-            @memcpy(value, std.mem.asBytes(&v));
-        }
-
-        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
-            const v = std.mem.bytesAsValue(u64, value);
-            return @intCast(v.*);
-        }
-
-        pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(u64, value)});
-        }
-    },
-);
-
-const get_entity_node_i = graphvm.GraphNodeI.implement(
-    .{
-        .name = "Get entity",
-        .type_name = "get_entity",
-        .category = "ECS",
-    },
-    null,
-    struct {
-        pub fn getInputPins(allocator: std.mem.Allocator, db: cetech1.cdb.Db, graph_obj: cetech1.cdb.ObjId, node_obj: cetech1.cdb.ObjId) ![]const graphvm.NodePin {
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
-            _ = db; // autofix
-            return allocator.dupe(graphvm.NodePin, &.{});
-        }
-
-        pub fn getOutputPins(allocator: std.mem.Allocator, db: cetech1.cdb.Db, graph_obj: cetech1.cdb.ObjId, node_obj: cetech1.cdb.ObjId) ![]const graphvm.NodePin {
-            _ = node_obj; // autofix
-            _ = db; // autofix
-            _ = graph_obj; // autofix
-            return allocator.dupe(graphvm.NodePin, &.{
-                graphvm.NodePin.init("Entity", graphvm.NodePin.pinHash("entity", true), public.PinTypes.Entity),
-            });
-        }
-
-        pub fn execute(args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: graphvm.OutPins) !void {
-            _ = in_pins; // autofix
-
-            if (graphvm_private.api.getContext(anyopaque, args.instance, public.ECS_ENTITY_CONTEXT)) |ent| {
-                const ent_id = @intFromPtr(ent);
-                try out_pins.writeTyped(public.EntityId, 0, ent_id, ent_id);
-            }
-        }
-
-        // pub fn icon(
-        //     buff: [:0]u8,
-        //     allocator: std.mem.Allocator,
-        //     db: cetech1.cdb.Db,
-        //     node_obj: cetech1.cdb.ObjId,
-        // ) ![:0]u8 {
-        //     _ = allocator; // autofix
-        //     _ = db; // autofix
-        //     _ = node_obj; // autofix
-
-        //     return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_STOP});
-        // }
-    },
-);
+//         //     return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_STOP});
+//         // }
+//     },
+// );
