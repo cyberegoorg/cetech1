@@ -333,7 +333,7 @@ const AnalyzeInfo = struct {
         const tags = parsed.object.get(JSON_TAGS_TOKEN);
         if (tags) |tags_array| {
             for (tags_array.array.items) |value| {
-                var ref_link = std.mem.split(u8, value.string, ":");
+                var ref_link = std.mem.splitAny(u8, value.string, ":");
                 const ref_type = strid.strId32(ref_link.first());
                 const ref_uuid = uuid_private.api.fromStr(ref_link.next().?).?;
                 _ = ref_type;
@@ -360,7 +360,7 @@ const AnalyzeInfo = struct {
                     try analyzFromJsonValue(value, tmp_allocator, depend_on, provide_uuids);
                 },
                 cdb.PropType.REFERENCE => {
-                    var ref_link = std.mem.split(u8, value.string, ":");
+                    var ref_link = std.mem.splitAny(u8, value.string, ":");
                     const ref_type = strid.strId32(ref_link.first());
                     const ref_uuid = uuid_private.api.fromStr(ref_link.next().?).?;
                     _ = ref_type;
@@ -373,7 +373,7 @@ const AnalyzeInfo = struct {
                 },
                 cdb.PropType.REFERENCE_SET => {
                     for (value.array.items) |ref| {
-                        var ref_link = std.mem.split(u8, ref.string, ":");
+                        var ref_link = std.mem.splitAny(u8, ref.string, ":");
                         const ref_type = strid.strId32(ref_link.first());
                         const ref_uuid = uuid_private.api.fromStr(ref_link.next().?).?;
                         _ = ref_type;
@@ -2228,7 +2228,7 @@ pub fn readAssetFromReader(
     const asset_w = _cdb.writeObj(asset).?;
     if (parsed.value.object.get(JSON_TAGS_TOKEN)) |tags| {
         for (tags.array.items) |tag| {
-            var ref_link = std.mem.split(u8, tag.string, ":");
+            var ref_link = std.mem.splitAny(u8, tag.string, ":");
             const ref_type = strid.strId32(ref_link.first());
             const ref_type_idx = _cdb.getTypeIdx(_db, ref_type).?;
             const ref_uuid = uuid_private.api.fromStr(ref_link.next().?).?;
@@ -2359,7 +2359,7 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cdb.ObjId, read_blob: 
                 try _cdb.writeCommit(subobj_w);
             },
             cdb.PropType.REFERENCE => {
-                var ref_link = std.mem.split(u8, value.string, ":");
+                var ref_link = std.mem.splitAny(u8, value.string, ":");
                 const ref_type = strid.strId32(ref_link.first());
                 const ref_uuid = uuid_private.api.fromStr(ref_link.next().?).?;
 
@@ -2378,7 +2378,7 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cdb.ObjId, read_blob: 
             },
             cdb.PropType.REFERENCE_SET => {
                 for (value.array.items) |ref| {
-                    var ref_link = std.mem.split(u8, ref.string, ":");
+                    var ref_link = std.mem.splitAny(u8, ref.string, ":");
                     const ref_type = strid.strId32(ref_link.first());
                     const ref_uuid = uuid_private.api.fromStr(ref_link.next().?).?;
 
@@ -2393,7 +2393,7 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cdb.ObjId, read_blob: 
                     const removed_fiedl = parsed.object.get(field_name);
                     if (removed_fiedl != null) {
                         for (removed_fiedl.?.array.items) |ref| {
-                            var ref_link = std.mem.split(u8, ref.string, ":");
+                            var ref_link = std.mem.splitAny(u8, ref.string, ":");
                             const ref_type = strid.strId32(ref_link.first());
                             const ref_uuid = uuid_private.api.fromStr(ref_link.next().?).?;
 
@@ -2435,7 +2435,7 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cdb.ObjId, read_blob: 
                     const removed = parsed.object.get(field_name);
                     if (removed != null) {
                         for (removed.?.array.items) |ref| {
-                            var ref_link = std.mem.split(u8, ref.string, ":");
+                            var ref_link = std.mem.splitAny(u8, ref.string, ":");
                             const ref_type = strid.strId32(ref_link.first());
                             const ref_uuid = uuid_private.api.fromStr(ref_link.next().?).?;
 

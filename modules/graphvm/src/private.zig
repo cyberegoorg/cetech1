@@ -2235,7 +2235,7 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
 
                 const db = _assetdb.getDb();
 
-                const changed = try _cdb.getChangeObjects(db, alloc, public.GraphType.typeIdx(_cdb, db), _last_check);
+                const changed = try _cdb.getChangeObjects(alloc, db, public.GraphType.typeIdx(_cdb, db), _last_check);
                 defer alloc.free(changed.objects);
 
                 if (!changed.need_fullscan) {
@@ -2624,7 +2624,7 @@ const culling_volume_node_i = public.GraphNodeI.implement(
 );
 
 const RandomF32NodeState = struct {
-    prg: ?std.rand.DefaultPrng = null,
+    prg: ?std.Random.DefaultPrng = null,
     random: std.Random = undefined,
 };
 const random_f32_node_i = public.GraphNodeI.implement(
@@ -2674,7 +2674,7 @@ const random_f32_node_i = public.GraphNodeI.implement(
             _, const seed = in_pins.read(u64, 2) orelse .{ 0, 0 };
 
             if (real_state.prg == null) {
-                real_state.prg = std.rand.DefaultPrng.init(@bitCast(seed));
+                real_state.prg = std.Random.DefaultPrng.init(@bitCast(seed));
                 real_state.random = real_state.prg.?.random();
             }
 

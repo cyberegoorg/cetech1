@@ -37,7 +37,7 @@
 | [`Writerside/`](https://github.com/cyberegoorg/cetech1/tree/main/Writerside/) | This documentation                                   |
 | [`zig/`](https://github.com/cyberegoorg/cetech1/tree/main/zig/)               | Submodule for prebuilt zig                           |
 | [`externals/`](https://github.com/cyberegoorg/cetech1/tree/main/externals/)   | 3rd-party library and tools                          |
-| [`fixtures/`](https://github.com/cyberegoorg/cetech1/tree/main/fixtures/)     | Tests fixtures                                       |
+| [`fixtures/`](https://github.com/cyberegoorg/cetech1/tree/main/fixtures/)       | Tests fixtures                                        |
 | [`public/`](https://github.com/cyberegoorg/cetech1/tree/main/public/)         | Public API for modules                               |
 | [`src/`](https://github.com/cyberegoorg/cetech1/tree/main/src/)               | Main source code folder                              |
 | [`modules/`](https://github.com/cyberegoorg/cetech1/tree/main/modules/)       | There is all modules that is possible part of engine |
@@ -63,8 +63,8 @@
 | `-Dstatic_modules=`  | `true` or `false` | `false` | Build all modules in static mode.                                           |
 | `-Dwith_samples=`    | `true` or `false` | `true`  | Build with sample modules.                                                  |
 | `-Dwith_editor=`     | `true` or `false` | `true`  | Build with editor modules.                                                  |
-| `-Dwith_tracy=`      | `true` or `false` | `true`  | Build with [tracy](#tracy-profiler) support.                                |
-| `-Dwith_nfd=`        | `true` or `false` | `true`  | Build with NFD (native file dialog)                                         |
+| `-Dwith_tracy=`      | `true` or `false` | `true`  | Build with [tracy](#tracy-profiler) support.                                 |
+| `-Dwith_nfd=`        | `true` or `false` | `true`  | Build with NFD (native file dialog)                                          |
 | `-Dnfd_portal=`      | `true` or `false` | `true`  | Build NFD with xdg-desktop-portal instead of GTK. Linux, nice for SteamDeck |
 
 ## Run
@@ -93,9 +93,9 @@
 | `--asset-root`           | `str`                          | `null`  | Path to asset root. (project path)          |
 | `--fullscreen`           | `1` or `0`                     | `0`     | Force full-screen mode, nice for SteamDeck. |
 | `--test-ui`              | `1` or `0`                     | `0`     | Run UI tests and quit.                      |
-| `--test-ui-filter`       | `str`                          | `all`   | Run only ui tests that pass this filter.    |
+| `--test-ui-filter`        | `str`                          | `all`   | Run only ui tests that pass this filter.     |
 | `--test-ui-speed`        | `fast`, `normal`,  `cinematic` | `fast`  | UI test speed.                              |
-| `--test-ui-junit`        | `str`                          | `null`  | UI test JUnit result filename.              |
+| `--test-ui-junit`        | `str`                          | `null`  | UI test JUnit result filename.               |
 
 ## Tracy profiler
 

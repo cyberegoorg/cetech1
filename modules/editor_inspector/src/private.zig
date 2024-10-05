@@ -71,7 +71,7 @@ var api = public.InspectorAPI{
 };
 
 fn formatedPropNameToBuff(buf: []u8, prop_name: [:0]const u8) ![]u8 {
-    var split = std.mem.split(u8, prop_name, "_");
+    var split = std.mem.splitAny(u8, prop_name, "_");
     const first = split.first();
 
     var buff_stream = std.io.fixedBufferStream(buf);

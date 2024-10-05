@@ -1253,7 +1253,7 @@ fn uiFilterPass(allocator: std.mem.Allocator, filter: [:0]const u8, value: [:0]c
     var tokens = std.ArrayList([]const u8).init(allocator);
     defer tokens.deinit();
 
-    var split = std.mem.split(u8, filter, " ");
+    var split = std.mem.splitAny(u8, filter, " ");
     const first = split.first();
     var it: ?[]const u8 = first;
     while (it) |word| : (it = split.next()) {

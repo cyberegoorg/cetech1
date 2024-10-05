@@ -17,7 +17,7 @@ pub const ModuleDesc = struct {
 };
 
 /// Helper for using in Zig base modules.
-pub fn loadModuleZigHelper(comptime load_module_zig: LoadModuleZigFn, comptime _module_name: @Type(.EnumLiteral), _apidb: *const apidb.ApiDbAPI, _allocator: *const std.mem.Allocator, load: bool, reload: bool) bool {
+pub fn loadModuleZigHelper(comptime load_module_zig: LoadModuleZigFn, comptime _module_name: @Type(.enum_literal), _apidb: *const apidb.ApiDbAPI, _allocator: *const std.mem.Allocator, load: bool, reload: bool) bool {
     const log_api = _apidb.getZigApi(_module_name, LogAPI).?;
 
     const r = load_module_zig(_apidb, _allocator.*, log_api, load, reload) catch |err| {

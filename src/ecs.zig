@@ -304,7 +304,7 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(cetech1.kernel.OnLoa
 
             const last_check = _component_version.get(type_idx) orelse 0;
 
-            const changed = try _cdb.getChangeObjects(db, alloc, type_idx, last_check);
+            const changed = try _cdb.getChangeObjects(alloc, db, type_idx, last_check);
             defer alloc.free(changed.objects);
             if (!changed.need_fullscan) {
                 for (changed.objects) |component_obj| {
@@ -386,7 +386,7 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(cetech1.kernel.OnLoa
 
         // TODO: clean maps on delete components and entities
         {
-            const changed = try _cdb.getChangeObjects(db, alloc, public.Entity.typeIdx(_cdb, db), _entity_version);
+            const changed = try _cdb.getChangeObjects(alloc, db, public.Entity.typeIdx(_cdb, db), _entity_version);
             defer alloc.free(changed.objects);
             if (!changed.need_fullscan) {
                 for (changed.objects) |entity_obj| {

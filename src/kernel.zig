@@ -413,8 +413,8 @@ fn registerSignals() !void {
             .mask = std.posix.empty_sigset,
             .flags = 0,
         };
-        try std.posix.sigaction(std.posix.SIG.TERM, &sigaction, null);
-        try std.posix.sigaction(std.posix.SIG.INT, &sigaction, null);
+        std.posix.sigaction(std.posix.SIG.TERM, &sigaction, null);
+        std.posix.sigaction(std.posix.SIG.INT, &sigaction, null);
     }
 }
 

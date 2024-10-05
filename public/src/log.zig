@@ -69,7 +69,7 @@ pub fn zigLogFnGen(comptime log_api: **const LogAPI) LogFn {
     return struct {
         pub fn f(
             comptime level: std.log.Level,
-            comptime scope: @TypeOf(.EnumLiteral),
+            comptime scope: @TypeOf(.enum_literal),
             comptime format: []const u8,
             args: anytype,
         ) void {

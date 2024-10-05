@@ -96,7 +96,7 @@ pub fn isDynamicModule(basename: []const u8) bool {
 
 fn getModuleName(path: []const u8) []const u8 {
     const basename = std.fs.path.basename(path);
-    var name_with_ext = std.mem.splitBackwards(u8, basename, MODULE_PREFIX);
+    var name_with_ext = std.mem.splitBackwardsSequence(u8, basename, MODULE_PREFIX);
     return std.fs.path.stem(name_with_ext.first());
 }
 

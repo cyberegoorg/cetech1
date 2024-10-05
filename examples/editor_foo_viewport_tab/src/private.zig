@@ -64,7 +64,7 @@ var _g: *G = undefined;
 const SPHERE_COUNT = 1_000;
 
 const seed: u64 = 1111;
-var prng = std.rand.DefaultPrng.init(seed);
+var prng = std.Random.DefaultPrng.init(seed);
 
 // Struct for tab type
 const FooViewportTab = struct {

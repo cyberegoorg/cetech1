@@ -71,7 +71,7 @@ pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]cons
 
 pub fn zigLogFn(
     comptime level: std.log.Level,
-    comptime scope: @TypeOf(.EnumLiteral),
+    comptime scope: @TypeOf(.enum_literal),
     comptime format: []const u8,
     args: anytype,
 ) void {

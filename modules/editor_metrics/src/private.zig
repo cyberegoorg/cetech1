@@ -135,7 +135,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
             var it = tab_o.selected_metrics.iterator();
             while (it.next()) |v| {
-                var split_bw = std.mem.splitBackwards(u8, v.key_ptr.*, "/");
+                var split_bw = std.mem.splitBackwardsAny(u8, v.key_ptr.*, "/");
                 const metric_name = split_bw.first();
                 const metric_last_category = split_bw.next();
 
@@ -171,10 +171,10 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
             if (tab_o.filter == null) {
                 for (metrics_name) |metric_name| {
-                    var split_bw = std.mem.splitBackwards(u8, metric_name, "/");
+                    var split_bw = std.mem.splitBackwardsAny(u8, metric_name, "/");
                     const mname = split_bw.first();
 
-                    var split = std.mem.split(u8, split_bw.rest(), "/");
+                    var split = std.mem.splitAny(u8, split_bw.rest(), "/");
                     const first = split.first();
 
                     var it: ?[]const u8 = first;

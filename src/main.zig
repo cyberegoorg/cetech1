@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const cetech1 = @import("cetech1");
-const static_modules = @import("_static.zig");
+const static_modules = @import("static_modules");
 const kernel = @import("kernel.zig");
 
 pub const std_options = .{

@@ -580,7 +580,7 @@ pub const CdbAPI = struct {
     }
 
     pub inline fn isAlive(self: Self, obj: ObjId) bool {
-        return self.isAlive(obj);
+        return self.isAliveFn(obj);
     }
 
     pub inline fn getRelation(self: Self, top_level_obj: ObjId, obj: ObjId, prop_idx: u32, in_set_obj: ?ObjId) ObjRelation {
@@ -616,7 +616,7 @@ pub const CdbAPI = struct {
     }
 
     pub inline fn dump(self: Self, db: DbId) !void {
-        return self.dump(db);
+        return self.dumpFn(db);
     }
 
     // Do GC work.
@@ -668,7 +668,7 @@ pub const CdbAPI = struct {
     }
 
     pub inline fn getChangeObjects(self: Self, allocator: std.mem.Allocator, db: DbId, type_idx: TypeIdx, since_version: TypeVersion) !ChangedObjects {
-        return self.getChangeObjects(db, allocator, type_idx, since_version);
+        return self.getChangeObjectsFn(db, allocator, type_idx, since_version);
     }
 
     pub inline fn getDefaultObject(self: Self, db: DbId, type_idx: TypeIdx) ?ObjId {
@@ -771,7 +771,7 @@ pub const CdbAPI = struct {
     getVersionFn: *const fn (obj: ObjId) ObjVersion,
     getReferencerSetFn: *const fn (allocator: std.mem.Allocator, obj: ObjId) anyerror![]ObjId,
 
-    isAlive: *const fn (obj: ObjId) bool,
+    isAliveFn: *const fn (obj: ObjId) bool,
     getRelationFn: *const fn (top_level_obj: ObjId, obj: ObjId, prop_idx: u32, in_set_obj: ?ObjId) ObjRelation,
     isChildOffFn: *const fn (parent_obj: ObjId, child_obj: ObjId) bool,
     inisitateDeepFn: *const fn (allocator: std.mem.Allocator, last_parent: ObjId, to_inisiated_obj: ObjId) ?ObjId, // TODO: is needed?
@@ -794,7 +794,7 @@ pub const CdbAPI = struct {
     hasTypeSubobjectFn: *const fn (db: DbId, type_idx: TypeIdx) bool,
 
     getTypeHashFn: *const fn (db: DbId, type_idx: TypeIdx) ?TypeHash,
-    getChangeObjects: *const fn (db: DbId, allocator: std.mem.Allocator, type_idx: TypeIdx, since_version: TypeVersion) anyerror!ChangedObjects,
+    getChangeObjectsFn: *const fn (db: DbId, allocator: std.mem.Allocator, type_idx: TypeIdx, since_version: TypeVersion) anyerror!ChangedObjects,
 
     getDefaultObjectFn: *const fn (db: DbId, type_idx: TypeIdx) ?ObjId,
     getFirstObjectFn: *const fn (db: DbId, type_idx: TypeIdx) ObjId,
@@ -810,7 +810,7 @@ pub const CdbAPI = struct {
 
     stressItFn: *const fn (db: DbId, type_idx: TypeIdx, type_idx2: TypeIdx, ref_obj1: ObjId) anyerror!void,
     gcFn: *const fn (db: DbId, allocator: std.mem.Allocator) anyerror!void,
-    dump: *const fn (db: DbId) anyerror!void,
+    dumpFn: *const fn (db: DbId) anyerror!void,
     //#endregion
 };
 

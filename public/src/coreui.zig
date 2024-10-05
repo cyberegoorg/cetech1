@@ -2397,7 +2397,7 @@ pub const Style = extern struct {
     curve_tessellation_tol: f32,
     circle_tessellation_max_error: f32,
 
-    colors: [@typeInfo(StyleCol).Enum.fields.len][4]f32,
+    colors: [@typeInfo(StyleCol).@"enum".fields.len][4]f32,
 
     hover_stationary_delay: f32,
     hover_delay_short: f32,

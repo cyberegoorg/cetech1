@@ -57,7 +57,7 @@ pub fn batchWorkloadTask(
     var tasks = try std.ArrayList(TaskID).initCapacity(args.allocator, batch_count);
     defer tasks.deinit();
 
-    var my_tasks = try std.ArrayList(@typeInfo(@TypeOf(CREATE_TASK_FCE.createTask)).Fn.return_type.?).initCapacity(args.allocator, batch_count);
+    var my_tasks = try std.ArrayList(@typeInfo(@TypeOf(CREATE_TASK_FCE.createTask)).@"fn".return_type.?).initCapacity(args.allocator, batch_count);
     defer my_tasks.deinit();
 
     for (0..batch_count - 1) |batch_id| {

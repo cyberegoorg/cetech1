@@ -2337,7 +2337,7 @@ pub var api = public.CdbAPI{
     .getVersionFn = getVersionFn,
     .getReferencerSetFn = getReferencerSetFn,
     .getParentFn = getParentFn,
-    .isAlive = isAliveFn,
+    .isAliveFn = isAliveFn,
     .getRelationFn = getRelationFn,
     .inisitateDeepFn = inisitateDeepFn,
     .isChildOffFn = isChildOffFn,
@@ -2358,7 +2358,7 @@ pub var api = public.CdbAPI{
     .hasTypeSubobjectFn = hasTypeSubobjectFn,
 
     .getTypeHashFn = getTypeHashFn,
-    .getChangeObjects = getChangeObjectsFn,
+    .getChangeObjectsFn = getChangeObjectsFn,
 
     .getDefaultObjectFn = getDefaultObjectFn,
     .getFirstObjectFn = getFirstObjectFn,
@@ -2374,7 +2374,7 @@ pub var api = public.CdbAPI{
 
     .stressItFn = stressItFn,
     .gcFn = gcFn,
-    .dump = dumpFn,
+    .dumpFn = dumpFn,
 };
 
 fn getDbFromObjidFn(obj: public.ObjId) public.DbId {

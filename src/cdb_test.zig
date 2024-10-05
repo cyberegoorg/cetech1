@@ -1628,13 +1628,13 @@ test "cdb: Should tracking changed objects" {
     try _cdb.writeCommit(obj2_w);
     // Call GC thas create populate changed objects.
     try _cdb.gc(std.testing.allocator, db);
-    const changed_1 = try _cdb.getChangeObjects(db, std.testing.allocator, type_hash, 1);
+    const changed_1 = try _cdb.getChangeObjects(std.testing.allocator, db, type_hash, 1);
     defer std.testing.allocator.free(changed_1.objects);
     try std.testing.expectEqualSlices(public.ObjId, &.{ obj1, obj2 }, changed_1.objects);
     try std.testing.expect(!changed_1.need_fullscan);
 
     // get from 0 version force to do fullscan
-    const changed_0 = try _cdb.getChangeObjects(db, std.testing.allocator, type_hash, 0);
+    const changed_0 = try _cdb.getChangeObjects(std.testing.allocator, db, type_hash, 0);
     defer std.testing.allocator.free(changed_0.objects);
     try std.testing.expect(changed_0.need_fullscan);
 
@@ -1642,12 +1642,12 @@ test "cdb: Should tracking changed objects" {
     _cdb.destroyObject(obj2);
     // Call GC thas create populate changed objects.
     try _cdb.gc(std.testing.allocator, db);
-    const changed_2 = try _cdb.getChangeObjects(db, std.testing.allocator, type_hash, changed_0.last_version);
+    const changed_2 = try _cdb.getChangeObjects(std.testing.allocator, db, type_hash, changed_0.last_version);
     defer std.testing.allocator.free(changed_2.objects);
     try std.testing.expect(!changed_2.need_fullscan);
     try std.testing.expectEqualSlices(public.ObjId, &.{obj2}, changed_2.objects);
 
-    const changed_begin = try _cdb.getChangeObjects(db, std.testing.allocator, type_hash, 1);
+    const changed_begin = try _cdb.getChangeObjects(std.testing.allocator, db, type_hash, 1);
     defer std.testing.allocator.free(changed_begin.objects);
     try std.testing.expect(!changed_begin.need_fullscan);
     try std.testing.expectEqualSlices(public.ObjId, &.{ obj1, obj2, obj2 }, changed_begin.objects);

@@ -23,36 +23,36 @@ pub const ApiDbAPI = struct {
     pub const lang_zig = "zig";
 
     /// Crete variable that can survive reload.
-    pub inline fn globalVar(self: Self, comptime T: type, comptime module: @Type(.EnumLiteral), var_name: []const u8, default: T) !*T {
+    pub inline fn globalVar(self: Self, comptime T: type, comptime module: @Type(.enum_literal), var_name: []const u8, default: T) !*T {
         const ptr: *T = @ptrFromInt(@intFromPtr(try self.globalVarFn(@tagName(module), var_name, @sizeOf(T), &std.mem.toBytes(default))));
         return ptr;
     }
 
     /// Crete variable that can survive reload + always set value
-    pub inline fn globalVarValue(self: Self, comptime T: type, comptime module: @Type(.EnumLiteral), var_name: []const u8, value: T) !*T {
+    pub inline fn globalVarValue(self: Self, comptime T: type, comptime module: @Type(.enum_literal), var_name: []const u8, value: T) !*T {
         const ptr: *T = @ptrFromInt(@intFromPtr(try self.globalVarFn(@tagName(module), var_name, @sizeOf(T), &.{})));
         ptr.* = value;
         return ptr;
     }
 
     /// Register api for given language and api name.
-    pub inline fn setApi(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type, language: []const u8, api_name: []const u8, api_ptr: *const T) !void {
+    pub inline fn setApi(self: Self, comptime module: @Type(.enum_literal), comptime T: type, language: []const u8, api_name: []const u8, api_ptr: *const T) !void {
         return try self.setApiOpaqueueFn(@tagName(module), language, api_name, api_ptr, @sizeOf(T));
     }
 
     /// Unregister api for given language and api name.
-    pub inline fn removeApi(self: Self, comptime module: @Type(.EnumLiteral), language: []const u8, api_name: []const u8) void {
+    pub inline fn removeApi(self: Self, comptime module: @Type(.enum_literal), language: []const u8, api_name: []const u8) void {
         return self.removeApiFn(@tagName(module), language, api_name);
     }
 
     /// Get api for given language.
     /// If api not exist create place holder with zeroed values and return it. (setApi fill the valid pointers)
-    pub inline fn getApi(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type, language: []const u8, api_name: []const u8) ?*const T {
+    pub inline fn getApi(self: Self, comptime module: @Type(.enum_literal), comptime T: type, language: []const u8, api_name: []const u8) ?*const T {
         return @ptrFromInt(@intFromPtr(self.getApiOpaaqueFn(@tagName(module), language, api_name, @sizeOf(T))));
     }
 
     // Set or remove API for given language and api name
-    pub inline fn setOrRemoveApi(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type, language: []const u8, api_name: []const u8, api_ptr: *const T, load: bool) !void {
+    pub inline fn setOrRemoveApi(self: Self, comptime module: @Type(.enum_literal), comptime T: type, language: []const u8, api_name: []const u8, api_ptr: *const T, load: bool) !void {
         if (load) {
             return self.setApi(module, T, language, api_name, api_ptr);
         } else {
@@ -61,7 +61,7 @@ pub const ApiDbAPI = struct {
     }
 
     // Set or remove Zig API
-    pub inline fn setOrRemoveZigApi(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type, api_ptr: *const T, load: bool) !void {
+    pub inline fn setOrRemoveZigApi(self: Self, comptime module: @Type(.enum_literal), comptime T: type, api_ptr: *const T, load: bool) !void {
         if (load) {
             return self.setZigApi(module, T, api_ptr);
         } else {
@@ -70,7 +70,7 @@ pub const ApiDbAPI = struct {
     }
 
     // Implement or remove interface
-    pub inline fn implOrRemove(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type, impl_ptr: *const T, load: bool) !void {
+    pub inline fn implOrRemove(self: Self, comptime module: @Type(.enum_literal), comptime T: type, impl_ptr: *const T, load: bool) !void {
         if (load) {
             return self.implInterface(module, T, impl_ptr);
         } else {
@@ -79,25 +79,25 @@ pub const ApiDbAPI = struct {
     }
 
     // Set zig api
-    pub inline fn setZigApi(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type, api_ptr: *const T) !void {
+    pub inline fn setZigApi(self: Self, comptime module: @Type(.enum_literal), comptime T: type, api_ptr: *const T) !void {
         var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
         return try self.setApiOpaqueueFn(@tagName(module), lang_zig, name_iter.first(), api_ptr, @sizeOf(T));
     }
 
     // Get zig api
-    pub inline fn getZigApi(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type) ?*const T {
+    pub inline fn getZigApi(self: Self, comptime module: @Type(.enum_literal), comptime T: type) ?*const T {
         var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
         return @ptrFromInt(@intFromPtr(self.getApiOpaaqueFn(@tagName(module), lang_zig, name_iter.first(), @sizeOf(T))));
     }
 
     // Remove zig api
-    pub inline fn removeZigApi(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type) void {
+    pub inline fn removeZigApi(self: Self, comptime module: @Type(.enum_literal), comptime T: type) void {
         var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
         self.removeApiFn(@tagName(module), lang_zig, name_iter.first());
     }
 
     // Implement interface
-    pub inline fn implInterface(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type, impl_ptr: *const T) !void {
+    pub inline fn implInterface(self: Self, comptime module: @Type(.enum_literal), comptime T: type, impl_ptr: *const T) !void {
         return self.implInterfaceFn(@tagName(module), T.name_hash, impl_ptr);
     }
 
@@ -111,7 +111,7 @@ pub const ApiDbAPI = struct {
     }
 
     // Remove interface
-    pub inline fn removeImpl(self: Self, comptime module: @Type(.EnumLiteral), comptime T: type, impl_ptr: *const T) void {
+    pub inline fn removeImpl(self: Self, comptime module: @Type(.enum_literal), comptime T: type, impl_ptr: *const T) void {
         self.removeImplFn(@tagName(module), T.name_hash, impl_ptr);
     }
 

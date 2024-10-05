@@ -193,7 +193,7 @@ pub fn build(b: *std.Build) !void {
     //
     // Generated content
     //
-    const generated_files = b.addWriteFiles();
+    const generated_files = b.addUpdateSourceFiles();
 
     // _static.zig
     const modules_arg = try std.mem.join(b.allocator, ",", enabled_modules.items);
@@ -203,7 +203,7 @@ pub fn build(b: *std.Build) !void {
     const _static_output_file = gen_static.addOutputFileArg("_static.zig");
     gen_static.addArg(modules_arg);
 
-    generated_files.addCopyFileToSource(_static_output_file, "src/_static.zig");
+    //generated_files.addCopyFileToSource(_static_output_file, "src/_static.zig");
 
     // Extrenals credits/license
     const gen_externals = b.addRunArtifact(generate_externals_tool);
@@ -346,12 +346,12 @@ pub fn build(b: *std.Build) !void {
             .root_source_file = external_credits_file,
         });
 
-        // e.root_module.addAnonymousImport("static_modules", .{
-        //     .root_source_file = _static_output_file,
-        //     .imports = &.{
-        //         // .{ .name = "cetech1", .module = cetech1.module("cetech1") },
-        //     },
-        // });
+        e.root_module.addAnonymousImport("static_modules", .{
+            .root_source_file = _static_output_file,
+            .imports = &.{
+                .{ .name = "cetech1", .module = cetech1.module("cetech1") },
+            },
+        });
 
         e.root_module.addAnonymousImport("gamecontrollerdb", .{
             .root_source_file = b.path("externals/shared/lib/SDL_GameControllerDB/gamecontrollerdb.txt"),
