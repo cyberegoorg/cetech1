@@ -3,6 +3,8 @@ const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
 const coreui = cetech1.coreui;
+const cdb = cetech1.cdb;
+
 const editor = @import("editor");
 const editor_tree = @import("editor_tree");
 
@@ -21,7 +23,7 @@ const TAB_NAME = "ct_editor_obj_buffer_tab";
 var _allocator: Allocator = undefined;
 var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
 var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cetech1.cdb.CdbAPI = undefined;
+var _cdb: *const cdb.CdbAPI = undefined;
 var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
 var _editor: *const editor.EditorAPI = undefined;
 var _editortree: *const editor_tree.TreeAPI = undefined;
@@ -40,7 +42,7 @@ pub var api = public.EditorObjBufferAPI{
     .addToFirst = addToFirst,
 };
 
-fn addToFirst(allocator: std.mem.Allocator, db: cetech1.cdb.DbId, obj: coreui.SelectionItem) !void {
+fn addToFirst(allocator: std.mem.Allocator, db: cdb.DbId, obj: coreui.SelectionItem) !void {
     _ = db; // autofix
     var tab: ?*ObjBufferTab = null;
     if (_g.last_focused) |lf| {
@@ -115,7 +117,7 @@ var obj_buffer_tab = editor.TabTypeI.implement(
             tab_o.inter_selection.deinit();
             tab_o.obj_buffer.deinit();
 
-            _editor.propagateSelection(tab_inst, &.{.{ .top_level_obj = .{}, .obj = cetech1.cdb.OBJID_ZERO }});
+            _editor.propagateSelection(tab_inst, &.{.{ .top_level_obj = .{}, .obj = cdb.OBJID_ZERO }});
 
             if (_g.last_focused == tab_o) {
                 _g.last_focused = null;
@@ -133,11 +135,11 @@ var obj_buffer_tab = editor.TabTypeI.implement(
             _g.last_focused = tab_o;
         }
 
-        pub fn assetRootOpened(inst: *editor.TabO) !void {
-            const tab_o: *ObjBufferTab = @alignCast(@ptrCast(inst));
-            tab_o.inter_selection.clear();
-            tab_o.obj_buffer.clear();
-        }
+        // pub fn assetRootOpened(inst: *editor.TabO) !void {
+        //     const tab_o: *ObjBufferTab = @alignCast(@ptrCast(inst));
+        //     tab_o.inter_selection.clear();
+        //     tab_o.obj_buffer.clear();
+        // }
 
         // Draw tab menu
         pub fn menu(inst: *editor.TabO) !void {
@@ -390,7 +392,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _allocator = allocator;
     _log = log_api;
     _apidb = apidb;
-    _cdb = apidb.getZigApi(module_name, cetech1.cdb.CdbAPI).?;
+    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
     _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
     _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
     _assetdb = apidb.getZigApi(module_name, cetech1.assetdb.AssetDBAPI).?;

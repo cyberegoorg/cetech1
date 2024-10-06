@@ -198,6 +198,9 @@ pub const Icons = struct {
     pub const Position = CoreIcons.FA_UP_DOWN_LEFT_RIGHT;
     pub const Rotation = CoreIcons.FA_ROTATE;
     pub const Scale = CoreIcons.FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER;
+
+    pub const Play = CoreIcons.FA_PLAY;
+    pub const Pause = CoreIcons.FA_PAUSE;
 };
 
 pub const CoreUII = struct {

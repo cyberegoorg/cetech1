@@ -204,7 +204,7 @@ pub fn loadDynModules() !void {
     const exe_dir = try std.fs.selfExeDirPathAlloc(tmp_allocator2);
     defer tmp_allocator2.free(exe_dir);
 
-    const module_dir = try std.fs.path.join(tmp_allocator2, &.{ exe_dir, "..", "lib" });
+    const module_dir = try std.fs.path.join(tmp_allocator2, if (builtin.os.tag == .windows) &.{exe_dir} else &.{ exe_dir, "..", "lib" });
     defer tmp_allocator2.free(module_dir);
 
     const cwd_path = try std.fs.cwd().realpathAlloc(tmp_allocator2, ".");

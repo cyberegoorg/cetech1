@@ -1,14 +1,16 @@
 const std = @import("std");
-const platform = @import("platform.zig");
-const strid = @import("strid.zig");
-const cdb = @import("cdb.zig");
-const gpu = @import("gpu.zig");
 
-const ecs = @import("ecs.zig");
-const zm = @import("root.zig").zmath;
-const transform = @import("transform.zig");
+const cetech1 = @import("cetech1");
+const cdb = cetech1.cdb;
+const gpu = cetech1.gpu;
 
-const log = std.log.scoped(.renderer);
+const zm = cetech1.math;
+const strid = cetech1.strid;
+const ecs = cetech1.ecs;
+
+const transform = @import("transform");
+
+pub const RENDERER_KERNEL_TASK = strid.strId64("Renderer");
 
 pub const CullingVolume = struct {
     radius: f32 = 0,
@@ -160,6 +162,10 @@ pub const Viewport = struct {
         return self.vtable.getViewMtx(self.ptr);
     }
 
+    pub inline fn renderMe(self: Viewport) void {
+        return self.vtable.renderMe(self.ptr);
+    }
+
     ptr: *anyopaque,
     vtable: *const VTable,
 
@@ -171,6 +177,7 @@ pub const Viewport = struct {
         getDD: *const fn (viewport: *anyopaque) gpu.DDEncoder,
         setViewMtx: *const fn (viewport: *anyopaque, mtx: [16]f32) void,
         getViewMtx: *const fn (viewport: *anyopaque) [16]f32,
+        renderMe: *const fn (viewport: *anyopaque) void,
 
         pub fn implement(comptime T: type) VTable {
             if (!std.meta.hasFn(T, "setSize")) @compileError("implement me");
@@ -180,6 +187,7 @@ pub const Viewport = struct {
             if (!std.meta.hasFn(T, "getDD")) @compileError("implement me");
             if (!std.meta.hasFn(T, "setViewMtx")) @compileError("implement me");
             if (!std.meta.hasFn(T, "getViewMtx")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "renderMe")) @compileError("implement me");
 
             return VTable{
                 .setSize = &T.setSize,
@@ -189,6 +197,7 @@ pub const Viewport = struct {
                 .getDD = &T.getDD,
                 .setViewMtx = &T.setViewMtx,
                 .getViewMtx = &T.getViewMtx,
+                .renderMe = &T.renderMe,
             };
         }
     };

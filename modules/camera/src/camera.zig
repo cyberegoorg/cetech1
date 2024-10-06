@@ -1,5 +1,7 @@
 const std = @import("std");
-const zm = @import("math.zig");
+
+const cetech1 = @import("cetech1");
+const zm = cetech1.math;
 
 pub const SimpleFPSCamera = struct {
     position: [3]f32 = .{ 0.0, 0.0, 0.0 },

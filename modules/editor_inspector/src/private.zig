@@ -1123,11 +1123,11 @@ var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         tab_o.selected_obj = obj[0];
     }
 
-    pub fn assetRootOpened(inst: *editor.TabO) !void {
-        const tab_o: *PropertyTab = @alignCast(@ptrCast(inst));
-        tab_o.filter = null;
-        tab_o.selected_obj = coreui.SelectionItem.empty();
-    }
+    // pub fn assetRootOpened(inst: *editor.TabO) !void {
+    //     const tab_o: *PropertyTab = @alignCast(@ptrCast(inst));
+    //     tab_o.filter = null;
+    //     tab_o.selected_obj = coreui.SelectionItem.empty();
+    // }
 });
 
 var folder_properties_config_aspect = public.UiPropertiesConfigAspect{

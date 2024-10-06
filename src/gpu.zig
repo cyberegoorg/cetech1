@@ -69,6 +69,7 @@ pub const api = public.GpuApi{
 
     .getResolution = getResolution,
     .addPaletteColor = addPaletteColor,
+    .endAllUsedEncoders = endAllUsedEncoders,
 
     .vertexPack = @ptrCast(&bgfx.vertexPack),
     .vertexUnpack = @ptrCast(&bgfx.vertexUnpack),

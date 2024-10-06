@@ -7,5 +7,6 @@
     },
     .dependencies = .{
         .cetech1 = .{ .path = "../../public/" },
+        .renderer = .{ .path = "../renderer" },
     },
 }

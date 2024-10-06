@@ -2,13 +2,12 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const profiler_private = @import("profiler.zig");
-
 const strid_private = @import("strid.zig");
 const log_api = @import("log.zig");
 const apidb = @import("apidb.zig");
 const modules = @import("modules.zig");
 const task = @import("task.zig");
-const cdb = @import("cdb.zig");
+const cdb_private = @import("cdb.zig");
 const cdb_types = @import("cdb_types.zig");
 const tempalloc = @import("tempalloc.zig");
 const uuid = @import("uuid.zig");
@@ -19,20 +18,20 @@ const coreui = @import("coreui.zig");
 const ecs = @import("ecs.zig");
 const actions = @import("actions.zig");
 
-const transform = @import("transform.zig");
-const renderer = @import("renderer.zig");
 const metrics = @import("metrics.zig");
 
 const cetech1 = @import("cetech1");
 const public = cetech1.kernel;
 const profiler = cetech1.profiler;
 const strid = cetech1.strid;
+const cdb = cetech1.cdb;
+
 const cetech1_options = @import("cetech1_options");
 
 const externals_credits = @embedFile("externals_credit");
 const authors = @embedFile("authors");
 
-var _cdb = &cdb.api;
+var _cdb = &cdb_private.api;
 
 const module_name = .kernel;
 
@@ -90,8 +89,6 @@ var _coreui_allocator: profiler.AllocatorProfiler = undefined;
 var _tmp_alocator_pool_allocator: profiler.AllocatorProfiler = undefined;
 var _ecs_allocator: profiler.AllocatorProfiler = undefined;
 var _actions_allocator: profiler.AllocatorProfiler = undefined;
-var _graph_allocator: profiler.AllocatorProfiler = undefined;
-var _renderer_allocator: profiler.AllocatorProfiler = undefined;
 var _metrics_allocator: profiler.AllocatorProfiler = undefined;
 
 var _update_dag: cetech1.dag.StrId64DAG = undefined;
@@ -161,7 +158,7 @@ fn restart() void {
     _restart = true;
 }
 
-fn getDb() cetech1.cdb.DbId {
+fn getDb() cdb.DbId {
     return assetdb.getDb();
 }
 
@@ -203,8 +200,6 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     _tmp_alocator_pool_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "tmp_allocators");
     _ecs_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "ecs");
     _actions_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "actions");
-    _graph_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "graph");
-    _renderer_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "renderer");
 
     _metrics_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "metrics");
 
@@ -227,11 +222,10 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try modules.init(_modules_allocator.allocator());
     try metrics.init(_metrics_allocator.allocator());
     try task.init(_task_allocator.allocator());
-    try cdb.init(_cdb_allocator.allocator());
+    try cdb_private.init(_cdb_allocator.allocator());
     try platform.init(_platform_allocator.allocator(), headless);
     try actions.init(_actions_allocator.allocator());
     try gpu.init(_gpu_allocator.allocator());
-    try renderer.init(_renderer_allocator.allocator());
     try coreui.init(_coreui_allocator.allocator());
 
     try apidb.api.setZigApi(module_name, cetech1.kernel.KernelApi, &api);
@@ -242,7 +236,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try profiler_private.registerToApi();
     try task.registerToApi();
     try uuid.registerToApi();
-    try cdb.registerToApi();
+    try cdb_private.registerToApi();
     try cdb_types.registerToApi();
     try assetdb.registerToApi();
     try platform.registerToApi();
@@ -251,8 +245,6 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try coreui.registerToApi();
     try ecs.registerToApi();
     try metrics.registerToApi();
-
-    try transform.regsitreAll();
 
     try addPhase("OnLoad", &[_]strid.StrId64{});
     try addPhase("PostLoad", &[_]strid.StrId64{cetech1.kernel.OnLoad});
@@ -275,7 +267,7 @@ pub fn deinit(
     ecs.deinit();
 
     coreui.deinit();
-    renderer.deinit();
+    //renderer.deinit();
     if (gpu_context) |ctx| gpu.api.destroyContext(ctx);
     gpu.deinit();
     if (main_window) |window| platform.api.destroyWindow(window);
@@ -288,7 +280,7 @@ pub fn deinit(
 
     task.stop();
 
-    cdb.deinit();
+    cdb_private.deinit();
     task.deinit();
     metrics.deinit();
     apidb.deinit();

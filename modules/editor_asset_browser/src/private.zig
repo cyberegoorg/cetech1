@@ -177,11 +177,11 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         _ = tab_o;
     }
 
-    pub fn assetRootOpened(inst: *editor.TabO) !void {
-        const tab_o: *AssetBrowserTab = @alignCast(@ptrCast(inst));
-        tab_o.filter = null;
-        tab_o.selection_obj.clear();
-    }
+    // pub fn assetRootOpened(inst: *editor.TabO) !void {
+    //     const tab_o: *AssetBrowserTab = @alignCast(@ptrCast(inst));
+    //     tab_o.filter = null;
+    //     tab_o.selection_obj.clear();
+    // }
 
     pub fn selectObjFromMenu(allocator: std.mem.Allocator, tab: *editor.TabO, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) !cdb.ObjId {
         const tabs = _editor.getAllTabsByType(allocator, _g.tab_vt.tab_hash) catch return .{};

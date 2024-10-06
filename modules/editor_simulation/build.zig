@@ -13,7 +13,7 @@ pub fn build(b: *std.Build) !void {
     const editor = b.dependency("editor", .{});
 
     const lib = b.addSharedLibrary(.{
-        .name = "ct_editor_entity",
+        .name = "ct_editor_simulation",
         .version = version,
         .root_source_file = b.path("src/private.zig"),
         .target = target,
@@ -33,7 +33,6 @@ pub fn build(b: *std.Build) !void {
         l.root_module.addImport("editor", editor.module("editor"));
         l.root_module.addImport("renderer", b.dependency("renderer", .{}).module("renderer"));
         l.root_module.addImport("camera", b.dependency("camera", .{}).module("camera"));
-
         b.installArtifact(l);
     }
 }

@@ -5,12 +5,13 @@ const cetech1 = @import("cetech1");
 const strid = cetech1.strid;
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
-const transform = cetech1.transform;
 
-const renderer = cetech1.renderer;
+const renderer = @import("renderer");
 const gpu = cetech1.gpu;
+const coreui = cetech1.coreui;
 
 const graphvm = @import("graphvm");
+const transform = @import("transform");
 
 const public = @import("render_component.zig");
 
@@ -126,52 +127,71 @@ const init_render_graph_system_i = ecs.SystemI.implement(
     },
 );
 
-const render_component_c = ecs.ComponentI.implement(public.RenderComponent, public.RenderComponentCdb.type_hash, struct {
-    pub fn fromCdb(
-        allocator: std.mem.Allocator,
-        obj: cdb.ObjId,
-        data: []u8,
-    ) anyerror!void {
-        _ = allocator; // autofix
+const render_component_c = ecs.ComponentI.implement(
+    public.RenderComponent,
+    public.RenderComponentCdb.type_hash,
+    struct {
+        pub fn uiIcons(
+            buff: [:0]u8,
+            allocator: std.mem.Allocator,
+            obj: cdb.ObjId,
+        ) ![:0]const u8 {
+            _ = allocator; // autofix
+            _ = obj; // autofix
+            return std.fmt.bufPrintZ(buff, "{s}", .{coreui.CoreIcons.FA_CUBE});
+        }
 
-        const r = _cdb.readObj(obj) orelse return;
+        pub fn fromCdb(
+            allocator: std.mem.Allocator,
+            obj: cdb.ObjId,
+            data: []u8,
+        ) anyerror!void {
+            _ = allocator; // autofix
 
-        const position = std.mem.bytesAsValue(public.RenderComponent, data);
-        position.* = public.RenderComponent{
-            .graph = public.RenderComponentCdb.readSubObj(_cdb, r, .graph) orelse .{},
-        };
-    }
-});
+            const r = _cdb.readObj(obj) orelse return;
 
-const rc_initialized_c = ecs.ComponentI.implement(public.RenderComponentInstance, null, struct {
-    pub fn onDestroy(components: []public.RenderComponentInstance) !void {
-        for (components) |c| {
-            if (c.graph_container.isValid()) {
-                _graphvm.destroyInstance(c.graph_container);
+            const position = std.mem.bytesAsValue(public.RenderComponent, data);
+            position.* = public.RenderComponent{
+                .graph = public.RenderComponentCdb.readSubObj(_cdb, r, .graph) orelse .{},
+            };
+        }
+    },
+);
+
+const rc_initialized_c = ecs.ComponentI.implement(
+    public.RenderComponentInstance,
+
+    null,
+    struct {
+        pub fn onDestroy(components: []public.RenderComponentInstance) !void {
+            for (components) |c| {
+                if (c.graph_container.isValid()) {
+                    _graphvm.destroyInstance(c.graph_container);
+                }
             }
         }
-    }
 
-    pub fn onMove(dsts: []public.RenderComponentInstance, srcs: []public.RenderComponentInstance) !void {
-        for (dsts, srcs) |*dst, *src| {
-            dst.* = src.*;
+        pub fn onMove(dsts: []public.RenderComponentInstance, srcs: []public.RenderComponentInstance) !void {
+            for (dsts, srcs) |*dst, *src| {
+                dst.* = src.*;
 
-            // Prevent double delete
-            src.graph_container = .{};
+                // Prevent double delete
+                src.graph_container = .{};
+            }
         }
-    }
 
-    pub fn onRemove(iter: *ecs.IterO) !void {
-        var it = _ecs.toIter(iter);
-        const alloc = try _tmpalloc.create();
-        defer _tmpalloc.destroy(alloc);
-        const components = it.field(public.RenderComponentInstance, 0).?;
-        for (components) |component| {
-            // TODO: real multi call
-            try _graphvm.executeNode(alloc, &.{component.graph_container}, graphvm.EVENT_SHUTDOWN_NODE_TYPE);
+        pub fn onRemove(iter: *ecs.IterO) !void {
+            var it = _ecs.toIter(iter);
+            const alloc = try _tmpalloc.create();
+            defer _tmpalloc.destroy(alloc);
+            const components = it.field(public.RenderComponentInstance, 0).?;
+            for (components) |component| {
+                // TODO: real multi call
+                try _graphvm.executeNode(alloc, &.{component.graph_container}, graphvm.EVENT_SHUTDOWN_NODE_TYPE);
+            }
         }
-    }
-});
+    },
+);
 
 pub fn toInstanceSlice(from: anytype) []const graphvm.GraphInstance {
     var containers: []const graphvm.GraphInstance = undefined;
@@ -283,11 +303,11 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
             const type_idx = try _cdb.addType(
                 db,
                 public.RenderComponentCdb.name,
-                &[_]cetech1.cdb.PropDef{
+                &[_]cdb.PropDef{
                     .{
                         .prop_idx = public.RenderComponentCdb.propIdx(.graph),
                         .name = "graph",
-                        .type = cetech1.cdb.PropType.SUBOBJECT,
+                        .type = cdb.PropType.SUBOBJECT,
                         .type_hash = graphvm.GraphType.type_hash,
                     },
                 },

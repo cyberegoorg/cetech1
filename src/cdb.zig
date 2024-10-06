@@ -1,5 +1,4 @@
 // NOTE: Braindump shit, features first for api then optimize internals.
-// TODO: remove typestorage lookup, use typhe_hash => type_idx fce,  storages[objid.type_idx]
 // TODO: linkedlist for objects to delete, *Object.next to Object
 // TODO: BLOB is currentlu uber shit. pointer to slice to data make sort of interning with id
 
@@ -226,7 +225,7 @@ pub const TypeStorage = struct {
     const MAX_OBJIDSETS = 100_000;
 
     allocator: std.mem.Allocator,
-    db: *DbId,
+    db: *Db,
 
     // Type data
     name: []const u8,
@@ -285,7 +284,7 @@ pub const TypeStorage = struct {
     write_commit_counter: *f64 = undefined,
     writers_counter: *f64 = undefined,
 
-    pub fn init(allocator: std.mem.Allocator, db: *DbId, type_idx: public.TypeIdx, name: []const u8, props_def: []const public.PropDef) !Self {
+    pub fn init(allocator: std.mem.Allocator, db: *Db, type_idx: public.TypeIdx, name: []const u8, props_def: []const public.PropDef) !Self {
         var contain_set = false;
         var contain_subobject = false;
 
@@ -1060,7 +1059,7 @@ pub const TypeStorage = struct {
 
 const StringIntern = cetech1.mem.StringInternWithLock([:0]const u8);
 
-pub const DbId = struct {
+pub const Db = struct {
     const Self = @This();
 
     name: [:0]const u8,
@@ -1090,7 +1089,7 @@ pub const DbId = struct {
 
     metrics_init: bool = false,
 
-    pub fn init(allocator: std.mem.Allocator, idx: public.DbId, name: [:0]const u8) !DbId {
+    pub fn init(allocator: std.mem.Allocator, idx: public.DbId, name: [:0]const u8) !Db {
         var self: @This() = .{
             .idx = idx,
             .name = name,
@@ -2197,7 +2196,7 @@ pub const DbId = struct {
         return result.toOwnedSlice() catch null;
     }
 
-    pub fn stressIt(self: *Self, type_idx: public.TypeIdx, type_hash2: public.TypeIdx, ref_obj1: cetech1.cdb.ObjId) !void {
+    pub fn stressIt(self: *Self, type_idx: public.TypeIdx, type_hash2: public.TypeIdx, ref_obj1: public.ObjId) !void {
         const obj1 = try self.createObject(type_idx);
 
         const obj2 = try self.createObject(type_hash2);
@@ -2205,22 +2204,22 @@ pub const DbId = struct {
 
         const writer = self.writerObj(obj1).?;
 
-        self.setT(bool, writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.Bool), true);
-        self.setT(u64, writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.U64), 10);
-        self.setT(i64, writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.I64), 20);
-        self.setT(u32, writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.U32), 10);
-        self.setT(i32, writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.I32), 20);
-        self.setT(f64, writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.F64), 20.10);
-        self.setT(f32, writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.F32), 30.20);
-        try self.setRef(writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.Reference), ref_obj1);
-        try self.addRefToSet(writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.ReferenceSet), &[_]public.ObjId{ref_obj1});
+        self.setT(bool, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.Bool), true);
+        self.setT(u64, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.U64), 10);
+        self.setT(i64, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.I64), 20);
+        self.setT(u32, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.U32), 10);
+        self.setT(i32, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.I32), 20);
+        self.setT(f64, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.F64), 20.10);
+        self.setT(f32, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.F32), 30.20);
+        try self.setRef(writer, public.propIdx(cetech1.cdb_types.BigTypeProps.Reference), ref_obj1);
+        try self.addRefToSet(writer, public.propIdx(cetech1.cdb_types.BigTypeProps.ReferenceSet), &[_]public.ObjId{ref_obj1});
 
         const writer2 = self.writerObj(obj2).?;
-        try self.setSubObj(writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.Subobject), writer2);
+        try self.setSubObj(writer, public.propIdx(cetech1.cdb_types.BigTypeProps.Subobject), writer2);
         try self.writerCommit(writer2);
 
         const writer3 = self.writerObj(obj3).?;
-        try self.addToSubObjSet(writer, cetech1.cdb.propIdx(cetech1.cdb_types.BigTypeProps.SubobjectSet), &[_]*public.Obj{writer3});
+        try self.addToSubObjSet(writer, public.propIdx(cetech1.cdb_types.BigTypeProps.SubobjectSet), &[_]*public.Obj{writer3});
         try self.writerCommit(writer3);
 
         try self.writerCommit(writer);
@@ -2259,7 +2258,7 @@ pub const DbId = struct {
     }
 };
 
-const DbPool = cetech1.mem.VirtualPool(DbId);
+const DbPool = cetech1.mem.VirtualPool(Db);
 
 var _allocator: std.mem.Allocator = undefined;
 var _db_pool: DbPool = undefined;
@@ -2273,17 +2272,17 @@ pub fn deinit() void {
     _db_pool.deinit();
 }
 
-inline fn getDbFromIdx(idx: public.DbId) *DbId {
+inline fn getDbFromIdx(idx: public.DbId) *Db {
     std.debug.assert(!idx.isEmpty());
     return _db_pool.get(idx.idx);
 }
 
-inline fn getDbFromObj(obj: *public.Obj) *DbId {
+inline fn getDbFromObj(obj: *public.Obj) *Db {
     const real_obj: *Object = @alignCast(@ptrCast(obj));
     return getDbFromIdx(real_obj.objid.db);
 }
 
-pub fn toDbFromDbT(db: public.DbId) *DbId {
+pub fn toDbFromDbT(db: public.DbId) *Db {
     return getDbFromIdx(db);
 }
 
@@ -2655,7 +2654,7 @@ fn dumpFn(dbidx: public.DbId) !void {
         try writer.print("  shape: class\n", .{});
 
         for (storage.props_def) |prop| {
-            const prop_type = std.enums.tagName(cetech1.cdb.PropType, prop.type).?;
+            const prop_type = std.enums.tagName(public.PropType, prop.type).?;
 
             if (prop.type_hash.id != 0) {
                 const typed_name = real_db.getTypeStorageByTypeHash(prop.type_hash).?.name;
@@ -2716,6 +2715,7 @@ fn getChangeObjectsFn(dbidx: public.DbId, allocator: std.mem.Allocator, type_idx
     return db.getChangeObjects(allocator, type_idx, since_version);
 }
 fn isAliveFn(obj: public.ObjId) bool {
+    if (obj.isEmpty()) return false;
     var db = getDbFromIdx(obj.db);
     return db.isAlive(obj);
 }
@@ -2735,7 +2735,7 @@ fn isChildOffFn(parent_obj: public.ObjId, child_obj: public.ObjId) bool {
 
 fn createDb(name: [:0]const u8) !public.DbId {
     var db = _db_pool.create(null);
-    db.* = try DbId.init(_allocator, .{ .idx = @truncate(_db_pool.index(db)) }, name);
+    db.* = try Db.init(_allocator, .{ .idx = @truncate(_db_pool.index(db)) }, name);
 
     try db.registerAllTypes();
 
@@ -2761,7 +2761,7 @@ test "cdb: Test alocate/free id" {
     const type_hash = try api.addType(
         db,
         "foo",
-        &[_]cetech1.cdb.PropDef{},
+        &[_]public.PropDef{},
     );
     _ = type_hash;
 
@@ -2794,7 +2794,7 @@ test "cdb: Test alocate/free idset" {
     const type_hash = try api.addType(
         db,
         "foo",
-        &[_]cetech1.cdb.PropDef{
+        &[_]public.PropDef{
             .{ .prop_idx = 0, .name = "foo", .type = .SUBOBJECT_SET },
         },
     );

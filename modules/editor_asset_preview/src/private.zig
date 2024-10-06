@@ -12,10 +12,10 @@ const actions = cetech1.actions;
 const assetdb = cetech1.assetdb;
 const uuid = cetech1.uuid;
 const task = cetech1.task;
-const transform = cetech1.transform;
-const renderer = cetech1.renderer;
-const camera = cetech1.camera;
 
+const camera = @import("camera");
+
+const renderer = @import("renderer");
 const Viewport = renderer.Viewport;
 
 const editor = @import("editor");
@@ -84,7 +84,7 @@ const AssetPreviewTab = struct {
 // Fill editor tab interface
 var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
-    .tab_hash = .{ .id = cetech1.strid.strId32(TAB_NAME).id },
+    .tab_hash = cetech1.strid.strId32(TAB_NAME),
 
     // TODO: Bug on linux CI
     .create_on_init = true,
@@ -107,6 +107,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     // Create new tab instantce
     pub fn create(tab_id: u32) !?*editor.TabI {
         const w = try _ecs.createWorld();
+        w.setSimulate(false);
 
         const rg = try _render_graph.create();
         try _render_graph.createDefault(_allocator, rg);
@@ -207,6 +208,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             }
 
             tab_o.viewport.setViewMtx(tab_o.camera.calcViewMtx());
+            tab_o.viewport.renderMe();
         } else {
             const db = _cdb.getDbFromObjid(selected_obj);
             if (_cdb.getAspect(public.AssetPreviewAspectI, db, selected_obj.type_idx)) |iface| {
@@ -286,6 +288,18 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         _ = allocator; // autofix
         // TODO: implement
         return true;
+    }
+
+    pub fn assetRootOpened(inst: *editor.TabO) !void {
+        const tab_o: *AssetPreviewTab = @alignCast(@ptrCast(inst));
+        if (tab_o.root_entity) |ent| {
+            tab_o.world.destroyEntities(&.{ent});
+            tab_o.root_entity = null;
+
+            tab_o.selection = coreui.SelectionItem.empty();
+            tab_o.root_entity_obj = .{};
+            tab_o.root_entity = null;
+        }
     }
 });
 
@@ -371,7 +385,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _assetdb = apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
     _uuid = apidb.getZigApi(module_name, uuid.UuidAPI).?;
     _task = apidb.getZigApi(module_name, task.TaskAPI).?;
-    _renderer = apidb.getZigApi(module_name, cetech1.renderer.RendererApi).?;
+    _renderer = apidb.getZigApi(module_name, renderer.RendererApi).?;
     _platform = apidb.getZigApi(module_name, cetech1.platform.PlatformApi).?;
     _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
 

@@ -23,9 +23,11 @@ const assetdb = @import("assetdb.zig");
 
 const cetech1 = @import("cetech1");
 const gpu = cetech1.gpu;
-const public = cetech1.coreui;
+const cdb = cetech1.cdb;
 const Icons = public.CoreIcons;
 const ui_node_editor = cetech1.coreui_node_editor;
+
+const public = cetech1.coreui;
 
 const module_name = .coreui;
 const log = std.log.scoped(module_name);
@@ -107,15 +109,15 @@ const _kernel_hook_i = cetech1.kernel.KernelLoopHookI.implement(struct {
     }
 });
 
-var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(struct {
-    pub fn createTypes(db: cetech1.cdb.DbId) !void {
+var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
+    pub fn createTypes(db: cdb.DbId) !void {
         _ = db; // autofix
 
         // Obj selections
         // _ = try db.addType(
         //     public.ObjSelection.name,
-        //     &[_]cetech1.cdb.PropDef{
-        //         .{ .prop_idx = public.ObjSelection.propIdx(.Selection), .name = "selection", .type = cetech1.cdb.PropType.REFERENCE_SET },
+        //     &[_]cdb.PropDef{
+        //         .{ .prop_idx = public.ObjSelection.propIdx(.Selection), .name = "selection", .type = cdb.PropType.REFERENCE_SET },
         //     },
         // );
         //
@@ -1117,7 +1119,7 @@ fn openFolderDialog(allocator: std.mem.Allocator, default_path: ?[:0]const u8) !
     return null;
 }
 
-fn pushPropName(obj: cetech1.cdb.ObjId, prop_idx: u32) void {
+fn pushPropName(obj: cdb.ObjId, prop_idx: u32) void {
     const db = _cdb.getDbFromObjid(obj);
     const props_def = _cdb.getTypePropDef(db, obj.type_idx).?;
     zgui.pushStrIdZ(props_def[prop_idx].name);
@@ -1240,7 +1242,7 @@ fn menuItemPtr(allocator: std.mem.Allocator, label: [:0]const u8, args: public.M
     });
 }
 
-fn pushObjUUID(obj: cetech1.cdb.ObjId) void {
+fn pushObjUUID(obj: cdb.ObjId) void {
     const uuid = assetdb.api.getOrCreateUuid(obj) catch undefined;
     var buff: [128]u8 = undefined;
     const uuid_str = std.fmt.bufPrintZ(&buff, "{s}", .{uuid}) catch undefined;
@@ -1318,7 +1320,7 @@ pub fn coreUI(tmp_allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void
 pub fn registerToApi() !void {
     try apidb.api.setZigApi(module_name, public.CoreUIApi, &api);
     try apidb.api.setZigApi(module_name, ui_node_editor.NodeEditorApi, &node_editor_api);
-    try apidb.api.implOrRemove(.cdb_types, cetech1.cdb.CreateTypesI, &create_cdb_types_i, true);
+    try apidb.api.implOrRemove(.cdb_types, cdb.CreateTypesI, &create_cdb_types_i, true);
 }
 
 pub fn initFonts(font_size: f32, scale_factor: f32) void {
@@ -1665,7 +1667,7 @@ fn inputU64(label: [:0]const u8, args: public.InputScalarGen(u64)) bool {
     });
 }
 
-fn removeFromSelection(db: cetech1.cdb.DbId, selection: cetech1.cdb.ObjId, obj: cetech1.cdb.ObjId) !void {
+fn removeFromSelection(db: cdb.DbId, selection: cdb.ObjId, obj: cdb.ObjId) !void {
     const w = _cdb.writeObj(selection).?;
     try public.ObjSelection.removeFromRefSet(db, w, .Selection, obj);
     try _cdb.writeCommit(w);
@@ -1779,7 +1781,7 @@ const cdb_tests = @import("cdb_test.zig");
 //         const selected = api.getSelected(std.testing.allocator, db, selection);
 //         try std.testing.expect(selected != null);
 //         defer std.testing.allocator.free(selected.?);
-//         try std.testing.expectEqualSlices(cetech1.cdb.ObjId, &.{ obj1, obj2, obj3 }, selected.?);
+//         try std.testing.expectEqualSlices(cdb.ObjId, &.{ obj1, obj2, obj3 }, selected.?);
 //     }
 
 //     // Set selection
@@ -1789,7 +1791,7 @@ const cdb_tests = @import("cdb_test.zig");
 //         const selected = api.getSelected(std.testing.allocator, db, selection);
 //         try std.testing.expect(selected != null);
 //         defer std.testing.allocator.free(selected.?);
-//         try std.testing.expectEqualSlices(cetech1.cdb.ObjId, &.{obj1}, selected.?);
+//         try std.testing.expectEqualSlices(cdb.ObjId, &.{obj1}, selected.?);
 //     }
 
 //     // Clear selection
@@ -1799,7 +1801,7 @@ const cdb_tests = @import("cdb_test.zig");
 //         const selected = api.getSelected(std.testing.allocator, db, selection);
 //         try std.testing.expect(selected != null);
 //         defer std.testing.allocator.free(selected.?);
-//         try std.testing.expectEqualSlices(cetech1.cdb.ObjId, &.{}, selected.?);
+//         try std.testing.expectEqualSlices(cdb.ObjId, &.{}, selected.?);
 //     }
 // }
 

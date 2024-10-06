@@ -1,7 +1,9 @@
 //! Kernel is entry point/runner for engine.
 
 const std = @import("std");
-const ztracy = @import("ztracy");
+const cetech1 = @import("cetech1");
+
+//const cdb = cetech1.cdb;
 
 const strid = @import("strid.zig");
 const cdb = @import("cdb.zig");

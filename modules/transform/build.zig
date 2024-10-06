@@ -10,10 +10,8 @@ pub fn build(b: *std.Build) !void {
     const cetech1 = b.dependency("cetech1", .{});
     const cetech1_module = cetech1.module("cetech1");
 
-    const editor = b.dependency("editor", .{});
-
     const lib = b.addSharedLibrary(.{
-        .name = "ct_editor_entity",
+        .name = "ct_transform",
         .version = version,
         .root_source_file = b.path("src/private.zig"),
         .target = target,
@@ -30,10 +28,17 @@ pub fn build(b: *std.Build) !void {
 
     inline for (.{ lib, slib }) |l| {
         l.root_module.addImport("cetech1", cetech1_module);
-        l.root_module.addImport("editor", editor.module("editor"));
-        l.root_module.addImport("renderer", b.dependency("renderer", .{}).module("renderer"));
-        l.root_module.addImport("camera", b.dependency("camera", .{}).module("camera"));
 
         b.installArtifact(l);
     }
+
+    _ = b.addModule(
+        "transform",
+        .{
+            .root_source_file = b.path("src/transform.zig"),
+            .imports = &.{
+                .{ .name = "cetech1", .module = cetech1_module },
+            },
+        },
+    );
 }

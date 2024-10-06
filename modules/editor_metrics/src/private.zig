@@ -50,7 +50,7 @@ const MetricsTab = struct {
 // Fill editor tab interface
 var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
-    .tab_hash = .{ .id = cetech1.strid.strId32(TAB_NAME).id },
+    .tab_hash = cetech1.strid.strId32(TAB_NAME),
     .create_on_init = true,
     .category = "Debug",
 }, struct {
@@ -232,10 +232,10 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         }
     }
 
-    pub fn assetRootOpened(inst: *editor.TabO) !void {
-        const tab_o: *MetricsTab = @alignCast(@ptrCast(inst));
-        tab_o.filter = null;
-    }
+    // pub fn assetRootOpened(inst: *editor.TabO) !void {
+    //     const tab_o: *MetricsTab = @alignCast(@ptrCast(inst));
+    //     tab_o.filter = null;
+    // }
 });
 
 // Create types, register api, interfaces etc...
