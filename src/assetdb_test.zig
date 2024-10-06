@@ -4,7 +4,7 @@ const builtin = @import("builtin");
 const apidb = @import("apidb.zig");
 const task = @import("task.zig");
 const tempalloc = @import("tempalloc.zig");
-const cdb = @import("cdb.zig");
+const cdb_private = @import("cdb.zig");
 const cdb_test = @import("cdb_test.zig");
 const cdb_types = @import("cdb_types.zig");
 const log = @import("log.zig");
@@ -13,16 +13,17 @@ const private = @import("assetdb.zig");
 const metrics = @import("metrics.zig");
 
 const cetech1 = @import("cetech1");
+const cdb = cetech1.cdb;
 const public = cetech1.assetdb;
-const propIdx = cetech1.cdb.propIdx;
+const propIdx = cdb.propIdx;
 
-var _cdb = &cdb.api;
+var _cdb = &cdb_private.api;
 
 const FooAsset = public.FooAsset;
 
 pub fn WriteBlobToNull(
     blob: []const u8,
-    asset: cetech1.cdb.ObjId,
+    asset: cdb.ObjId,
     obj_uuid: cetech1.uuid.Uuid,
     prop_hash: cetech1.strid.StrId32,
     root_path: []const u8,
@@ -37,7 +38,7 @@ pub fn WriteBlobToNull(
 }
 
 pub fn ReadBlobFromNull(
-    asset: cetech1.cdb.ObjId,
+    asset: cdb.ObjId,
     obj_uuid: cetech1.uuid.Uuid,
     prop_hash: cetech1.strid.StrId32,
     tmp_allocator: std.mem.Allocator,
@@ -54,14 +55,14 @@ fn testInit() !void {
     try task.init(std.testing.allocator);
     try apidb.init(std.testing.allocator);
     try metrics.init(std.testing.allocator);
-    try cdb.init(std.testing.allocator);
+    try cdb_private.init(std.testing.allocator);
     try private.registerToApi();
     try task.start();
     try cdb_types.registerToApi();
 }
 
 fn testDeinit() void {
-    cdb.deinit();
+    cdb_private.deinit();
     apidb.deinit();
     task.stop();
     task.deinit();
@@ -379,9 +380,9 @@ test "asset: Should open asset root dir" {
 
     try private.api.openAssetRootFolder("fixtures/test_asset", std.testing.allocator);
 
-    var root_folder: ?cetech1.cdb.ObjId = undefined;
-    var core_folder: ?cetech1.cdb.ObjId = undefined;
-    var core_subfolder_folder: ?cetech1.cdb.ObjId = undefined;
+    var root_folder: ?cdb.ObjId = undefined;
+    var core_folder: ?cdb.ObjId = undefined;
+    var core_subfolder_folder: ?cdb.ObjId = undefined;
 
     // /
     {
@@ -479,8 +480,8 @@ test "asset: Should open asset root dir" {
         defer std.testing.allocator.free(ref_set.?);
         try std.testing.expect(ref_set != null);
         try std.testing.expectEqualSlices(
-            cetech1.cdb.ObjId,
-            &[_]cetech1.cdb.ObjId{foo_core_obj.?},
+            cdb.ObjId,
+            &[_]cdb.ObjId{foo_core_obj.?},
             ref_set.?,
         );
 
@@ -490,8 +491,8 @@ test "asset: Should open asset root dir" {
         defer std.testing.allocator.free(subobj_set.?);
         try std.testing.expect(subobj_set != null);
         try std.testing.expectEqualSlices(
-            cetech1.cdb.ObjId,
-            &[_]cetech1.cdb.ObjId{ subobj.?, inisiated_subobj.? },
+            cdb.ObjId,
+            &[_]cdb.ObjId{ subobj.?, inisiated_subobj.? },
             subobj_set.?,
         );
 

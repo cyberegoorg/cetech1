@@ -10,8 +10,10 @@ pub fn build(b: *std.Build) !void {
     const cetech1 = b.dependency("cetech1", .{});
     const cetech1_module = cetech1.module("cetech1");
 
+    const editor = b.dependency("editor", .{});
+
     const lib = b.addSharedLibrary(.{
-        .name = "ct_render_component",
+        .name = "ct_editor_simulation",
         .version = version,
         .root_source_file = b.path("src/private.zig"),
         .target = target,
@@ -28,20 +30,10 @@ pub fn build(b: *std.Build) !void {
 
     inline for (.{ lib, slib }) |l| {
         l.root_module.addImport("cetech1", cetech1_module);
-        l.root_module.addImport("graphvm", b.dependency("graphvm", .{}).module("graphvm"));
+        l.root_module.addImport("editor", editor.module("editor"));
         l.root_module.addImport("renderer", b.dependency("renderer", .{}).module("renderer"));
+        l.root_module.addImport("camera", b.dependency("camera", .{}).module("camera"));
         l.root_module.addImport("transform", b.dependency("transform", .{}).module("transform"));
-
         b.installArtifact(l);
     }
-
-    _ = b.addModule(
-        "render_component",
-        .{
-            .root_source_file = b.path("src/render_component.zig"),
-            .imports = &.{
-                .{ .name = "cetech1", .module = cetech1_module },
-            },
-        },
-    );
 }

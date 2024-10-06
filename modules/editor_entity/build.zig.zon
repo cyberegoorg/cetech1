@@ -8,5 +8,8 @@
     .dependencies = .{
         .cetech1 = .{ .path = "../../public/" },
         .editor = .{ .path = "../../modules/editor" },
+        .renderer = .{ .path = "../renderer" },
+        .camera = .{ .path = "../camera" },
+        .transform = .{ .path = "../transform" },
     },
 }

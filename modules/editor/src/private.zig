@@ -993,11 +993,11 @@ var asset_root_opened_i = assetdb.AssetRootOpenedI.implement(struct {
         try tabs.appendSlice(_g.tabs.values());
 
         for (tabs.items) |tab| {
-            if (tab.vt.*.create_on_init) {
+            if (tab.tabid == 1 and tab.vt.*.create_on_init) {
                 if (tab.vt.*.asset_root_opened) |asset_root_opened| {
                     try asset_root_opened(tab.inst);
+                    continue;
                 }
-                //continue;
             }
             //if (tab.tabid == 1) continue;
             destroyTab(tab);
@@ -1012,8 +1012,10 @@ var asset_root_opened_i = assetdb.AssetRootOpenedI.implement(struct {
             const impls = _apidb.getImpl(_allocator, public.TabTypeI) catch undefined;
             defer _allocator.free(impls);
             for (impls) |iface| {
-                if (iface.create_on_init) {
-                    _ = createNewTab(.{ .id = iface.tab_hash.id });
+                if (iface.create_on_init and iface.asset_root_opened == null) {
+                    _ = createNewTab(iface.tab_hash);
+                } else {
+                    _ = try alocateTabId(iface.tab_hash);
                 }
             }
         }

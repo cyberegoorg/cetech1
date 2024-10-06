@@ -9,12 +9,10 @@ const strid = cetech1.strid;
 pub const EVENT_INIT_NODE_TYPE_STR = "event_init";
 pub const EVENT_SHUTDOWN_NODE_TYPE_STR = "event_shutdown";
 pub const EVENT_TICK_NODE_TYPE_STR = "event_tick";
-pub const CULLING_VOLUME_NODE_TYPE_STR = "culling_volume";
 
 pub const EVENT_INIT_NODE_TYPE = strid.strId32(EVENT_INIT_NODE_TYPE_STR);
 pub const EVENT_SHUTDOWN_NODE_TYPE = strid.strId32(EVENT_SHUTDOWN_NODE_TYPE_STR);
 pub const EVENT_TICK_NODE_TYPE = strid.strId32(EVENT_TICK_NODE_TYPE_STR);
-pub const CULLING_VOLUME_NODE_TYPE = strid.strId32(CULLING_VOLUME_NODE_TYPE_STR);
 
 pub const GraphType = cdb.CdbTypeDecl(
     "ct_graph",

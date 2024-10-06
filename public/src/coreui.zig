@@ -198,6 +198,11 @@ pub const Icons = struct {
     pub const Position = CoreIcons.FA_UP_DOWN_LEFT_RIGHT;
     pub const Rotation = CoreIcons.FA_ROTATE;
     pub const Scale = CoreIcons.FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER;
+
+    pub const Play = CoreIcons.FA_PLAY;
+    pub const Pause = CoreIcons.FA_PAUSE;
+
+    pub const Camera = CoreIcons.FA_CAMERA;
 };
 
 pub const CoreUII = struct {
@@ -324,6 +329,12 @@ pub const FilterItem = extern struct {
 
 const BeginDisabled = struct {
     disabled: bool = true,
+};
+
+pub const ComboArgs = struct {
+    current_item: *i32,
+    items_separated_by_zeros: [:0]const u8,
+    popup_max_height_in_items: i32 = -1,
 };
 
 pub const CoreUIApi = struct {
@@ -479,6 +490,8 @@ pub const CoreUIApi = struct {
 
     beginPopupContextItem: *const fn () bool,
     beginPopup: *const fn (str_id: [*:0]const u8, flags: WindowFlags) bool,
+
+    combo: *const fn (label: [:0]const u8, args: ComboArgs) bool,
 
     isItemClicked: *const fn (button: MouseButton) bool,
     isItemActivated: *const fn () bool,

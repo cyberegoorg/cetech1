@@ -1,39 +1,61 @@
 const std = @import("std");
-
-const builtin = @import("builtin");
-
-const apidb = @import("apidb.zig");
-const profiler_private = @import("profiler.zig");
-const task_private = @import("task.zig");
-const tempalloc = @import("tempalloc.zig");
-const gpu_private = @import("gpu.zig");
-const ecs_private = @import("ecs.zig");
-const assetdb_private = @import("assetdb.zig");
-const metrics_private = @import("metrics.zig");
-const cdb_private = @import("cdb.zig");
+const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const public = cetech1.renderer;
-const gpu = cetech1.gpu;
-const dag = cetech1.dag;
-const zm = cetech1.math;
+const strid = cetech1.strid;
+const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
-const transform = cetech1.transform;
 
 const primitives = cetech1.primitives;
-const cdb = cetech1.cdb;
+const zm = cetech1.math;
+const gpu = cetech1.gpu;
+const dag = cetech1.dag;
 
-const _cdb = &cdb_private.api;
-const _gpu = &gpu_private.api;
-const _dd = &gpu_private.dd_api;
-const _metrics = &metrics_private.api;
-const _task = &task_private.api;
-const _profiler = &profiler_private.api;
+const public = @import("renderer.zig");
 
-const module_name = .viewport;
+const transform = @import("transform");
+const graphvm = @import("graphvm");
+const camera = @import("camera");
+
+const module_name = .renderer;
+
+// Need for logging from std.
+pub const std_options: std.Options = .{
+    .logFn = cetech1.log.zigLogFnGen(&_log),
+};
+// Log for module
 const log = std.log.scoped(module_name);
 
-var _allocator: std.mem.Allocator = undefined;
+// Basic cetech "import".
+var _allocator: Allocator = undefined;
+var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
+var _log: *const cetech1.log.LogAPI = undefined;
+var _cdb: *const cdb.CdbAPI = undefined;
+var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
+var _kernel: *const cetech1.kernel.KernelApi = undefined;
+var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
+
+var _ecs: *const ecs.EcsAPI = undefined;
+var _gpu: *const gpu.GpuApi = undefined;
+
+var _dd: *const gpu.GpuDDApi = undefined;
+var _metrics: *const cetech1.metrics.MetricsAPI = undefined;
+var _task: *const cetech1.task.TaskAPI = undefined;
+var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
+
+const AtomicViewId = std.atomic.Value(u16);
+
+// Global state
+const G = struct {
+    viewport_set: ViewportSet = undefined,
+    viewport_pool: ViewportPool = undefined,
+    rg_lock: std.Thread.Mutex = undefined,
+    rg_set: GraphSet = undefined,
+    rg_pool: GraphPool = undefined,
+    view_id: AtomicViewId = AtomicViewId.init(1),
+};
+
+var _g: *G = undefined;
 
 const CullingRequestPool = cetech1.mem.PoolWithLock(public.CullingRequest);
 const CullingRequestMap = std.AutoArrayHashMap(*const anyopaque, *public.CullingRequest);
@@ -111,8 +133,10 @@ const CullingSystem = struct {
         return self.cr_map.get(rq_type).?;
     }
 
-    pub fn doCulling(self: *Self, allocator: std.mem.Allocator, viewers: []public.Viewer) !void {
-        const frustrum_planes = primitives.buildFrustumPlanes(viewers[0].mtx);
+    pub fn doCulling(self: *Self, allocator: std.mem.Allocator, viewers: []const public.Viewer) !void {
+        //TODO for all viewer
+        const mtx = zm.mul(zm.matFromArr(viewers[0].mtx), zm.matFromArr(viewers[0].proj));
+        const frustrum_planes = primitives.buildFrustumPlanes(zm.matToArr(mtx));
 
         self.tasks.clearRetainingCapacity();
 
@@ -132,8 +156,8 @@ const CullingSystem = struct {
             if (try cetech1.task.batchWorkloadTask(
                 .{
                     .allocator = allocator,
-                    .task_api = &task_private.api,
-                    .profiler_api = &profiler_private.api,
+                    .task_api = _task,
+                    .profiler_api = _profiler,
                     .count = items_count,
                 },
                 ARGS{
@@ -175,9 +199,12 @@ const Viewport = struct {
     new_size: [2]f32 = .{ 0, 0 },
     dd: gpu.DDEncoder,
     rg: public.Graph,
-    view_mtx: [16]f32,
-    world: ?cetech1.ecs.World,
+
+    world: ?ecs.World,
+    main_camera_entity: ?ecs.EntityId = null,
     culling: CullingSystem,
+
+    renderMe: bool,
 
     // Stats
     all_renderables_counter: *f64 = undefined,
@@ -202,11 +229,15 @@ const CullingTask = struct {
         var zone = _profiler.ZoneN(@src(), "CullingTask");
         defer zone.End();
 
-        const task_allocator = try tempalloc.api.create();
-        defer tempalloc.api.destroy(task_allocator);
+        const task_allocator = try _tmpalloc.create();
+        defer _tmpalloc.destroy(task_allocator);
 
+        // TODO : Faster
+        // TODO : Culling in clip space
         for (self.volumes, 0..) |culling_volume, i| {
-            if (culling_volume.radius > 0) {
+            // TODO : Bounding box
+
+            if (culling_volume.hasSphere()) {
                 var center = [3]f32{ 0, 0, 0 };
                 const mat = self.transforms[i].mtx;
                 const origin = zm.mul(zm.loadArr4(.{ 0, 0, 0, 1 }), mat);
@@ -563,29 +594,13 @@ const GraphBuilder = struct {
         }
     }
 
-    pub fn execute(self: *GraphBuilder) !void {
-        // Main vieewr
-        const fb_size = self.viewport.getSize();
-        const aspect_ratio = fb_size[0] / fb_size[1];
-
-        // TODO: from camera
-        const projMtx = zm.perspectiveFovRhGl(
-            0.25 * std.math.pi,
-            aspect_ratio,
-            0.1,
-            1000.0,
-        );
-
-        const viewMtx = self.viewport.getViewMtx();
-        const VP = zm.mul(zm.matFromArr(viewMtx), projMtx);
-        try self.viewers.append(.{ .mtx = zm.matToArr(VP) });
-
+    pub fn execute(self: *GraphBuilder, viewers: []const public.Viewer) !void {
         //
         for (self.passes.items) |pass| {
             const info = self.passinfo_map.get(pass) orelse return error.InvalidPass;
 
             const builder = public.GraphBuilder{ .ptr = self, .vtable = &builder_vt };
-            try pass.render(builder, _gpu, self.viewport, info.viewid);
+            try pass.render(builder, _gpu, self.viewport, info.viewid, viewers);
         }
     }
 
@@ -750,16 +765,10 @@ const Graph = struct {
 
 const GraphPool = cetech1.mem.PoolWithLock(Graph);
 const GraphSet = std.AutoArrayHashMap(*Graph, void);
-var _rg_lock: std.Thread.Mutex = undefined;
-var _rg_set: GraphSet = undefined;
-var _rg_pool: GraphPool = undefined;
 
 const ViewportPool = cetech1.mem.PoolWithLock(Viewport);
 const ViewportSet = std.AutoArrayHashMap(*Viewport, void);
 const PalletColorMap = std.AutoArrayHashMap(u32, u8);
-
-var _viewport_set: ViewportSet = undefined;
-var _viewport_pool: ViewportPool = undefined;
 
 const _kernel_render_task = cetech1.kernel.KernelRenderI.implment(struct {
     pub fn render(ctx: *gpu.GpuContext, kernel_tick: u64, dt: f32, vsync: bool) !void {
@@ -767,36 +776,8 @@ const _kernel_render_task = cetech1.kernel.KernelRenderI.implment(struct {
     }
 });
 
-pub fn init(allocator: std.mem.Allocator) !void {
-    _allocator = allocator;
-
-    _viewport_set = ViewportSet.init(allocator);
-    _viewport_pool = ViewportPool.init(allocator);
-
-    _rg_set = GraphSet.init(allocator);
-    _rg_pool = GraphPool.init(allocator);
-    _rg_lock = std.Thread.Mutex{};
-
-    try registerToApi();
-}
-
-pub fn deinit() void {
-    _viewport_set.deinit();
-    _viewport_pool.deinit();
-
-    _rg_set.deinit();
-    _rg_pool.deinit();
-}
-
-pub fn registerToApi() !void {
-    try apidb.api.setZigApi(module_name, public.RendererApi, &api);
-    try apidb.api.setZigApi(module_name, public.RenderGraphApi, &graph_api);
-
-    try apidb.api.implInterface(module_name, cetech1.kernel.KernelRenderI, &_kernel_render_task);
-}
-
-fn createViewport(name: [:0]const u8, rg: public.Graph, world: ?ecs.World) !public.Viewport {
-    const new_viewport = try _viewport_pool.create();
+fn createViewport(name: [:0]const u8, rg: public.Graph, world: ?ecs.World, camera_ent: ecs.EntityId) !public.Viewport {
+    const new_viewport = try _g.viewport_pool.create();
 
     const dupe_name = try _allocator.dupeZ(u8, name);
 
@@ -807,11 +788,8 @@ fn createViewport(name: [:0]const u8, rg: public.Graph, world: ?ecs.World) !publ
         .dd = _dd.encoderCreate(),
         .rg = rg,
         .world = world,
-        .view_mtx = zm.matToArr(zm.lookAtRh(
-            zm.f32x4(0.0, 0.0, 0.0, 1.0),
-            zm.f32x4(0.0, 0.0, 1.0, 1.0),
-            zm.f32x4(0.0, 1.0, 0.0, 1.0),
-        )),
+        .main_camera_entity = camera_ent,
+        .renderMe = false,
         .culling = CullingSystem.init(_allocator),
         .all_renderables_counter = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/all_renerables", .{dupe_name})),
         .rendered_counter = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/rendered", .{dupe_name})),
@@ -821,7 +799,7 @@ fn createViewport(name: [:0]const u8, rg: public.Graph, world: ?ecs.World) !publ
         .complete_render_duration = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/complete_render_duration", .{dupe_name})),
     };
 
-    try _viewport_set.put(new_viewport, {});
+    try _g.viewport_set.put(new_viewport, {});
     return public.Viewport{
         .ptr = new_viewport,
         .vtable = &viewport_vt,
@@ -830,7 +808,7 @@ fn createViewport(name: [:0]const u8, rg: public.Graph, world: ?ecs.World) !publ
 
 fn destroyViewport(viewport: public.Viewport) void {
     const true_viewport: *Viewport = @alignCast(@ptrCast(viewport.ptr));
-    _ = _viewport_set.swapRemove(true_viewport);
+    _ = _g.viewport_set.swapRemove(true_viewport);
 
     if (true_viewport.fb.isValid()) {
         _gpu.destroyFrameBuffer(true_viewport.fb);
@@ -840,7 +818,7 @@ fn destroyViewport(viewport: public.Viewport) void {
     _allocator.free(true_viewport.name);
 
     _dd.encoderDestroy(true_viewport.dd);
-    _viewport_pool.destroy(true_viewport);
+    _g.viewport_pool.destroy(true_viewport);
 }
 
 pub const api = public.RendererApi{
@@ -882,24 +860,28 @@ pub const viewport_vt = public.Viewport.VTable.implement(struct {
         return true_viewport.dd;
     }
 
-    pub fn setViewMtx(viewport: *anyopaque, mtx: [16]f32) void {
+    pub fn renderMe(viewport: *anyopaque) void {
         const true_viewport: *Viewport = @alignCast(@ptrCast(viewport));
-        true_viewport.view_mtx = mtx;
+        true_viewport.renderMe = true;
     }
-    pub fn getViewMtx(viewport: *anyopaque) [16]f32 {
+
+    pub fn setMainCamera(viewport: *anyopaque, camera_ent: ?ecs.EntityId) void {
         const true_viewport: *Viewport = @alignCast(@ptrCast(viewport));
-        return true_viewport.view_mtx;
+        true_viewport.main_camera_entity = camera_ent;
+    }
+
+    pub fn getMainCamera(viewport: *anyopaque) ?ecs.EntityId {
+        const true_viewport: *Viewport = @alignCast(@ptrCast(viewport));
+        return true_viewport.main_camera_entity;
     }
 });
 
-const AtomicViewId = std.atomic.Value(u16);
-var view_id: AtomicViewId = AtomicViewId.init(1);
 fn newViewId() gpu.ViewId {
-    return view_id.fetchAdd(1, .monotonic);
+    return _g.view_id.fetchAdd(1, .monotonic);
 }
 
 fn resetViewId() void {
-    view_id.store(1, .monotonic);
+    _g.view_id.store(1, .monotonic);
 }
 
 const RenderViewportTask = struct {
@@ -911,8 +893,8 @@ const RenderViewportTask = struct {
         var zone = _profiler.ZoneN(@src(), "RenderViewport");
         defer zone.End();
 
-        const allocator = try tempalloc.api.create();
-        defer tempalloc.api.destroy(allocator);
+        const allocator = try _tmpalloc.create();
+        defer _tmpalloc.destroy(allocator);
 
         const fb = s.viewport.fb;
         if (!fb.isValid()) return;
@@ -921,30 +903,87 @@ const RenderViewportTask = struct {
         if (@intFromPtr(rg.ptr) == 0) return;
 
         const vp = public.Viewport{ .ptr = s.viewport, .vtable = &viewport_vt };
-        const builder = try rg.createBuilder(allocator, vp);
-        defer rg.destroyBuilder(builder);
-        {
-            var z = _profiler.ZoneN(@src(), "RenderViewport - Render graph");
-            defer z.End();
-
-            const color_output = _gpu.getTexture(fb, 0);
-            try builder.importTexture(public.ViewportColorResource, color_output);
-
-            try rg.setupBuilder(builder);
-
-            try builder.compile();
-            try builder.execute(vp);
-        }
 
         const Renderables = struct {
             iface: *const public.RendereableI,
         };
 
+        var viewers = ViewersList.init(allocator);
+        defer viewers.deinit();
+
         if (s.viewport.world) |world| {
             var renderables = std.ArrayList(Renderables).init(allocator);
             defer renderables.deinit();
 
-            const viewers = builder.getViewers();
+            viewers.clearRetainingCapacity();
+            //const viewers = builder.getViewers();
+
+            // Main vieewr
+            const fb_size = s.viewport.size;
+            const aspect_ratio = fb_size[0] / fb_size[1];
+
+            // Collect camera
+            {
+                var q = try world.createQuery(&.{
+                    .{ .id = ecs.id(transform.WorldTransform), .inout = .In },
+                    .{ .id = ecs.id(camera.Camera), .inout = .In },
+                });
+                var it = try q.iter();
+                defer q.destroy();
+
+                while (q.next(&it)) {
+                    const entities = it.entities();
+                    const camera_transforms = it.field(transform.WorldTransform, 0).?;
+                    const cameras = it.field(camera.Camera, 1).?;
+                    for (0..camera_transforms.len) |idx| {
+                        const pmtx = switch (cameras[idx].type) {
+                            .perspective => zm.perspectiveFovRh(
+                                std.math.degreesToRadians(cameras[idx].fov),
+                                aspect_ratio,
+                                cameras[idx].near,
+                                cameras[idx].far,
+                            ),
+                            .ortho => zm.orthographicRh(
+                                fb_size[0],
+                                fb_size[1],
+                                cameras[idx].near,
+                                cameras[idx].far,
+                            ),
+                        };
+
+                        const v = .{
+                            .camera = cameras[idx],
+                            .mtx = zm.matToArr(zm.inverse(camera_transforms[idx].mtx)),
+                            .proj = zm.matToArr(pmtx),
+                        };
+                        if (s.viewport.main_camera_entity != null and s.viewport.main_camera_entity.? == entities[idx]) {
+                            try viewers.insert(0, v);
+                        } else {
+                            try viewers.append(v);
+                        }
+                    }
+                }
+            }
+
+            if (viewers.items.len == 0) return;
+
+            const builder = try rg.createBuilder(allocator, vp);
+            defer rg.destroyBuilder(builder);
+            {
+                var z = _profiler.ZoneN(@src(), "RenderViewport - Render graph");
+                defer z.End();
+
+                const color_output = _gpu.getTexture(fb, 0);
+                try builder.importTexture(public.ViewportColorResource, color_output);
+
+                try rg.setupBuilder(builder);
+
+                try builder.compile();
+                try builder.execute(viewers.items);
+            }
+
+            // TODO: Collect renderables that is not cullable
+            {}
 
             // Collect  renderables to culling
             {
@@ -954,7 +993,7 @@ const RenderViewportTask = struct {
                 const counter = cetech1.metrics.MetricScopedDuration.begin(s.viewport.culling_collect_duration);
                 defer counter.end();
 
-                const impls = try apidb.api.getImpl(allocator, cetech1.renderer.RendereableI);
+                const impls = try _apidb.getImpl(allocator, public.RendereableI);
                 defer allocator.free(impls);
                 for (impls) |iface| {
                     const renderable = Renderables{ .iface = iface };
@@ -965,7 +1004,7 @@ const RenderViewportTask = struct {
                         var zz = _profiler.ZoneN(@src(), "RenderViewport - Culling calback");
                         defer zz.End();
 
-                        _ = try culling(allocator, builder, world, viewers, cr);
+                        _ = try culling(allocator, builder, world, viewers.items, cr);
                     }
                     try renderables.append(renderable);
 
@@ -981,7 +1020,7 @@ const RenderViewportTask = struct {
                 const counter = cetech1.metrics.MetricScopedDuration.begin(s.viewport.culling_duration);
                 defer counter.end();
 
-                try s.viewport.culling.doCulling(allocator, viewers);
+                try s.viewport.culling.doCulling(allocator, viewers.items);
             }
 
             // Render
@@ -1018,7 +1057,10 @@ fn renderAllViewports(allocator: std.mem.Allocator) !void {
 
     resetViewId();
 
-    for (_viewport_set.keys()) |viewport| {
+    for (_g.viewport_set.keys()) |viewport| {
+        if (!viewport.renderMe) continue;
+        viewport.renderMe = false;
+
         const recreate = viewport.new_size[0] != viewport.size[0] or viewport.new_size[1] != viewport.size[1];
 
         if (recreate) {
@@ -1110,12 +1152,12 @@ fn _renderAll(ctx: *gpu.GpuContext, kernel_tick: u64, dt: f32, vsync: bool) !voi
 
     _gpu.dbgTextClear(0, false);
 
-    const allocator = try tempalloc.api.create();
-    defer tempalloc.api.destroy(allocator);
+    const allocator = try _tmpalloc.create();
+    defer _tmpalloc.destroy(allocator);
 
     try renderAllViewports(allocator);
 
-    gpu_private.endAllUsedEncoders();
+    _gpu.endAllUsedEncoders();
 
     // TODO: save frameid for sync (sync across frames like read back frame + 2)
     {
@@ -1165,20 +1207,20 @@ pub const graph_api = public.RenderGraphApi{
 };
 
 fn create() !public.Graph {
-    const new_rg = try _rg_pool.create();
+    const new_rg = try _g.rg_pool.create();
     new_rg.* = Graph.init(_allocator);
 
     {
-        _rg_lock.lock();
-        defer _rg_lock.unlock();
-        try _rg_set.put(new_rg, {});
+        _g.rg_lock.lock();
+        defer _g.rg_lock.unlock();
+        try _g.rg_set.put(new_rg, {});
     }
 
     return public.Graph{ .ptr = new_rg, .vtable = &rg_vt };
 }
 
 fn createDefault(allocator: std.mem.Allocator, graph: public.Graph) !void {
-    const impls = try apidb.api.getImpl(allocator, public.DefaultRenderGraphI);
+    const impls = try _apidb.getImpl(allocator, public.DefaultRenderGraphI);
     defer allocator.free(impls);
     if (impls.len == 0) return;
 
@@ -1191,10 +1233,135 @@ fn destroy(rg: public.Graph) void {
     true_rg.deinit();
 
     {
-        _rg_lock.lock();
-        defer _rg_lock.unlock();
-        _ = _rg_set.swapRemove(true_rg);
+        _g.rg_lock.lock();
+        defer _g.rg_lock.unlock();
+        _ = _g.rg_set.swapRemove(true_rg);
     }
 
-    _rg_pool.destroy(true_rg);
+    _g.rg_pool.destroy(true_rg);
+}
+
+// TODO: Move
+const culling_volume_node_i = graphvm.GraphNodeI.implement(
+    .{
+        .name = "Culling volume",
+        .type_name = public.CULLING_VOLUME_NODE_TYPE_STR,
+        .pivot = .pivot,
+        .category = "Culling",
+    },
+    public.CullingVolume,
+    struct {
+        const Self = @This();
+
+        pub fn getInputPins(allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+            _ = node_obj; // autofix
+            _ = graph_obj; // autofix
+            return allocator.dupe(graphvm.NodePin, &.{
+                graphvm.NodePin.init("Radius", graphvm.NodePin.pinHash("radius", false), graphvm.PinTypes.F32),
+                graphvm.NodePin.init("Min", graphvm.NodePin.pinHash("min", false), graphvm.PinTypes.VEC3F),
+                graphvm.NodePin.init("Max", graphvm.NodePin.pinHash("max", false), graphvm.PinTypes.VEC3F),
+            });
+        }
+
+        pub fn getOutputPins(allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+            _ = node_obj; // autofix
+            _ = graph_obj; // autofix
+            return allocator.dupe(graphvm.NodePin, &.{});
+        }
+
+        pub fn create(allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool) !void {
+            _ = reload; // autofix
+            _ = allocator; // autofix
+            _ = node_obj; // autofix
+            const real_state: *public.CullingVolume = @alignCast(@ptrCast(state));
+            real_state.* = .{};
+        }
+
+        pub fn execute(args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: graphvm.OutPins) !void {
+            _ = out_pins;
+            var state = args.getState(public.CullingVolume).?;
+            _, const radius = in_pins.read(f32, 0) orelse .{ 0, 0 };
+            _, const min = in_pins.read([3]f32, 1) orelse .{ 0, .{ 0, 0, 0 } };
+            _, const max = in_pins.read([3]f32, 2) orelse .{ 0, .{ 0, 0, 0 } };
+
+            state.radius = radius;
+            state.min = min;
+            state.max = max;
+        }
+
+        pub fn icon(
+            buff: [:0]u8,
+            allocator: std.mem.Allocator,
+            node_obj: cdb.ObjId,
+        ) ![:0]u8 {
+            _ = allocator; // autofix
+            _ = node_obj; // autofix
+
+            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Bounding});
+        }
+    },
+);
+
+var kernel_task = cetech1.kernel.KernelTaskI.implement(
+    "Renderer",
+    &[_]strid.StrId64{},
+    struct {
+        pub fn init() !void {
+            _g.viewport_set = ViewportSet.init(_allocator);
+            _g.viewport_pool = ViewportPool.init(_allocator);
+
+            _g.rg_set = GraphSet.init(_allocator);
+            _g.rg_pool = GraphPool.init(_allocator);
+            _g.rg_lock = std.Thread.Mutex{};
+        }
+
+        pub fn shutdown() !void {
+            _g.viewport_set.deinit();
+            _g.viewport_pool.deinit();
+
+            _g.rg_set.deinit();
+            _g.rg_pool.deinit();
+        }
+    },
+);
+
+// Create types, register api, interfaces etc...
+pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+    _ = reload; // autofix
+    // basic
+    _allocator = allocator;
+    _log = log_api;
+    _apidb = apidb;
+    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
+    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
+    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
+    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
+
+    _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
+
+    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
+
+    _dd = apidb.getZigApi(module_name, gpu.GpuDDApi).?;
+    _metrics = apidb.getZigApi(module_name, cetech1.metrics.MetricsAPI).?;
+    _task = apidb.getZigApi(module_name, cetech1.task.TaskAPI).?;
+    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
+
+    // create global variable that can survive reload
+    _g = try _apidb.globalVar(G, module_name, "_g", .{});
+
+    // register apis
+    try apidb.setOrRemoveZigApi(module_name, public.RendererApi, &api, load);
+    try apidb.setOrRemoveZigApi(module_name, public.RenderGraphApi, &graph_api, load);
+
+    // impl interface
+    try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
+    try apidb.implOrRemove(module_name, cetech1.kernel.KernelRenderI, &_kernel_render_task, load);
+    try apidb.implOrRemove(module_name, graphvm.GraphNodeI, &culling_volume_node_i, load);
+
+    return true;
+}
+
+// This is only one fce that cetech1 need to load/unload/reload module.
+pub export fn ct_load_module_renderer(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

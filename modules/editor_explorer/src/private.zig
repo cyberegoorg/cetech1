@@ -110,11 +110,6 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         }
     }
 
-    pub fn assetRootOpened(inst: *editor.TabO) !void {
-        const tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
-        tab_o.inter_selection.clear();
-    }
-
     // Draw tab menu
     pub fn menu(inst: *editor.TabO) !void {
         var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));

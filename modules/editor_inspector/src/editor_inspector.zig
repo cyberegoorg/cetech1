@@ -77,8 +77,6 @@ pub const UiEmbedPropertiesAspect = struct {
     }
 };
 
-pub const hidePropertyAspect = UiPropertyAspect{};
-
 pub const UiPropertyAspect = struct {
     pub const c_name = "ct_ui_property_aspect";
     pub const name_hash = strid.strId32(@This().c_name);

@@ -1,5 +1,32 @@
 const std = @import("std");
-const zm = @import("math.zig");
+
+const cetech1 = @import("cetech1");
+const zm = cetech1.math;
+const cdb = cetech1.cdb;
+const ecs = cetech1.ecs;
+
+pub const CameraType = enum(u8) {
+    perspective = 0,
+    ortho,
+};
+
+pub const Camera = struct {
+    type: CameraType = .perspective,
+    fov: f32 = 60,
+    near: f32 = 0.1,
+    far: f32 = 100.0,
+};
+
+pub const CameraCdb = cdb.CdbTypeDecl(
+    "ct_camera",
+    enum(u32) {
+        Type = 0,
+        Fov,
+        Near,
+        Far,
+    },
+    struct {},
+);
 
 pub const SimpleFPSCamera = struct {
     position: [3]f32 = .{ 0.0, 0.0, 0.0 },
@@ -21,7 +48,7 @@ pub const SimpleFPSCamera = struct {
 
         // Look handle
         {
-            self.pitch += self.look_speed * mouse_delta[1] * -1;
+            self.pitch += self.look_speed * mouse_delta[1];
             self.yaw += self.look_speed * mouse_delta[0] * -1;
             self.pitch = @min(self.pitch, 0.48 * std.math.pi);
             self.pitch = @max(self.pitch, -0.48 * std.math.pi);
@@ -33,23 +60,14 @@ pub const SimpleFPSCamera = struct {
         // Move handle
         {
             var forward = zm.loadArr3(self.forward);
-            const right = speed * delta_time * -zm.normalize3(zm.cross3(zm.f32x4(0.0, 1.0, 0.0, 1.0), forward));
+            const right = speed * delta_time * zm.normalize3(zm.cross3(zm.f32x4(0.0, 1.0, 0.0, 1.0), forward));
             forward = speed * delta_time * forward;
 
             var cam_pos = zm.loadArr3(self.position);
-            cam_pos += forward * zm.f32x4s(move[1]);
+            cam_pos += forward * zm.f32x4s(-move[1]);
             cam_pos += right * zm.f32x4s(move[0]);
             zm.storeArr3(&self.position, cam_pos);
         }
-    }
-
-    pub fn calcViewMtx(self: SimpleFPSCamera) [16]f32 {
-        const viewMtx = zm.lookAtRh(
-            zm.loadArr3(self.position),
-            zm.loadArr3(self.position) + zm.loadArr3(self.forward),
-            zm.f32x4(0.0, 1.0, 0.0, 0.0),
-        );
-        return zm.matToArr(viewMtx);
     }
 
     inline fn calcForward(self: *SimpleFPSCamera) void {
@@ -57,4 +75,9 @@ pub const SimpleFPSCamera = struct {
         const forward = zm.normalize3(zm.mul(zm.f32x4(0.0, 0.0, 1.0, 1.0), t));
         zm.storeArr3(&self.forward, forward);
     }
+};
+
+pub const CameraAPI = struct {
+    cameraSetingsMenu: *const fn (world: ecs.World, camera_ent: ecs.EntityId) void,
+    selectMainCameraMenu: *const fn (allocator: std.mem.Allocator, world: ecs.World, camera_ent: ecs.EntityId, current_main_camera: ?ecs.EntityId) anyerror!?ecs.EntityId,
 };

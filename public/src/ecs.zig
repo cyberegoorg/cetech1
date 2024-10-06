@@ -79,7 +79,9 @@ pub const OnTableEmpty = strid.strId32("OnTableEmpty");
 pub const OnTableFill = strid.strId32("OnTableFill");
 
 pub fn id(comptime T: type) strid.StrId32 {
-    return strid.strId32(@typeName(T));
+    var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
+    const name = name_iter.first();
+    return strid.strId32(name);
 }
 
 pub const Self_ = 1 << 63;
@@ -164,9 +166,13 @@ pub const ComponentI = struct {
     ) anyerror!void = null,
 
     pub fn implement(comptime T: type, cdb_type_hash: ?cdb.TypeHash, comptime Hooks: type) Self {
+        var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
+        const name = name_iter.first();
+        const cname = name[0..name.len :0];
+
         return Self{
-            .name = @typeName(T),
-            .id = strid.strId32(@typeName(T)),
+            .name = cname,
+            .id = strid.strId32(name),
 
             .size = @sizeOf(T),
             .aligment = @alignOf(T),
@@ -266,6 +272,8 @@ pub const SystemI = struct {
     immediate: bool = false,
     cache_kind: QueryCacheKind = .QueryCacheDefault,
 
+    simulation: bool = false,
+
     update: ?*const fn (iter: *IterO) callconv(.C) void = undefined,
     iterate: ?*const fn (iter: *IterO) callconv(.C) void = undefined,
 
@@ -276,6 +284,7 @@ pub const SystemI = struct {
             .query = args.query,
             .multi_threaded = args.multi_threaded,
             .instanced = args.instanced,
+            .simulation = args.simulation,
 
             .update = if (std.meta.hasFn(T, "update")) struct {
                 pub fn f(iter: *IterO) callconv(.C) void {
@@ -370,6 +379,11 @@ pub const World = struct {
         return self.vtable.setId(self.ptr, entity, id(T), @sizeOf(T), ptr);
     }
 
+    pub inline fn getMutId(self: World, comptime T: type, entity: EntityId) ?*T {
+        const ptr = self.vtable.getMutId(self.ptr, entity, id(T));
+        return @alignCast(@ptrCast(ptr));
+    }
+
     pub inline fn setIdRaw(self: World, entity: EntityId, cid: strid.StrId32, size: usize, ptr: ?*const anyopaque) EntityId {
         return self.vtable.setId(self.ptr, entity, cid, size, ptr);
     }
@@ -410,6 +424,14 @@ pub const World = struct {
         return self.vtable.uiRemoteDebugMenuItems(self.ptr, allocator, port);
     }
 
+    pub fn setSimulate(self: World, simulate: bool) void {
+        self.vtable.setSimulate(self.ptr, simulate);
+    }
+
+    pub fn isSimulate(self: World) bool {
+        return self.vtable.isSimulate(self.ptr);
+    }
+
     ptr: *anyopaque,
     vtable: *const VTable,
 
@@ -419,7 +441,7 @@ pub const World = struct {
         destroyEntities: *const fn (self: *anyopaque, ents: []const EntityId) void,
 
         setId: *const fn (world: *anyopaque, entity: EntityId, id: strid.StrId32, size: usize, ptr: ?*const anyopaque) EntityId,
-
+        getMutId: *const fn (world: *anyopaque, entity: EntityId, id: strid.StrId32) ?*anyopaque,
         createQuery: *const fn (world: *anyopaque, query: []const QueryTerm) anyerror!Query,
 
         progress: *const fn (world: *anyopaque, dt: f32) bool,
@@ -432,6 +454,9 @@ pub const World = struct {
         isRemoteDebugActive: *const fn (world: *anyopaque) bool,
         setRemoteDebugActive: *const fn (world: *anyopaque, active: bool) ?u16,
         uiRemoteDebugMenuItems: *const fn (world: *anyopaque, allocator: std.mem.Allocator, port: ?u16) ?u16,
+
+        setSimulate: *const fn (world: *anyopaque, simulate: bool) void,
+        isSimulate: *const fn (world: *anyopaque) bool,
     };
 };
 
@@ -528,7 +553,7 @@ pub const EcsAPI = struct {
     createWorld: *const fn () anyerror!World,
     destroyWorld: *const fn (world: World) void,
 
-    toWorld: *const fn (world: *anyopaque) World,
+    //toWorld: *const fn (world: *anyopaque) World,
     toIter: *const fn (iter: *IterO) Iter,
 
     findComponentIByCdbHash: *const fn (cdb_hash: cdb.TypeHash) ?*const ComponentI,

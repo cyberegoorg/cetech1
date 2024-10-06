@@ -1,17 +1,36 @@
 const std = @import("std");
-const platform = @import("platform.zig");
-const strid = @import("strid.zig");
-const cdb = @import("cdb.zig");
-const gpu = @import("gpu.zig");
 
-const ecs = @import("ecs.zig");
-const zm = @import("root.zig").zmath;
-const transform = @import("transform.zig");
+const cetech1 = @import("cetech1");
+const cdb = cetech1.cdb;
+const gpu = cetech1.gpu;
 
-const log = std.log.scoped(.renderer);
+const zm = cetech1.math;
+const strid = cetech1.strid;
+const ecs = cetech1.ecs;
+
+const transform = @import("transform");
+const camera = @import("camera");
+
+pub const RENDERER_KERNEL_TASK = strid.strId64("Renderer");
+pub const CULLING_VOLUME_NODE_TYPE_STR = "culling_volume";
+pub const CULLING_VOLUME_NODE_TYPE = strid.strId32(CULLING_VOLUME_NODE_TYPE_STR);
 
 pub const CullingVolume = struct {
+    min: [3]f32 = .{ 0, 0, 0 },
+    max: [3]f32 = .{ 0, 0, 0 },
     radius: f32 = 0,
+
+    pub fn hasBox(self: CullingVolume) bool {
+        return !std.mem.eql(f32, &self.min, &self.max);
+    }
+
+    pub fn hasSphere(self: CullingVolume) bool {
+        return self.radius != 0;
+    }
+
+    pub fn hasAny(self: CullingVolume) bool {
+        return self.hasBox() or self.hasSphere();
+    }
 };
 
 const MatList = std.ArrayList(transform.WorldTransform);
@@ -102,7 +121,7 @@ pub const RendereableI = struct {
     pub const c_name = "ct_rg_component_renderer_i";
     pub const name_hash = strid.strId64(@This().c_name);
 
-    culling: ?*const fn (allocator: std.mem.Allocator, builder: GraphBuilder, world: ecs.World, viewers: []Viewer, rq: *CullingRequest) anyerror!void = undefined,
+    culling: ?*const fn (allocator: std.mem.Allocator, builder: GraphBuilder, world: ecs.World, viewers: []const Viewer, rq: *CullingRequest) anyerror!void = undefined,
     render: *const fn (allocator: std.mem.Allocator, builder: GraphBuilder, world: ecs.World, viewport: Viewport, culling: ?*CullingResult) anyerror!void = undefined,
 
     size: usize,
@@ -153,11 +172,17 @@ pub const Viewport = struct {
     pub inline fn getDD(self: Viewport) gpu.DDEncoder {
         return self.vtable.getDD(self.ptr);
     }
-    pub inline fn setViewMtx(self: Viewport, mtx: [16]f32) void {
-        return self.vtable.setViewMtx(self.ptr, mtx);
+
+    pub inline fn setMainCamera(self: Viewport, camera_ent: ecs.EntityId) void {
+        return self.vtable.setMainCamera(self.ptr, camera_ent);
     }
-    pub inline fn getViewMtx(self: Viewport) [16]f32 {
-        return self.vtable.getViewMtx(self.ptr);
+
+    pub inline fn getMainCamera(self: Viewport) ?ecs.EntityId {
+        return self.vtable.getMainCamera(self.ptr);
+    }
+
+    pub inline fn renderMe(self: Viewport) void {
+        return self.vtable.renderMe(self.ptr);
     }
 
     ptr: *anyopaque,
@@ -169,8 +194,9 @@ pub const Viewport = struct {
         getFb: *const fn (viewport: *anyopaque) ?gpu.FrameBufferHandle,
         getSize: *const fn (viewport: *anyopaque) [2]f32,
         getDD: *const fn (viewport: *anyopaque) gpu.DDEncoder,
-        setViewMtx: *const fn (viewport: *anyopaque, mtx: [16]f32) void,
-        getViewMtx: *const fn (viewport: *anyopaque) [16]f32,
+        getMainCamera: *const fn (viewport: *anyopaque) ?ecs.EntityId,
+        setMainCamera: *const fn (viewport: *anyopaque, camera_ent: ?ecs.EntityId) void,
+        renderMe: *const fn (viewport: *anyopaque) void,
 
         pub fn implement(comptime T: type) VTable {
             if (!std.meta.hasFn(T, "setSize")) @compileError("implement me");
@@ -178,8 +204,7 @@ pub const Viewport = struct {
             if (!std.meta.hasFn(T, "getFb")) @compileError("implement me");
             if (!std.meta.hasFn(T, "getSize")) @compileError("implement me");
             if (!std.meta.hasFn(T, "getDD")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "setViewMtx")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "getViewMtx")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "renderMe")) @compileError("implement me");
 
             return VTable{
                 .setSize = &T.setSize,
@@ -187,8 +212,9 @@ pub const Viewport = struct {
                 .getFb = &T.getFb,
                 .getSize = &T.getSize,
                 .getDD = &T.getDD,
-                .setViewMtx = &T.setViewMtx,
-                .getViewMtx = &T.getViewMtx,
+                .renderMe = &T.renderMe,
+                .setMainCamera = &T.setMainCamera,
+                .getMainCamera = &T.getMainCamera,
             };
         }
     };
@@ -198,7 +224,7 @@ const GfxApi = gpu.GpuApi;
 
 pub const Pass = struct {
     setup: *const fn (pass: *Pass, builder: GraphBuilder) anyerror!void,
-    render: *const fn (builder: GraphBuilder, gfx_api: *const GfxApi, viewport: Viewport, viewid: gpu.ViewId) anyerror!void,
+    render: *const fn (builder: GraphBuilder, gfx_api: *const GfxApi, viewport: Viewport, viewid: gpu.ViewId, viewers: []const Viewer) anyerror!void,
 
     pub fn implement(comptime T: type) Pass {
         if (!std.meta.hasFn(T, "setup")) @compileError("implement me");
@@ -242,6 +268,8 @@ pub const Module = struct {
 
 pub const Viewer = struct {
     mtx: [16]f32,
+    proj: [16]f32,
+    camera: camera.Camera,
 };
 
 pub const ResourceId = strid.StrId32;
@@ -306,8 +334,8 @@ pub const GraphBuilder = struct {
     pub inline fn compile(builder: GraphBuilder) !void {
         return builder.vtable.compile(builder.ptr);
     }
-    pub inline fn execute(builder: GraphBuilder, viewport: Viewport) !void {
-        return builder.vtable.execute(builder.ptr, viewport);
+    pub inline fn execute(builder: GraphBuilder, viewers: []const Viewer) !void {
+        return builder.vtable.execute(builder.ptr, viewers);
     }
 
     pub inline fn getViewers(builder: GraphBuilder) []Viewer {
@@ -331,7 +359,7 @@ pub const GraphBuilder = struct {
         getViewers: *const fn (builder: *anyopaque) []Viewer,
 
         compile: *const fn (builder: *anyopaque) anyerror!void,
-        execute: *const fn (builder: *anyopaque, viewport: Viewport) anyerror!void,
+        execute: *const fn (builder: *anyopaque, viewers: []const Viewer) anyerror!void,
     };
 };
 
@@ -397,6 +425,6 @@ pub const RendererApi = struct {
 
     renderAll: *const fn (ctx: *gpu.GpuContext, kernel_tick: u64, dt: f32, vsync: bool) void,
 
-    createViewport: *const fn (name: [:0]const u8, rg: Graph, world: ?ecs.World) anyerror!Viewport,
+    createViewport: *const fn (name: [:0]const u8, rg: Graph, world: ?ecs.World, camera_ent: ecs.EntityId) anyerror!Viewport,
     destroyViewport: *const fn (viewport: Viewport) void,
 };

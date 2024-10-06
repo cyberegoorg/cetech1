@@ -56,6 +56,7 @@ pub const GpuApi = struct {
     getResolution: *const fn () Resolution,
 
     addPaletteColor: *const fn (color: u32) u8,
+    endAllUsedEncoders: *const fn () void,
 
     vertexPack: *const fn (_input: [4]f32, _inputNormalized: bool, _attr: Attrib, _layout: [*c]const VertexLayout, _data: ?*anyopaque, _index: u32) void,
     vertexUnpack: *const fn (_output: [4]f32, _attr: Attrib, _layout: [*c]const VertexLayout, _data: ?*const anyopaque, _index: u32) void,
@@ -547,8 +548,8 @@ pub const DDEncoder = struct {
     }
 
     ///
-    pub inline fn drawFrustum(dde: DDEncoder, _viewProj: []f32) void {
-        dde.vtable.encoderDrawFrustum(dde.ptr, _viewProj.ptr);
+    pub inline fn drawFrustum(dde: DDEncoder, _viewProj: [16]f32) void {
+        dde.vtable.encoderDrawFrustum(dde.ptr, &_viewProj);
     }
 
     ///
@@ -634,7 +635,7 @@ pub const DDEncoder = struct {
         encoderDrawGeometry: *const fn (dde: *anyopaque, _handle: DDGeometryHandle) void,
         encoderDrawLineList: *const fn (dde: *anyopaque, _numVertices: u32, _vertices: []const DDVertex, _numIndices: u32, _indices: ?[*]const u16) void,
         encoderDrawTriList: *const fn (dde: *anyopaque, _numVertices: u32, _vertices: []const DDVertex, _numIndices: u32, _indices: ?[*]const u16) void,
-        encoderDrawFrustum: *const fn (dde: *anyopaque, _viewProj: []f32) void,
+        encoderDrawFrustum: *const fn (dde: *anyopaque, _viewProj: []const f32) void,
         encoderDrawArc: *const fn (dde: *anyopaque, _axis: DDAxis, _xyz: [3]f32, _radius: f32, _degrees: f32) void,
         encoderDrawCircle: *const fn (dde: *anyopaque, _normal: [3]f32, _center: [3]f32, _radius: f32, _weight: f32) void,
         encoderDrawCircleAxis: *const fn (dde: *anyopaque, _axis: DDAxis, _xyz: [3]f32, _radius: f32, _weight: f32) void,

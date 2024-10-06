@@ -14,14 +14,15 @@ const actions = cetech1.actions;
 const assetdb = cetech1.assetdb;
 const uuid = cetech1.uuid;
 const task = cetech1.task;
-const transform = cetech1.transform;
-const renderer = cetech1.renderer;
-const camera = cetech1.camera;
 
+const renderer = @import("renderer");
 const Viewport = renderer.Viewport;
 
 const editor = @import("editor");
 const Icons = coreui.CoreIcons;
+
+const transform = @import("transform");
+const camera = @import("camera");
 
 const module_name = .editor_foo_viewport_tab;
 
@@ -49,7 +50,7 @@ var _actions: *const actions.ActionsAPI = undefined;
 var _assetdb: *const assetdb.AssetDBAPI = undefined;
 var _uuid: *const uuid.UuidAPI = undefined;
 var _task: *const task.TaskAPI = undefined;
-var _renderer: *const cetech1.renderer.RendererApi = undefined;
+var _renderer: *const renderer.RendererApi = undefined;
 
 const World2CullingQuery = std.AutoArrayHashMap(ecs.World, ecs.Query);
 
@@ -57,7 +58,7 @@ const World2CullingQuery = std.AutoArrayHashMap(ecs.World, ecs.Query);
 const G = struct {
     test_tab_vt_ptr: *editor.TabTypeI = undefined,
     rg: renderer.Graph = undefined,
-    db: cetech1.cdb.DbId = undefined, // TODO: SHIT
+    db: cdb.DbId = undefined, // TODO: SHIT
 };
 var _g: *G = undefined;
 
@@ -71,11 +72,11 @@ const FooViewportTab = struct {
     tab_i: editor.TabI,
     viewport: Viewport = undefined,
     world: ecs.World,
-    camera_look_activated: bool = false,
 
+    camera_ent: ecs.EntityId,
+    camera_look_activated: bool = false,
     camera: camera.SimpleFPSCamera = camera.SimpleFPSCamera.init(.{
         .position = .{ 0, 2, 12 },
-        .yaw = std.math.degreesToRadians(180),
     }),
 
     flecs_port: ?u16 = null,
@@ -88,13 +89,45 @@ const Velocity = struct {
     y: f32,
     z: f32,
 };
-const velocity_c = ecs.ComponentI.implement(Velocity, null, struct {});
+const velocity_c = ecs.ComponentI.implement(
+    Velocity,
+    VelocityCdb.type_hash,
+    struct {
+        pub fn uiIcons(
+            buff: [:0]u8,
+            allocator: std.mem.Allocator,
+            obj: cdb.ObjId,
+        ) ![:0]const u8 {
+            _ = allocator; // autofix
+            _ = obj; // autofix
+            return std.fmt.bufPrintZ(buff, "{s}", .{coreui.CoreIcons.FA_ANGLES_RIGHT});
+        }
+
+        pub fn fromCdb(
+            allocator: std.mem.Allocator,
+            obj: cdb.ObjId,
+            data: []u8,
+        ) anyerror!void {
+            _ = allocator; // autofix
+
+            const r = _cdb.readObj(obj) orelse return;
+
+            const position = std.mem.bytesAsValue(Velocity, data);
+            position.* = Velocity{
+                .x = VelocityCdb.readValue(f32, _cdb, r, .X),
+                .y = VelocityCdb.readValue(f32, _cdb, r, .Y),
+                .z = VelocityCdb.readValue(f32, _cdb, r, .Z),
+            };
+        }
+    },
+);
 
 const move_system_i = ecs.SystemI.implement(
     .{
         .name = "move system",
         .multi_threaded = false,
         .phase = ecs.OnUpdate,
+        .simulation = true,
         .query = &.{
             .{ .id = ecs.id(transform.Position), .inout = .InOut },
             .{ .id = ecs.id(Velocity), .inout = .In },
@@ -124,7 +157,7 @@ const ECS_ENTITY_CONTEXT = cetech1.strid.strId32("ecs_entity_context");
 // Fill editor tab interface
 var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
-    .tab_hash = .{ .id = cetech1.strid.strId32(TAB_NAME).id },
+    .tab_hash = cetech1.strid.strId32(TAB_NAME),
     .category = "Examples",
 }, struct {
 
@@ -146,9 +179,20 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         var buf: [128]u8 = undefined;
         const name = try std.fmt.bufPrintZ(&buf, "Foo viewport {d}", .{tab_id});
 
+        const camera_ent = w.newEntity(null);
+        _ = w.setId(transform.Position, camera_ent, &transform.Position{});
+        _ = w.setId(transform.Rotation, camera_ent, &transform.Rotation{});
+        _ = w.setId(camera.Camera, camera_ent, &camera.Camera{});
+
         var tab_inst = _allocator.create(FooViewportTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _renderer.createViewport(name, _g.rg, w),
+            .viewport = try _renderer.createViewport(
+                name,
+                _g.rg,
+                w,
+                camera_ent,
+            ),
+            .camera_ent = camera_ent,
             .world = w,
             .tab_i = .{
                 .vt = _g.test_tab_vt_ptr,
@@ -235,7 +279,17 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             }
         }
 
-        tab_o.viewport.setViewMtx(tab_o.camera.calcViewMtx());
+        _ = tab_o.world.setId(transform.Position, tab_o.camera_ent, &transform.Position{
+            .x = tab_o.camera.position[0],
+            .y = tab_o.camera.position[1],
+            .z = tab_o.camera.position[2],
+        });
+
+        _ = tab_o.world.setId(transform.Rotation, tab_o.camera_ent, &transform.Rotation{
+            .q = zm.matToQuat(zm.mul(zm.rotationX(tab_o.camera.pitch), zm.rotationY(tab_o.camera.yaw))),
+        });
+
+        tab_o.viewport.renderMe();
     }
 
     // Draw tab menu
@@ -260,7 +314,7 @@ const LookActivationAction = cetech1.strid.strId32("look_activation");
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
     "FooViewportTab",
-    &[_]cetech1.strid.StrId64{},
+    &[_]cetech1.strid.StrId64{renderer.RENDERER_KERNEL_TASK},
     struct {
         pub fn init() !void {
             _g.rg = try _render_graph.create();
@@ -321,6 +375,34 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
     },
 );
 
+// Register all cdb stuff in this method
+pub const VelocityCdb = cdb.CdbTypeDecl(
+    "ct_velocity",
+    enum(u32) {
+        X = 0,
+        Y,
+        Z,
+    },
+    struct {},
+);
+
+var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
+    pub fn createTypes(db: cdb.DbId) !void {
+        // EntityLogicComponentCdb
+        {
+            _ = try _cdb.addType(
+                db,
+                VelocityCdb.name,
+                &[_]cdb.PropDef{
+                    .{ .prop_idx = VelocityCdb.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = VelocityCdb.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = VelocityCdb.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
+                },
+            );
+        }
+    }
+});
+
 // Create types, register api, interfaces etc...
 pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
     _ = reload;
@@ -340,7 +422,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _assetdb = apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
     _uuid = apidb.getZigApi(module_name, uuid.UuidAPI).?;
     _task = apidb.getZigApi(module_name, task.TaskAPI).?;
-    _renderer = apidb.getZigApi(module_name, cetech1.renderer.RendererApi).?;
+    _renderer = apidb.getZigApi(module_name, renderer.RendererApi).?;
 
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});
@@ -351,6 +433,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
     try apidb.implOrRemove(module_name, editor.TabTypeI, &foo_tab, load);
+    try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
 
     // Components
     try apidb.implOrRemove(module_name, ecs.ComponentI, &velocity_c, load);

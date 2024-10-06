@@ -32,6 +32,9 @@
         .default_rg = .{ .path = "modules/default_rg" },
         .render_component = .{ .path = "modules/render_component" },
         .entity_logic_component = .{ .path = "modules/entity_logic_component" },
+        .renderer = .{ .path = "modules/renderer" },
+        .transform = .{ .path = "modules/transform" },
+        .camera = .{ .path = "modules/camera" },
 
         //
         // CETech1 bundled editor modules
@@ -51,6 +54,7 @@
         .editor_entity_asset = .{ .path = "modules/editor_entity_asset" },
         .editor_entity = .{ .path = "modules/editor_entity" },
         .editor_asset_preview = .{ .path = "modules/editor_asset_preview" },
+        .editor_simulation = .{ .path = "modules/editor_simulation" },
 
         //
         // Externals

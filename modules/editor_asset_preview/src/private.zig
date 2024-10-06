@@ -12,10 +12,11 @@ const actions = cetech1.actions;
 const assetdb = cetech1.assetdb;
 const uuid = cetech1.uuid;
 const task = cetech1.task;
-const transform = cetech1.transform;
-const renderer = cetech1.renderer;
-const camera = cetech1.camera;
 
+const camera = @import("camera");
+const transform = @import("transform");
+
+const renderer = @import("renderer");
 const Viewport = renderer.Viewport;
 
 const editor = @import("editor");
@@ -66,6 +67,7 @@ const AssetPreviewTab = struct {
 
     world: ecs.World,
     camera_look_activated: bool = false,
+    camera_ent: ecs.EntityId,
 
     selection: coreui.SelectionItem = coreui.SelectionItem.empty(),
     root_entity_obj: cdb.ObjId = .{},
@@ -75,7 +77,6 @@ const AssetPreviewTab = struct {
 
     camera: camera.SimpleFPSCamera = camera.SimpleFPSCamera.init(.{
         .position = .{ 0, 2, 12 },
-        .yaw = std.math.degreesToRadians(180),
     }),
 
     flecs_port: ?u16 = null,
@@ -84,7 +85,7 @@ const AssetPreviewTab = struct {
 // Fill editor tab interface
 var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
-    .tab_hash = .{ .id = cetech1.strid.strId32(TAB_NAME).id },
+    .tab_hash = cetech1.strid.strId32(TAB_NAME),
 
     // TODO: Bug on linux CI
     .create_on_init = true,
@@ -107,6 +108,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     // Create new tab instantce
     pub fn create(tab_id: u32) !?*editor.TabI {
         const w = try _ecs.createWorld();
+        w.setSimulate(false);
 
         const rg = try _render_graph.create();
         try _render_graph.createDefault(_allocator, rg);
@@ -114,11 +116,16 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         var buf: [128]u8 = undefined;
         const name = try std.fmt.bufPrintZ(&buf, "Asset preview {d}", .{tab_id});
 
+        const camera_ent = w.newEntity(null);
+        _ = w.setId(transform.Position, camera_ent, &transform.Position{});
+        _ = w.setId(transform.Rotation, camera_ent, &transform.Rotation{});
+        _ = w.setId(camera.Camera, camera_ent, &camera.Camera{});
+
         var tab_inst = _allocator.create(AssetPreviewTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _renderer.createViewport(name, rg, w),
+            .viewport = try _renderer.createViewport(name, rg, w, camera_ent),
             .world = w,
-
+            .camera_ent = camera_ent,
             .rg = rg,
             .tab_i = .{
                 .vt = _g.test_tab_vt_ptr,
@@ -206,7 +213,17 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 }
             }
 
-            tab_o.viewport.setViewMtx(tab_o.camera.calcViewMtx());
+            _ = tab_o.world.setId(transform.Position, tab_o.camera_ent, &transform.Position{
+                .x = tab_o.camera.position[0],
+                .y = tab_o.camera.position[1],
+                .z = tab_o.camera.position[2],
+            });
+
+            _ = tab_o.world.setId(transform.Rotation, tab_o.camera_ent, &transform.Rotation{
+                .q = zm.matToQuat(zm.mul(zm.rotationX(tab_o.camera.pitch), zm.rotationY(tab_o.camera.yaw))),
+            });
+
+            tab_o.viewport.renderMe();
         } else {
             const db = _cdb.getDbFromObjid(selected_obj);
             if (_cdb.getAspect(public.AssetPreviewAspectI, db, selected_obj.type_idx)) |iface| {
@@ -275,7 +292,6 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
             tab_o.camera = camera.SimpleFPSCamera.init(.{
                 .position = .{ 0, 2, 12 },
-                .yaw = std.math.degreesToRadians(180),
             });
         }
     }
@@ -286,6 +302,18 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         _ = allocator; // autofix
         // TODO: implement
         return true;
+    }
+
+    pub fn assetRootOpened(inst: *editor.TabO) !void {
+        const tab_o: *AssetPreviewTab = @alignCast(@ptrCast(inst));
+        if (tab_o.root_entity) |ent| {
+            tab_o.world.destroyEntities(&.{ent});
+            tab_o.root_entity = null;
+
+            tab_o.selection = coreui.SelectionItem.empty();
+            tab_o.root_entity_obj = .{};
+            tab_o.root_entity = null;
+        }
     }
 });
 
@@ -371,7 +399,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _assetdb = apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
     _uuid = apidb.getZigApi(module_name, uuid.UuidAPI).?;
     _task = apidb.getZigApi(module_name, task.TaskAPI).?;
-    _renderer = apidb.getZigApi(module_name, cetech1.renderer.RendererApi).?;
+    _renderer = apidb.getZigApi(module_name, renderer.RendererApi).?;
     _platform = apidb.getZigApi(module_name, cetech1.platform.PlatformApi).?;
     _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
 

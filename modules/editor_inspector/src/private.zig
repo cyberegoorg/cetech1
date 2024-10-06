@@ -415,9 +415,7 @@ fn cdbPropertiesObj(
             if (prop_def.type != .REFERENCE_SET and prop_def.type != .SUBOBJECT_SET) {
                 ui_prop_aspect = _cdb.getPropertyAspect(public.UiPropertyAspect, db, obj.type_idx, prop_idx);
                 // If exist aspect and is empty hide property.
-                if (ui_prop_aspect) |aspect| {
-                    aspect.ui_property(allocator, obj, prop_idx, args) catch continue;
-                }
+                //if (ui_prop_aspect != null and ui_prop_aspect.?.ui_property == null) continue;
             }
 
             switch (prop_def.type) {
@@ -1123,11 +1121,11 @@ var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         tab_o.selected_obj = obj[0];
     }
 
-    pub fn assetRootOpened(inst: *editor.TabO) !void {
-        const tab_o: *PropertyTab = @alignCast(@ptrCast(inst));
-        tab_o.filter = null;
-        tab_o.selected_obj = coreui.SelectionItem.empty();
-    }
+    // pub fn assetRootOpened(inst: *editor.TabO) !void {
+    //     const tab_o: *PropertyTab = @alignCast(@ptrCast(inst));
+    //     tab_o.filter = null;
+    //     tab_o.selected_obj = coreui.SelectionItem.empty();
+    // }
 });
 
 var folder_properties_config_aspect = public.UiPropertiesConfigAspect{

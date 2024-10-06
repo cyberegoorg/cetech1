@@ -11,7 +11,7 @@ pub fn build(b: *std.Build) !void {
     const cetech1_module = cetech1.module("cetech1");
 
     const lib = b.addSharedLibrary(.{
-        .name = "ct_render_component",
+        .name = "ct_transform",
         .version = version,
         .root_source_file = b.path("src/private.zig"),
         .target = target,
@@ -28,17 +28,14 @@ pub fn build(b: *std.Build) !void {
 
     inline for (.{ lib, slib }) |l| {
         l.root_module.addImport("cetech1", cetech1_module);
-        l.root_module.addImport("graphvm", b.dependency("graphvm", .{}).module("graphvm"));
-        l.root_module.addImport("renderer", b.dependency("renderer", .{}).module("renderer"));
-        l.root_module.addImport("transform", b.dependency("transform", .{}).module("transform"));
 
         b.installArtifact(l);
     }
 
     _ = b.addModule(
-        "render_component",
+        "transform",
         .{
-            .root_source_file = b.path("src/render_component.zig"),
+            .root_source_file = b.path("src/transform.zig"),
             .imports = &.{
                 .{ .name = "cetech1", .module = cetech1_module },
             },

@@ -69,6 +69,7 @@ pub const api = public.GpuApi{
 
     .getResolution = getResolution,
     .addPaletteColor = addPaletteColor,
+    .endAllUsedEncoders = endAllUsedEncoders,
 
     .vertexPack = @ptrCast(&bgfx.vertexPack),
     .vertexUnpack = @ptrCast(&bgfx.vertexUnpack),
@@ -354,7 +355,7 @@ const encoder_vt = public.Encoder.VTable{
 };
 
 const dd_encoder_vt = public.DDEncoder.VTable{
-    .encoderBegin = @ptrCast(&zbgfx.debugdraw.Encoder.begin),
+    .encoderBegin = @ptrCast(&ddBegin),
     .encoderEnd = @ptrCast(&zbgfx.debugdraw.Encoder.end),
     .encoderPush = @ptrCast(&zbgfx.debugdraw.Encoder.push),
     .encoderPop = @ptrCast(&zbgfx.debugdraw.Encoder.pop),
@@ -405,6 +406,13 @@ pub const dd_api = public.GpuDDApi{
     .encoderCreate = createDDEncoder,
     .encoderDestroy = destroyDDEncoder,
 };
+
+pub fn ddBegin(dde: *anyopaque, _viewId: u16, _depthTestLess: bool, _encoder: ?*bgfx.Encoder) void {
+    zbgfx.debugdraw.Encoder.begin(@alignCast(@ptrCast(dde)), _viewId, _depthTestLess, @alignCast(@ptrCast(_encoder)));
+
+    // TODO: litle hack, cetech use opengl coordinates +x left, +y up, +z to screen
+    zbgfx.debugdraw.Encoder.setState(@alignCast(@ptrCast(dde)), true, true, false);
+}
 
 pub fn getResolution() public.Resolution {
     const b = std.mem.toBytes(bgfxInit.resolution);

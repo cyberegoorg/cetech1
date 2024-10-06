@@ -1,118 +1,152 @@
 const std = @import("std");
-
-const apidb = @import("apidb.zig");
-const ecs_private = @import("ecs.zig");
-const profiler_private = @import("profiler.zig");
-const cdb_private = @import("cdb.zig");
+const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const public = cetech1.transform;
+const strid = cetech1.strid;
+const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
+
+const renderer = @import("renderer");
+const gpu = cetech1.gpu;
+const coreui = cetech1.coreui;
 const zm = cetech1.math;
 
-const coreui = cetech1.coreui;
-const cdb = cetech1.cdb;
-
-const _cdb = &cdb_private.api;
+const public = @import("transform.zig");
 
 const module_name = .transform;
+
+// Need for logging from std.
+pub const std_options: std.Options = .{
+    .logFn = cetech1.log.zigLogFnGen(&_log),
+};
+// Log for module
 const log = std.log.scoped(module_name);
 
-const position_c = ecs.ComponentI.implement(public.Position, public.PositionCdb.type_hash, struct {
-    pub fn uiIcons(
-        buff: [:0]u8,
-        allocator: std.mem.Allocator,
-        obj: cdb.ObjId,
-    ) ![:0]const u8 {
-        _ = allocator; // autofix
-        _ = obj; // autofix
-        return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Position});
-    }
+// Basic cetech "import".
+var _allocator: Allocator = undefined;
+var _log: *const cetech1.log.LogAPI = undefined;
+var _cdb: *const cdb.CdbAPI = undefined;
+var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
+var _kernel: *const cetech1.kernel.KernelApi = undefined;
+var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
+var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
 
-    pub fn fromCdb(
-        allocator: std.mem.Allocator,
-        obj: cdb.ObjId,
-        data: []u8,
-    ) anyerror!void {
-        _ = allocator; // autofix
+var _ecs: *const ecs.EcsAPI = undefined;
+var _gpu: *const gpu.GpuApi = undefined;
 
-        const r = _cdb.readObj(obj) orelse return;
+// Global state that can surive hot-reload
+const G = struct {};
+var _g: *G = undefined;
 
-        const position = std.mem.bytesAsValue(public.Position, data);
-        position.* = public.Position{
-            .x = public.PositionCdb.readValue(f32, _cdb, r, .X),
-            .y = public.PositionCdb.readValue(f32, _cdb, r, .Y),
-            .z = public.PositionCdb.readValue(f32, _cdb, r, .Z),
-        };
-    }
-});
+const position_c = ecs.ComponentI.implement(
+    public.Position,
 
-const rotation_c = ecs.ComponentI.implement(public.Rotation, public.RotationCdb.type_hash, struct {
-    pub fn uiIcons(
-        buff: [:0]u8,
-        allocator: std.mem.Allocator,
-        obj: cdb.ObjId,
-    ) ![:0]const u8 {
-        _ = allocator; // autofix
-        _ = obj; // autofix
-        return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Rotation});
-    }
+    public.PositionCdb.type_hash,
+    struct {
+        pub fn uiIcons(
+            buff: [:0]u8,
+            allocator: std.mem.Allocator,
+            obj: cdb.ObjId,
+        ) ![:0]const u8 {
+            _ = allocator; // autofix
+            _ = obj; // autofix
+            return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Position});
+        }
 
-    pub fn fromCdb(
-        allocator: std.mem.Allocator,
-        obj: cdb.ObjId,
-        data: []u8,
-    ) anyerror!void {
-        _ = allocator; // autofix
+        pub fn fromCdb(
+            allocator: std.mem.Allocator,
+            obj: cdb.ObjId,
+            data: []u8,
+        ) anyerror!void {
+            _ = allocator; // autofix
 
-        const r = _cdb.readObj(obj) orelse return;
+            const r = _cdb.readObj(obj) orelse return;
 
-        const position = std.mem.bytesAsValue(public.Rotation, data);
-        position.* = public.Rotation{
-            .q = .{
-                public.RotationCdb.readValue(f32, _cdb, r, .X),
-                public.RotationCdb.readValue(f32, _cdb, r, .Y),
-                public.RotationCdb.readValue(f32, _cdb, r, .Z),
-                public.RotationCdb.readValue(f32, _cdb, r, .W),
-            },
-        };
-    }
-});
+            const position = std.mem.bytesAsValue(public.Position, data);
+            position.* = public.Position{
+                .x = public.PositionCdb.readValue(f32, _cdb, r, .X),
+                .y = public.PositionCdb.readValue(f32, _cdb, r, .Y),
+                .z = public.PositionCdb.readValue(f32, _cdb, r, .Z),
+            };
+        }
+    },
+);
 
-const scale_c = ecs.ComponentI.implement(public.Scale, public.ScaleCdb.type_hash, struct {
-    pub fn uiIcons(
-        buff: [:0]u8,
-        allocator: std.mem.Allocator,
-        obj: cdb.ObjId,
-    ) ![:0]const u8 {
-        _ = allocator; // autofix
-        _ = obj; // autofix
-        return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Scale});
-    }
+const rotation_c = ecs.ComponentI.implement(
+    public.Rotation,
 
-    pub fn fromCdb(
-        allocator: std.mem.Allocator,
-        obj: cdb.ObjId,
-        data: []u8,
-    ) anyerror!void {
-        _ = allocator; // autofix
+    public.RotationCdb.type_hash,
+    struct {
+        pub fn uiIcons(
+            buff: [:0]u8,
+            allocator: std.mem.Allocator,
+            obj: cdb.ObjId,
+        ) ![:0]const u8 {
+            _ = allocator; // autofix
+            _ = obj; // autofix
+            return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Rotation});
+        }
 
-        const r = _cdb.readObj(obj) orelse return;
+        pub fn fromCdb(
+            allocator: std.mem.Allocator,
+            obj: cdb.ObjId,
+            data: []u8,
+        ) anyerror!void {
+            _ = allocator; // autofix
 
-        const position = std.mem.bytesAsValue(public.Scale, data);
-        position.* = public.Scale{
-            .x = public.ScaleCdb.readValue(f32, _cdb, r, .X),
-            .y = public.ScaleCdb.readValue(f32, _cdb, r, .Y),
-            .z = public.ScaleCdb.readValue(f32, _cdb, r, .Z),
-        };
-    }
-});
+            const r = _cdb.readObj(obj) orelse return;
+
+            const position = std.mem.bytesAsValue(public.Rotation, data);
+            position.* = public.Rotation{
+                .q = zm.quatFromRollPitchYaw(
+                    std.math.degreesToRadians(public.RotationCdb.readValue(f32, _cdb, r, .X)),
+                    std.math.degreesToRadians(public.RotationCdb.readValue(f32, _cdb, r, .Y)),
+                    std.math.degreesToRadians(public.RotationCdb.readValue(f32, _cdb, r, .Z)),
+                ),
+            };
+        }
+    },
+);
+
+const scale_c = ecs.ComponentI.implement(
+    public.Scale,
+
+    public.ScaleCdb.type_hash,
+    struct {
+        pub fn uiIcons(
+            buff: [:0]u8,
+            allocator: std.mem.Allocator,
+            obj: cdb.ObjId,
+        ) ![:0]const u8 {
+            _ = allocator; // autofix
+            _ = obj; // autofix
+            return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Scale});
+        }
+
+        pub fn fromCdb(
+            allocator: std.mem.Allocator,
+            obj: cdb.ObjId,
+            data: []u8,
+        ) anyerror!void {
+            _ = allocator; // autofix
+
+            const r = _cdb.readObj(obj) orelse return;
+
+            const position = std.mem.bytesAsValue(public.Scale, data);
+            position.* = public.Scale{
+                .x = public.ScaleCdb.readValue(f32, _cdb, r, .X),
+                .y = public.ScaleCdb.readValue(f32, _cdb, r, .Y),
+                .z = public.ScaleCdb.readValue(f32, _cdb, r, .Z),
+            };
+        }
+    },
+);
 
 const world_tranform_c = cetech1.ecs.ComponentI.implement(public.WorldTransform, null, struct {});
 
 const transform_system_i = ecs.SystemI.implement(
     .{
-        .name = "transform system",
+        .name = "transform.transform",
         .multi_threaded = false,
         .instanced = true,
         .phase = ecs.OnValidate,
@@ -126,8 +160,8 @@ const transform_system_i = ecs.SystemI.implement(
     },
     struct {
         pub fn iterate(iter: *ecs.IterO) !void {
-            var it = ecs_private.api.toIter(iter);
-            var zone_ctx = profiler_private.api.ZoneN(@src(), "Transform system");
+            var it = _ecs.toIter(iter);
+            var zone_ctx = _profiler.ZoneN(@src(), "Transform system");
             defer zone_ctx.End();
 
             while (it.next()) {
@@ -136,7 +170,7 @@ const transform_system_i = ecs.SystemI.implement(
                     continue;
                 }
 
-                var zone_iner_ctx = profiler_private.api.ZoneN(@src(), "Transform iner");
+                var zone_iner_ctx = _profiler.ZoneN(@src(), "Transform iner");
                 defer zone_iner_ctx.End();
 
                 const world_transform = it.field(public.WorldTransform, 0).?;
@@ -200,7 +234,7 @@ const transform_system_i = ecs.SystemI.implement(
 
 const spawn_transform_world_system_i = ecs.SystemI.implement(
     .{
-        .name = "spawn world transform system",
+        .name = "transform.spawn_world",
         .multi_threaded = true,
         .phase = ecs.PostLoad,
         .query = &.{
@@ -212,7 +246,7 @@ const spawn_transform_world_system_i = ecs.SystemI.implement(
     },
     struct {
         pub fn update(iter: *ecs.IterO) !void {
-            var it = ecs_private.api.toIter(iter);
+            var it = _ecs.toIter(iter);
 
             const world = it.getWorld();
             const ents = it.entities();
@@ -232,7 +266,7 @@ const spawn_transform_world_system_i = ecs.SystemI.implement(
 //     },
 //     null,
 //     struct {
-//         pub fn getInputPins(allocator: std.mem.Allocator, graph_obj: cetech1.cdb.ObjId, node_obj: cetech1.cdb.ObjId) ![]const graphvm.NodePin {
+//         pub fn getInputPins(allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
 //             _ = node_obj; // autofix
 //             _ = graph_obj; // autofix
 //             return allocator.dupe(graphvm.NodePin, &.{
@@ -242,7 +276,7 @@ const spawn_transform_world_system_i = ecs.SystemI.implement(
 //             });
 //         }
 
-//         pub fn getOutputPins(allocator: std.mem.Allocator, graph_obj: cetech1.cdb.ObjId, node_obj: cetech1.cdb.ObjId) ![]const graphvm.NodePin {
+//         pub fn getOutputPins(allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
 //             _ = node_obj; // autofix
 //             _ = graph_obj; // autofix
 //             return allocator.dupe(graphvm.NodePin, &.{});
@@ -271,18 +305,18 @@ const spawn_transform_world_system_i = ecs.SystemI.implement(
 // );
 
 // CDB
-var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(struct {
-    pub fn createTypes(db: cetech1.cdb.DbId) !void {
+var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
+    pub fn createTypes(db: cdb.DbId) !void {
 
         // Position
         {
             _ = try _cdb.addType(
                 db,
                 public.PositionCdb.name,
-                &[_]cetech1.cdb.PropDef{
-                    .{ .prop_idx = public.PositionCdb.propIdx(.X), .name = "x", .type = cetech1.cdb.PropType.F32 },
-                    .{ .prop_idx = public.PositionCdb.propIdx(.Y), .name = "y", .type = cetech1.cdb.PropType.F32 },
-                    .{ .prop_idx = public.PositionCdb.propIdx(.Z), .name = "z", .type = cetech1.cdb.PropType.F32 },
+                &[_]cdb.PropDef{
+                    .{ .prop_idx = public.PositionCdb.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.PositionCdb.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.PositionCdb.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
                 },
             );
         }
@@ -292,10 +326,10 @@ var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(struct {
             const scale_idx = try _cdb.addType(
                 db,
                 public.ScaleCdb.name,
-                &[_]cetech1.cdb.PropDef{
-                    .{ .prop_idx = public.ScaleCdb.propIdx(.X), .name = "x", .type = cetech1.cdb.PropType.F32 },
-                    .{ .prop_idx = public.ScaleCdb.propIdx(.Y), .name = "y", .type = cetech1.cdb.PropType.F32 },
-                    .{ .prop_idx = public.ScaleCdb.propIdx(.Z), .name = "z", .type = cetech1.cdb.PropType.F32 },
+                &[_]cdb.PropDef{
+                    .{ .prop_idx = public.ScaleCdb.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.ScaleCdb.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.ScaleCdb.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
                 },
             );
 
@@ -313,11 +347,10 @@ var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(struct {
             const rot_idx = try _cdb.addType(
                 db,
                 public.RotationCdb.name,
-                &[_]cetech1.cdb.PropDef{
-                    .{ .prop_idx = public.RotationCdb.propIdx(.X), .name = "x", .type = cetech1.cdb.PropType.F32 },
-                    .{ .prop_idx = public.RotationCdb.propIdx(.Y), .name = "y", .type = cetech1.cdb.PropType.F32 },
-                    .{ .prop_idx = public.RotationCdb.propIdx(.Z), .name = "z", .type = cetech1.cdb.PropType.F32 },
-                    .{ .prop_idx = public.RotationCdb.propIdx(.W), .name = "w", .type = cetech1.cdb.PropType.F32 },
+                &[_]cdb.PropDef{
+                    .{ .prop_idx = public.RotationCdb.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.RotationCdb.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.RotationCdb.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
                 },
             );
 
@@ -326,28 +359,44 @@ var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(struct {
             public.RotationCdb.setValue(f32, _cdb, default_quat_w, .X, 0.0);
             public.RotationCdb.setValue(f32, _cdb, default_quat_w, .Y, 0.0);
             public.RotationCdb.setValue(f32, _cdb, default_quat_w, .Z, 0.0);
-            public.RotationCdb.setValue(f32, _cdb, default_quat_w, .W, 1.0);
             try _cdb.writeCommit(default_quat_w);
             _cdb.setDefaultObject(default_quat);
         }
     }
 });
 
-pub fn regsitreAll() !void {
-    //_ = @alignOf(public.WorldTransform);
-    //_ = @alignOf(public.Position);
-    //_ = @alignOf(public.Rotation);
-    //_ = @alignOf(public.Scale);
+// Create types, register api, interfaces etc...
+pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+    _ = reload; // autofix
+    // basic
+    _allocator = allocator;
+    _log = log_api;
+    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
+    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
+    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
+    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
 
-    try apidb.api.implInterface(module_name, ecs.ComponentI, &world_tranform_c);
-    try apidb.api.implInterface(module_name, ecs.ComponentI, &position_c);
-    try apidb.api.implInterface(module_name, ecs.ComponentI, &rotation_c);
-    try apidb.api.implInterface(module_name, ecs.ComponentI, &scale_c);
+    _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
+    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
+    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
 
-    try apidb.api.implInterface(module_name, ecs.SystemI, &transform_system_i);
-    try apidb.api.implInterface(module_name, ecs.SystemI, &spawn_transform_world_system_i);
+    // impl interface
+    try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
 
-    //try apidb.api.implInterface(module_name, graphvm.GraphNodeI, &set_position_node_i);
+    try apidb.implOrRemove(module_name, ecs.ComponentI, &world_tranform_c, load);
+    try apidb.implOrRemove(module_name, ecs.ComponentI, &position_c, load);
+    try apidb.implOrRemove(module_name, ecs.ComponentI, &rotation_c, load);
+    try apidb.implOrRemove(module_name, ecs.ComponentI, &scale_c, load);
+    try apidb.implOrRemove(module_name, ecs.SystemI, &transform_system_i, load);
+    try apidb.implOrRemove(module_name, ecs.SystemI, &spawn_transform_world_system_i, load);
 
-    try apidb.api.implOrRemove(module_name, cetech1.cdb.CreateTypesI, &create_cdb_types_i, true);
+    // create global variable that can survive reload
+    _g = try apidb.globalVar(G, module_name, "_g", .{});
+
+    return true;
+}
+
+// This is only one fce that cetech1 need to load/unload/reload module.
+pub export fn ct_load_module_transform(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

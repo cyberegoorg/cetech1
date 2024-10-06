@@ -35,10 +35,12 @@ pub fn build(b: *std.Build) !void {
     };
 
     const options_step = b.addOptions();
+    options_step.addOption(std.SemanticVersion, "version", version);
+
+    // add build args
     inline for (std.meta.fields(@TypeOf(options))) |field| {
         options_step.addOption(field.type, field.name, @field(options, field.name));
     }
-    options_step.addOption(std.SemanticVersion, "version", version);
     const options_module = options_step.createModule();
 
     //
@@ -324,9 +326,7 @@ pub fn build(b: *std.Build) !void {
                 .optimize = optimize,
             }).artifact(artifact_name);
 
-            const step = b.addInstallArtifact(art, .{
-                .dest_dir = .{ .override = .{ .lib = {} } },
-            });
+            const step = b.addInstallArtifact(art, .{});
             b.default_step.dependOn(&step.step);
         }
     }
@@ -423,12 +423,22 @@ const externals = .{
 
     // zig-gamedev
     .{ .name = "zig-gamedev", .file = "externals/shared/lib/zig-gamedev/LICENSE" },
+    .{ .name = "zglfw", .file = "externals/shared/lib/zig-gamedev/libs/zglfw/LICENSE" },
+    .{ .name = "zpool", .file = "externals/shared/lib/zig-gamedev/libs/zpool/LICENSE" },
+    .{ .name = "zjobs", .file = "externals/shared/lib/zig-gamedev/libs/zjobs/LICENSE" },
+    .{ .name = "ztracy", .file = "externals/shared/lib/zig-gamedev/libs/ztracy/LICENSE" },
+    .{ .name = "zgui", .file = "externals/shared/lib/zig-gamedev/libs/zgui/LICENSE" },
+    .{ .name = "zflecs", .file = "externals/shared/lib/zig-gamedev/libs/zflecs/LICENSE" },
 
     // ImGui
     .{ .name = "imgui", .file = "externals/shared/lib/zig-gamedev/libs/zgui/libs/imgui/LICENSE.txt" },
-    .{ .name = "implot", .file = "externals/shared/lib/zig-gamedev/libs/zgui/libs/implot/LICENSE" },
     .{ .name = "imgui_test_engine", .file = "externals/shared/lib/zig-gamedev/libs/zgui/libs/imgui_test_engine/LICENSE.txt" },
+    .{ .name = "implot", .file = "externals/shared/lib/zig-gamedev/libs/zgui/libs/implot/LICENSE" },
+    .{ .name = "imguizmo", .file = "externals/shared/lib/zig-gamedev/libs/zgui/libs/imguizmo/LICENSE" },
     .{ .name = "imgui_node_editor", .file = "externals/shared/lib/zig-gamedev/libs/zgui/libs/node_editor/LICENSE" },
+
+    // FLECS
+    .{ .name = "FLECS", .file = "externals/shared/lib/zig-gamedev/libs/zflecs/libs/flecs/LICENSE" },
 
     // GLFW
     .{ .name = "glfw", .file = "externals/shared/lib/zig-gamedev/libs/zglfw/libs/glfw/LICENSE.md" },
@@ -448,8 +458,14 @@ const externals = .{
     // BGFX
     .{ .name = "bgfx", .file = "externals/shared/lib/zbgfx/libs/bgfx/LICENSE" },
 
+    // zbgfx
+    .{ .name = "zbgfx", .file = "externals/shared/lib/zbgfx/LICENSE" },
+
     // ziglang-set
     .{ .name = "ziglang-set", .file = "externals/shared/lib/ziglang-set/LICENSE" },
+
+    // cetech1
+    .{ .name = "cetech1", .file = "LICENSE" },
 };
 
 const editor_modules = [_][]const u8{
@@ -468,6 +484,7 @@ const editor_modules = [_][]const u8{
     "editor_entity_asset",
     "editor_entity",
     "editor_asset_preview",
+    "editor_simulation",
 };
 
 const core_modules = [_][]const u8{
@@ -475,6 +492,9 @@ const core_modules = [_][]const u8{
     "entity_logic_component",
     "graphvm",
     "default_rg",
+    "renderer",
+    "transform",
+    "camera",
 };
 
 const samples_modules = [_][]const u8{

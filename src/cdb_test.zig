@@ -3,10 +3,12 @@ const std = @import("std");
 
 const cetech1 = @import("cetech1");
 const public = cetech1.cdb;
-const cdb = @import("cdb.zig");
+const cdb_private = @import("cdb.zig");
 
 const StrId32 = cetech1.strid.StrId32;
 const strId32 = cetech1.strid.strId32;
+
+const cdb = cetech1.cdb;
 
 const log = @import("log.zig");
 const apidb = @import("apidb.zig");
@@ -15,26 +17,26 @@ const task = @import("task.zig");
 const uuid = @import("uuid.zig");
 const metrics = @import("metrics.zig");
 
-var _cdb = &cdb.api;
+var _cdb = &cdb_private.api;
 
 pub fn testInit() !void {
     try task.init(std.testing.allocator);
     try apidb.init(std.testing.allocator);
     try metrics.init(std.testing.allocator);
-    try cdb.init(std.testing.allocator);
+    try cdb_private.init(std.testing.allocator);
     try task.start();
 }
 
 pub fn testDeinit() void {
-    cdb.deinit();
+    cdb_private.deinit();
     apidb.deinit();
     task.stop();
     task.deinit();
     metrics.deinit();
 }
 
-pub fn expectGCStats(db: cetech1.cdb.DbId, alocated_objids: u32, free_object: u32) !void {
-    const true_db = cdb.toDbFromDbT(db);
+pub fn expectGCStats(db: cdb.DbId, alocated_objids: u32, free_object: u32) !void {
+    const true_db = cdb_private.toDbFromDbT(db);
     try std.testing.expectEqual(alocated_objids, true_db.objids_alocated);
     try std.testing.expectEqual(@as(u32, free_object), true_db.free_objects);
 }
@@ -43,16 +45,16 @@ test "cdb: Should create cdb DB" {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 }
 
 test "cdb: Should register type" {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -75,7 +77,7 @@ test "cdb: Should register create types handler " {
     defer testDeinit();
 
     var create_cdb_types_i = public.CreateTypesI.implement(struct {
-        pub fn createTypes(db: cetech1.cdb.DbId) !void {
+        pub fn createTypes(db: cdb.DbId) !void {
             const type_hash = _cdb.addType(
                 db,
                 "foo",
@@ -90,8 +92,8 @@ test "cdb: Should register create types handler " {
 
     try apidb.api.implOrRemove(.foo, public.CreateTypesI, &create_cdb_types_i, true);
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = strId32("foo");
 
@@ -123,7 +125,7 @@ test "cdb: Should register aspect" {
     var foo_aspect = FooAspect{ .barFn = &FooAspect.barImpl };
 
     var create_cdb_types_i = public.CreateTypesI.implement(struct {
-        pub fn createTypes(db: cetech1.cdb.DbId) !void {
+        pub fn createTypes(db: cdb.DbId) !void {
             const type_hash = _cdb.addType(
                 db,
                 "foo",
@@ -138,8 +140,8 @@ test "cdb: Should register aspect" {
 
     try apidb.api.implOrRemove(.foo, public.CreateTypesI, &create_cdb_types_i, true);
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = strId32("foo");
     const type_idx = _cdb.getTypeIdx(db, type_hash).?;
@@ -180,7 +182,7 @@ test "cdb: Should register property aspect" {
     var foo_aspect = FooAspect{ .barFn = &FooAspect.barImpl };
 
     var create_cdb_types_i = public.CreateTypesI.implement(struct {
-        pub fn createTypes(db: cetech1.cdb.DbId) !void {
+        pub fn createTypes(db: cdb.DbId) !void {
             const type_hash = _cdb.addType(
                 db,
                 "foo",
@@ -194,8 +196,8 @@ test "cdb: Should register property aspect" {
     });
     try apidb.api.implOrRemove(.foo, public.CreateTypesI, &create_cdb_types_i, true);
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = strId32("foo");
     const type_idx = _cdb.getTypeIdx(db, type_hash).?;
@@ -221,8 +223,8 @@ test "cdb: Should create object from type" {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -305,8 +307,8 @@ test "cdb: Should create object from default obj" {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -340,8 +342,8 @@ test "cdb: Should clone object" {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -432,8 +434,8 @@ test "cdb: Should create retarget write" {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -472,8 +474,8 @@ test "cdb: Should create retarget write" {
 
 fn testNumericValues(
     comptime T: type,
-    db: cetech1.cdb.DbId,
-    type_hash: cetech1.cdb.TypeIdx,
+    db: cdb.DbId,
+    type_hash: cdb.TypeIdx,
 ) !void {
     const obj1 = try _cdb.createObject(db, type_hash);
 
@@ -526,8 +528,8 @@ test "cdb: Should read/write U64 property " {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -545,8 +547,8 @@ test "cdb: Should read/write I64 property " {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -564,8 +566,8 @@ test "cdb: Should read/write F64 property " {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -583,8 +585,8 @@ test "cdb: Should read/write U32 property " {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -601,8 +603,8 @@ test "cdb: Should read/write I32 property " {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -620,8 +622,8 @@ test "cdb: Should read/write F32 property " {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -639,8 +641,8 @@ test "cdb: Should read/write string property " {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -682,8 +684,8 @@ test "cdb: Should read/write bool property " {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -724,8 +726,8 @@ test "cdb: Should get object version" {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -758,8 +760,8 @@ test "cdb: Should read/write subobject property " {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -821,8 +823,8 @@ test "cdb: Should delete subobject" {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -874,8 +876,8 @@ test "cdb: Should read/write subobj set property " {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -970,8 +972,8 @@ test "cdb: Should read/write reference property" {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -1045,8 +1047,8 @@ test "cdb: Should read/write reference set property " {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -1159,8 +1161,8 @@ test "cdb: Should read/write blob property " {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -1192,8 +1194,8 @@ test "cdb: Should use prototype" {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -1258,8 +1260,8 @@ test "cdb: Should use prototype on sets" {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -1357,8 +1359,8 @@ test "cdb: Should instantiate subobject" {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -1426,8 +1428,8 @@ test "cdb: Should deep instantiate subobject" {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -1479,8 +1481,8 @@ test "cdb: Should deep instantiate subobject in set" {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -1533,8 +1535,8 @@ test "cdb: Should specify type_hash for ref/subobj base properties" {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const sub_type_hash = try _cdb.addType(
         db,
@@ -1603,8 +1605,8 @@ test "cdb: Should tracking changed objects" {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -1657,8 +1659,8 @@ test "cdb: Should get object realtion" {
     try testInit();
     defer testDeinit();
 
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try _cdb.addType(
         db,
@@ -1707,8 +1709,8 @@ test "cdb: Should get object realtion" {
 }
 
 fn stressTest(comptime task_count: u32, task_based: bool) !void {
-    const db = try cdb.api.createDb("Test");
-    defer cdb.api.destroyDb(db);
+    const db = try cdb_private.api.createDb("Test");
+    defer cdb_private.api.destroyDb(db);
 
     const type_hash = try cetech1.cdb_types.addBigType(_cdb, db, "foo", null);
     const type_hash2 = try cetech1.cdb_types.addBigType(_cdb, db, "foo2", null);
@@ -1718,10 +1720,10 @@ fn stressTest(comptime task_count: u32, task_based: bool) !void {
         var tasks: [task_count]cetech1.task.TaskID = undefined;
 
         const Task = struct {
-            db: cetech1.cdb.DbId,
-            ref_obj1: cetech1.cdb.ObjId,
-            type_hash: cetech1.cdb.TypeIdx,
-            type_hash2: cetech1.cdb.TypeIdx,
+            db: cdb.DbId,
+            ref_obj1: cdb.ObjId,
+            type_hash: cdb.TypeIdx,
+            type_hash2: cdb.TypeIdx,
             pub fn exec(self: *@This()) !void {
                 _cdb.stressIt(
                     self.db,
@@ -1758,7 +1760,7 @@ fn stressTest(comptime task_count: u32, task_based: bool) !void {
 
     _cdb.destroyObject(ref_obj1);
 
-    var true_db = cdb.toDbFromDbT(db);
+    var true_db = cdb_private.toDbFromDbT(db);
     const storage = true_db.getTypeStorageByTypeIdx(type_hash).?;
     try std.testing.expectEqual(@as(u32, task_count + 1), storage.objid_pool.count.raw);
     try std.testing.expectEqual(@as(u32, task_count * 3), true_db.writersCount());

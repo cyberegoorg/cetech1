@@ -1,5 +1,5 @@
 .{
-    .name = "default_rg",
+    .name = "renderer",
     .version = "0.1.0",
     .paths = .{
         "build.zig",
@@ -7,6 +7,8 @@
     },
     .dependencies = .{
         .cetech1 = .{ .path = "../../public/" },
-        .renderer = .{ .path = "../renderer" },
+        .transform = .{ .path = "../transform" },
+        .graphvm = .{ .path = "../graphvm" },
+        .camera = .{ .path = "../camera" },
     },
 }

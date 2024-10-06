@@ -6,10 +6,10 @@ const strid = cetech1.strid;
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 const transform = cetech1.transform;
-
-const renderer = cetech1.renderer;
 const gpu = cetech1.gpu;
 const zm = cetech1.math;
+
+const renderer = @import("renderer");
 
 const module_name = .default_rg;
 
@@ -72,20 +72,13 @@ const simple_pass = renderer.Pass.implement(struct {
         try builder.addPass("simple_pass", pass);
     }
 
-    pub fn render(builder: renderer.GraphBuilder, gfx_api: *const gpu.GpuApi, viewport: renderer.Viewport, viewid: gpu.ViewId) !void {
+    pub fn render(builder: renderer.GraphBuilder, gfx_api: *const gpu.GpuApi, viewport: renderer.Viewport, viewid: gpu.ViewId, viewers: []const renderer.Viewer) !void {
         _ = builder;
 
-        const fb_size = viewport.getSize();
-        const aspect_ratio = fb_size[0] / fb_size[1];
-        const projMtx = zm.perspectiveFovRhGl(
-            0.25 * std.math.pi,
-            aspect_ratio,
-            0.1,
-            1000.0,
-        );
+        const projMtx = viewers[0].proj;
+        const viewMtx = viewers[0].mtx;
 
-        const viewMtx = viewport.getViewMtx();
-        gfx_api.setViewTransform(viewid, &viewMtx, &zm.matToArr(projMtx));
+        gfx_api.setViewTransform(viewid, &viewMtx, &projMtx);
 
         if (gfx_api.getEncoder()) |e| {
             e.touch(viewid);
@@ -97,6 +90,13 @@ const simple_pass = renderer.Pass.implement(struct {
 
                 dd.drawGridAxis(.Y, .{ 0, 0, 0 }, 128, 1);
                 dd.drawAxis(.{ 0, 0, 0 }, 1.0, .Count, 0);
+
+                // Skip renderig frustrum for main camera
+                for (viewers[1..]) |viewer| {
+                    const m = zm.mul(zm.matFromArr(viewer.mtx), zm.matFromArr(viewer.proj));
+                    const mm = zm.matToArr(m);
+                    dd.drawFrustum(mm);
+                }
             }
         }
     }
@@ -109,7 +109,8 @@ const blit_pass = renderer.Pass.implement(struct {
         try builder.addPass("blit", pass);
     }
 
-    pub fn render(builder: renderer.GraphBuilder, gfx_api: *const gpu.GpuApi, viewport: renderer.Viewport, viewid: gpu.ViewId) !void {
+    pub fn render(builder: renderer.GraphBuilder, gfx_api: *const gpu.GpuApi, viewport: renderer.Viewport, viewid: gpu.ViewId, viewers: []const renderer.Viewer) !void {
+        _ = viewers; // autofix
         const fb_size = viewport.getSize();
 
         if (gfx_api.getEncoder()) |e| {

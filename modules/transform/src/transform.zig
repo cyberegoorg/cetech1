@@ -1,8 +1,9 @@
 const std = @import("std");
 
-const strid = @import("strid.zig");
-const math = @import("math.zig");
-const cdb = @import("cdb.zig");
+const cetech1 = @import("cetech1");
+const cdb = cetech1.cdb;
+const strid = cetech1.strid;
+const math = cetech1.math;
 
 pub const Position = struct {
     x: f32 = 0,
@@ -50,7 +51,6 @@ pub const RotationCdb = cdb.CdbTypeDecl(
         X = 0,
         Y,
         Z,
-        W,
     },
     struct {},
 );

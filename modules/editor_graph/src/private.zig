@@ -624,10 +624,10 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 for (connections) |connect| {
                     const node_r = _cdb.readObj(connect).?;
 
-                    const from_node = graphvm.ConnectionType.readRef(_cdb, node_r, .from_node) orelse cetech1.cdb.ObjId{};
+                    const from_node = graphvm.ConnectionType.readRef(_cdb, node_r, .from_node) orelse cdb.ObjId{};
                     const from_pin = graphvm.ConnectionType.f.getFromPinId(_cdb, node_r);
 
-                    const to_node = graphvm.ConnectionType.readRef(_cdb, node_r, .to_node) orelse cetech1.cdb.ObjId{};
+                    const to_node = graphvm.ConnectionType.readRef(_cdb, node_r, .to_node) orelse cdb.ObjId{};
                     const to_pin = graphvm.ConnectionType.f.getToPinId(_cdb, node_r);
 
                     const from_pin_id = PinId.init(from_node, from_pin).toU64();
@@ -1144,12 +1144,6 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             _node_editor.navigateToSelection(false, -1);
         }
     }
-
-    pub fn assetRootOpened(inst: *editor.TabO) !void {
-        const tab_o: *GraphEditorTab = @alignCast(@ptrCast(inst));
-        tab_o.filter = null;
-        tab_o.root_graph_obj = .{};
-    }
 });
 
 // Create graph asset
@@ -1551,8 +1545,8 @@ var ConnectionTypeIdx: cdb.TypeIdx = undefined;
 var NodeTypeIdx: cdb.TypeIdx = undefined;
 var GroupTypeIdx: cdb.TypeIdx = undefined;
 
-var create_cdb_types_i = cetech1.cdb.CreateTypesI.implement(struct {
-    pub fn createTypes(db: cetech1.cdb.DbId) !void {
+var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
+    pub fn createTypes(db: cdb.DbId) !void {
         _ = db; // autofix
     }
 });

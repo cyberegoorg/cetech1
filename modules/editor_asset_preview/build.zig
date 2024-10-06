@@ -38,6 +38,9 @@ pub fn build(b: *std.Build) !void {
     inline for (.{ lib, slib }) |l| {
         l.root_module.addImport("cetech1", cetech1_module);
         l.root_module.addImport("editor", editor.module("editor"));
+        l.root_module.addImport("renderer", b.dependency("renderer", .{}).module("renderer"));
+        l.root_module.addImport("camera", b.dependency("camera", .{}).module("camera"));
+        l.root_module.addImport("transform", b.dependency("transform", .{}).module("transform"));
 
         b.installArtifact(l);
     }
