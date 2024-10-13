@@ -38,8 +38,8 @@
       "__type_name": "ct_graph_node",
       "__uuid": "018f6362-2438-771f-8389-57d6ca15dcb6",
       "node_type": "culling_volume",
-      "pos_x": 7.63e2,
-      "pos_y": 2.82e2
+      "pos_x": 8.12e2,
+      "pos_y": 2.98e2
     },
     {
       "__type_name": "ct_graph_node",
@@ -94,7 +94,7 @@
         }
       },
       "pos_x": 5.44e2,
-      "pos_y": 3.98e2
+      "pos_y": 3.78e2
     },
     {
       "__type_name": "ct_graph_node",
@@ -175,7 +175,28 @@
         }
       },
       "pos_x": 5.44e2,
-      "pos_y": 3.18e2
+      "pos_y": 3.02e2
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "01928585-3f44-7288-be3d-8ea2f04cdc4c",
+      "node_type": "draw_call",
+      "pos_x": 8.15e2,
+      "pos_y": 6.02e2
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "01928585-4938-7a56-ad38-9ddbf3a5ffb6",
+      "node_type": "lsd_cube",
+      "pos_x": 5.57e2,
+      "pos_y": 6.5e2
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "01928bd1-851a-7d67-a1f2-afa09827fe23",
+      "node_type": "test_shader",
+      "pos_x": 5.54e2,
+      "pos_y": 5.74e2
     }
   ],
   "groups": [
@@ -192,7 +213,7 @@
       "pos_x": 2.88e2,
       "pos_y": 2.4e2,
       "size_x": 8.48e2,
-      "size_y": 3.48e2
+      "size_y": 5.72e2
     },
     {
       "__type_name": "ct_graph_group",
@@ -221,19 +242,35 @@
     },
     {
       "__type_name": "ct_graph_connection",
-      "__uuid": "019150a7-bc53-7b3f-8b8c-ee13bbb66a69",
-      "from_node": "ct_graph_node:01914093-d26f-7729-b2c4-6ee437013ede",
-      "to_node": "ct_graph_node:018f6362-2438-771f-8389-57d6ca15dcb6",
-      "from_pin": "01914093-a0e6-7821-ba4f-baf08f3e23b5",
-      "to_pin": "in:radius"
-    },
-    {
-      "__type_name": "ct_graph_connection",
       "__uuid": "01913d02-b994-7237-a7bf-3f6cbf76b2a7",
       "from_node": "ct_graph_node:0190685c-9826-7c3e-bbff-a4683912b6e8",
       "to_node": "ct_graph_node:018f52ca-babc-7408-89ab-e356c41ee60a",
       "from_pin": "out:value",
       "to_pin": "in:value"
+    },
+    {
+      "__type_name": "ct_graph_connection",
+      "__uuid": "01928585-5328-78b5-acd5-c7649f683671",
+      "from_node": "ct_graph_node:01928585-4938-7a56-ad38-9ddbf3a5ffb6",
+      "to_node": "ct_graph_node:01928585-3f44-7288-be3d-8ea2f04cdc4c",
+      "from_pin": "out:gpu_geometry",
+      "to_pin": "in:gpu_geometry"
+    },
+    {
+      "__type_name": "ct_graph_connection",
+      "__uuid": "01928585-5670-791d-af56-ae03bc167818",
+      "from_node": "ct_graph_node:01928585-4938-7a56-ad38-9ddbf3a5ffb6",
+      "to_node": "ct_graph_node:01928585-3f44-7288-be3d-8ea2f04cdc4c",
+      "from_pin": "out:gpu_index_buffer",
+      "to_pin": "in:gpu_index_buffer"
+    },
+    {
+      "__type_name": "ct_graph_connection",
+      "__uuid": "01928bd1-9040-77c2-b955-9b8ea57fef16",
+      "from_node": "ct_graph_node:01928bd1-851a-7d67-a1f2-afa09827fe23",
+      "to_node": "ct_graph_node:01928585-3f44-7288-be3d-8ea2f04cdc4c",
+      "from_pin": "out:gpu_shader",
+      "to_pin": "in:gpu_shader"
     }
   ],
   "interface": {
@@ -261,6 +298,65 @@
         "__type_name": "ct_f32",
         "__uuid": "0191391a-9c55-7b63-bb3d-e2cc3066b8e5",
         "value": 2e0
+      }
+    },
+    {
+      "__type_name": "ct_graph_data",
+      "__uuid": "01928590-38cf-7a8a-9d98-0820defb6463",
+      "to_node": "ct_graph_node:01928585-3f44-7288-be3d-8ea2f04cdc4c",
+      "to_node_pin": "in:vertex_count",
+      "value": {
+        "__type_name": "ct_u32",
+        "__uuid": "01928590-38dc-7fd0-b131-2bfe06258864",
+        "value": 8
+      }
+    },
+    {
+      "__type_name": "ct_graph_data",
+      "__uuid": "01928590-49a8-78e4-b845-6415cde57cad",
+      "to_node": "ct_graph_node:01928585-3f44-7288-be3d-8ea2f04cdc4c",
+      "to_node_pin": "in:index_count",
+      "value": {
+        "__type_name": "ct_u32",
+        "__uuid": "01928590-49b5-7fc9-bd3b-a53710156b1f",
+        "value": 36
+      }
+    },
+    {
+      "__type_name": "ct_graph_data",
+      "__uuid": "01928594-3887-7a41-bcd5-0b3aa66326fb",
+      "to_node": "ct_graph_node:018f6362-2438-771f-8389-57d6ca15dcb6",
+      "to_node_pin": "in:min",
+      "value": {
+        "__type_name": "ct_vec_3f",
+        "__uuid": "01928593-d8f3-7ba8-a4f1-6e7f8054e871",
+        "x": -1e0,
+        "y": -1e0,
+        "z": -1e0
+      }
+    },
+    {
+      "__type_name": "ct_graph_data",
+      "__uuid": "01928594-3887-752b-8a61-65366194602e",
+      "to_node": "ct_graph_node:018f6362-2438-771f-8389-57d6ca15dcb6",
+      "to_node_pin": "in:max",
+      "value": {
+        "__type_name": "ct_vec_3f",
+        "__uuid": "01928593-f086-7c24-b66e-3a9b257950c4",
+        "x": 1e0,
+        "y": 1e0,
+        "z": 1e0
+      }
+    },
+    {
+      "__type_name": "ct_graph_data",
+      "__uuid": "019285f0-f68d-7c64-ac3b-806d56e71299",
+      "to_node": "ct_graph_node:018f6362-2438-771f-8389-57d6ca15dcb6",
+      "to_node_pin": "in:radius",
+      "value": {
+        "__type_name": "ct_f32",
+        "__uuid": "019285f0-f69a-7c77-9201-b02fb6490837",
+        "value": 1.5e0
       }
     }
   ]
