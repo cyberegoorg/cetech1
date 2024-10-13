@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const AtomicInt = std.atomic.Value(u32);
+pub const AtomicInt = std.atomic.Value(u32);
 const FreeIdQueue = QueueWithLock(u32);
 
 const strid = @import("strid.zig");

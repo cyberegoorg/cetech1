@@ -146,8 +146,8 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         defer _coreui.endChild();
         if (_coreui.beginChild("Explorer", .{ .child_flags = .{ .border = true } })) {
-            _coreui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 15 });
-            defer _coreui.popStyleVar(.{});
+            //_coreui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 30 });
+            //defer _coreui.popStyleVar(.{});
 
             // Draw only asset content
             // Draw asset_object

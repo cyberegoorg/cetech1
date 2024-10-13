@@ -88,6 +88,12 @@ jobs:
           path: ~/.cache/zig/
           key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
 
+      # - name: Zig build cache
+      #   uses: actions/cache/restore@v4
+      #   with:
+      #     path: .zig-cache
+      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
+
       - name: Init zig
         if: steps.cache-zig.outputs.cache-hit != 'true'
         run: .ci/init_zig.sh x86_64-linux
@@ -108,6 +114,12 @@ jobs:
         with:
           path: ~/.cache/zig/
           key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
+
+      # - name: Zig build cache
+      #   uses: actions/cache/save@v4
+      #   with:
+      #     path: .zig-cache
+      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
 
       - name: Test unit
         run: kcov --include-pattern=/cetech1/src/,/cetech/public/ kcov-output zig-out/bin/cetech1_test
@@ -180,6 +192,12 @@ jobs:
           path: ~/.cache/zig/
           key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
 
+      # - name: Zig build cache
+      #   uses: actions/cache/restore@v4
+      #   with:
+      #     path: .zig-cache
+      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
+  
       - name: Init zig
         if: steps.cache-zig.outputs.cache-hit != 'true'
         run: .ci/init_zig.sh x86_64-macos
@@ -200,6 +218,12 @@ jobs:
         with:
           path: ~/.cache/zig/
           key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
+
+      # - name: Zig build cache
+      #   uses: actions/cache/save@v4
+      #   with:
+      #     path: .zig-cache
+      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
 
       - name: Test unit
         run: TRACY_NO_INVARIANT_CHECK=1 zig-out/bin/cetech1_test
@@ -253,6 +277,12 @@ jobs:
           path: C:\Users\runneradmin\AppData\Local\zig
           key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
 
+      # - name: Zig build cache
+      #   uses: actions/cache/restore@v4
+      #   with:
+      #     path: .zig-cache
+      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
+
       - name: Init zig
         if: steps.cache-zig.outputs.cache-hit != 'true'
         shell: bash
@@ -277,6 +307,12 @@ jobs:
           path: C:\Users\runneradmin\AppData\Local\zig
           key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
 
+      # - name: Zig build cache
+      #   uses: actions/cache/save@v4
+      #   with:
+      #     path: .zig-cache
+      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
+          
       # - name: configure Pagefile
       #   uses: al-cheb/configure-pagefile-action@v1.4
       #   with:

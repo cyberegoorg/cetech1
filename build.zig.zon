@@ -35,6 +35,7 @@
         .renderer = .{ .path = "modules/renderer" },
         .transform = .{ .path = "modules/transform" },
         .camera = .{ .path = "modules/camera" },
+        .shader_system = .{ .path = "modules/shader_system" },
 
         //
         // CETech1 bundled editor modules

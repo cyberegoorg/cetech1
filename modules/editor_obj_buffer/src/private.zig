@@ -165,8 +165,8 @@ var obj_buffer_tab = editor.TabTypeI.implement(
 
             defer _coreui.endChild();
             if (_coreui.beginChild("ObjBuffer", .{ .child_flags = .{ .border = true } })) {
-                _coreui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 15 });
-                defer _coreui.popStyleVar(.{});
+                //_coreui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 15 });
+                //defer _coreui.popStyleVar(.{});
 
                 if (tab_o.obj_buffer.toSlice(allocator)) |selected_objs| {
                     defer allocator.free(selected_objs);

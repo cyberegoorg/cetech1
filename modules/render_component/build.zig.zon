@@ -10,5 +10,6 @@
         .graphvm = .{ .path = "../graphvm" },
         .renderer = .{ .path = "../renderer" },
         .transform = .{ .path = "../transform" },
+        .shader_system = .{ .path = "../shader_system" },
     },
 }

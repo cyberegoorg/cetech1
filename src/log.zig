@@ -28,7 +28,7 @@ pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]cons
             else => 0x00_ff_00_00,
         };
         var buffer: [256:0]u8 = undefined;
-        _ = std.fmt.bufPrintZ(&buffer, LOG_FORMAT_TRACY, .{ scope, msg }) catch undefined;
+        _ = std.fmt.bufPrintZ(&buffer, LOG_FORMAT_TRACY, .{ scope, msg }) catch return;
         profiler.api.msgWithColor(&buffer, color);
     }
 

@@ -171,6 +171,12 @@ fn createOrUpdateSettingsJson(allocator: std.mem.Allocator, vscode_dir: std.fs.D
     {
         var files_map = std.json.Value{ .object = std.json.ObjectMap.init(parsed.arena.allocator()) };
         try files_map.object.put("*.ct_*", std.json.Value{ .string = "json" });
+        try files_map.object.put("vs_*.sc", std.json.Value{ .string = "glsl" });
+        try files_map.object.put("fs_*.sc", std.json.Value{ .string = "glsl" });
+        try files_map.object.put("cs_*.sc", std.json.Value{ .string = "glsl" });
+        try files_map.object.put("bgfx_*.sh", std.json.Value{ .string = "glsl" });
+        try files_map.object.put("shaderlib.sh", std.json.Value{ .string = "glsl" });
+
         try parsed.value.object.put("files.associations", files_map);
     }
 

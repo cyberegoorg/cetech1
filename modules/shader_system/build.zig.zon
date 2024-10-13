@@ -1,5 +1,5 @@
 .{
-    .name = "renderer",
+    .name = "shader_system",
     .version = "0.1.0",
     .paths = .{
         "build.zig",
@@ -7,9 +7,7 @@
     },
     .dependencies = .{
         .cetech1 = .{ .path = "../../public/" },
-        .transform = .{ .path = "../transform" },
         .graphvm = .{ .path = "../graphvm" },
-        .camera = .{ .path = "../camera" },
-        .shader_system = .{ .path = "../shader_system" },
+        .editor_inspector = .{ .path = "../editor_inspector" },
     },
 }

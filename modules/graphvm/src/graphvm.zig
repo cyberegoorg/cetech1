@@ -161,6 +161,8 @@ pub const PinTypes = struct {
     pub const VEC4F = strid.strId32("vec4f");
     pub const QUATF = strid.strId32("quatf");
 
+    pub const COLOR4F = strid.strId32("color4f");
+
     // For inputs
     pub const GENERIC = strid.strId32("generic");
 };
@@ -172,13 +174,15 @@ pub const NodePin = struct {
     pin_hash: strid.StrId32,
 
     type_hash: strid.StrId32,
+    type_of: ?strid.StrId32 = null,
 
-    pub fn init(name: [:0]const u8, pin_name: [:0]const u8, type_hash: strid.StrId32) NodePin {
+    pub fn init(name: [:0]const u8, pin_name: [:0]const u8, type_hash: strid.StrId32, type_of: ?[:0]const u8) NodePin {
         return .{
             .name = name,
             .pin_name = pin_name,
             .pin_hash = strid.strId32(pin_name),
             .type_hash = type_hash,
+            .type_of = if (type_of) |t| strid.strId32(t) else null,
         };
     }
 
@@ -195,16 +199,25 @@ pub const NodePin = struct {
         const prefix = if (is_output) "out" else "in";
         return prefix ++ ":" ++ name;
     }
+
+    pub fn alocPinHash(allocator: std.mem.Allocator, name: []const u8, comptime is_output: bool) ![:0]const u8 {
+        const prefix = if (is_output) "out" else "in";
+        return std.fmt.allocPrintZ(allocator, "{s}:{s}", .{ prefix, name });
+    }
 };
 
 pub const ExecuteArgs = struct {
     allocator: std.mem.Allocator,
+    //data_alloc: std.mem.Allocator,
     graph: cdb.ObjId,
     settings: ?cdb.ObjId,
     state: ?*anyopaque,
     instance: GraphInstance,
     inputs: []const NodePin,
     outputs: []const NodePin,
+
+    transpile_state: ?[]u8,
+    transpiler_node_state: ?*anyopaque,
 
     pub fn getState(self: ExecuteArgs, comptime T: type) ?*T {
         if (self.state) |s| {
@@ -217,9 +230,16 @@ pub const ExecuteArgs = struct {
 pub const PivotType = enum {
     none,
     pivot,
+    transpiler,
 };
 
-pub const GraphNodeI = struct {
+pub const TranspileStage = struct {
+    id: strid.StrId32,
+    pin_idx: []const u32,
+    contexts: ?[]const u8 = null,
+};
+
+pub const NodeI = struct {
     pub const c_name = "ct_graph_node_i";
     pub const name_hash = strid.strId64(@This().c_name);
 
@@ -230,30 +250,40 @@ pub const GraphNodeI = struct {
     pivot: PivotType = .none,
     settings_type: strid.StrId32 = .{},
     sidefect: bool = false,
+    transpile_border: bool = false,
 
-    getInputPins: *const fn (allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) anyerror![]const NodePin = undefined,
-    getOutputPins: *const fn (allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) anyerror![]const NodePin = undefined,
+    // TODO: alow null for none in/out?
+    getInputPins: *const fn (self: *const NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) anyerror![]const NodePin = undefined,
+    getOutputPins: *const fn (self: *const NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) anyerror![]const NodePin = undefined,
 
     state_size: usize = 0,
     state_align: u8 = 0,
 
-    create: ?*const fn (allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool) anyerror!void = null,
-    destroy: ?*const fn (state: *anyopaque, reload: bool) anyerror!void = null,
+    create: ?*const fn (self: *const NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) anyerror!void = null,
+    destroy: ?*const fn (self: *const NodeI, state: *anyopaque, reload: bool) anyerror!void = null,
 
-    execute: *const fn (args: ExecuteArgs, in_pins: InPins, out_pins: OutPins) anyerror!void = undefined,
+    execute: *const fn (self: *const NodeI, args: ExecuteArgs, in_pins: InPins, out_pins: OutPins) anyerror!void = undefined,
+
+    // TODO: Clean transpile API and ARGS
+    createTranspileState: ?*const fn (self: *const NodeI, allocator: std.mem.Allocator) anyerror![]u8 = null,
+    destroyTranspileState: ?*const fn (self: *const NodeI, state: []u8) void = null,
+    getTranspileStages: ?*const fn (self: *const NodeI, allocator: std.mem.Allocator) anyerror![]const TranspileStage = undefined,
+    transpile: ?*const fn (self: *const NodeI, args: ExecuteArgs, state: []u8, stage: ?strid.StrId32, context: ?[]const u8, in_pins: InPins, out_pins: OutPins) anyerror!void = undefined,
 
     title: ?*const fn (
+        self: *const NodeI,
         allocator: std.mem.Allocator,
         node_obj: cdb.ObjId,
     ) anyerror![:0]const u8 = null,
 
     icon: ?*const fn (
+        self: *const NodeI,
         buff: [:0]u8,
         allocator: std.mem.Allocator,
         node_obj: cdb.ObjId,
     ) anyerror![:0]u8 = null,
 
-    pub fn implement(args: GraphNodeI, comptime S: ?type, comptime T: type) GraphNodeI {
+    pub fn implement(args: NodeI, comptime S: ?type, comptime T: type) NodeI {
         var self = args;
         self.type_hash = strid.strId32(args.type_name);
         self.getInputPins = T.getInputPins;
@@ -269,6 +299,11 @@ pub const GraphNodeI = struct {
 
         self.title = if (std.meta.hasFn(T, "title")) T.title else null;
         self.icon = if (std.meta.hasFn(T, "icon")) T.icon else null;
+
+        self.createTranspileState = if (std.meta.hasFn(T, "createTranspileState")) T.createTranspileState else null;
+        self.destroyTranspileState = if (std.meta.hasFn(T, "destroyTranspileState")) T.destroyTranspileState else null;
+        self.getTranspileStages = if (std.meta.hasFn(T, "getTranspileStages")) T.getTranspileStages else null;
+        self.transpile = if (std.meta.hasFn(T, "transpile")) T.transpile else null;
 
         return self;
     }
@@ -289,7 +324,7 @@ pub const InPins = struct {
         if (self.data.?[pin_idx] == null) return null;
 
         const vh = self.validity_hash.?[pin_idx].?;
-        const v: *T = @alignCast(@ptrCast(self.data.?[pin_idx].?));
+        const v = std.mem.bytesAsValue(T, self.data.?[pin_idx].?);
         return .{ vh.*, v.* };
     }
 
@@ -334,8 +369,11 @@ pub const GraphValueTypeI = struct {
     size: usize = undefined,
     alignn: usize = undefined,
 
-    valueFromCdb: *const fn (obj: cdb.ObjId, value: []u8) anyerror!void = undefined,
+    color: ?[4]f32 = null,
+
+    valueFromCdb: *const fn (allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) anyerror!void = undefined,
     calcValidityHash: *const fn (value: []const u8) anyerror!ValidityHash = undefined,
+    destoryValue: ?*const fn (allocator: std.mem.Allocator, value: []u8) anyerror!void = undefined,
 
     valueToString: *const fn (allocator: std.mem.Allocator, value: []const u8) anyerror![:0]u8 = undefined,
 
@@ -348,11 +386,13 @@ pub const GraphValueTypeI = struct {
             .name = args.name,
             .type_hash = args.type_hash,
             .cdb_type_hash = args.cdb_type_hash,
+            .color = args.color,
             .size = @sizeOf(T),
             .alignn = @alignOf(T),
             .valueFromCdb = Impl.valueFromCdb,
             .calcValidityHash = Impl.calcValidityHash,
             .valueToString = Impl.valueToString,
+            .destoryValue = if (std.meta.hasFn(T, "destoryValue")) T.destoryValue else null,
         };
     }
 };
@@ -385,7 +425,7 @@ pub const GraphVMApi = struct {
         return @alignCast(@ptrCast(result));
     }
 
-    findNodeI: *const fn (type_hash: strid.StrId32) ?*const GraphNodeI,
+    findNodeI: *const fn (type_hash: strid.StrId32) ?*const NodeI,
     findValueTypeI: *const fn (type_hash: strid.StrId32) ?*const GraphValueTypeI,
     findValueTypeIByCdb: *const fn (type_hash: strid.StrId32) ?*const GraphValueTypeI,
 
@@ -393,7 +433,7 @@ pub const GraphVMApi = struct {
 
     isOutputPin: *const fn (allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: strid.StrId32, pin_hash: strid.StrId32) anyerror!bool,
     isInputPin: *const fn (allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: strid.StrId32, pin_hash: strid.StrId32) anyerror!bool,
-    getInputPin: *const fn (allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, ype_hash: strid.StrId32, pin_hash: strid.StrId32) anyerror!?NodePin,
+    getInputPin: *const fn (allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: strid.StrId32, pin_hash: strid.StrId32) anyerror!?NodePin,
     getOutputPin: *const fn (allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: strid.StrId32, pin_hash: strid.StrId32) anyerror!?NodePin,
 
     // TODO: move to editor_graph?

@@ -434,9 +434,11 @@ fn cdbPropertiesObj(
 
                 // If subobject type implement UiEmbedPropertiesAspect show it in table
                 .SUBOBJECT => {
-                    if (prop_def.type_hash.id == 0) continue;
+                    //if (prop_def.type_hash.id == 0) continue;
                     const subobj = _cdb.readSubObj(obj_r, prop_idx);
-                    const ui_embed_prop_aspect = _cdb.getAspect(public.UiEmbedPropertiesAspect, db, _cdb.getTypeIdx(db, prop_def.type_hash).?);
+                    const type_idx = if (subobj) |s| s.type_idx else _cdb.getTypeIdx(db, prop_def.type_hash) orelse continue;
+
+                    const ui_embed_prop_aspect = _cdb.getAspect(public.UiEmbedPropertiesAspect, db, type_idx);
                     if (ui_embed_prop_aspect) |aspect| {
                         const lbl = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
                         if (visible) {
@@ -537,9 +539,9 @@ fn cdbPropertiesObj(
                 }
 
                 subobj = _cdb.readSubObj(obj_r, prop_idx);
-
-                if (_cdb.getTypeIdx(db, prop_def.type_hash)) |type_idx| {
-                    if (_cdb.getAspect(public.UiEmbedPropertiesAspect, db, type_idx) != null) continue;
+                const type_idx = if (subobj) |s| s.type_idx else _cdb.getTypeIdx(db, prop_def.type_hash);
+                if (type_idx) |tidx| {
+                    if (_cdb.getAspect(public.UiEmbedPropertiesAspect, db, tidx) != null) continue;
                 }
 
                 const label = try std.fmt.bufPrintZ(&buff, "{s}  {s}", .{ prop_name, if (prop_def.type == .REFERENCE) "  " ++ Icons.FA_LINK else "" });

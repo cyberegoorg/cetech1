@@ -5,7 +5,6 @@ const cetech1 = @import("cetech1");
 const strid = cetech1.strid;
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
-const transform = cetech1.transform;
 const gpu = cetech1.gpu;
 const zm = cetech1.math;
 

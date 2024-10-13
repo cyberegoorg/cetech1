@@ -203,6 +203,7 @@ pub const Icons = struct {
     pub const Pause = CoreIcons.FA_PAUSE;
 
     pub const Camera = CoreIcons.FA_CAMERA;
+    pub const Draw = CoreIcons.FA_BRUSH;
 };
 
 pub const CoreUII = struct {
@@ -380,6 +381,62 @@ pub const CoreUIApi = struct {
             else
                 null,
         );
+    }
+
+    pub fn comboFromEnum(
+        self: CoreUIApi,
+        label: [:0]const u8,
+        /// must be a pointer to an enum value (var my_enum: *FoodKinds = .Banana)
+        /// that is backed by some kind of integer that can safely cast into an
+        /// i32 (the underlying imgui restriction)
+        current_item: anytype,
+    ) bool {
+        const EnumType = @TypeOf(current_item.*);
+        const enum_type_info = getTypeInfo: {
+            switch (@typeInfo(EnumType)) {
+                .optional => |optional_type_info| switch (@typeInfo(optional_type_info.child)) {
+                    .@"enum" => |enum_type_info| break :getTypeInfo enum_type_info,
+                    else => {},
+                },
+                .@"enum" => |enum_type_info| break :getTypeInfo enum_type_info,
+                else => {},
+            }
+            @compileError("Error: current_item must be a pointer-to-an-enum, not a " ++ @TypeOf(EnumType));
+        };
+
+        const FieldNameIndex = std.meta.Tuple(&.{ []const u8, i32 });
+        comptime var item_names: [:0]const u8 = "";
+        comptime var field_name_to_index_list: [enum_type_info.fields.len]FieldNameIndex = undefined;
+        comptime var index_to_enum: [enum_type_info.fields.len]EnumType = undefined;
+
+        comptime {
+            for (enum_type_info.fields, 0..) |f, i| {
+                item_names = item_names ++ f.name ++ "\x00";
+                const e: EnumType = @enumFromInt(f.value);
+                field_name_to_index_list[i] = .{ f.name, @intCast(i) };
+                index_to_enum[i] = e;
+            }
+        }
+
+        const field_name_to_index = std.StaticStringMap(i32).initComptime(&field_name_to_index_list);
+
+        var item: i32 =
+            switch (@typeInfo(EnumType)) {
+            .optional => if (current_item.*) |tag| field_name_to_index.get(@tagName(tag)) orelse -1 else -1,
+            .@"enum" => field_name_to_index.get(@tagName(current_item.*)) orelse -1,
+            else => unreachable,
+        };
+
+        const result = self.combo(label, .{
+            .items_separated_by_zeros = item_names,
+            .current_item = &item,
+        });
+
+        if (item > -1) {
+            current_item.* = index_to_enum[@intCast(item)];
+        }
+
+        return result;
     }
 
     showDemoWindow: *const fn () void,

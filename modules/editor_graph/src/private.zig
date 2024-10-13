@@ -90,8 +90,10 @@ const PinId = packed struct(u64) {
 };
 
 const PinHashNameMap = std.AutoHashMap(struct { cdb.ObjId, cetech1.strid.StrId32 }, [:0]const u8);
-const PinValueTypeMap = std.AutoHashMap(struct { cdb.ObjId, cetech1.strid.StrId32 }, cetech1.strid.StrId32);
+const PinValueTypeMap = std.AutoArrayHashMap(struct { cdb.ObjId, cetech1.strid.StrId32 }, cetech1.strid.StrId32);
 const PinDataMap = std.AutoHashMap(struct { cdb.ObjId, cetech1.strid.StrId32 }, cdb.ObjId);
+
+const ToFromConMap = std.AutoHashMap(struct { cdb.ObjId, cetech1.strid.StrId32 }, struct { cdb.ObjId, cetech1.strid.StrId32 });
 
 // Struct for tab type
 const GraphEditorTab = struct {
@@ -115,6 +117,7 @@ const GraphEditorTab = struct {
     pinhash_map: PinHashNameMap,
     pindata_map: PinDataMap,
     pintype_map: PinValueTypeMap,
+    resolved_pintype_map: PinValueTypeMap,
 };
 
 const SaveJson = struct { group_size: struct { x: f32, y: f32 } };
@@ -260,6 +263,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             .pinhash_map = PinHashNameMap.init(_allocator),
             .pindata_map = PinDataMap.init(_allocator),
             .pintype_map = PinValueTypeMap.init(_allocator),
+            .resolved_pintype_map = PinValueTypeMap.init(_allocator),
             .tab_i = .{
                 .vt = _g.test_tab_vt_ptr,
                 .inst = @ptrCast(tab_inst),
@@ -275,6 +279,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         tab_o.pinhash_map.deinit();
         tab_o.pindata_map.deinit();
         tab_o.pintype_map.deinit();
+        tab_o.resolved_pintype_map.deinit();
 
         tab_o.inter_selection.deinit();
 
@@ -300,7 +305,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             defer _node_editor.end();
 
             _node_editor.pushStyleVar1f(.link_strength, 0);
-            _node_editor.pushStyleVar1f(.node_rounding, 4);
+            _node_editor.pushStyleVar1f(.node_rounding, 0);
             defer _node_editor.popStyleVar(1);
 
             if (tab_o.selection.isEmpty()) {
@@ -356,10 +361,118 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 }
             }
 
-            // Nodes
-            if (try graphvm.GraphType.readSubObjSet(_cdb, graph_r, .nodes, tmp_alloc)) |nodes| {
-                defer tmp_alloc.free(nodes);
+            const all_connections = try graphvm.GraphType.readSubObjSet(_cdb, graph_r, .connections, tmp_alloc);
+            defer if (all_connections) |c| tmp_alloc.free(c);
 
+            const all_nodes = try graphvm.GraphType.readSubObjSet(_cdb, graph_r, .nodes, tmp_alloc);
+            defer if (all_nodes) |c| tmp_alloc.free(c);
+
+            // Resolve pin types (need for generics)
+            // TODO: SHIT
+            // TODO: cache and move to graphvm
+            {
+                var dag = cetech1.dag.DAG(u64).init(tmp_alloc);
+                defer dag.deinit();
+
+                var to_from_map = ToFromConMap.init(tmp_alloc);
+                defer to_from_map.deinit();
+
+                var depends = std.ArrayList(u64).init(tmp_alloc);
+                defer depends.deinit();
+
+                tab_o.resolved_pintype_map.clearRetainingCapacity();
+
+                // add all nodes
+                if (all_nodes) |nodes| {
+                    for (nodes) |node| {
+                        depends.clearRetainingCapacity();
+
+                        //try dag.add(node.toU64(), &.{});
+
+                        if (all_connections) |connections| {
+                            for (connections) |connect| {
+                                const conn_r = _cdb.readObj(connect).?;
+
+                                const from_node = graphvm.ConnectionType.readRef(_cdb, conn_r, .from_node) orelse cdb.ObjId{};
+                                const from_pin = graphvm.ConnectionType.f.getFromPinId(_cdb, conn_r);
+
+                                const to_node = graphvm.ConnectionType.readRef(_cdb, conn_r, .to_node) orelse cdb.ObjId{};
+                                const to_pin = graphvm.ConnectionType.f.getToPinId(_cdb, conn_r);
+
+                                // only conection to this node
+                                if (to_node != node) continue;
+
+                                try to_from_map.put(.{ to_node, to_pin }, .{ from_node, from_pin });
+                                try depends.append(from_node.toU64());
+                                //try dag.add(from_node.toU64(), &.{});
+                            }
+                        }
+                        try dag.add(node.toU64(), depends.items);
+                    }
+                }
+
+                try dag.build_all();
+
+                // log.debug("Collect types EDITOR:", .{});
+                for (dag.output.keys()) |node_id| {
+                    const node_obj = cdb.ObjId.fromU64(node_id);
+                    const node_r = _cdb.readObj(node_obj).?;
+
+                    const node_type_hash = graphvm.NodeType.f.getNodeTypeId(_cdb, node_r);
+                    const node_iface = _graph.findNodeI(node_type_hash).?;
+
+                    // log.debug("\t{s} {s}", .{ _assetdb.getUuid(node_obj).?, node_iface.name });
+
+                    const in_pins = try node_iface.getInputPins(node_iface, tmp_alloc, graph_obj, node_obj);
+                    defer tmp_alloc.free(in_pins);
+
+                    const out_pins = try node_iface.getOutputPins(node_iface, tmp_alloc, graph_obj, node_obj);
+                    defer tmp_alloc.free(out_pins);
+
+                    for (in_pins) |in_pin| {
+                        const is_generic = in_pin.type_hash.eql(graphvm.PinTypes.GENERIC);
+                        if (is_generic) {
+                            const data = tab_o.pindata_map.get(.{ node_obj, in_pin.pin_hash });
+
+                            var resolved_type: cetech1.strid.StrId32 = .{};
+                            if (data) |d| {
+                                const data_r = graphvm.GraphDataType.read(_cdb, d).?;
+
+                                if (graphvm.GraphDataType.readSubObj(_cdb, data_r, .value)) |value_obj| {
+                                    const value_i = _graph.findValueTypeIByCdb(_cdb.getTypeHash(tab_o.db, value_obj.type_idx).?).?;
+                                    resolved_type = value_i.type_hash;
+                                }
+                            } else {
+                                if (to_from_map.get(.{ node_obj, in_pin.pin_hash })) |from_node| {
+                                    resolved_type = tab_o.resolved_pintype_map.get(from_node).?;
+                                } else {
+                                    resolved_type = in_pin.type_hash;
+                                }
+                            }
+
+                            try tab_o.resolved_pintype_map.put(.{ node_obj, in_pin.pin_hash }, resolved_type);
+                        } else {
+                            try tab_o.resolved_pintype_map.put(.{ node_obj, in_pin.pin_hash }, in_pin.type_hash);
+                        }
+                    }
+
+                    for (out_pins) |out_pin| {
+                        if (out_pin.type_of) |tof| {
+                            const from_node_type = tab_o.resolved_pintype_map.get(.{ node_obj, tof }) orelse continue;
+                            try tab_o.resolved_pintype_map.put(.{ node_obj, out_pin.pin_hash }, from_node_type);
+                        } else {
+                            try tab_o.resolved_pintype_map.put(.{ node_obj, out_pin.pin_hash }, out_pin.type_hash);
+                        }
+                    }
+                }
+            }
+
+            // for (tab_o.pintype_map.keys(), tab_o.pintype_map.values()) |k, v| {
+            //     log.debug("{any} => {any}", .{ k, v });
+            // }
+
+            // Nodes
+            if (all_nodes) |nodes| {
                 for (nodes) |node| {
                     const node_r = _cdb.readObj(node).?;
 
@@ -429,7 +542,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                                 var node_title: [:0]const u8 = undefined;
                                 defer tmp_alloc.free(node_title);
                                 if (node_i.title) |title_fce| {
-                                    node_title = try title_fce(tmp_alloc, node);
+                                    node_title = try title_fce(node_i, tmp_alloc, node);
                                 } else {
                                     node_title = try tmp_alloc.dupeZ(u8, node_i.name);
                                 }
@@ -438,7 +551,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                                 var node_icon: [:0]const u8 = undefined;
 
                                 if (node_i.icon) |icon_fce| {
-                                    node_icon = try icon_fce(&icon_buf, tmp_alloc, node);
+                                    node_icon = try icon_fce(node_i, &icon_buf, tmp_alloc, node);
                                 } else {
                                     node_icon = try std.fmt.bufPrintZ(&icon_buf, "{s}", .{coreui.Icons.Node});
                                 }
@@ -450,12 +563,13 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                             }
 
                             // Outputs
-                            const outputs = try node_i.getOutputPins(tmp_alloc, graph_obj, node);
+                            const outputs = try node_i.getOutputPins(node_i, tmp_alloc, graph_obj, node);
                             defer tmp_alloc.free(outputs);
                             for (outputs) |output| {
                                 _coreui.tableNextColumn();
 
-                                const color = _graph.getTypeColor(output.type_hash);
+                                const resolved_type = tab_o.resolved_pintype_map.get(.{ node, output.pin_hash }) orelse output.pin_hash;
+                                const color = _graph.getTypeColor(resolved_type);
 
                                 _node_editor.pushStyleVar2f(.pivot_alignment, .{ 0.8, 0.5 });
                                 _node_editor.pushStyleVar2f(.pivot_size, .{ 0, 0 });
@@ -491,28 +605,36 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                             }
 
                             // Settings
-                            if (true) {
+                            if (false) {
                                 if (!node_i.type_hash.eql(graphvm.CALL_GRAPH_NODE_TYPE)) {
                                     if (graphvm.NodeType.readSubObj(_cdb, node_r, .settings)) |setting_obj| {
                                         _coreui.pushObjUUID(node);
                                         defer _coreui.popId();
 
-                                        try _editor_inspector.cdbPropertiesObj(tmp_alloc, tab_o, tab_o.selection.top_level_obj, setting_obj, 0, .{
-                                            .hide_proto = true,
-                                            .max_autopen_depth = 0,
-                                            .flat = true,
-                                        });
+                                        try _editor_inspector.cdbPropertiesObj(
+                                            tmp_alloc,
+                                            tab_o,
+                                            tab_o.selection.top_level_obj,
+                                            setting_obj,
+                                            0,
+                                            .{
+                                                .hide_proto = true,
+                                                .max_autopen_depth = 0,
+                                                .flat = true,
+                                            },
+                                        );
                                     }
                                 }
                             }
 
                             // Input
-                            const inputs = try node_i.getInputPins(tmp_alloc, graph_obj, node);
+                            const inputs = try node_i.getInputPins(node_i, tmp_alloc, graph_obj, node);
                             defer tmp_alloc.free(inputs);
                             for (inputs) |input| {
                                 _coreui.tableNextColumn();
 
-                                const color = _graph.getTypeColor(input.type_hash);
+                                const resolved_type = tab_o.resolved_pintype_map.get(.{ node, input.pin_hash }) orelse input.pin_hash;
+                                const color = _graph.getTypeColor(resolved_type);
 
                                 _node_editor.pushStyleVar2f(.pivot_alignment, .{ 0.2, 0.5 });
                                 _node_editor.pushStyleVar2f(.pivot_size, .{ 0, 0 });
@@ -618,9 +740,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             }
 
             // Connections
-            if (try graphvm.GraphType.readSubObjSet(_cdb, graph_r, .connections, tmp_alloc)) |connections| {
-                defer tmp_alloc.free(connections);
-
+            if (all_connections) |connections| {
                 for (connections) |connect| {
                     const node_r = _cdb.readObj(connect).?;
 
@@ -639,7 +759,9 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                     if (_cdb.readObj(from_node)) |from_node_obj_r| {
                         const from_node_type = graphvm.NodeType.f.getNodeTypeId(_cdb, from_node_obj_r);
                         const out_pin = (try _graph.getOutputPin(tmp_alloc, tab_o.root_graph_obj, from_node, from_node_type, from_pin)) orelse continue;
-                        type_color = _graph.getTypeColor(out_pin.type_hash);
+
+                        const resolved_type = tab_o.resolved_pintype_map.get(.{ from_node, from_pin }) orelse out_pin.type_hash;
+                        type_color = _graph.getTypeColor(resolved_type);
                     }
 
                     _node_editor.link(connect.toU64(), from_pin_id, to_pin_id, type_color, 3);
@@ -681,76 +803,114 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
                     tab_o.filter = _coreui.uiFilter(&tab_o.filter_buff, tab_o.filter);
 
-                    const impls = try _apidb.getImpl(tmp_alloc, graphvm.GraphNodeI);
+                    const impls = try _apidb.getImpl(tmp_alloc, graphvm.NodeI);
                     defer tmp_alloc.free(impls);
 
-                    if (tab_o.filter == null) {
-                        // Create category menu first
+                    var node_without_category = std.ArrayList(*const graphvm.NodeI).init(tmp_alloc);
+                    defer node_without_category.deinit();
+                    if (tab_o.filter) |filter| {
                         for (impls) |iface| {
-                            if (iface.category) |category| {
-                                var buff: [256:0]u8 = undefined;
-                                const label = try std.fmt.bufPrintZ(&buff, "{s} {s}###{s}", .{ coreui.Icons.Folder, category, category });
+                            var icon_buf: [16:0]u8 = undefined;
+                            var node_icon: [:0]const u8 = undefined;
 
-                                if (_coreui.beginMenu(_allocator, label, true, null)) {
-                                    _coreui.endMenu();
+                            if (iface.icon) |icon_fce| {
+                                node_icon = try icon_fce(iface, &icon_buf, tmp_alloc, .{});
+                            } else {
+                                node_icon = try std.fmt.bufPrintZ(&icon_buf, "{s}", .{coreui.Icons.Node});
+                            }
+
+                            const name = try std.fmt.bufPrintZ(&buf, "{s}  {s}{s}{s}###{s}", .{
+                                node_icon,
+                                if (iface.category) |c| c else "",
+                                if (iface.category == null) "" else "/",
+                                iface.name,
+                                iface.type_name,
+                            });
+                            if (_coreui.menuItem(_allocator, name, .{}, filter)) {
+                                const node_obj = try _graph.createCdbNode(tab_o.db, iface.type_hash, tab_o.ctxPos);
+
+                                const node_w = _cdb.writeObj(node_obj).?;
+
+                                const graph_w = _cdb.writeObj(graph_obj).?;
+                                try graphvm.GraphType.addSubObjToSet(_cdb, graph_w, .nodes, &.{node_w});
+
+                                try _cdb.writeCommit(node_w);
+                                try _cdb.writeCommit(graph_w);
+
+                                _node_editor.setNodePosition(node_obj.toU64(), tab_o.ctxPos);
+                            }
+                        }
+                    } else {
+                        for (impls) |iface| {
+                            var open = false;
+                            var count: usize = 0;
+
+                            if (iface.category) |category| {
+                                var split_bw = std.mem.splitBackwardsAny(u8, category, "/");
+
+                                var split = std.mem.splitAny(u8, split_bw.rest(), "/");
+                                const first = split.first();
+
+                                var it: ?[]const u8 = first;
+
+                                while (it) |word| : (it = split.next()) {
+                                    const lbl = try std.fmt.bufPrintZ(&buf, "{s}  {s}", .{ coreui.Icons.Folder, word });
+
+                                    open = _coreui.beginMenu(_allocator, lbl, true, null);
+                                    if (!open) break;
+                                    count += 1;
+                                }
+                            } else {
+                                try node_without_category.append(iface);
+                                continue;
+                            }
+
+                            if (open) {
+                                var icon_buf: [16:0]u8 = undefined;
+                                var node_icon: [:0]const u8 = undefined;
+
+                                if (iface.icon) |icon_fce| {
+                                    node_icon = try icon_fce(iface, &icon_buf, tmp_alloc, .{});
+                                } else {
+                                    node_icon = try std.fmt.bufPrintZ(&icon_buf, "{s}", .{coreui.Icons.Node});
+                                }
+
+                                const name = try std.fmt.bufPrintZ(&buf, "{s}  {s}###{s}", .{ node_icon, iface.name, iface.type_name });
+                                if (_coreui.menuItem(_allocator, name, .{}, tab_o.filter)) {
+                                    const node_obj = try _graph.createCdbNode(tab_o.db, iface.type_hash, tab_o.ctxPos);
+
+                                    const node_w = _cdb.writeObj(node_obj).?;
+
+                                    const graph_w = _cdb.writeObj(graph_obj).?;
+                                    try graphvm.GraphType.addSubObjToSet(_cdb, graph_w, .nodes, &.{node_w});
+
+                                    try _cdb.writeCommit(node_w);
+                                    try _cdb.writeCommit(graph_w);
+
+                                    _node_editor.setNodePosition(node_obj.toU64(), tab_o.ctxPos);
                                 }
                             }
-                        }
-                    }
 
-                    if (_coreui.menuItem(_allocator, coreui.Icons.Group ++ " " ++ "Group", .{}, tab_o.filter)) {
-                        const node_obj = try graphvm.GroupType.createObject(_cdb, tab_o.db);
-
-                        const node_w = _cdb.writeObj(node_obj).?;
-
-                        try graphvm.GroupType.setStr(_cdb, node_w, .title, "Group");
-
-                        graphvm.GroupType.setValue(f32, _cdb, node_w, .pos_x, tab_o.ctxPos[0]);
-                        graphvm.GroupType.setValue(f32, _cdb, node_w, .pos_x, tab_o.ctxPos[1]);
-
-                        graphvm.GroupType.setValue(f32, _cdb, node_w, .size_x, 50);
-                        graphvm.GroupType.setValue(f32, _cdb, node_w, .size_y, 50);
-
-                        const graph_w = _cdb.writeObj(graph_obj).?;
-                        try graphvm.GraphType.addSubObjToSet(_cdb, graph_w, .groups, &.{node_w});
-
-                        try _cdb.writeCommit(node_w);
-                        try _cdb.writeCommit(graph_w);
-
-                        _node_editor.setNodePosition(node_obj.toU64(), tab_o.ctxPos);
-                    }
-
-                    for (impls) |iface| {
-                        var category_open = true;
-
-                        if (tab_o.filter == null) {
-                            if (iface.category) |category| {
-                                var buff: [256:0]u8 = undefined;
-                                const label = try std.fmt.bufPrintZ(&buff, "###{s}", .{category});
-
-                                category_open = _coreui.beginMenu(_allocator, label, true, null);
+                            for (0..count) |_| {
+                                _coreui.endMenu();
                             }
                         }
 
-                        var icon_buf: [16:0]u8 = undefined;
-                        var node_icon: [:0]const u8 = undefined;
-
-                        if (iface.icon) |icon_fce| {
-                            node_icon = try icon_fce(&icon_buf, tmp_alloc, .{});
-                        } else {
-                            node_icon = try std.fmt.bufPrintZ(&icon_buf, "{s}", .{coreui.Icons.Node});
-                        }
-
-                        var buff: [256:0]u8 = undefined;
-                        const label = try std.fmt.bufPrintZ(&buff, "{s} {s}###{s}", .{ node_icon, iface.name, iface.name });
-
-                        if (category_open and _coreui.menuItem(_allocator, label, .{}, tab_o.filter)) {
-                            const node_obj = try _graph.createCdbNode(tab_o.db, iface.type_hash, tab_o.ctxPos);
+                        if (_coreui.menuItem(_allocator, coreui.Icons.Group ++ " " ++ "Group", .{}, tab_o.filter)) {
+                            const node_obj = try graphvm.GroupType.createObject(_cdb, tab_o.db);
 
                             const node_w = _cdb.writeObj(node_obj).?;
 
+                            try graphvm.GroupType.setStr(_cdb, node_w, .title, "Group");
+
+                            graphvm.GroupType.setValue(f32, _cdb, node_w, .pos_x, tab_o.ctxPos[0]);
+                            graphvm.GroupType.setValue(f32, _cdb, node_w, .pos_x, tab_o.ctxPos[1]);
+
+                            graphvm.GroupType.setValue(f32, _cdb, node_w, .size_x, 50);
+                            graphvm.GroupType.setValue(f32, _cdb, node_w, .size_y, 50);
+
                             const graph_w = _cdb.writeObj(graph_obj).?;
-                            try graphvm.GraphType.addSubObjToSet(_cdb, graph_w, .nodes, &.{node_w});
+                            try graphvm.GraphType.addSubObjToSet(_cdb, graph_w, .groups, &.{node_w});
 
                             try _cdb.writeCommit(node_w);
                             try _cdb.writeCommit(graph_w);
@@ -758,8 +918,30 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                             _node_editor.setNodePosition(node_obj.toU64(), tab_o.ctxPos);
                         }
 
-                        if (tab_o.filter == null and category_open and iface.category != null) {
-                            _coreui.endMenu();
+                        for (node_without_category.items) |iface| {
+                            var icon_buf: [16:0]u8 = undefined;
+                            var node_icon: [:0]const u8 = undefined;
+
+                            if (iface.icon) |icon_fce| {
+                                node_icon = try icon_fce(iface, &icon_buf, tmp_alloc, .{});
+                            } else {
+                                node_icon = try std.fmt.bufPrintZ(&icon_buf, "{s}", .{coreui.Icons.Node});
+                            }
+
+                            const name = try std.fmt.bufPrintZ(&buf, "{s}  {s}###{s}", .{ node_icon, iface.name, iface.type_name });
+                            if (_coreui.menuItem(_allocator, name, .{}, tab_o.filter)) {
+                                const node_obj = try _graph.createCdbNode(tab_o.db, iface.type_hash, tab_o.ctxPos);
+
+                                const node_w = _cdb.writeObj(node_obj).?;
+
+                                const graph_w = _cdb.writeObj(graph_obj).?;
+                                try graphvm.GraphType.addSubObjToSet(_cdb, graph_w, .nodes, &.{node_w});
+
+                                try _cdb.writeCommit(node_w);
+                                try _cdb.writeCommit(graph_w);
+
+                                _node_editor.setNodePosition(node_obj.toU64(), tab_o.ctxPos);
+                            }
                         }
                     }
                 }
@@ -775,18 +957,36 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                         const node_obj_r = graphvm.NodeType.read(_cdb, node_obj).?;
                         const node_type = graphvm.NodeType.f.getNodeTypeId(_cdb, node_obj_r);
 
-                        if (node_type.eql(graphvm.CALL_GRAPH_NODE_TYPE)) {
-                            if (graphvm.NodeType.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
-                                const settings_r = graphvm.CallGraphNodeSettings.read(_cdb, settings).?;
+                        if (graphvm.NodeType.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
+                            const settings_r = graphvm.CallGraphNodeSettings.read(_cdb, settings).?;
+
+                            if (node_type.eql(graphvm.CALL_GRAPH_NODE_TYPE)) {
                                 if (graphvm.CallGraphNodeSettings.readSubObj(_cdb, settings_r, .graph)) |graph| {
                                     if (_coreui.menuItem(_allocator, coreui.Icons.Open ++ "  " ++ "Open subgraph", .{}, null)) {
                                         try _editor_obj_buffer.addToFirst(tmp_alloc, tab_o.db, .{ .top_level_obj = tab_o.selection.top_level_obj, .obj = graph });
                                     }
                                 }
+                            } else {
+                                if (true) {
+                                    _coreui.pushObjUUID(node_obj);
+                                    defer _coreui.popId();
+
+                                    try _editor_inspector.cdbPropertiesObj(
+                                        tmp_alloc,
+                                        tab_o,
+                                        tab_o.selection.top_level_obj,
+                                        settings,
+                                        0,
+                                        .{
+                                            .hide_proto = true,
+                                            .max_autopen_depth = 0,
+                                            .flat = true,
+                                        },
+                                    );
+                                    _coreui.separator();
+                                }
                             }
                         }
-
-                        _coreui.separator();
                     }
 
                     if (_coreui.menuItem(_allocator, coreui.Icons.Delete ++ "  " ++ "Delete node", .{ .enabled = enabled }, null)) {
@@ -942,10 +1142,13 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                             const output_pin_def = (try _graph.getOutputPin(tmp_alloc, tab_o.root_graph_obj, from_node_obj, from_node_type, .{ .id = from_id.pin_hash })).?;
                             const input_pin_def = (try _graph.getInputPin(tmp_alloc, tab_o.root_graph_obj, to_node_obj, to_node_type, .{ .id = to_id.pin_hash })).?;
 
-                            const type_color = _graph.getTypeColor(output_pin_def.type_hash);
+                            const resolved_output = tab_o.resolved_pintype_map.get(.{ from_node_obj, .{ .id = from_id.pin_hash } }) orelse output_pin_def.type_hash;
+                            const resolved_input = tab_o.resolved_pintype_map.get(.{ to_node_obj, .{ .id = to_id.pin_hash } }) orelse input_pin_def.type_hash;
+
+                            const type_color = _graph.getTypeColor(resolved_output);
 
                             // Type check
-                            if (!input_pin_def.type_hash.eql(graphvm.PinTypes.GENERIC) and !input_pin_def.type_hash.eql(output_pin_def.type_hash)) {
+                            if (!input_pin_def.type_hash.eql(graphvm.PinTypes.GENERIC) and !resolved_input.eql(resolved_output)) {
                                 _node_editor.rejectNewItem(.{ 1, 0, 0, 1 }, 3);
                             } else if (_node_editor.acceptNewItem(type_color, 3)) {
                                 if (_node_editor.pinHadAnyLinks(ne_to_id.?)) {
@@ -1229,7 +1432,7 @@ var node_visual_aspect = editor.UiVisualAspect.implement(struct {
         const node_type_hash = graphvm.NodeType.f.getNodeTypeId(_cdb, obj_r);
         if (_graph.findNodeI(node_type_hash)) |node_i| {
             if (node_i.icon) |icon| {
-                return icon(buff, allocator, obj);
+                return icon(node_i, buff, allocator, obj);
             }
         }
 

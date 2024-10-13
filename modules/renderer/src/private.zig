@@ -16,6 +16,7 @@ const public = @import("renderer.zig");
 const transform = @import("transform");
 const graphvm = @import("graphvm");
 const camera = @import("camera");
+const shader_system = @import("shader_system");
 
 const module_name = .renderer;
 
@@ -43,7 +44,7 @@ var _metrics: *const cetech1.metrics.MetricsAPI = undefined;
 var _task: *const cetech1.task.TaskAPI = undefined;
 var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
 
-const AtomicViewId = std.atomic.Value(u16);
+var _shader: *const shader_system.ShaderSystemAPI = undefined;
 
 // Global state
 const G = struct {
@@ -52,7 +53,12 @@ const G = struct {
     rg_lock: std.Thread.Mutex = undefined,
     rg_set: GraphSet = undefined,
     rg_pool: GraphPool = undefined,
-    view_id: AtomicViewId = AtomicViewId.init(1),
+
+    cube_pos_vb: gpu.VertexBufferHandle = .{},
+    cube_col_vb: gpu.VertexBufferHandle = .{},
+    cube_ib: gpu.IndexBufferHandle = .{},
+
+    time_system: shader_system.SystemInstance = undefined,
 };
 
 var _g: *G = undefined;
@@ -465,6 +471,10 @@ const GraphBuilder = struct {
         return self.layer_map.get(cetech1.strid.strId32(layer)) orelse 256;
     }
 
+    pub fn getLayerById(self: *GraphBuilder, layer: strid.StrId32) gpu.ViewId {
+        return self.layer_map.get(layer) orelse 256;
+    }
+
     pub fn importTexture(self: *GraphBuilder, texture_name: []const u8, texture: gpu.TextureHandle) !void {
         try self.texture_map.put(cetech1.strid.strId32(texture_name), texture);
     }
@@ -519,7 +529,7 @@ const GraphBuilder = struct {
         for (self.dag.output.keys()) |pass| {
             var info = self.passinfo_map.getPtr(pass) orelse return error.InvalidPass;
 
-            const viewid = newViewId();
+            const viewid = _gpu.newViewId();
             info.viewid = viewid;
             if (info.exported_layer) |layer| {
                 try self.layer_map.put(layer, viewid);
@@ -822,7 +832,6 @@ fn destroyViewport(viewport: public.Viewport) void {
 }
 
 pub const api = public.RendererApi{
-    .newViewId = newViewId,
     .createViewport = createViewport,
     .destroyViewport = destroyViewport,
 
@@ -876,16 +885,9 @@ pub const viewport_vt = public.Viewport.VTable.implement(struct {
     }
 });
 
-fn newViewId() gpu.ViewId {
-    return _g.view_id.fetchAdd(1, .monotonic);
-}
-
-fn resetViewId() void {
-    _g.view_id.store(1, .monotonic);
-}
-
 const RenderViewportTask = struct {
     viewport: *Viewport,
+    now_s: f32,
     pub fn exec(s: *@This()) !void {
         const complete_counter = cetech1.metrics.MetricScopedDuration.begin(s.viewport.complete_render_duration);
         defer complete_counter.end();
@@ -911,18 +913,24 @@ const RenderViewportTask = struct {
         var viewers = ViewersList.init(allocator);
         defer viewers.deinit();
 
+        var enabled_systems = shader_system.SystemSet.initEmpty();
+        enabled_systems.set(_shader.getSystemIdx(strid.strId32("viewer_system")));
+        enabled_systems.set(_shader.getSystemIdx(strid.strId32("time_system")));
+
         if (s.viewport.world) |world| {
             var renderables = std.ArrayList(Renderables).init(allocator);
             defer renderables.deinit();
 
             viewers.clearRetainingCapacity();
-            //const viewers = builder.getViewers();
 
             // Main vieewr
             const fb_size = s.viewport.size;
             const aspect_ratio = fb_size[0] / fb_size[1];
 
-            // Collect camera
+            // TODO: shader components
+            {}
+
+            // Collect camera components
             {
                 var q = try world.createQuery(&.{
                     .{ .id = ecs.id(transform.WorldTransform), .inout = .In },
@@ -955,7 +963,9 @@ const RenderViewportTask = struct {
                             .camera = cameras[idx],
                             .mtx = zm.matToArr(zm.inverse(camera_transforms[idx].mtx)),
                             .proj = zm.matToArr(pmtx),
+                            .context = strid.strId32("viewport"),
                         };
+
                         if (s.viewport.main_camera_entity != null and s.viewport.main_camera_entity.? == entities[idx]) {
                             try viewers.insert(0, v);
                         } else {
@@ -1040,7 +1050,7 @@ const RenderViewportTask = struct {
                     s.viewport.rendered_counter.* += @floatFromInt(result.mtx.items.len);
 
                     if (result.renderables.items.len > 0) {
-                        try renderable.iface.render(allocator, builder, world, vp, result);
+                        try renderable.iface.render(allocator, builder, world, vp, viewers.items, enabled_systems, result);
                     }
                 }
             }
@@ -1048,14 +1058,18 @@ const RenderViewportTask = struct {
     }
 };
 
-fn renderAllViewports(allocator: std.mem.Allocator) !void {
+fn renderAllViewports(allocator: std.mem.Allocator, time_s: f32) !void {
     var zone_ctx = _profiler.ZoneN(@src(), "renderAllViewports");
     defer zone_ctx.End();
 
     var tasks = std.ArrayList(cetech1.task.TaskID).init(allocator);
     defer tasks.deinit();
 
-    resetViewId();
+    _gpu.resetViewId();
+
+    // Submit Time system
+    try _g.time_system.uniforms.?.set(strid.strId32("time"), [4]f32{ time_s, 0, 0, 0 });
+    _shader.submitSystemUniforms(_g.time_system);
 
     for (_g.viewport_set.keys()) |viewport| {
         if (!viewport.renderMe) continue;
@@ -1092,13 +1106,14 @@ fn renderAllViewports(allocator: std.mem.Allocator) !void {
 
         // TODO: task wait block thread and if you have more viewport than thread they can block whole app.
         if (true) {
-            var render_task = RenderViewportTask{ .viewport = viewport };
+            var render_task = RenderViewportTask{ .viewport = viewport, .now_s = time_s };
             try render_task.exec();
         } else {
             const task_id = try _task.schedule(
                 cetech1.task.TaskID.none,
                 RenderViewportTask{
                     .viewport = viewport,
+                    .now_s = time_s,
                 },
             );
             try tasks.append(task_id);
@@ -1116,9 +1131,9 @@ fn renderAll(ctx: *gpu.GpuContext, kernel_tick: u64, dt: f32, vsync: bool) void 
 
 var old_fb_size = [2]i32{ -1, -1 };
 var old_flags = gpu.ResetFlags_None;
+var dt_accum: f32 = 0;
 fn _renderAll(ctx: *gpu.GpuContext, kernel_tick: u64, dt: f32, vsync: bool) !void {
-    _ = kernel_tick;
-    _ = dt;
+    _ = kernel_tick; // autofix
     var zone_ctx = _profiler.ZoneN(@src(), "Render");
     defer zone_ctx.End();
 
@@ -1146,7 +1161,6 @@ fn _renderAll(ctx: *gpu.GpuContext, kernel_tick: u64, dt: f32, vsync: bool) !voi
 
     _gpu.setViewClear(0, gpu.ClearFlags_Color | gpu.ClearFlags_Depth, 0x303030ff, 1.0, 0);
     _gpu.setViewRectRatio(0, 0, 0, .Equal);
-
     const encoder = _gpu.getEncoder().?;
     encoder.touch(0);
 
@@ -1155,7 +1169,7 @@ fn _renderAll(ctx: *gpu.GpuContext, kernel_tick: u64, dt: f32, vsync: bool) !voi
     const allocator = try _tmpalloc.create();
     defer _tmpalloc.destroy(allocator);
 
-    try renderAllViewports(allocator);
+    try renderAllViewports(allocator, dt_accum);
 
     _gpu.endAllUsedEncoders();
 
@@ -1165,6 +1179,9 @@ fn _renderAll(ctx: *gpu.GpuContext, kernel_tick: u64, dt: f32, vsync: bool) !voi
         defer frame_zone_ctx.End();
         _ = _gpu.frame(false);
     }
+
+    dt_accum += dt;
+
     // TODO
     // profiler.ztracy.FrameImage( , width: u16, height: u16, offset: u8, flip: c_int);
 }
@@ -1192,6 +1209,7 @@ pub const builder_vt = public.GraphBuilder.VTable{
     .readTexture = @ptrCast(&GraphBuilder.readTexture),
     .importTexture = @ptrCast(&GraphBuilder.importTexture),
     .getLayer = @ptrCast(&GraphBuilder.getLayer),
+    .getLayerById = @ptrCast(&GraphBuilder.getLayerById),
     .exportLayer = @ptrCast(&GraphBuilder.exportLayer),
 
     .getViewers = @ptrCast(&GraphBuilder.getViewers),
@@ -1241,8 +1259,113 @@ fn destroy(rg: public.Graph) void {
     _g.rg_pool.destroy(true_rg);
 }
 
+var kernel_task = cetech1.kernel.KernelTaskI.implement(
+    "Renderer",
+    &[_]strid.StrId64{},
+    struct {
+        pub fn init() !void {
+            _g.viewport_set = ViewportSet.init(_allocator);
+            _g.viewport_pool = ViewportPool.init(_allocator);
+
+            _g.rg_set = GraphSet.init(_allocator);
+            _g.rg_pool = GraphPool.init(_allocator);
+            _g.rg_lock = std.Thread.Mutex{};
+
+            _g.time_system = try _shader.createSystemInstance(strid.strId32("time_system"));
+
+            _vertex_pos_layout = PosVertex.layoutInit();
+            _vertex_col_layout = ColorVertex.layoutInit();
+            _g.cube_pos_vb = _gpu.createVertexBuffer(
+                _gpu.makeRef(&cube_positions, cube_positions.len * @sizeOf(PosVertex)),
+                &_vertex_pos_layout,
+                gpu.BufferFlags_None,
+            );
+            _g.cube_col_vb = _gpu.createVertexBuffer(
+                _gpu.makeRef(&cube_cololrs, cube_cololrs.len * @sizeOf(ColorVertex)),
+                &_vertex_col_layout,
+                gpu.BufferFlags_None,
+            );
+            _g.cube_ib = _gpu.createIndexBuffer(
+                _gpu.makeRef(&cube_tri_list, cube_tri_list.len * @sizeOf(u16)),
+                gpu.BufferFlags_None,
+            );
+        }
+
+        pub fn shutdown() !void {
+            _g.viewport_set.deinit();
+            _g.viewport_pool.deinit();
+
+            _g.rg_set.deinit();
+            _g.rg_pool.deinit();
+
+            _shader.destroySystemInstance(&_g.time_system);
+
+            _gpu.destroyIndexBuffer(_g.cube_ib);
+            _gpu.destroyVertexBuffer(_g.cube_pos_vb);
+            _gpu.destroyVertexBuffer(_g.cube_col_vb);
+        }
+    },
+);
+
+const gpu_geometry_value_type_i = graphvm.GraphValueTypeI.implement(
+    public.GPUGeometry,
+    .{
+        .name = "GPU geometry",
+        .type_hash = public.PinTypes.GPU_GEOMETRY,
+        .cdb_type_hash = public.GPUGeometryCdb.type_hash, // TODO: this is not needed. value only setable from nodes out
+    },
+    struct {
+        pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
+            _ = allocator; // autofix
+            const v: public.GPUGeometry = .{
+                .vb = .{
+                    .{ .idx = @truncate(public.GPUGeometryCdb.readValue(u32, _cdb, _cdb.readObj(obj).?, .handle0)) },
+                    .{ .idx = @truncate(public.GPUGeometryCdb.readValue(u32, _cdb, _cdb.readObj(obj).?, .handle1)) },
+                    .{ .idx = @truncate(public.GPUGeometryCdb.readValue(u32, _cdb, _cdb.readObj(obj).?, .handle2)) },
+                    .{ .idx = @truncate(public.GPUGeometryCdb.readValue(u32, _cdb, _cdb.readObj(obj).?, .handle3)) },
+                },
+            };
+
+            @memcpy(value, std.mem.asBytes(&v));
+        }
+
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
+            return strid.strId64(value).id;
+        }
+
+        pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
+            return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(public.GPUGeometry, value)});
+        }
+    },
+);
+
+const gpu_index_buffer_value_type_i = graphvm.GraphValueTypeI.implement(
+    gpu.IndexBufferHandle,
+    .{
+        .name = "GPU index buffer",
+        .type_hash = public.PinTypes.GPU_INDEX_BUFFER,
+        .cdb_type_hash = public.GPUIndexBufferCdb.type_hash,
+    },
+    struct {
+        pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
+            _ = allocator; // autofix
+            const v = public.GPUIndexBufferCdb.readValue(u32, _cdb, _cdb.readObj(obj).?, .handle);
+            @memcpy(value, std.mem.asBytes(&v));
+        }
+
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
+            const v = std.mem.bytesAsValue(u32, value);
+            return @intCast(v.*);
+        }
+
+        pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
+            return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(u32, value)});
+        }
+    },
+);
+
 // TODO: Move
-const culling_volume_node_i = graphvm.GraphNodeI.implement(
+const culling_volume_node_i = graphvm.NodeI.implement(
     .{
         .name = "Culling volume",
         .type_name = public.CULLING_VOLUME_NODE_TYPE_STR,
@@ -1253,23 +1376,27 @@ const culling_volume_node_i = graphvm.GraphNodeI.implement(
     struct {
         const Self = @This();
 
-        pub fn getInputPins(allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+        pub fn getInputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+            _ = self; // autofix
             _ = node_obj; // autofix
             _ = graph_obj; // autofix
             return allocator.dupe(graphvm.NodePin, &.{
-                graphvm.NodePin.init("Radius", graphvm.NodePin.pinHash("radius", false), graphvm.PinTypes.F32),
-                graphvm.NodePin.init("Min", graphvm.NodePin.pinHash("min", false), graphvm.PinTypes.VEC3F),
-                graphvm.NodePin.init("Max", graphvm.NodePin.pinHash("max", false), graphvm.PinTypes.VEC3F),
+                graphvm.NodePin.init("Radius", graphvm.NodePin.pinHash("radius", false), graphvm.PinTypes.F32, null),
+                graphvm.NodePin.init("Min", graphvm.NodePin.pinHash("min", false), graphvm.PinTypes.VEC3F, null),
+                graphvm.NodePin.init("Max", graphvm.NodePin.pinHash("max", false), graphvm.PinTypes.VEC3F, null),
             });
         }
 
-        pub fn getOutputPins(allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+        pub fn getOutputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+            _ = self; // autofix
             _ = node_obj; // autofix
             _ = graph_obj; // autofix
             return allocator.dupe(graphvm.NodePin, &.{});
         }
 
-        pub fn create(allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool) !void {
+        pub fn create(self: *const graphvm.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {
+            _ = self; // autofix
+            _ = transpile_state; // autofix
             _ = reload; // autofix
             _ = allocator; // autofix
             _ = node_obj; // autofix
@@ -1277,7 +1404,8 @@ const culling_volume_node_i = graphvm.GraphNodeI.implement(
             real_state.* = .{};
         }
 
-        pub fn execute(args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: graphvm.OutPins) !void {
+        pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: graphvm.OutPins) !void {
+            _ = self; // autofix
             _ = out_pins;
             var state = args.getState(public.CullingVolume).?;
             _, const radius = in_pins.read(f32, 0) orelse .{ 0, 0 };
@@ -1290,10 +1418,12 @@ const culling_volume_node_i = graphvm.GraphNodeI.implement(
         }
 
         pub fn icon(
+            self: *const graphvm.NodeI,
             buff: [:0]u8,
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
+            _ = self; // autofix
             _ = allocator; // autofix
             _ = node_obj; // autofix
 
@@ -1302,28 +1432,287 @@ const culling_volume_node_i = graphvm.GraphNodeI.implement(
     },
 );
 
-var kernel_task = cetech1.kernel.KernelTaskI.implement(
-    "Renderer",
-    &[_]strid.StrId64{},
+const draw_call_node_i = graphvm.NodeI.implement(
+    .{
+        .name = "Draw call",
+        .type_name = public.DRAW_CALL_NODE_TYPE_STR,
+        .pivot = .pivot,
+        .category = "Renderer",
+    },
+    public.DrawCall,
     struct {
-        pub fn init() !void {
-            _g.viewport_set = ViewportSet.init(_allocator);
-            _g.viewport_pool = ViewportPool.init(_allocator);
+        const Self = @This();
 
-            _g.rg_set = GraphSet.init(_allocator);
-            _g.rg_pool = GraphPool.init(_allocator);
-            _g.rg_lock = std.Thread.Mutex{};
+        pub fn getInputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+            _ = self; // autofix
+            _ = node_obj; // autofix
+            _ = graph_obj; // autofix
+            return allocator.dupe(graphvm.NodePin, &.{
+                graphvm.NodePin.init("GPU shader", graphvm.NodePin.pinHash("gpu_shader", false), shader_system.PinTypes.GPU_SHADER, null),
+                graphvm.NodePin.init("GPU geometry", graphvm.NodePin.pinHash("gpu_geometry", false), public.PinTypes.GPU_GEOMETRY, null),
+                graphvm.NodePin.init("GPU index buffer", graphvm.NodePin.pinHash("gpu_index_buffer", false), public.PinTypes.GPU_INDEX_BUFFER, null),
+                graphvm.NodePin.init("Vertex count", graphvm.NodePin.pinHash("vertex_count", false), graphvm.PinTypes.U32, null),
+                graphvm.NodePin.init("Index count", graphvm.NodePin.pinHash("index_count", false), graphvm.PinTypes.U32, null),
+            });
         }
 
-        pub fn shutdown() !void {
-            _g.viewport_set.deinit();
-            _g.viewport_pool.deinit();
+        pub fn getOutputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+            _ = self; // autofix
+            _ = node_obj; // autofix
+            _ = graph_obj; // autofix
+            return allocator.dupe(graphvm.NodePin, &.{});
+        }
 
-            _g.rg_set.deinit();
-            _g.rg_pool.deinit();
+        pub fn create(self: *const graphvm.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {
+            _ = self; // autofix
+            _ = transpile_state; // autofix
+            _ = reload; // autofix
+            _ = allocator; // autofix
+            _ = node_obj; // autofix
+            const real_state: *public.DrawCall = @alignCast(@ptrCast(state));
+            real_state.* = .{};
+        }
+
+        pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: graphvm.OutPins) !void {
+            _ = self; // autofix
+            _ = out_pins;
+            var state = args.getState(public.DrawCall).?;
+            _, const gpu_shader = in_pins.read(shader_system.ShaderInstance, 0) orelse .{ 0, shader_system.ShaderInstance{} };
+            _, const gpu_geometry = in_pins.read(public.GPUGeometry, 1) orelse .{ 0, public.GPUGeometry{} };
+            _, const gpu_index_buffer = in_pins.read(gpu.IndexBufferHandle, 2) orelse .{ 0, gpu.IndexBufferHandle{} };
+            _, const vertex_count = in_pins.read(u32, 3) orelse .{ 0, 0 };
+            _, const index_count = in_pins.read(u32, 4) orelse .{ 0, 0 };
+
+            state.gpu_shader = gpu_shader;
+            state.gpu_geometry = gpu_geometry;
+            state.gpu_index_buffer = gpu_index_buffer;
+            state.vertex_count = vertex_count;
+            state.index_count = index_count;
+        }
+
+        pub fn icon(
+            self: *const graphvm.NodeI,
+            buff: [:0]u8,
+            allocator: std.mem.Allocator,
+            node_obj: cdb.ObjId,
+        ) ![:0]u8 {
+            _ = self; // autofix
+            _ = allocator; // autofix
+            _ = node_obj; // autofix
+
+            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Draw});
         }
     },
 );
+
+// ONLY FOR TESTING
+const lsd_cube_node_i = graphvm.NodeI.implement(
+    .{
+        .name = "LSD cube",
+        .type_name = public.LSD_CUBE_NODE_TYPE_STR,
+        .category = "Renderer",
+    },
+    null,
+    struct {
+        const Self = @This();
+
+        pub fn getInputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+            _ = self; // autofix
+            _ = node_obj; // autofix
+            _ = graph_obj; // autofix
+            return allocator.dupe(graphvm.NodePin, &.{});
+        }
+
+        pub fn getOutputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+            _ = self; // autofix
+            _ = node_obj; // autofix
+            _ = graph_obj; // autofix
+            return allocator.dupe(graphvm.NodePin, &.{
+                graphvm.NodePin.init("GPU geometry", graphvm.NodePin.pinHash("gpu_geometry", true), public.PinTypes.GPU_GEOMETRY, null),
+                graphvm.NodePin.init("GPU index buffer", graphvm.NodePin.pinHash("gpu_index_buffer", true), public.PinTypes.GPU_INDEX_BUFFER, null),
+            });
+        }
+
+        pub fn create(self: *const graphvm.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool) !void {
+            _ = self; // autofix
+            _ = state; // autofix
+            _ = reload; // autofix
+            _ = allocator; // autofix
+            _ = node_obj; // autofix
+        }
+
+        pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: graphvm.OutPins) !void {
+            _ = self; // autofix
+            _ = args; // autofix
+            _ = in_pins; // autofix
+            var g: public.GPUGeometry = .{};
+            g.vb[0] = _g.cube_pos_vb;
+            g.vb[1] = _g.cube_col_vb;
+
+            try out_pins.writeTyped(public.GPUGeometry, 0, try gpu_geometry_value_type_i.calcValidityHash(&std.mem.toBytes(g)), g);
+            try out_pins.writeTyped(gpu.IndexBufferHandle, 1, try gpu_index_buffer_value_type_i.calcValidityHash(&std.mem.toBytes(_g.cube_ib)), _g.cube_ib);
+        }
+
+        pub fn icon(
+            self: *const graphvm.NodeI,
+            buff: [:0]u8,
+            allocator: std.mem.Allocator,
+            node_obj: cdb.ObjId,
+        ) ![:0]u8 {
+            _ = self; // autofix
+            _ = allocator; // autofix
+            _ = node_obj; // autofix
+
+            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_POO});
+        }
+    },
+);
+
+// TMP SHIT
+//
+// Vertex layout definiton
+//
+const PosVertex = struct {
+    x: f32,
+    y: f32,
+    z: f32,
+
+    fn init(x: f32, y: f32, z: f32) PosVertex {
+        return .{
+            .x = x,
+            .y = y,
+            .z = z,
+        };
+    }
+
+    fn layoutInit() gpu.VertexLayout {
+        // static local
+        const L = struct {
+            var posColorLayout = std.mem.zeroes(gpu.VertexLayout);
+        };
+        _ = _gpu.layoutBegin(&L.posColorLayout, gpu.Backend.noop);
+        _ = _gpu.layoutAdd(&L.posColorLayout, gpu.Attrib.Position, 3, gpu.AttribType.Float, false, false);
+        //_ = _gpu.layoutAdd(&L.posColorLayout, gpu.Attrib.Color0, 4, gpu.AttribType.Uint8, true, false);
+        _gpu.layoutEnd(&L.posColorLayout);
+
+        return L.posColorLayout;
+    }
+};
+
+const ColorVertex = struct {
+    abgr: u32,
+
+    fn init(abgr: u32) ColorVertex {
+        return .{
+            .abgr = abgr,
+        };
+    }
+
+    fn layoutInit() gpu.VertexLayout {
+        // static local
+        const L = struct {
+            var posColorLayout = std.mem.zeroes(gpu.VertexLayout);
+        };
+        _ = _gpu.layoutBegin(&L.posColorLayout, gpu.Backend.noop);
+        //_ = _gpu.layoutAdd(&L.posColorLayout, gpu.Attrib.Position, 3, gpu.AttribType.Float, false, false);
+        _ = _gpu.layoutAdd(&L.posColorLayout, gpu.Attrib.Color0, 4, gpu.AttribType.Uint8, true, false);
+        _gpu.layoutEnd(&L.posColorLayout);
+
+        return L.posColorLayout;
+    }
+};
+
+const cube_positions = [_]PosVertex{
+    .init(-1.0, 1.0, 1.0),
+    .init(1.0, 1.0, 1.0),
+    .init(-1.0, -1.0, 1.0),
+    .init(1.0, -1.0, 1.0),
+    .init(-1.0, 1.0, -1.0),
+    .init(1.0, 1.0, -1.0),
+    .init(-1.0, -1.0, -1.0),
+    .init(1.0, -1.0, -1.0),
+};
+
+const cube_cololrs = [_]ColorVertex{
+    .init(0xff000000),
+    .init(0xff0000ff),
+    .init(0xff00ff00),
+    .init(0xff00ffff),
+    .init(0xffff0000),
+    .init(0xffff00ff),
+    .init(0xffffff00),
+    .init(0xffffffff),
+};
+
+const cube_tri_list = [_]u16{
+    0, 1, 2, // 0
+    1, 3, 2,
+    4, 6, 5, // 2
+    5, 6, 7,
+    0, 2, 4, // 4
+    4, 2, 6,
+    1, 5, 3, // 6
+    5, 7, 3,
+    0, 4, 1, // 8
+    4, 5, 1,
+    2, 3, 6, // 10
+    6, 3, 7,
+};
+
+var _vertex_pos_layout: gpu.VertexLayout = undefined;
+var _vertex_col_layout: gpu.VertexLayout = undefined;
+//
+
+var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
+    pub fn createTypes(db: cdb.DbId) !void {
+        // GPUGeometryCdb
+        {
+            const type_idx = try _cdb.addType(
+                db,
+                public.GPUGeometryCdb.name,
+                &[_]cdb.PropDef{
+                    .{
+                        .prop_idx = public.GPUGeometryCdb.propIdx(.handle0),
+                        .name = "handle0",
+                        .type = cdb.PropType.U32,
+                    },
+                    .{
+                        .prop_idx = public.GPUGeometryCdb.propIdx(.handle1),
+                        .name = "handle1",
+                        .type = cdb.PropType.U32,
+                    },
+                    .{
+                        .prop_idx = public.GPUGeometryCdb.propIdx(.handle2),
+                        .name = "handle2",
+                        .type = cdb.PropType.U32,
+                    },
+                    .{
+                        .prop_idx = public.GPUGeometryCdb.propIdx(.handle3),
+                        .name = "handle3",
+                        .type = cdb.PropType.U32,
+                    },
+                },
+            );
+            _ = type_idx; // autofix
+        }
+
+        // GPUIndexBufferCdb
+        {
+            const type_idx = try _cdb.addType(
+                db,
+                public.GPUIndexBufferCdb.name,
+                &[_]cdb.PropDef{
+                    .{
+                        .prop_idx = public.GPUIndexBufferCdb.propIdx(.handle),
+                        .name = "handle",
+                        .type = cdb.PropType.U32,
+                    },
+                },
+            );
+            _ = type_idx; // autofix
+        }
+    }
+});
 
 // Create types, register api, interfaces etc...
 pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
@@ -1346,6 +1735,8 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _task = apidb.getZigApi(module_name, cetech1.task.TaskAPI).?;
     _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
 
+    _shader = apidb.getZigApi(module_name, shader_system.ShaderSystemAPI).?;
+
     // create global variable that can survive reload
     _g = try _apidb.globalVar(G, module_name, "_g", .{});
 
@@ -1354,9 +1745,17 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.setOrRemoveZigApi(module_name, public.RenderGraphApi, &graph_api, load);
 
     // impl interface
+    try apidb.implOrRemove(module_name, cetech1.cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelRenderI, &_kernel_render_task, load);
-    try apidb.implOrRemove(module_name, graphvm.GraphNodeI, &culling_volume_node_i, load);
+
+    try apidb.implOrRemove(module_name, graphvm.NodeI, &culling_volume_node_i, load);
+    try apidb.implOrRemove(module_name, graphvm.NodeI, &draw_call_node_i, load);
+
+    try apidb.implOrRemove(module_name, graphvm.NodeI, &lsd_cube_node_i, load);
+
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &gpu_geometry_value_type_i, load);
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &gpu_index_buffer_value_type_i, load);
 
     return true;
 }

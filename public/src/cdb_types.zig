@@ -189,6 +189,7 @@ pub const f32Type = cdb.CdbTypeDecl(
     },
     struct {},
 );
+
 pub const f64Type = cdb.CdbTypeDecl(
     "ct_f64",
     enum(u32) {

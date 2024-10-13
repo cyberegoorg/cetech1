@@ -71,6 +71,9 @@ pub const api = public.GpuApi{
     .addPaletteColor = addPaletteColor,
     .endAllUsedEncoders = endAllUsedEncoders,
 
+    .newViewId = newViewId,
+    .resetViewId = resetViewId,
+
     .vertexPack = @ptrCast(&bgfx.vertexPack),
     .vertexUnpack = @ptrCast(&bgfx.vertexUnpack),
     .vertexConvert = @ptrCast(&bgfx.vertexConvert),
@@ -214,7 +217,33 @@ pub const api = public.GpuApi{
     .layoutHas = @ptrCast(&bgfx.VertexLayout.has),
     .layoutSkip = @ptrCast(&bgfx.VertexLayout.skip),
     .layoutEnd = @ptrCast(&bgfx.VertexLayout.end),
+
+    .compileShader = compileShader,
+    .createDefaultOptionsForRenderer = @ptrCast(&zbgfx.shaderc.createDefaultOptionsForRenderer),
+    .getBackendType = @ptrCast(&bgfx.getRendererType),
 };
+
+var _view_id: AtomicViewId = AtomicViewId.init(1);
+fn newViewId() public.ViewId {
+    return _view_id.fetchAdd(1, .monotonic);
+}
+fn resetViewId() void {
+    _view_id.store(1, .monotonic);
+}
+
+pub fn compileShader(
+    allocator: std.mem.Allocator,
+    varying: []const u8,
+    shader: []const u8,
+    options: public.ShadercOptions,
+) ![]u8 {
+    log.debug("Compile {s} shader", .{@tagName(options.shaderType)});
+
+    const exe = try zbgfx.shaderc.shadercFromExePath(allocator);
+    defer allocator.free(exe);
+    const opts: zbgfx.shaderc.ShadercOptions = std.mem.bytesToValue(zbgfx.shaderc.ShadercOptions, std.mem.asBytes(&options));
+    return zbgfx.shaderc.compileShader(allocator, exe, varying, shader, opts);
+}
 
 const AtomicViewId = std.atomic.Value(u16);
 

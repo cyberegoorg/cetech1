@@ -517,7 +517,7 @@ pub fn registerToApi() !void {
     try apidb.api.setZigApi(module_name, public.EcsAPI, &api);
 
     // try apidb.api.implOrRemove(module_name, graphvm.GraphValueTypeI, &entity_value_type_i, true);
-    // try apidb.api.implOrRemove(module_name, graphvm.GraphNodeI, &get_entity_node_i, true);
+    // try apidb.api.implOrRemove(module_name, graphvm.NodeI, &get_entity_node_i, true);
 
     try apidb.api.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, true);
     try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task, true);
@@ -1299,7 +1299,7 @@ const FlecsAllocator = struct {
 //     },
 // );
 
-// const get_entity_node_i = graphvm.GraphNodeI.implement(
+// const get_entity_node_i = graphvm.NodeI.implement(
 //     .{
 //         .name = "Get entity",
 //         .type_name = "get_entity",

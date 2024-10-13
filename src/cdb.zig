@@ -35,6 +35,7 @@ const OverridesSet = std.bit_set.IntegerBitSet(MAX_PROPERIES_IN_OBJECT);
 
 const AtomicInt32 = std.atomic.Value(u32);
 const AtomicInt64 = std.atomic.Value(u64);
+
 const TypeStorageMap = std.AutoArrayHashMap(StrId32, public.TypeIdx);
 const ToFreeIdQueue = cetech1.mem.QueueWithLock(*Object);
 const ToFreeIdQueueNodePool = cetech1.mem.PoolWithLock(ToFreeIdQueue.Node);
@@ -445,7 +446,7 @@ pub const TypeStorage = struct {
     }
 
     pub fn increaseReference(self: *Self, obj: public.ObjId) void {
-        _ = self.objid_ref_count.items[obj.id].fetchAdd(1, .release);
+        _ = self.objid_ref_count.items[obj.id].fetchAdd(1, .monotonic);
     }
 
     pub fn decreaseReferenceToFree(self: *Self, object: *Object) !void {
@@ -455,7 +456,8 @@ pub const TypeStorage = struct {
         //std.debug.assert(ref_count.value != 0);
 
         if (1 == ref_count.fetchSub(1, .release)) {
-            ref_count.fence(.acquire);
+            _ = ref_count.load(.acquire);
+
             try self.addToFreeQueue(object);
             self.objid_gen.items[object.objid.id] = @addWithOverflow(self.objid_gen.items[object.objid.id], 1)[0];
         }
@@ -472,7 +474,7 @@ pub const TypeStorage = struct {
         // }
 
         if (1 == ref_count.fetchSub(1, .release)) {
-            ref_count.fence(.acquire);
+            _ = ref_count.load(.acquire);
             return try self.freeObject(object, destroyed_objid, tmp_allocator);
         }
         return 0;
@@ -1738,6 +1740,7 @@ pub const Db = struct {
                 const old_subobj_ptr = self.getObjectPtr(old_subobj).?;
                 var old_subobj_storage = self.getTypeStorage(old_subobj).?;
                 _ = try old_subobj_storage.decreaseReferenceToFree(old_subobj_ptr);
+                self.setParent(old_subobj_ptr, .{}, prop_idx);
             }
         }
 

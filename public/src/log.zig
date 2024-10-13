@@ -4,7 +4,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const strid = @import("strid.zig");
 
-pub const MAX_LOG_ENTRY_SIZE = 1024 * 4; //TODO SHIT
+pub const MAX_LOG_ENTRY_SIZE = 1024 * 8; //TODO SHIT
 const LogFn = fn (comptime std.log.Level, comptime @TypeOf(.enum_literal), comptime []const u8, anytype) void;
 
 pub const LogHandlerI = struct {

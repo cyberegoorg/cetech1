@@ -9,9 +9,11 @@ const ecs = cetech1.ecs;
 const renderer = @import("renderer");
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
+const zm = cetech1.math;
 
 const graphvm = @import("graphvm");
 const transform = @import("transform");
+const shader_system = @import("shader_system");
 
 const public = @import("render_component.zig");
 
@@ -35,16 +37,17 @@ var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 var _ecs: *const ecs.EcsAPI = undefined;
 var _graphvm: *const graphvm.GraphVMApi = undefined;
 var _gpu: *const gpu.GpuApi = undefined;
+var _shader_system: *const shader_system.ShaderSystemAPI = undefined;
 
 // Global state that can surive hot-reload
 const G = struct {
-    world2query: ?World2CullingQuery = undefined,
+    world2query: ?World2CullingQuery = null,
 };
 var _g: *G = undefined;
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
     "RenderComponentInit",
-    &[_]strid.StrId64{},
+    &[_]strid.StrId64{strid.strId64("ShaderSystem")},
     struct {
         pub fn init() !void {}
 
@@ -248,14 +251,13 @@ const render_component_renderer_i = renderer.RendereableI.implement(public.Rende
         }
     }
 
-    pub fn render(allocator: std.mem.Allocator, builder: renderer.GraphBuilder, world: ecs.World, viewport: renderer.Viewport, culling_result: ?*renderer.CullingResult) !void {
+    pub fn render(allocator: std.mem.Allocator, builder: renderer.GraphBuilder, world: ecs.World, viewport: renderer.Viewport, viewers: []const renderer.Viewer, systems: shader_system.SystemSet, culling_result: ?*renderer.CullingResult) !void {
         _ = world;
 
-        const layer = builder.getLayer("color");
         if (_gpu.getEncoder()) |e| {
             const dd = viewport.getDD();
             {
-                dd.begin(layer, true, e);
+                dd.begin(builder.getLayer("color"), true, e);
                 defer dd.end();
 
                 if (culling_result) |result| {
@@ -265,6 +267,42 @@ const render_component_renderer_i = renderer.RendereableI.implement(public.Rende
 
                     const volumes = try _graphvm.getNodeState(renderer.CullingVolume, allocator, ci, renderer.CULLING_VOLUME_NODE_TYPE);
                     defer allocator.free(volumes);
+
+                    try _graphvm.executeNode(allocator, ci, renderer.DRAW_CALL_NODE_TYPE);
+                    const draw_calls = try _graphvm.getNodeState(renderer.DrawCall, allocator, ci, renderer.DRAW_CALL_NODE_TYPE);
+                    defer allocator.free(draw_calls);
+
+                    for (draw_calls, result.mtx.items) |draw_call, mtx| {
+                        if (draw_call) |dc| {
+                            if (dc.gpu_geometry != null and dc.gpu_index_buffer != null and dc.gpu_shader != null) {
+                                _ = e.setTransform(&zm.matToArr(mtx.mtx), 1);
+
+                                for (dc.gpu_geometry.?.vb, 0..) |vb, idx| {
+                                    if (vb.isValid()) {
+                                        e.setVertexBuffer(@truncate(idx), vb, 0, dc.vertex_count);
+                                    }
+                                }
+
+                                e.setIndexBuffer(dc.gpu_index_buffer.?, 0, dc.index_count);
+
+                                for (viewers) |viewver| {
+                                    if (_shader_system.selectShaderVariant(
+                                        dc.gpu_shader.?,
+                                        viewver.context,
+                                        systems,
+                                    )) |variant| {
+                                        if (variant.prg) |prg| {
+                                            _shader_system.submitShaderUniforms(variant, dc.gpu_shader.?);
+
+                                            const layer = if (variant.layer) |l| builder.getLayerById(l) else 256; // TODO: SHIT
+                                            e.setState(variant.state, variant.rgba);
+                                            e.submit(layer, prg, 0, 255);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     for (volumes, result.mtx.items) |culling_volume, mtx| {
                         const draw_bounding_volumes = true;
@@ -279,14 +317,16 @@ const render_component_renderer_i = renderer.RendereableI.implement(public.Rende
 
                                 if (draw_bounding_volumes) {
                                     if (cv.hasSphere()) {
-                                        dd.drawSphere(.{ 0, 0, 0 }, cv.radius);
-                                        // dd.drawCircleAxis(.X, .{ 0, 0, 0 }, cv.radius, 0);
-                                        // dd.drawCircleAxis(.Y, .{ 0, 0, 0 }, cv.radius, 0);
-                                        // dd.drawCircleAxis(.Z, .{ 0, 0, 0 }, cv.radius, 0);
+                                        //dd.drawSphere(.{ 0, 0, 0 }, cv.radius);
+                                        dd.drawCircleAxis(.X, .{ 0, 0, 0 }, cv.radius, 0);
+                                        dd.drawCircleAxis(.Y, .{ 0, 0, 0 }, cv.radius, 0);
+                                        dd.drawCircleAxis(.Z, .{ 0, 0, 0 }, cv.radius, 0);
                                     }
 
                                     if (cv.hasBox()) {
+                                        dd.setWireframe(true);
                                         dd.drawAABB(cv.min, cv.max);
+                                        dd.setWireframe(false);
                                     }
                                 }
                             }
@@ -337,6 +377,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
     _graphvm = apidb.getZigApi(module_name, graphvm.GraphVMApi).?;
     _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
+    _shader_system = apidb.getZigApi(module_name, shader_system.ShaderSystemAPI).?;
 
     // impl interface
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
@@ -345,8 +386,8 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, ecs.ComponentI, &render_component_c, load);
     try apidb.implOrRemove(module_name, ecs.ComponentI, &rc_initialized_c, load);
     try apidb.implOrRemove(module_name, ecs.SystemI, &init_render_graph_system_i, load);
-    try apidb.implOrRemove(module_name, renderer.RendereableI, &render_component_renderer_i, load);
     try apidb.implOrRemove(module_name, ecs.OnWorldI, &query_onworld_i, load);
+    try apidb.implOrRemove(module_name, renderer.RendereableI, &render_component_renderer_i, load);
 
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});

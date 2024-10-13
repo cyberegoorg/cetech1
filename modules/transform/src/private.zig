@@ -6,7 +6,6 @@ const strid = cetech1.strid;
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 
-const renderer = @import("renderer");
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
 const zm = cetech1.math;
@@ -257,7 +256,7 @@ const spawn_transform_world_system_i = ecs.SystemI.implement(
     },
 );
 
-// const set_position_node_i = graphvm.GraphNodeI.implement(
+// const set_position_node_i = graphvm.NodeI.implement(
 //     .{
 //         .name = "Set position",
 //         .type_name = "transform_set_position",
