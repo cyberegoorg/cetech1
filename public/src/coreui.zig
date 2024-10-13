@@ -203,6 +203,7 @@ pub const Icons = struct {
     pub const Pause = CoreIcons.FA_PAUSE;
 
     pub const Camera = CoreIcons.FA_CAMERA;
+    pub const Draw = CoreIcons.FA_BRUSH;
 };
 
 pub const CoreUII = struct {

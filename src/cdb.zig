@@ -455,7 +455,7 @@ pub const TypeStorage = struct {
         //std.debug.assert(ref_count.value != 0);
 
         if (1 == ref_count.fetchSub(1, .release)) {
-            ref_count.fence(.acquire);
+            //ref_count.fence(.acquire);
             try self.addToFreeQueue(object);
             self.objid_gen.items[object.objid.id] = @addWithOverflow(self.objid_gen.items[object.objid.id], 1)[0];
         }
@@ -472,7 +472,7 @@ pub const TypeStorage = struct {
         // }
 
         if (1 == ref_count.fetchSub(1, .release)) {
-            ref_count.fence(.acquire);
+            //ref_count.fence(.acquire);
             return try self.freeObject(object, destroyed_objid, tmp_allocator);
         }
         return 0;

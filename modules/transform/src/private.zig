@@ -6,7 +6,6 @@ const strid = cetech1.strid;
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 
-const renderer = @import("renderer");
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
 const zm = cetech1.math;

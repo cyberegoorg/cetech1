@@ -32,6 +32,8 @@ pub fn build(b: *std.Build) !void {
         .nfd_portal = b.option(bool, "nfd_portal", "build NFD with xdg-desktop-portal instead of GTK. ( Linux, nice for steamdeck;) )") orelse true,
 
         .externals_optimize = b.option(std.builtin.OptimizeMode, "externals_optimize", "Optimize for externals libs") orelse .ReleaseFast,
+
+        .enable_shaderc = b.option(bool, "with_shaderc", "build with shaderc support") orelse true,
     };
 
     const options_step = b.addOptions();
@@ -315,7 +317,9 @@ pub fn build(b: *std.Build) !void {
     const testui_step = b.step("test-ui", "Run UI headless test");
     testui_step.dependOn(&run_tests_ui.step);
 
-    //b.installArtifact(zbgfx.artifact("shaderc"));
+    if (options.enable_shaderc) {
+        b.installArtifact(zbgfx.artifact("shaderc"));
+    }
 
     if (options.dynamic_modules) {
         var buff: [256:0]u8 = undefined;
@@ -495,6 +499,7 @@ const core_modules = [_][]const u8{
     "renderer",
     "transform",
     "camera",
+    "shader_system",
 };
 
 const samples_modules = [_][]const u8{

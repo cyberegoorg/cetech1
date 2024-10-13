@@ -10,10 +10,45 @@ const ecs = cetech1.ecs;
 
 const transform = @import("transform");
 const camera = @import("camera");
+const shader_system = @import("shader_system");
 
 pub const RENDERER_KERNEL_TASK = strid.strId64("Renderer");
 pub const CULLING_VOLUME_NODE_TYPE_STR = "culling_volume";
 pub const CULLING_VOLUME_NODE_TYPE = strid.strId32(CULLING_VOLUME_NODE_TYPE_STR);
+
+pub const DRAW_CALL_NODE_TYPE_STR = "draw_call";
+pub const DRAW_CALL_NODE_TYPE = strid.strId32(DRAW_CALL_NODE_TYPE_STR);
+
+pub const LSD_CUBE_NODE_TYPE_STR = "lsd_cube";
+pub const LSD_CUBE_NODE_TYPE = strid.strId32(LSD_CUBE_NODE_TYPE_STR);
+
+pub const PinTypes = struct {
+    pub const GPU_GEOMETRY = strid.strId32("gpu_geometry");
+    pub const GPU_INDEX_BUFFER = strid.strId32("gpu_index_buffer");
+};
+
+pub const GPUGeometryCdb = cdb.CdbTypeDecl(
+    "ct_gpu_geometry",
+    enum(u32) {
+        handle0 = 0,
+        handle1,
+        handle2,
+        handle3,
+    },
+    struct {},
+);
+
+pub const GPUIndexBufferCdb = cdb.CdbTypeDecl(
+    "ct_gpu_index_buffer",
+    enum(u32) {
+        handle = 0,
+    },
+    struct {},
+);
+
+pub const GPUGeometry = struct {
+    vb: [4]gpu.VertexBufferHandle = .{.{}} ** 4,
+};
 
 pub const CullingVolume = struct {
     min: [3]f32 = .{ 0, 0, 0 },
@@ -31,6 +66,14 @@ pub const CullingVolume = struct {
     pub fn hasAny(self: CullingVolume) bool {
         return self.hasBox() or self.hasSphere();
     }
+};
+
+pub const DrawCall = struct {
+    gpu_geometry: ?GPUGeometry = null,
+    gpu_index_buffer: ?gpu.IndexBufferHandle = null,
+    gpu_shader: ?shader_system.ShaderInstance = null,
+    vertex_count: u32 = 0,
+    index_count: u32 = 0,
 };
 
 const MatList = std.ArrayList(transform.WorldTransform);

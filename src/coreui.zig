@@ -1344,7 +1344,8 @@ pub fn initFonts(font_size: f32, scale_factor: f32) void {
     );
 
     var style = zgui.getStyle();
-    style.frame_border_size = 1.0;
+    //style.frame_border_size = 1.0;
+    style.indent_spacing = 30;
     style.scaleAllSizes(scale_factor);
 }
 

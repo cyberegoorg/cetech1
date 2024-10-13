@@ -300,7 +300,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             defer _node_editor.end();
 
             _node_editor.pushStyleVar1f(.link_strength, 0);
-            _node_editor.pushStyleVar1f(.node_rounding, 4);
+            _node_editor.pushStyleVar1f(.node_rounding, 0);
             defer _node_editor.popStyleVar(1);
 
             if (tab_o.selection.isEmpty()) {

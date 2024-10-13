@@ -301,8 +301,8 @@ fn uiAssetBrowser(
 
             // Show clasic tree view
         } else {
-            _coreui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 15 });
-            defer _coreui.popStyleVar(.{});
+            //_coreui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 15 });
+            //defer _coreui.popStyleVar(.{});
             const new_selected = try _editor_tree.cdbTreeView(
                 allocator,
                 tab,

@@ -31,6 +31,8 @@ pub fn build(b: *std.Build) !void {
         l.root_module.addImport("transform", b.dependency("transform", .{}).module("transform"));
         l.root_module.addImport("graphvm", b.dependency("graphvm", .{}).module("graphvm"));
         l.root_module.addImport("camera", b.dependency("camera", .{}).module("camera"));
+        l.root_module.addImport("shader_system", b.dependency("shader_system", .{}).module("shader_system"));
+
         b.installArtifact(l);
     }
 
@@ -42,6 +44,7 @@ pub fn build(b: *std.Build) !void {
                 .{ .name = "cetech1", .module = cetech1_module },
                 .{ .name = "transform", .module = b.dependency("transform", .{}).module("transform") },
                 .{ .name = "camera", .module = b.dependency("camera", .{}).module("camera") },
+                .{ .name = "shader_system", .module = b.dependency("shader_system", .{}).module("shader_system") },
             },
         },
     );

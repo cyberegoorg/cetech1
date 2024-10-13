@@ -16,6 +16,7 @@ const public = @import("renderer.zig");
 const transform = @import("transform");
 const graphvm = @import("graphvm");
 const camera = @import("camera");
+const shader_system = @import("shader_system");
 
 const module_name = .renderer;
 
@@ -53,6 +54,10 @@ const G = struct {
     rg_set: GraphSet = undefined,
     rg_pool: GraphPool = undefined,
     view_id: AtomicViewId = AtomicViewId.init(1),
+
+    cube_pos_vb: gpu.VertexBufferHandle = .{},
+    cube_col_vb: gpu.VertexBufferHandle = .{},
+    cube_ib: gpu.IndexBufferHandle = .{},
 };
 
 var _g: *G = undefined;
@@ -1241,6 +1246,105 @@ fn destroy(rg: public.Graph) void {
     _g.rg_pool.destroy(true_rg);
 }
 
+var kernel_task = cetech1.kernel.KernelTaskI.implement(
+    "Renderer",
+    &[_]strid.StrId64{},
+    struct {
+        pub fn init() !void {
+            _g.viewport_set = ViewportSet.init(_allocator);
+            _g.viewport_pool = ViewportPool.init(_allocator);
+
+            _g.rg_set = GraphSet.init(_allocator);
+            _g.rg_pool = GraphPool.init(_allocator);
+            _g.rg_lock = std.Thread.Mutex{};
+
+            _vertex_pos_layout = PosVertex.layoutInit();
+            _vertex_col_layout = ColorVertex.layoutInit();
+            _g.cube_pos_vb = _gpu.createVertexBuffer(
+                _gpu.makeRef(&cube_positions, cube_positions.len * @sizeOf(PosVertex)),
+                &_vertex_pos_layout,
+                gpu.BufferFlags_None,
+            );
+            _g.cube_col_vb = _gpu.createVertexBuffer(
+                _gpu.makeRef(&cube_cololrs, cube_cololrs.len * @sizeOf(ColorVertex)),
+                &_vertex_col_layout,
+                gpu.BufferFlags_None,
+            );
+            _g.cube_ib = _gpu.createIndexBuffer(
+                _gpu.makeRef(&cube_tri_list, cube_tri_list.len * @sizeOf(u16)),
+                gpu.BufferFlags_None,
+            );
+        }
+
+        pub fn shutdown() !void {
+            _g.viewport_set.deinit();
+            _g.viewport_pool.deinit();
+
+            _g.rg_set.deinit();
+            _g.rg_pool.deinit();
+
+            _gpu.destroyIndexBuffer(_g.cube_ib);
+            _gpu.destroyVertexBuffer(_g.cube_pos_vb);
+            _gpu.destroyVertexBuffer(_g.cube_col_vb);
+        }
+    },
+);
+
+const gpu_geometry_value_type_i = graphvm.GraphValueTypeI.implement(
+    public.GPUGeometry,
+    .{
+        .name = "GPU geometry",
+        .type_hash = public.PinTypes.GPU_GEOMETRY,
+        .cdb_type_hash = public.GPUGeometryCdb.type_hash, // TODO: this is not needed. value only setable from nodes out
+    },
+    struct {
+        pub fn valueFromCdb(obj: cdb.ObjId, value: []u8) !void {
+            const v: public.GPUGeometry = .{
+                .vb = .{
+                    .{ .idx = @truncate(public.GPUGeometryCdb.readValue(u32, _cdb, _cdb.readObj(obj).?, .handle0)) },
+                    .{ .idx = @truncate(public.GPUGeometryCdb.readValue(u32, _cdb, _cdb.readObj(obj).?, .handle1)) },
+                    .{ .idx = @truncate(public.GPUGeometryCdb.readValue(u32, _cdb, _cdb.readObj(obj).?, .handle2)) },
+                    .{ .idx = @truncate(public.GPUGeometryCdb.readValue(u32, _cdb, _cdb.readObj(obj).?, .handle3)) },
+                },
+            };
+
+            @memcpy(value, std.mem.asBytes(&v));
+        }
+
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
+            return strid.strId64(value).id;
+        }
+
+        pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
+            return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(public.GPUGeometry, value)});
+        }
+    },
+);
+
+const gpu_index_buffer_value_type_i = graphvm.GraphValueTypeI.implement(
+    gpu.IndexBufferHandle,
+    .{
+        .name = "GPU index buffer",
+        .type_hash = public.PinTypes.GPU_INDEX_BUFFER,
+        .cdb_type_hash = public.GPUIndexBufferCdb.type_hash,
+    },
+    struct {
+        pub fn valueFromCdb(obj: cdb.ObjId, value: []u8) !void {
+            const v = public.GPUIndexBufferCdb.readValue(u32, _cdb, _cdb.readObj(obj).?, .handle);
+            @memcpy(value, std.mem.asBytes(&v));
+        }
+
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
+            const v = std.mem.bytesAsValue(u32, value);
+            return @intCast(v.*);
+        }
+
+        pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
+            return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(u32, value)});
+        }
+    },
+);
+
 // TODO: Move
 const culling_volume_node_i = graphvm.GraphNodeI.implement(
     .{
@@ -1302,28 +1406,274 @@ const culling_volume_node_i = graphvm.GraphNodeI.implement(
     },
 );
 
-var kernel_task = cetech1.kernel.KernelTaskI.implement(
-    "Renderer",
-    &[_]strid.StrId64{},
+const draw_call_node_i = graphvm.GraphNodeI.implement(
+    .{
+        .name = "Draw call",
+        .type_name = public.DRAW_CALL_NODE_TYPE_STR,
+        .pivot = .pivot,
+        .category = "Renderer",
+    },
+    public.DrawCall,
     struct {
-        pub fn init() !void {
-            _g.viewport_set = ViewportSet.init(_allocator);
-            _g.viewport_pool = ViewportPool.init(_allocator);
+        const Self = @This();
 
-            _g.rg_set = GraphSet.init(_allocator);
-            _g.rg_pool = GraphPool.init(_allocator);
-            _g.rg_lock = std.Thread.Mutex{};
+        pub fn getInputPins(allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+            _ = node_obj; // autofix
+            _ = graph_obj; // autofix
+            return allocator.dupe(graphvm.NodePin, &.{
+                graphvm.NodePin.init("GPU shader", graphvm.NodePin.pinHash("gpu_shader", false), shader_system.PinTypes.GPU_SHADER),
+                graphvm.NodePin.init("GPU geomert", graphvm.NodePin.pinHash("gpu_geometry", false), public.PinTypes.GPU_GEOMETRY),
+                graphvm.NodePin.init("GPU index buffer", graphvm.NodePin.pinHash("gpu_index_buffer", false), public.PinTypes.GPU_INDEX_BUFFER),
+                graphvm.NodePin.init("Vertex count", graphvm.NodePin.pinHash("vertex_count", false), graphvm.PinTypes.U32),
+                graphvm.NodePin.init("Index count", graphvm.NodePin.pinHash("index_count", false), graphvm.PinTypes.U32),
+            });
         }
 
-        pub fn shutdown() !void {
-            _g.viewport_set.deinit();
-            _g.viewport_pool.deinit();
+        pub fn getOutputPins(allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+            _ = node_obj; // autofix
+            _ = graph_obj; // autofix
+            return allocator.dupe(graphvm.NodePin, &.{});
+        }
 
-            _g.rg_set.deinit();
-            _g.rg_pool.deinit();
+        pub fn create(allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool) !void {
+            _ = reload; // autofix
+            _ = allocator; // autofix
+            _ = node_obj; // autofix
+            const real_state: *public.DrawCall = @alignCast(@ptrCast(state));
+            real_state.* = .{};
+        }
+
+        pub fn execute(args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: graphvm.OutPins) !void {
+            _ = out_pins;
+            var state = args.getState(public.DrawCall).?;
+            _, const gpu_shader = in_pins.read(shader_system.ShaderInstance, 0) orelse .{ 0, shader_system.ShaderInstance{} };
+            _, const gpu_geometry = in_pins.read(public.GPUGeometry, 1) orelse .{ 0, public.GPUGeometry{} };
+            _, const gpu_index_buffer = in_pins.read(gpu.IndexBufferHandle, 2) orelse .{ 0, gpu.IndexBufferHandle{} };
+            _, const vertex_count = in_pins.read(u32, 3) orelse .{ 0, 0 };
+            _, const index_count = in_pins.read(u32, 4) orelse .{ 0, 0 };
+
+            state.gpu_shader = gpu_shader;
+            state.gpu_geometry = gpu_geometry;
+            state.gpu_index_buffer = gpu_index_buffer;
+            state.vertex_count = vertex_count;
+            state.index_count = index_count;
+        }
+
+        pub fn icon(
+            buff: [:0]u8,
+            allocator: std.mem.Allocator,
+            node_obj: cdb.ObjId,
+        ) ![:0]u8 {
+            _ = allocator; // autofix
+            _ = node_obj; // autofix
+
+            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Draw});
         }
     },
 );
+
+// ONLY FOR TESTING
+const lsd_cube_node_i = graphvm.GraphNodeI.implement(
+    .{
+        .name = "LSD cube",
+        .type_name = public.LSD_CUBE_NODE_TYPE_STR,
+        .category = "Renderer",
+    },
+    null,
+    struct {
+        const Self = @This();
+
+        pub fn getInputPins(allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+            _ = node_obj; // autofix
+            _ = graph_obj; // autofix
+            return allocator.dupe(graphvm.NodePin, &.{});
+        }
+
+        pub fn getOutputPins(allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+            _ = node_obj; // autofix
+            _ = graph_obj; // autofix
+            return allocator.dupe(graphvm.NodePin, &.{
+                graphvm.NodePin.init("GPU geometry", graphvm.NodePin.pinHash("gpu_geometry", true), public.PinTypes.GPU_GEOMETRY),
+                graphvm.NodePin.init("GPU index buffer", graphvm.NodePin.pinHash("gpu_index_buffer", true), public.PinTypes.GPU_INDEX_BUFFER),
+            });
+        }
+
+        pub fn create(allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool) !void {
+            _ = state; // autofix
+            _ = reload; // autofix
+            _ = allocator; // autofix
+            _ = node_obj; // autofix
+        }
+
+        pub fn execute(args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: graphvm.OutPins) !void {
+            _ = args; // autofix
+            _ = in_pins; // autofix
+            var g: public.GPUGeometry = .{};
+            g.vb[0] = _g.cube_pos_vb;
+            g.vb[1] = _g.cube_col_vb;
+
+            try out_pins.writeTyped(public.GPUGeometry, 0, try gpu_geometry_value_type_i.calcValidityHash(&std.mem.toBytes(g)), g);
+            try out_pins.writeTyped(gpu.IndexBufferHandle, 1, try gpu_index_buffer_value_type_i.calcValidityHash(&std.mem.toBytes(_g.cube_ib)), _g.cube_ib);
+        }
+
+        pub fn icon(
+            buff: [:0]u8,
+            allocator: std.mem.Allocator,
+            node_obj: cdb.ObjId,
+        ) ![:0]u8 {
+            _ = allocator; // autofix
+            _ = node_obj; // autofix
+
+            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_POO});
+        }
+    },
+);
+
+// TMP SHIT
+//
+// Vertex layout definiton
+//
+const PosVertex = struct {
+    x: f32,
+    y: f32,
+    z: f32,
+
+    fn init(x: f32, y: f32, z: f32) PosVertex {
+        return .{
+            .x = x,
+            .y = y,
+            .z = z,
+        };
+    }
+
+    fn layoutInit() gpu.VertexLayout {
+        // static local
+        const L = struct {
+            var posColorLayout = std.mem.zeroes(gpu.VertexLayout);
+        };
+        _ = _gpu.layoutBegin(&L.posColorLayout, gpu.Backend.noop);
+        _ = _gpu.layoutAdd(&L.posColorLayout, gpu.Attrib.Position, 3, gpu.AttribType.Float, false, false);
+        //_ = _gpu.layoutAdd(&L.posColorLayout, gpu.Attrib.Color0, 4, gpu.AttribType.Uint8, true, false);
+        _gpu.layoutEnd(&L.posColorLayout);
+
+        return L.posColorLayout;
+    }
+};
+
+const ColorVertex = struct {
+    abgr: u32,
+
+    fn init(abgr: u32) ColorVertex {
+        return .{
+            .abgr = abgr,
+        };
+    }
+
+    fn layoutInit() gpu.VertexLayout {
+        // static local
+        const L = struct {
+            var posColorLayout = std.mem.zeroes(gpu.VertexLayout);
+        };
+        _ = _gpu.layoutBegin(&L.posColorLayout, gpu.Backend.noop);
+        //_ = _gpu.layoutAdd(&L.posColorLayout, gpu.Attrib.Position, 3, gpu.AttribType.Float, false, false);
+        _ = _gpu.layoutAdd(&L.posColorLayout, gpu.Attrib.Color0, 4, gpu.AttribType.Uint8, true, false);
+        _gpu.layoutEnd(&L.posColorLayout);
+
+        return L.posColorLayout;
+    }
+};
+
+const cube_positions = [_]PosVertex{
+    .init(-1.0, 1.0, 1.0),
+    .init(1.0, 1.0, 1.0),
+    .init(-1.0, -1.0, 1.0),
+    .init(1.0, -1.0, 1.0),
+    .init(-1.0, 1.0, -1.0),
+    .init(1.0, 1.0, -1.0),
+    .init(-1.0, -1.0, -1.0),
+    .init(1.0, -1.0, -1.0),
+};
+
+const cube_cololrs = [_]ColorVertex{
+    .init(0xff000000),
+    .init(0xff0000ff),
+    .init(0xff00ff00),
+    .init(0xff00ffff),
+    .init(0xffff0000),
+    .init(0xffff00ff),
+    .init(0xffffff00),
+    .init(0xffffffff),
+};
+
+const cube_tri_list = [_]u16{
+    0, 1, 2, // 0
+    1, 3, 2,
+    4, 6, 5, // 2
+    5, 6, 7,
+    0, 2, 4, // 4
+    4, 2, 6,
+    1, 5, 3, // 6
+    5, 7, 3,
+    0, 4, 1, // 8
+    4, 5, 1,
+    2, 3, 6, // 10
+    6, 3, 7,
+};
+
+var _vertex_pos_layout: gpu.VertexLayout = undefined;
+var _vertex_col_layout: gpu.VertexLayout = undefined;
+//
+
+var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
+    pub fn createTypes(db: cdb.DbId) !void {
+        // GPUGeometryCdb
+        {
+            const type_idx = try _cdb.addType(
+                db,
+                public.GPUGeometryCdb.name,
+                &[_]cdb.PropDef{
+                    .{
+                        .prop_idx = public.GPUGeometryCdb.propIdx(.handle0),
+                        .name = "handle0",
+                        .type = cdb.PropType.U32,
+                    },
+                    .{
+                        .prop_idx = public.GPUGeometryCdb.propIdx(.handle1),
+                        .name = "handle1",
+                        .type = cdb.PropType.U32,
+                    },
+                    .{
+                        .prop_idx = public.GPUGeometryCdb.propIdx(.handle2),
+                        .name = "handle2",
+                        .type = cdb.PropType.U32,
+                    },
+                    .{
+                        .prop_idx = public.GPUGeometryCdb.propIdx(.handle3),
+                        .name = "handle3",
+                        .type = cdb.PropType.U32,
+                    },
+                },
+            );
+            _ = type_idx; // autofix
+        }
+
+        // GPUIndexBufferCdb
+        {
+            const type_idx = try _cdb.addType(
+                db,
+                public.GPUIndexBufferCdb.name,
+                &[_]cdb.PropDef{
+                    .{
+                        .prop_idx = public.GPUIndexBufferCdb.propIdx(.handle),
+                        .name = "handle",
+                        .type = cdb.PropType.U32,
+                    },
+                },
+            );
+            _ = type_idx; // autofix
+        }
+    }
+});
 
 // Create types, register api, interfaces etc...
 pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
@@ -1354,9 +1704,17 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.setOrRemoveZigApi(module_name, public.RenderGraphApi, &graph_api, load);
 
     // impl interface
+    try apidb.implOrRemove(module_name, cetech1.cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelRenderI, &_kernel_render_task, load);
+
     try apidb.implOrRemove(module_name, graphvm.GraphNodeI, &culling_volume_node_i, load);
+    try apidb.implOrRemove(module_name, graphvm.GraphNodeI, &draw_call_node_i, load);
+
+    try apidb.implOrRemove(module_name, graphvm.GraphNodeI, &lsd_cube_node_i, load);
+
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &gpu_geometry_value_type_i, load);
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &gpu_index_buffer_value_type_i, load);
 
     return true;
 }
