@@ -67,13 +67,11 @@
         .zbgfx = .{ .path = "externals/shared/lib/zbgfx" },
 
         // zig-gamedev
-        .system_sdk = .{ .path = "externals/shared/lib/zig-gamedev/libs/system-sdk" },
-        .zglfw = .{ .path = "externals/shared/lib/zig-gamedev/libs/zglfw" },
-        .zpool = .{ .path = "externals/shared/lib/zig-gamedev/libs/zpool" },
-        .zjobs = .{ .path = "externals/shared/lib/zig-gamedev/libs/zjobs" },
-        .ztracy = .{ .path = "externals/shared/lib/zig-gamedev/libs/ztracy" },
-        .zgui = .{ .path = "externals/shared/lib/zig-gamedev/libs/zgui" },
-        .zflecs = .{ .path = "externals/shared/lib/zig-gamedev/libs/zflecs" },
-        //.znfde = .{ .path = "externals/shared/lib/zig-gamedev/libs/znfde" },
+        .system_sdk = .{ .path = "externals/shared/lib/system_sdk" },
+        .zjobs = .{ .path = "externals/shared/lib/zjobs" },
+        .zglfw = .{ .path = "externals/shared/lib/zglfw" },
+        .zflecs = .{ .path = "externals/shared/lib/zflecs" },
+        .ztracy = .{ .path = "externals/shared/lib/ztracy" },
+        .zgui = .{ .path = "externals/shared/lib/zgui" },
     },
 }
