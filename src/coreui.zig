@@ -34,9 +34,8 @@ const log = std.log.scoped(module_name);
 
 var _cdb = &cdb_private.api;
 
-const _main_font = @embedFile("embed/fonts/Roboto-Medium.ttf");
-const _fa_solid_font = @embedFile("embed/fonts/fa-solid-900.ttf");
-const _fa_regular_font = @embedFile("embed/fonts/fa-regular-400.ttf");
+const _main_font = @embedFile("Roboto-Medium");
+const _fa_solid_font = @embedFile("fa-solid-900");
 
 const DEFAULT_IMGUI_INI = @embedFile("embed/imgui.ini");
 
@@ -1337,7 +1336,7 @@ pub fn initFonts(font_size: f32, scale_factor: f32) void {
     fa_cfg.font_data_owned_by_atlas = false;
     fa_cfg.merge_mode = true;
     _ = zgui.io.addFontFromMemoryWithConfig(
-        if (false) _fa_regular_font else _fa_solid_font,
+        _fa_solid_font,
         sized_pixel,
         fa_cfg,
         &[_]u16{ public.CoreIcons.ICON_MIN_FA, public.CoreIcons.ICON_MAX_FA, 0 },

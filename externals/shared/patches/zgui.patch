@@ -1,0 +1,14 @@
+diff --git a/externals/shared/lib/zgui/build.zig.zon b/externals/shared/lib/zgui/build.zig.zon
+index 003891f3..e34bf8b0 100644
+--- a/externals/shared/lib/zgui/build.zig.zon
++++ b/externals/shared/lib/zgui/build.zig.zon
+@@ -16,8 +16,7 @@
+             .lazy = true,
+         },
+         .zglfw = .{
+-            .url = "https://github.com/zig-gamedev/zglfw/archive/4a5ec6186173a6ae4d71ad01b64dac5561ef0b16.tar.gz",
+-            .hash = "1220fb278bcd5f1be0096c841c29de2374806f3980160aa3e409f551b1c242254b74",
++            .path = "../zglfw",
+             .lazy = true,
+         },
+         .zgpu = .{

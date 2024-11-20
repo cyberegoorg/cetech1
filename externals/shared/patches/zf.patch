@@ -1,0 +1,44 @@
+diff --git a/externals/shared/lib/zf/build.zig b/externals/shared/lib/zf/build.zig
+index 20b18c6b..17275042 100644
+--- a/externals/shared/lib/zf/build.zig
++++ b/externals/shared/lib/zf/build.zig
+@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
+     const optimize = b.standardOptimizeOption(.{});
+ 
+     const pie = b.option(bool, "pie", "Build a Position Independent Executable");
+-    const with_tui = b.option(bool, "with_tui", "Build TUI") orelse true;
++    const with_tui = b.option(bool, "with_tui", "Build TUI") orelse false;
+ 
+     // Expose zf as a Zig module
+     const zf_module = b.addModule("zf", .{
+diff --git a/externals/shared/lib/zf/build.zig.zon b/externals/shared/lib/zf/build.zig.zon
+index 2a2c8d38..159312d1 100644
+--- a/externals/shared/lib/zf/build.zig.zon
++++ b/externals/shared/lib/zf/build.zig.zon
+@@ -4,8 +4,9 @@
+     .version = "0.10.2",
+     .dependencies = .{
+         .vaxis = .{
+-            .url = "git+https://github.com/rockorager/libvaxis/?ref=main#dc0a228a5544988d4a920cfb40be9cd28db41423",
+-            .hash = "1220c72c1697dd9008461ead702997a15d8a1c5810247f02e7983b9f74c6c6e4c087",
++            .url = "git+https://github.com/rockorager/libvaxis/?ref=main#0eaf6226b2dd58720c5954d3646d6782e0c063f5",
++            .hash = "12208b6363d1bff963081ee4cba5c8be9f782e89ed7604e5ceab61999b1a7980f791",
++            .lazy = true,
+         },
+     },
+     .paths = .{
+diff --git a/externals/shared/lib/zf/zls.build.json b/externals/shared/lib/zf/zls.build.json
+new file mode 100644
+index 00000000..d61e9e55
+--- /dev/null
++++ b/externals/shared/lib/zf/zls.build.json
+@@ -0,0 +1,8 @@
++{
++    "build_options": [
++        {
++            "name": "with_tui",
++            "value": false
++        }
++    ]
++}
+\ No newline at end of file

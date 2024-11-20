@@ -1,0 +1,11 @@
+.{
+    .name = "zjobs",
+    .version = "0.3.0-dev",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "README.md",
+        "LICENSE",
+    },
+}

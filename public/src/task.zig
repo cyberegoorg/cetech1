@@ -43,12 +43,15 @@ pub fn batchWorkloadTask(
         var a = args;
         a.batch_size = a.count;
 
-        const t = CREATE_TASK_FCE.createTask(create_args, 0, a, args.count);
-        const task_id = try args.task_api.schedule(
-            TaskID.none,
-            t,
-        );
-        return task_id;
+        var t = CREATE_TASK_FCE.createTask(create_args, 0, a, args.count);
+        try t.exec();
+
+        // const task_id = try args.task_api.schedule(
+        //     TaskID.none,
+        //     t,
+        // );
+        // return task_id;
+        return null;
     }
 
     const batch_count = items_count / args.batch_size;

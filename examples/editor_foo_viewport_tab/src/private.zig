@@ -124,7 +124,7 @@ const velocity_c = ecs.ComponentI.implement(
 
 const move_system_i = ecs.SystemI.implement(
     .{
-        .name = "move system",
+        .name = "move_system",
         .multi_threaded = false,
         .phase = ecs.OnUpdate,
         .simulation = true,
@@ -134,9 +134,7 @@ const move_system_i = ecs.SystemI.implement(
         },
     },
     struct {
-        pub fn update(iter: *ecs.IterO) !void {
-            var it = _ecs.toIter(iter);
-
+        pub fn update(it: *ecs.Iter) !void {
             const p = it.field(transform.Position, 0).?;
             const v = it.field(Velocity, 1).?;
 
