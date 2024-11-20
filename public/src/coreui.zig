@@ -422,10 +422,10 @@ pub const CoreUIApi = struct {
 
         var item: i32 =
             switch (@typeInfo(EnumType)) {
-            .optional => if (current_item.*) |tag| field_name_to_index.get(@tagName(tag)) orelse -1 else -1,
-            .@"enum" => field_name_to_index.get(@tagName(current_item.*)) orelse -1,
-            else => unreachable,
-        };
+                .optional => if (current_item.*) |tag| field_name_to_index.get(@tagName(tag)) orelse -1 else -1,
+                .@"enum" => field_name_to_index.get(@tagName(current_item.*)) orelse -1,
+                else => unreachable,
+            };
 
         const result = self.combo(label, .{
             .items_separated_by_zeros = item_names,
@@ -546,7 +546,7 @@ pub const CoreUIApi = struct {
     setClipboardText: *const fn (value: [:0]const u8) void,
 
     beginPopupContextItem: *const fn () bool,
-    beginPopup: *const fn (str_id: [*:0]const u8, flags: WindowFlags) bool,
+    beginPopup: *const fn (str_id: [:0]const u8, flags: WindowFlags) bool,
 
     combo: *const fn (label: [:0]const u8, args: ComboArgs) bool,
 
@@ -739,6 +739,8 @@ pub const DrawCmd = extern struct {
     elem_count: c_uint,
     user_callback: ?DrawCallback,
     user_callback_data: ?*anyopaque,
+    user_callback_data_size: c_int,
+    user_callback_data_offset: c_int,
 };
 
 pub const DrawCallback = *const fn (*const anyopaque, *const DrawCmd) callconv(.C) void;
@@ -1684,7 +1686,23 @@ pub const DockNodeFlags = packed struct(c_int) {
     no_resize: bool = false,
     auto_hide_tab_bar: bool = false,
     no_undocking: bool = false,
-    _padding: u24 = 0,
+    _padding_0: u2 = 0,
+
+    // Extended enum entries from imgui_internal (unstable, subject to change, use at own risk)
+    dock_space: bool = false,
+    central_node: bool = false,
+    no_tab_bar: bool = false,
+    hidden_tab_bar: bool = false,
+    no_window_menu_button: bool = false,
+    no_close_button: bool = false,
+    no_resize_x: bool = false,
+    no_resize_y: bool = false,
+    docked_windows_in_focus_route: bool = false,
+    no_docking_split_other: bool = false,
+    no_docking_over_me: bool = false,
+    no_docking_over_other: bool = false,
+    no_docking_over_empty: bool = false,
+    _padding_1: u9 = 0,
 };
 
 pub const Ident = u32;
@@ -1830,7 +1848,7 @@ pub const HoveredFlags = packed struct(c_int) {
     pub const root_and_child_windows = HoveredFlags{ .root_window = true, .child_windows = true };
 };
 
-pub const MouseButton = enum(u32) {
+pub const MouseButton = enum(c_int) {
     left = 0,
     right = 1,
     middle = 2,

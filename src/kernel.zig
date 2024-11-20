@@ -410,14 +410,23 @@ fn registerSignals() !void {
     }
 }
 
+var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+
 pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootArgs) !void {
     while (_restart) {
         _restart = false;
 
         // Main Allocator
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        const gpa_allocator = gpa.allocator();
-        defer _ = gpa.deinit();
+        const gpa_allocator, const is_debug = gpa: {
+            if (builtin.os.tag == .wasi) break :gpa .{ std.heap.wasm_allocator, false };
+            break :gpa switch (builtin.mode) {
+                .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
+                .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
+            };
+        };
+        defer if (is_debug) {
+            _ = debug_allocator.deinit();
+        };
 
         try initProgramArgs(gpa_allocator);
 
@@ -493,7 +502,12 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
             log.info("Using video mode {d}x{d}", .{ w, h });
 
-            main_window = try platform.api.createWindow(w, h, "cetech1", if (fullscreen) monitor else null);
+            main_window = try platform.api.createWindow(
+                w,
+                h,
+                cetech1_options.app_name ++ " - powered by CETech1",
+                if (fullscreen) monitor else null,
+            );
         }
 
         gpu_context = try gpu.api.createContext(
@@ -573,7 +587,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             try doKernelUpdateTasks(kernel_tick, dt_s);
 
             // TODO remove
-            try ecs.progressAll(dt_s);
+            try ecs.progressAll(tmp_frame_alloc, dt_s);
 
             // Render frame
             if (gpu_context) |ctx| {

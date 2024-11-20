@@ -34,9 +34,8 @@ const log = std.log.scoped(module_name);
 
 var _cdb = &cdb_private.api;
 
-const _main_font = @embedFile("embed/fonts/Roboto-Medium.ttf");
-const _fa_solid_font = @embedFile("embed/fonts/fa-solid-900.ttf");
-const _fa_regular_font = @embedFile("embed/fonts/fa-regular-400.ttf");
+const _main_font = @embedFile("Roboto-Medium");
+const _fa_solid_font = @embedFile("fa-solid-900");
 
 const DEFAULT_IMGUI_INI = @embedFile("embed/imgui.ini");
 
@@ -171,7 +170,8 @@ pub var api = public.CoreUIApi{
     .showMetricsWindow = showMetricsWindow,
     .begin = @ptrCast(&zgui.begin),
     .end = @ptrCast(&zgui.end),
-    .beginPopup = @ptrCast(&zgui.beginPopup),
+    .beginPopup = beginPopup,
+
     .pushStyleColor4f = @ptrCast(&zgui.pushStyleColor4f),
     .popStyleColor = @ptrCast(&zgui.popStyleColor),
     .tableSetBgColor = @ptrCast(&zgui.tableSetBgColor),
@@ -207,7 +207,7 @@ pub var api = public.CoreUIApi{
     .setClipboardText = @ptrCast(&zgui.setClipboardText),
     .beginPopupContextItem = @ptrCast(&zgui.beginPopupContextItem),
     .beginPopupModal = @ptrCast(&zgui.beginPopupModal),
-    .openPopup = @ptrCast(&zgui.openPopup),
+    .openPopup = openPopup,
     .endPopup = @ptrCast(&zgui.endPopup),
     .closeCurrentPopup = @ptrCast(&zgui.closeCurrentPopup),
     .isItemClicked = @ptrCast(&zgui.isItemClicked),
@@ -278,9 +278,9 @@ pub var api = public.CoreUIApi{
     .acceptDragDropPayload = @ptrCast(&zgui.acceptDragDropPayload),
     .endDragDropTarget = @ptrCast(&zgui.endDragDropTarget),
     .getDragDropPayload = @ptrCast(&zgui.getDragDropPayload),
-    .isMouseDoubleClicked = @ptrCast(&zgui.isMouseDoubleClicked),
+    .isMouseDoubleClicked = isMouseDoubleClicked,
     .isMouseDown = @ptrCast(&zgui.isMouseDown),
-    .isMouseClicked = @ptrCast(&zgui.isMouseClicked),
+    .isMouseClicked = isMouseClicked,
 
     .handleSelection = handleSelection,
 
@@ -341,6 +341,22 @@ pub var api = public.CoreUIApi{
     .gizmoManipulate = @ptrCast(&zgui.gizmo.manipulate),
     .gizmoSetDrawList = gizmoSetDrawList,
 };
+
+fn isMouseDoubleClicked(mouse_button: public.MouseButton) bool {
+    return zgui.isMouseDoubleClicked(@enumFromInt(@intFromEnum(mouse_button)));
+}
+
+fn isMouseClicked(mouse_button: public.MouseButton) bool {
+    return zgui.isMouseClicked(@enumFromInt(@intFromEnum(mouse_button)));
+}
+
+fn beginPopup(str_id: [:0]const u8, flags: public.WindowFlags) bool {
+    return zgui.beginPopup(str_id, std.mem.bytesToValue(zgui.WindowFlags, std.mem.asBytes(&flags)));
+}
+
+fn openPopup(str_id: [:0]const u8, flags: public.PopupFlags) void {
+    zgui.openPopup(str_id, std.mem.bytesToValue(zgui.PopupFlags, std.mem.asBytes(&flags)));
+}
 
 pub fn gizmoSetDrawList(draw_list: ?public.DrawList) void {
     zgui.gizmo.setDrawList(if (draw_list) |dl| @ptrCast(dl.ptr) else null);
@@ -1337,7 +1353,7 @@ pub fn initFonts(font_size: f32, scale_factor: f32) void {
     fa_cfg.font_data_owned_by_atlas = false;
     fa_cfg.merge_mode = true;
     _ = zgui.io.addFontFromMemoryWithConfig(
-        if (false) _fa_regular_font else _fa_solid_font,
+        _fa_solid_font,
         sized_pixel,
         fa_cfg,
         &[_]u16{ public.CoreIcons.ICON_MIN_FA, public.CoreIcons.ICON_MAX_FA, 0 },

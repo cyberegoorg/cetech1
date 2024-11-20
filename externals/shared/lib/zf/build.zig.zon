@@ -1,0 +1,18 @@
+.{
+    .name = "zf",
+    .description = "a commandline fuzzy finder designed for filtering filepaths",
+    .version = "0.10.2",
+    .dependencies = .{
+        .vaxis = .{
+            .url = "git+https://github.com/rockorager/libvaxis/?ref=main#0eaf6226b2dd58720c5954d3646d6782e0c063f5",
+            .hash = "12208b6363d1bff963081ee4cba5c8be9f782e89ed7604e5ceab61999b1a7980f791",
+            .lazy = true,
+        },
+    },
+    .paths = .{
+        "src/zf",
+        "build.zig",
+        "build.zig.zon",
+        "LICENSE",
+    },
+}

@@ -296,7 +296,7 @@ fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless
         bgfxInit.resolution.height = @intCast(framebufferSize[1]);
 
         if (vsync) {
-            bgfxInit.resolution.reset |= bgfx.ResetFlags_Vsync;
+            bgfxInit.resolution.reset |= bgfx.ResetFlags_Vsync; // | bgfx.ResetFlags_FlipAfterRender;
         }
 
         bgfxInit.platformData.nwh = context.window.?.getOsWindowHandler();

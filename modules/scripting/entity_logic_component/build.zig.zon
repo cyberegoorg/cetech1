@@ -1,0 +1,13 @@
+.{
+    .name = .render_component,
+    .fingerprint = 0xbd9fd430f4217d11,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .graphvm = .{ .path = "../graphvm" },
+    },
+}

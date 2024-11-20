@@ -132,7 +132,7 @@ pub fn VirtualArray(comptime T: type) type {
     return struct {
         const Self = @This();
 
-        reservation: []align(std.mem.page_size) u8 = &[_]u8{},
+        reservation: []align(std.heap.page_size_min) u8 = &[_]u8{},
 
         max_items: usize,
         items: [*]T,
