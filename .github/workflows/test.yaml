@@ -29,26 +29,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: true
 
       - name: Read .zig-version
         id: zigversion
         uses: juliangruber/read-file-action@v1
         with:
           path: ./.zigversion
-      - name: Cache zig binary
-        id: cache-zig
-        uses: actions/cache@v4
+      - name: Install Zig
+        uses: mlugg/setup-zig@v1
         with:
-          path: zig/bin/x86_64-linux/zig
-          key: ${{ runner.arch }}-${{ runner.os }}-zig-${{ steps.zigversion.outputs.content }}
-      - name: Init zig
-        if: steps.cache-zig.outputs.cache-hit != 'true'
-        run: .ci/init_zig.sh x86_64-linux
+          version: ${{ steps.zigversion.outputs.content }}
       
       - name: Lint
-        run: zig/bin/x86_64-linux/zig fmt --check . --exclude externals/
+        run: zig fmt --check . --exclude externals/
 
   x86-64-linux:
     needs: ["validation"]
@@ -61,7 +54,6 @@ jobs:
         with:
           submodules: true
 
-          
       - name: Prepare
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
@@ -75,12 +67,10 @@ jobs:
         uses: juliangruber/read-file-action@v1
         with:
           path: ./.zigversion
-      - name: Cache zig binary
-        id: cache-zig
-        uses: actions/cache@v4
+      - name: Install Zig
+        uses: mlugg/setup-zig@v1
         with:
-          path: zig/bin/x86_64-linux/zig
-          key: ${{ runner.arch }}-${{ runner.os }}-zig-${{ steps.zigversion.outputs.content }}
+          version: ${{ steps.zigversion.outputs.content }}
 
       - name: Zig cache
         uses: actions/cache/restore@v4
@@ -93,10 +83,6 @@ jobs:
       #   with:
       #     path: .zig-cache
       #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
-
-      - name: Init zig
-        if: steps.cache-zig.outputs.cache-hit != 'true'
-        run: .ci/init_zig.sh x86_64-linux
 
       - name: Build
         run: .ci/build.sh x86_64-linux Debug
@@ -137,7 +123,6 @@ jobs:
       # - name: Setup headless display
       #   uses: pyvista/setup-headless-display-action@v2
       
-      # TODO: Fix linux CI
       - name: Test headless standalone
         run: zig-out/bin/cetech1 --headless --max-kernel-tick 5
 
@@ -168,7 +153,7 @@ jobs:
         with:
           submodules: true
 
-      # - name: Prepare
+      # - name: Prepare`
       #   run: |
       #     brew update
       #     brew install kcov
@@ -178,13 +163,10 @@ jobs:
         uses: juliangruber/read-file-action@v1
         with:
           path: ./.zigversion
-
-      - name: Cache zig binary
-        id: cache-zig
-        uses: actions/cache@v4
+      - name: Install Zig
+        uses: mlugg/setup-zig@v1
         with:
-          path: zig/bin/x86_64-macos/zig
-          key: ${{ runner.arch }}-${{ runner.os }}-zig-${{ steps.zigversion.outputs.content }}
+          version: ${{ steps.zigversion.outputs.content }}
 
       - name: Zig cache
         uses: actions/cache/restore@v4
@@ -197,10 +179,6 @@ jobs:
       #   with:
       #     path: .zig-cache
       #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
-  
-      - name: Init zig
-        if: steps.cache-zig.outputs.cache-hit != 'true'
-        run: .ci/init_zig.sh x86_64-macos
 
       - name: Build
         run: .ci/build.sh x86_64-macos Debug
@@ -258,19 +236,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: true
-          
+
       - name: Read .zig-version
         id: zigversion
         uses: juliangruber/read-file-action@v1
         with:
           path: ./.zigversion
-      - name: Cache zig binary
-        id: cache-zig
-        uses: actions/cache@v4
+      - name: Install Zig
+        uses: mlugg/setup-zig@v1
         with:
-          path: zig/bin/x86_64-windows/zig.exe
-          key: ${{ runner.arch }}-${{ runner.os }}-zig-${{ steps.zigversion.outputs.content }}
-      
+          version: ${{ steps.zigversion.outputs.content }}
+
       - name: Zig cache
         uses: actions/cache/restore@v4
         with:
@@ -283,11 +259,6 @@ jobs:
       #     path: .zig-cache
       #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
 
-      - name: Init zig
-        if: steps.cache-zig.outputs.cache-hit != 'true'
-        shell: bash
-        run: .ci/init_zig.sh x86_64-windows
-
       - name: Build
         shell: bash
         run: .ci/build.sh x86_64-windows Debug
@@ -299,7 +270,6 @@ jobs:
           path: zig-out/
           overwrite: true
           retention-days: 1
-
 
       - name: Zig cache
         uses: actions/cache/save@v4

@@ -5,7 +5,7 @@ const cetech1 = @import("cetech1");
 const static_modules = @import("static_modules");
 const kernel = @import("kernel.zig");
 
-pub const std_options = .{
+pub const std_options = std.Options{
     .logFn = @import("log.zig").zigLogFn,
 };
 

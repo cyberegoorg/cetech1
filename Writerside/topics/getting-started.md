@@ -30,6 +30,19 @@
     </tab>
 </tabs>
 
+## Get ZIG/ZLS
+
+Get ZIG `2024.10.0-mach`.
+
+<tabs>
+   <tab title="ZVM">
+      Get  <a href="https://www.zvm.app">ZVM</a>
+      <code-block lang="bash">
+         zvm i --zls 2024.10.0-mach
+      </code-block>
+    </tab>
+</tabs>
+
 ## Repository structure
 
 | Folder                                                                        | Description                                          |
@@ -37,7 +50,7 @@
 | [`Writerside/`](https://github.com/cyberegoorg/cetech1/tree/main/Writerside/) | This documentation                                   |
 | [`zig/`](https://github.com/cyberegoorg/cetech1/tree/main/zig/)               | Submodule for prebuilt zig                           |
 | [`externals/`](https://github.com/cyberegoorg/cetech1/tree/main/externals/)   | 3rd-party library and tools                          |
-| [`fixtures/`](https://github.com/cyberegoorg/cetech1/tree/main/fixtures/)       | Tests fixtures                                        |
+| [`fixtures/`](https://github.com/cyberegoorg/cetech1/tree/main/fixtures/)     | Tests fixtures                                       |
 | [`public/`](https://github.com/cyberegoorg/cetech1/tree/main/public/)         | Public API for modules                               |
 | [`src/`](https://github.com/cyberegoorg/cetech1/tree/main/src/)               | Main source code folder                              |
 | [`modules/`](https://github.com/cyberegoorg/cetech1/tree/main/modules/)       | There is all modules that is possible part of engine |
@@ -63,8 +76,8 @@
 | `-Dstatic_modules=`  | `true` or `false` | `false` | Build all modules in static mode.                                           |
 | `-Dwith_samples=`    | `true` or `false` | `true`  | Build with sample modules.                                                  |
 | `-Dwith_editor=`     | `true` or `false` | `true`  | Build with editor modules.                                                  |
-| `-Dwith_tracy=`      | `true` or `false` | `true`  | Build with [tracy](#tracy-profiler) support.                                 |
-| `-Dwith_nfd=`        | `true` or `false` | `true`  | Build with NFD (native file dialog)                                          |
+| `-Dwith_tracy=`      | `true` or `false` | `true`  | Build with [tracy](#tracy-profiler) support.                                |
+| `-Dwith_nfd=`        | `true` or `false` | `true`  | Build with NFD (native file dialog)                                         |
 | `-Dnfd_portal=`      | `true` or `false` | `true`  | Build NFD with xdg-desktop-portal instead of GTK. Linux, nice for SteamDeck |
 
 ## Run
@@ -93,9 +106,9 @@
 | `--asset-root`           | `str`                          | `null`  | Path to asset root. (project path)          |
 | `--fullscreen`           | `1` or `0`                     | `0`     | Force full-screen mode, nice for SteamDeck. |
 | `--test-ui`              | `1` or `0`                     | `0`     | Run UI tests and quit.                      |
-| `--test-ui-filter`        | `str`                          | `all`   | Run only ui tests that pass this filter.     |
+| `--test-ui-filter`       | `str`                          | `all`   | Run only ui tests that pass this filter.    |
 | `--test-ui-speed`        | `fast`, `normal`,  `cinematic` | `fast`  | UI test speed.                              |
-| `--test-ui-junit`        | `str`                          | `null`  | UI test JUnit result filename.               |
+| `--test-ui-junit`        | `str`                          | `null`  | UI test JUnit result filename.              |
 
 ## Tracy profiler
 
@@ -122,32 +135,13 @@ CETech1 has builtin support for tracy profiler.
     </tab>
 </tabs>
 
-## ZLS
-
-CETech provide ZLS as submodule, but you must build it.
-
-<tabs>
-    <tab title="MacOS/Linux">
-        <code-block lang="bash">
-            zig/bin/ARCH/zig build zls
-        </code-block>
-    </tab>
-    <tab title="Windows">
-        <code-block lang="bash">
-            zig/bin/ARCH/zig.exe build zls
-        </code-block>
-    </tab>
-</tabs>
-
 ## VSCode
 
 > Repository contain recommended extension.
 
-1. Build [ZLS](#zls)
 2. Crate vscode configs.
     <code-block lang="bash">
         # This generate vscode launch.json with predefined cases and
-        # create or update settings.json with path to zig and zls.
-        zig/bin/ARCH/zig build vscode
+        # create or update settings.json
     </code-block>
 3. Install extension `ziglang.vscode-zig` (or install all recommended)

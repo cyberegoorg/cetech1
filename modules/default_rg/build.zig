@@ -19,7 +19,7 @@ pub fn build(b: *std.Build) !void {
     });
 
     const slib = b.addStaticLibrary(.{
-        .name = "static",
+        .name = "ct_default_rg_static",
         .version = version,
         .root_source_file = b.path("src/private.zig"),
         .target = target,
