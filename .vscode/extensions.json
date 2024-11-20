@@ -1,8 +1,10 @@
 {
     "recommendations": [
-        "ziglang.vscode-zig", // ZIG support. 
-        "vadimcn.vscode-lldb", // Debugging support.
-        "Gruntfuggly.todo-tree", // Todo viewer.
-        "kdheepak.d2-markdown-preview" // D2 preview
+        "ziglang.vscode-zig", // ZIG support
+        "vadimcn.vscode-lldb", // Debugging support
+        "Gruntfuggly.todo-tree", // Todo viewer
+        "kdheepak.d2-markdown-preview", // D2 preview
+        "oderwat.indent-rainbow", // Bring colors to life
+        "MalcolmMielle.semantic-highlighting" // More colors to life
     ]
 }

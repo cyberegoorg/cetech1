@@ -1,0 +1,13 @@
+.{
+    .name = .transform,
+    .fingerprint = 0x77b281add36ef83a,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .graphvm = .{ .path = "../../scripting/graphvm" },
+    },
+}

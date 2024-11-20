@@ -162,6 +162,7 @@ pub const GpuApi = struct {
     setViewOrder: *const fn (_id: ViewId, _num: u16, _order: [*c]const ViewId) void,
     resetView: *const fn (_id: ViewId) void,
     getEncoder: *const fn () ?Encoder,
+    endEncoder: *const fn (encoder: Encoder) void,
     requestScreenShot: *const fn (_handle: FrameBufferHandle, _filePath: [*c]const u8) void,
     renderFrame: *const fn (_msecs: i32) RenderFrame,
     overrideInternalTexturePtr: *const fn (_handle: TextureHandle, _ptr: usize) usize,

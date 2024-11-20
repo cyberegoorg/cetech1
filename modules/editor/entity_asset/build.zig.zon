@@ -1,0 +1,15 @@
+.{
+    .name = .editor_entity_asset,
+    .fingerprint = 0x9caa57ea2cb6e619,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .editor = .{ .path = "../editor" },
+        .editor_tree = .{ .path = "../tree" },
+        .editor_asset_preview = .{ .path = "../asset_preview" },
+    },
+}

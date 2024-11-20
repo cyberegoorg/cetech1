@@ -1746,7 +1746,7 @@ fn stressTest(comptime task_count: u32, task_based: bool) !void {
             );
         }
 
-        task.api.wait(try task.api.combine(&tasks));
+        task.api.waitMany(&tasks);
     } else {
         for (0..task_count) |_| {
             try _cdb.stressIt(

@@ -27,24 +27,16 @@ const module_name = .gpu;
 const ThreadId = std.Thread.Id;
 const EncoderMap = std.AutoArrayHashMap(ThreadId, *bgfx.Encoder);
 
-var _allocator: std.mem.Allocator = undefined;
-
-var _encoder_map: EncoderMap = undefined;
-var _encoder_map_lock: std.Thread.Mutex = .{};
-
+const EncoderArray = std.ArrayList(?*bgfx.Encoder);
 const PalletColorMap = std.AutoArrayHashMap(u32, u8);
 
+var _allocator: std.mem.Allocator = undefined;
+var _encoders: EncoderArray = undefined;
 var _pallet_map: PalletColorMap = undefined;
 
 pub fn init(allocator: std.mem.Allocator) !void {
     _allocator = allocator;
     bgfx_init = false;
-
-    _encoder_map = EncoderMap.init(allocator);
-    try _encoder_map.ensureTotalCapacity(std.Thread.getCpuCount() catch 1);
-
-    _encoder_map_lock = .{};
-
     _pallet_map = PalletColorMap.init(allocator);
 }
 
@@ -52,8 +44,8 @@ pub fn deinit() void {
     if (bgfx_init) {
         zbgfx.debugdraw.deinit();
         bgfx.shutdown();
+        _encoders.deinit();
     }
-    _encoder_map.deinit();
     _pallet_map.deinit();
 }
 
@@ -164,6 +156,7 @@ pub const api = public.GpuApi{
     .setViewOrder = @ptrCast(&bgfx.setViewOrder),
     .resetView = @ptrCast(&bgfx.resetView),
     .getEncoder = getEncoder,
+    .endEncoder = endEncoder,
     //.encoderEnd = @ptrCast(&bgfx.encoderEnd),
     .requestScreenShot = @ptrCast(&bgfx.requestScreenShot),
     .renderFrame = @ptrCast(&bgfx.renderFrame),
@@ -278,11 +271,11 @@ fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless
 
     bgfxInit.type = @enumFromInt(@intFromEnum(backend));
 
-    const cpu_count: u16 = @intCast(std.Thread.getCpuCount() catch 1);
+    const cpu_count: u16 = @intCast(task.api.getThreadNum());
 
     bgfxInit.debug = true;
     bgfxInit.profile = true;
-    bgfxInit.limits.maxEncoders = cpu_count;
+    bgfxInit.limits.maxEncoders = cpu_count + 1;
 
     // TODO: read note in zbgfx.ZigAllocator
     // bgfx_alloc = zbgfx.callbacks.ZigAllocator.init(&_allocator);
@@ -296,7 +289,7 @@ fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless
         bgfxInit.resolution.height = @intCast(framebufferSize[1]);
 
         if (vsync) {
-            bgfxInit.resolution.reset |= bgfx.ResetFlags_Vsync;
+            bgfxInit.resolution.reset |= bgfx.ResetFlags_Vsync; // | bgfx.ResetFlags_FlipAfterRender;
         }
 
         bgfxInit.platformData.nwh = context.window.?.getOsWindowHandler();
@@ -315,6 +308,11 @@ fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless
 
     bgfx_init = true;
     zbgfx.debugdraw.init();
+
+    _encoders = try .initCapacity(_allocator, task.api.getThreadNum());
+    for (0..task.api.getThreadNum()) |_| {
+        _encoders.appendAssumeCapacity(null);
+    }
 }
 
 const GpuContext = struct {
@@ -459,33 +457,50 @@ pub fn destroyDDEncoder(encoder: public.DDEncoder) void {
 }
 
 fn getEncoder() ?public.Encoder {
-    const thread_id = std.Thread.getCurrentId();
+    const wid = task.api.getWorkerId();
 
-    {
-        _encoder_map_lock.lock();
-        defer _encoder_map_lock.unlock();
-        if (_encoder_map.get(thread_id)) |encoder| {
+    if (_encoders.items[wid]) |encoder| {
+        return .{ .ptr = @ptrCast(encoder), .vtable = &encoder_vt };
+    } else {
+        if (bgfx.encoderBegin(wid > 0)) |encoder| {
+            _encoders.items[wid] = encoder;
             return .{ .ptr = @ptrCast(encoder), .vtable = &encoder_vt };
+        } else {
+            log.warn("Empty encoder", .{});
+            return null;
         }
     }
 
-    if (bgfx.encoderBegin(false)) |encoder| {
-        {
-            _encoder_map_lock.lock();
-            defer _encoder_map_lock.unlock();
-            _encoder_map.put(thread_id, @ptrCast(encoder)) catch undefined;
-            return .{ .ptr = @ptrCast(encoder), .vtable = &encoder_vt };
-        }
-    }
-
+    log.warn("No encoder", .{});
     return null;
 }
 
-pub fn endAllUsedEncoders() void {
+pub fn endEncoder(encoder: public.Encoder) void {
     var zone_ctx = profiler.ztracy.ZoneN(@src(), "endAllUsedEncoders");
     defer zone_ctx.End();
-    for (_encoder_map.values()) |encoder| {
-        bgfx.encoderEnd(@ptrCast(encoder));
+    _ = encoder;
+    // const wid = task.api.getWorkerId();
+
+    // _encoders.items[wid] = null;
+    // bgfx.encoderEnd(@ptrCast(encoder.ptr));
+    // for (_encoders.items) |*value| {
+    //     if (value.*) |e| {
+    //         bgfx.encoderEnd(@ptrCast(e));
+    //     }
+    //     value.* = null;
+    // }
+    //_encoders.clearRetainingCapacity();
+}
+
+pub fn endAllUsedEncoders() void {
+    //return;
+    // var zone_ctx = profiler.ztracy.ZoneN(@src(), "endAllUsedEncoders");
+    // defer zone_ctx.End();
+
+    for (_encoders.items) |*value| {
+        if (value.*) |e| {
+            bgfx.encoderEnd(@ptrCast(e));
+        }
+        value.* = null;
     }
-    _encoder_map.clearRetainingCapacity();
 }

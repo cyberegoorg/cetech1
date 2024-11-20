@@ -32,7 +32,7 @@ pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]cons
         profiler.api.msgWithColor(&buffer, color);
     }
 
-    const thread_id = std.Thread.getCurrentId();
+    const thread_id = task.api.getWorkerId();
     //const thread_name = task.getThreadName(thread_id);
 
     const LOG_FORMAT = "[{s}|{d}|{s}]\t{s}";

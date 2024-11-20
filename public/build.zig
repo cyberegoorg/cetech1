@@ -1,6 +1,32 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+pub fn addCetechModule(
+    b: *std.Build,
+    comptime name: []const u8,
+    version: std.SemanticVersion,
+    target: ?std.Build.ResolvedTarget,
+    optimize: ?std.builtin.OptimizeMode,
+) struct { *std.Build.Step.Compile, *std.Build.Module } {
+    const cetech1 = b.dependency("cetech1", .{});
+    const cetech1_module = cetech1.module("cetech1");
+
+    const link_mode = b.option(std.builtin.LinkMode, "link_mode", "link mode for module") orelse .dynamic;
+    const lib = b.addLibrary(.{
+        .linkage = link_mode,
+        .name = "ct_" ++ name,
+        .version = version,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/private.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    lib.root_module.addImport("cetech1", cetech1_module);
+    b.installArtifact(lib);
+    return .{ lib, cetech1_module };
+}
+
 pub fn build(b: *std.Build) !void {
 
     //

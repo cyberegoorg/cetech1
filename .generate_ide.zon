@@ -1,0 +1,11 @@
+.{
+    .launchers = .{
+        .{ .name = "CETech1 no asset root", .args = .{} },
+        .{ .name = "CETech1 max 5 tick", .args = .{ "--max-kernel-tick", "5", "--asset-root", "fixtures/test_asset/" } },
+        .{ .name = "CETech1 --headless", .args = .{ "--max-kernel-tick", "5", "--asset-root", "fixtures/test_asset/", "--headless" } },
+        .{ .name = "CETech1 Tests", .program = "zig-out/bin/cetech1_test", .args = .{} },
+        .{ .name = "CETech1 Tests UI", .args = .{"--test-ui"} },
+        .{ .name = "CETech1 Tests UI (headless)", .args = .{ "--test-ui", "--headless", "--test-ui-junit", "./result.xml" } },
+        .{ .name = "CETech1 (Vulkan)", .args = .{ "--asset-root", "fixtures/test_asset/", "--renderer", "vulkan" } },
+    },
+}
