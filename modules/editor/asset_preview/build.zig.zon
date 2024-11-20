@@ -1,0 +1,17 @@
+.{
+    .name = .editor_asset_preview,
+    .fingerprint = 0x3c3ac35f8470925f,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .editor = .{ .path = "../editor" },
+        .renderer = .{ .path = "../../rendering/renderer" },
+        .camera = .{ .path = "../../rendering/camera" },
+        .transform = .{ .path = "../../rendering/transform" },
+        .editor_entity = .{ .path = "../entity" },
+    },
+}

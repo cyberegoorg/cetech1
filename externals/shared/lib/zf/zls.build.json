@@ -1,0 +1,8 @@
+{
+    "build_options": [
+        {
+            "name": "with_tui",
+            "value": false
+        }
+    ]
+}

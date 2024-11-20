@@ -1,18 +1,15 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const cetech1 = @import("cetech1");
-const static_modules = @import("static_modules");
-const kernel = @import("kernel.zig");
+const kernel = @import("kernel");
+const cetech1_options = kernel.cetech1_options;
 
-pub const std_options = .{
-    .logFn = @import("log.zig").zigLogFn,
+pub const std_options = std.Options{
+    .logFn = kernel.log.zigLogFn,
 };
 
-const cetech1_options = @import("cetech1_options");
-
 pub fn main() anyerror!u8 {
-    const descs = if (!cetech1_options.static_modules) .{} else static_modules.descs;
-    try kernel.boot(&descs, .{});
+    const descs = if (!cetech1_options.static_modules) .{} else kernel.static_module.descs;
+    try kernel.kernel.boot(&descs, .{});
     return 0;
 }

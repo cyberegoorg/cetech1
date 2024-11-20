@@ -133,7 +133,7 @@ pub fn DAG(comptime T: type) type {
 
             var visited_n: usize = 0;
             while (self.build.count() != 0) {
-                const value = self.build.pop();
+                const value = self.build.pop().?;
                 try self.output.put(value.key, {});
 
                 const dep_arr = self.graph.getPtr(value.key);

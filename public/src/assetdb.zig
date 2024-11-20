@@ -8,6 +8,15 @@ const platform = @import("platform.zig");
 
 const log = std.log.scoped(.assetdb);
 
+// Type for root of all assets
+pub const AssetRoot = cdb.CdbTypeDecl(
+    "ct_asset_root",
+    enum(u32) {
+        Assets = 0,
+    },
+    struct {},
+);
+
 /// CDB type for asset wraper
 pub const Asset = cdb.CdbTypeDecl(
     "ct_asset",
@@ -80,13 +89,13 @@ pub const CT_TEMP_FOLDER = ".ct_temp";
 /// Use this if you need define your non-cdb assets importer or exporter
 pub const AssetIOI = struct {
     /// Can import asset that has this extension?
-    canImport: ?*const fn (extension: []const u8) bool,
+    canImport: ?*const fn (filename: []const u8, extension: []const u8) bool,
 
     /// Can reimport asset?
     canReimport: ?*const fn (db: cdb.DbId, asset: cdb.ObjId) bool, //TODO
 
     /// Can export asset with this extension?
-    canExport: ?*const fn (db: cdb.DbId, asset: cdb.ObjId, extension: []const u8) bool,
+    canExport: ?*const fn (db: cdb.DbId, asset: cdb.ObjId, filename: []const u8, extension: []const u8) bool,
 
     ///Crete import asset task.
     importAsset: ?*const fn (
@@ -230,6 +239,7 @@ pub const AssetDBAPI = struct {
     getObjForAsset: *const fn (obj: cdb.ObjId) ?cdb.ObjId,
     isAssetFolder: *const fn (obj: cdb.ObjId) bool,
     isObjAssetObj: *const fn (obj: cdb.ObjId) bool,
+    getAssetRootObj: *const fn () cdb.ObjId,
 
     getDb: *const fn () cdb.DbId,
 
@@ -237,7 +247,6 @@ pub const AssetDBAPI = struct {
     getPathForFolder: *const fn (buff: []u8, asset: cdb.ObjId) anyerror![]u8,
 
     createNewFolder: *const fn (db: cdb.DbId, parent_folder: cdb.ObjId, name: [:0]const u8) anyerror!cdb.ObjId,
-    filerAsset: *const fn (tmp_allocator: std.mem.Allocator, filter: [:0]const u8, tags_filter: cdb.ObjId) anyerror!FilteredAssets,
     saveAsAllAssets: *const fn (tmp_allocator: std.mem.Allocator, path: []const u8) anyerror!void,
     deleteAsset: *const fn (asset: cdb.ObjId) anyerror!void,
     deleteFolder: *const fn (folder: cdb.ObjId) anyerror!void,

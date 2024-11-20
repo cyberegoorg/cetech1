@@ -1,5 +1,6 @@
 .{
-    .name = "znfde",
+    .name = .znfde,
+    .fingerprint = 0xdeaa03a53e34a0ca,
     .version = "0.1.0",
     .dependencies = .{},
     .paths = .{

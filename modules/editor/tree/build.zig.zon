@@ -1,0 +1,14 @@
+.{
+    .name = .editor_tree,
+    .fingerprint = 0x5dffce1587f36a0a,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .editor = .{ .path = "../editor" },
+        .editor_inspector = .{ .path = "../inspector" },
+    },
+}

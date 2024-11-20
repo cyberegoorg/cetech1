@@ -267,15 +267,15 @@ pub const SystemI = struct {
     name: [:0]const u8 = undefined,
     phase: strid.StrId32 = undefined,
     query: []const QueryTerm,
-    multi_threaded: bool = true,
+    multi_threaded: bool = false,
     instanced: bool = false,
     immediate: bool = false,
     cache_kind: QueryCacheKind = .QueryCacheDefault,
 
     simulation: bool = false,
 
-    update: ?*const fn (iter: *IterO) callconv(.C) void = undefined,
-    iterate: ?*const fn (iter: *IterO) callconv(.C) void = undefined,
+    update: ?*const fn (world: World, iter: *Iter) anyerror!void = undefined,
+    iterate: ?*const fn (world: World, iter: *Iter) anyerror!void = undefined,
 
     pub fn implement(args: SystemI, comptime T: type) SystemI {
         return SystemI{
@@ -284,19 +284,12 @@ pub const SystemI = struct {
             .query = args.query,
             .multi_threaded = args.multi_threaded,
             .instanced = args.instanced,
+            .immediate = args.immediate,
+            .cache_kind = args.cache_kind,
             .simulation = args.simulation,
 
-            .update = if (std.meta.hasFn(T, "update")) struct {
-                pub fn f(iter: *IterO) callconv(.C) void {
-                    T.update(iter) catch undefined;
-                }
-            }.f else null,
-
-            .iterate = if (std.meta.hasFn(T, "iterate")) struct {
-                pub fn f(iter: *IterO) callconv(.C) void {
-                    T.iterate(iter) catch undefined;
-                }
-            }.f else null,
+            .update = if (std.meta.hasFn(T, "update")) T.update else null,
+            .iterate = if (std.meta.hasFn(T, "iterate")) T.iterate else null,
         };
     }
 };
@@ -420,10 +413,6 @@ pub const World = struct {
         return self.vtable.setRemoteDebugActive(self.ptr, active);
     }
 
-    pub fn uiRemoteDebugMenuItems(self: World, allocator: std.mem.Allocator, port: ?u16) ?u16 {
-        return self.vtable.uiRemoteDebugMenuItems(self.ptr, allocator, port);
-    }
-
     pub fn setSimulate(self: World, simulate: bool) void {
         self.vtable.setSimulate(self.ptr, simulate);
     }
@@ -453,7 +442,6 @@ pub const World = struct {
 
         isRemoteDebugActive: *const fn (world: *anyopaque) bool,
         setRemoteDebugActive: *const fn (world: *anyopaque, active: bool) ?u16,
-        uiRemoteDebugMenuItems: *const fn (world: *anyopaque, allocator: std.mem.Allocator, port: ?u16) ?u16,
 
         setSimulate: *const fn (world: *anyopaque, simulate: bool) void,
         isSimulate: *const fn (world: *anyopaque) bool,
@@ -502,6 +490,10 @@ pub const Iter = struct {
         return self.vtable.next(&self.data);
     }
 
+    pub inline fn getSystem(self: *Iter) *const SystemI {
+        return self.vtable.getSystem();
+    }
+
     data: [384]u8,
     vtable: *const VTable,
 
@@ -520,6 +512,8 @@ pub const Iter = struct {
 
         next: *const fn (self: *anyopaque) bool,
 
+        getSystem: *const fn (self: *anyopaque) *const SystemI,
+
         pub fn implement(comptime T: type) VTable {
             if (!std.meta.hasFn(T, "getWorld")) @compileError("implement me");
             if (!std.meta.hasFn(T, "count")) @compileError("implement me");
@@ -531,6 +525,10 @@ pub const Iter = struct {
             if (!std.meta.hasFn(T, "isSelf")) @compileError("implement me");
             if (!std.meta.hasFn(T, "next")) @compileError("implement me");
 
+            if (!std.meta.hasFn(T, "next")) @compileError("implement me");
+
+            if (!std.meta.hasFn(T, "getSystem")) @compileError("implement me");
+
             return VTable{
                 .getWorld = T.getWorld,
                 .count = T.count,
@@ -541,6 +539,7 @@ pub const Iter = struct {
                 .skip = T.skip,
                 .isSelf = T.isSelf,
                 .next = T.next,
+                .getSystem = T.getSystem,
             };
         }
     };
@@ -553,7 +552,7 @@ pub const EcsAPI = struct {
     createWorld: *const fn () anyerror!World,
     destroyWorld: *const fn (world: World) void,
 
-    //toWorld: *const fn (world: *anyopaque) World,
+    toWorld: *const fn (world: *anyopaque) World,
     toIter: *const fn (iter: *IterO) Iter,
 
     findComponentIByCdbHash: *const fn (cdb_hash: cdb.TypeHash) ?*const ComponentI,

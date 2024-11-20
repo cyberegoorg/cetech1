@@ -1,5 +1,6 @@
 .{
-    .name = "editor_foo_viewport_tab",
+    .name = .editor_foo_viewport_tab,
+    .fingerprint = 0x8f29a2de4b4c123a,
     .version = "0.1.0",
     .paths = .{
         "build.zig",
@@ -7,9 +8,10 @@
     },
     .dependencies = .{
         .cetech1 = .{ .path = "../../public/" },
-        .editor = .{ .path = "../../modules/editor" },
-        .renderer = .{ .path = "../../modules/renderer" },
-        .transform = .{ .path = "../../modules/transform" },
-        .camera = .{ .path = "../../modules/camera" },
+        .editor = .{ .path = "../../modules/editor/editor" },
+        .renderer = .{ .path = "../../modules/rendering/renderer" },
+        .transform = .{ .path = "../../modules/rendering/transform" },
+        .camera = .{ .path = "../../modules/rendering/camera" },
+        .editor_entity = .{ .path = "../../modules/editor/entity" },
     },
 }

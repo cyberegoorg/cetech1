@@ -23,12 +23,12 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
 
     try zglfw.init();
 
-    zglfw.windowHintTyped(.client_api, .no_api);
+    zglfw.windowHint(.client_api, .no_api);
     if (headless) {
-        zglfw.windowHintTyped(.visible, false);
+        zglfw.windowHint(.visible, false);
     }
 
-    //zglfw.windowHintTyped(.scale_to_monitor, true);
+    //zglfw.windowHint(.scale_to_monitor, true);
 
     if (!zglfw.Gamepad.updateMappings(gamepaddb)) {
         log.err("Failed to update gamepad mappings", .{});
@@ -43,7 +43,7 @@ pub const window_vt = public.Window.VTable.implement(struct {
     pub fn setCursorMode(window: *anyopaque, mode: public.CursorMode) void {
         const true_w: *Window = @alignCast(@ptrCast(window));
         const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
-        glfw_w.setInputMode(.cursor, cursorModeTOGlfw(mode));
+        glfw_w.setInputMode(.cursor, cursorModeTOGlfw(mode)) catch undefined;
     }
 
     pub fn getKey(window: *anyopaque, key: public.Key) public.Action {
@@ -90,7 +90,7 @@ pub const window_vt = public.Window.VTable.implement(struct {
     pub fn setShouldClose(window: *anyopaque, should_quit: bool) void {
         const true_w: *Window = @alignCast(@ptrCast(window));
         const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
-        zglfw.Window.setShouldClose(glfw_w, should_quit);
+        zglfw.setWindowShouldClose(glfw_w, should_quit);
     }
 
     pub fn getMouseButton(window: *anyopaque, button: public.MouseButton) public.Action {
@@ -134,7 +134,7 @@ pub const window_vt = public.Window.VTable.implement(struct {
 const joystick_vt = public.Joystick.VTable.implement(struct {});
 const gamepad_vt = public.Gamepad.VTable.implement(struct {
     pub fn getState(id: public.Gamepad.Id) public.Gamepad.State {
-        var s = zglfw.Gamepad.getState(.{ .jid = @truncate(id) });
+        var s = zglfw.Gamepad.getState(@enumFromInt(id));
         return @as(*public.Gamepad.State, @ptrCast(&s)).*;
     }
 });
@@ -148,13 +148,13 @@ pub const monitor_vt = public.Monitor.VTable.implement(struct {
 });
 
 pub fn getJoystick(id: public.Joystick.Id) ?public.Joystick {
-    if (!zglfw.Joystick.isPresent(@truncate(id))) return null;
+    if (!zglfw.Joystick.isPresent(@enumFromInt(id))) return null;
 
     return .{ .jid = id, .vtable = &joystick_vt };
 }
 
 pub fn getGamepad(id: public.Gamepad.Id) ?public.Gamepad {
-    if (!zglfw.Joystick.isPresent(@truncate(id))) return null;
+    if (!zglfw.Joystick.isPresent(@enumFromInt(id))) return null;
 
     return .{ .jid = id, .vtable = &gamepad_vt };
 }

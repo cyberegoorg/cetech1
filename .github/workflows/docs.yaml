@@ -5,7 +5,7 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/docs.yaml"
-      - "Writerside/**"
+      - "docs/**"
 
   workflow_dispatch:
 
@@ -16,9 +16,9 @@ permissions:
   actions: write
 
 env:
-  INSTANCE: Writerside/cetech1
+  INSTANCE: docs/cetech1
   ARTIFACT: webHelpCETECH12-all.zip
-  DOCKER_VERSION: "242.21870"
+  DOCKER_VERSION: "243.22562"
 
 jobs:
   build:
@@ -28,8 +28,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
-      - name: Pull LFS
-        run: git lfs pull --include "Writerside/**/*"
+      # - name: Pull LFS
+      #   run: git lfs pull --include "docs/**/*"
 
       - name: Build Writerside docs using Docker
         uses: JetBrains/writerside-github-action@v4
@@ -39,7 +39,7 @@ jobs:
           docker-version: ${{ env.DOCKER_VERSION }}
 
       - name: Save docs to cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           key: docs-cache-${{ github.sha }}
           path: |
@@ -52,7 +52,7 @@ jobs:
 
     steps:
       - name: Download docs
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           key: docs-cache-${{ github.sha }}
           path: |
@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download docs
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           key: docs-cache-${{ github.sha }}
           path: |
@@ -88,16 +88,16 @@ jobs:
           args: unzip -qq artifacts/${{ env.ARTIFACT }} -d dir
 
       - name: Setup Pages
-        uses: actions/configure-pages@v2
+        uses: actions/configure-pages@v4
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v2
+        uses: actions/upload-pages-artifact@v3
         with:
           path: dir
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@v4
 
   cleanup:
     runs-on: ubuntu-latest

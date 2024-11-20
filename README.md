@@ -5,14 +5,9 @@
 
 Yet another experimental game engine but now in [zig](https://ziglang.org).
 
+> [!IMPORTANT]  
+> Work in progressssssssssssss
+
 ## [Getting started](https://cyberegoorg.github.io/cetech1/getting-started.html)
 
 ## [Documentation](https://cyberegoorg.github.io/cetech1)
-
-## Credits/Licenses For Fonts Included In Repository
-
-Some fonts files are available in the `src/embed/fonts/` folder:
-
-- **[Roboto-Medium.ttf](https://fonts.google.com/specimen/Roboto)** - Apache License 2.0
-- **[fa-solid-900.ttf](https://fontawesome.com)** - SIL OFL 1.1 License
-- **[fa-regular-400.ttf](https://fontawesome.com)** - SIL OFL 1.1 License

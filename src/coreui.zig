@@ -34,9 +34,8 @@ const log = std.log.scoped(module_name);
 
 var _cdb = &cdb_private.api;
 
-const _main_font = @embedFile("embed/fonts/Roboto-Medium.ttf");
-const _fa_solid_font = @embedFile("embed/fonts/fa-solid-900.ttf");
-const _fa_regular_font = @embedFile("embed/fonts/fa-regular-400.ttf");
+const _main_font = @embedFile("Roboto-Medium");
+const _fa_solid_font = @embedFile("fa-solid-900");
 
 const DEFAULT_IMGUI_INI = @embedFile("embed/imgui.ini");
 
@@ -68,46 +67,70 @@ var _new_scale_factor: ?f32 = null;
 //     KernelTask.update,
 // );
 
-const _kernel_hook_i = cetech1.kernel.KernelLoopHookI.implement(struct {
-    pub fn beginLoop(kernel_tick: u64, dt: f32) !void {
-        var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "Begin-loop CoreUI");
-        defer update_zone_ctx.End();
+var ui_being_task = cetech1.kernel.KernelTaskUpdateI.implment(
+    cetech1.kernel.PreUpdate,
+    "CoreUI: begin",
+    &[_]cetech1.strid.StrId64{},
+    0,
+    struct {
+        pub fn update(_: u64, _: f32) !void {
+            var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "Begin-loop CoreUI");
+            defer update_zone_ctx.End();
 
-        const ctx = kernel.api.getGpuCtx();
-        _ = ctx; // autofix
-        const window = kernel.api.getMainWindow();
+            const ctx = kernel.api.getGpuCtx();
+            _ = ctx; // autofix
+            const window = kernel.api.getMainWindow();
 
-        if (!_enabled_ui) {
-            try enableWithWindow(window);
-            _enabled_ui = true;
-        }
-
-        if (_enabled_ui) {
-            var size = [2]i32{ 0, 0 };
-
-            if (window) |w| {
-                size = w.getFramebufferSize();
+            if (!_enabled_ui) {
+                try enableWithWindow(window);
+                _enabled_ui = true;
             }
 
-            // if (_new_scale_factor) |nsf| {
-            //     initFonts(16, nsf);
-            //     _scale_factor = nsf;
-            //     _new_scale_factor = null;
-            //     return;
-            // }
+            if (_enabled_ui) {
+                var size = [2]i32{ 0, 0 };
 
-            newFrame(@intCast(size[0]), @intCast(size[1]));
+                if (window) |w| {
+                    size = w.getFramebufferSize();
+                }
 
+                // if (_new_scale_factor) |nsf| {
+                //     initFonts(16, nsf);
+                //     _scale_factor = nsf;
+                //     _new_scale_factor = null;
+                //     return;
+                // }
+
+                newFrame(@intCast(size[0]), @intCast(size[1]));
+            }
+        }
+    },
+);
+
+var ui_draw_task = cetech1.kernel.KernelTaskUpdateI.implment(
+    cetech1.kernel.PostUpdate,
+    "CoreUI: draw",
+    &[_]cetech1.strid.StrId64{},
+    1,
+    struct {
+        pub fn update(kernel_tick: u64, dt: f32) !void {
             const tmp = try tempalloc.api.create();
             defer tempalloc.api.destroy(tmp);
             try coreUI(tmp, kernel_tick, dt);
         }
-    }
+    },
+);
 
-    pub fn endLoop() !void {
-        afterAll();
-    }
-});
+var ui_end_task = cetech1.kernel.KernelTaskUpdateI.implment(
+    cetech1.kernel.PreStore,
+    "CoreUI: end",
+    &[_]cetech1.strid.StrId64{},
+    0,
+    struct {
+        pub fn update(_: u64, _: f32) !void {
+            afterAll();
+        }
+    },
+);
 
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.DbId) !void {
@@ -121,6 +144,22 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         //     },
         // );
         //
+    }
+});
+
+const kernel_testing = cetech1.kernel.KernelTestingI.implment(struct {
+    pub fn isRunning() !bool {
+        return api.testIsRunning();
+    }
+    pub fn printResult() void {
+        api.testPrintResult();
+    }
+    pub fn getResult() cetech1.kernel.TestResult {
+        const r = api.testGetResult();
+        return .{
+            .count_tested = r.count_tested,
+            .count_success = r.count_success,
+        };
     }
 });
 
@@ -148,7 +187,10 @@ pub fn init(allocator: std.mem.Allocator) !void {
 
     if (cetech1_options.enable_nfd) try znfde.init();
 
-    try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelLoopHookI, &_kernel_hook_i, true);
+    try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &ui_being_task, true);
+    try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &ui_draw_task, true);
+    try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &ui_end_task, true);
+    try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTestingI, &kernel_testing, true);
     //try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task, true);
 }
 
@@ -163,7 +205,6 @@ pub fn deinit() void {
     zgui.deinit();
 
     if (cetech1_options.enable_nfd) znfde.deinit();
-    apidb.api.implOrRemove(module_name, cetech1.kernel.KernelLoopHookI, &_kernel_hook_i, false) catch undefined;
 }
 
 pub var api = public.CoreUIApi{
@@ -171,7 +212,8 @@ pub var api = public.CoreUIApi{
     .showMetricsWindow = showMetricsWindow,
     .begin = @ptrCast(&zgui.begin),
     .end = @ptrCast(&zgui.end),
-    .beginPopup = @ptrCast(&zgui.beginPopup),
+    .beginPopup = beginPopup,
+
     .pushStyleColor4f = @ptrCast(&zgui.pushStyleColor4f),
     .popStyleColor = @ptrCast(&zgui.popStyleColor),
     .tableSetBgColor = @ptrCast(&zgui.tableSetBgColor),
@@ -207,7 +249,7 @@ pub var api = public.CoreUIApi{
     .setClipboardText = @ptrCast(&zgui.setClipboardText),
     .beginPopupContextItem = @ptrCast(&zgui.beginPopupContextItem),
     .beginPopupModal = @ptrCast(&zgui.beginPopupModal),
-    .openPopup = @ptrCast(&zgui.openPopup),
+    .openPopup = openPopup,
     .endPopup = @ptrCast(&zgui.endPopup),
     .closeCurrentPopup = @ptrCast(&zgui.closeCurrentPopup),
     .isItemClicked = @ptrCast(&zgui.isItemClicked),
@@ -278,9 +320,9 @@ pub var api = public.CoreUIApi{
     .acceptDragDropPayload = @ptrCast(&zgui.acceptDragDropPayload),
     .endDragDropTarget = @ptrCast(&zgui.endDragDropTarget),
     .getDragDropPayload = @ptrCast(&zgui.getDragDropPayload),
-    .isMouseDoubleClicked = @ptrCast(&zgui.isMouseDoubleClicked),
+    .isMouseDoubleClicked = isMouseDoubleClicked,
     .isMouseDown = @ptrCast(&zgui.isMouseDown),
-    .isMouseClicked = @ptrCast(&zgui.isMouseClicked),
+    .isMouseClicked = isMouseClicked,
 
     .handleSelection = handleSelection,
 
@@ -341,6 +383,22 @@ pub var api = public.CoreUIApi{
     .gizmoManipulate = @ptrCast(&zgui.gizmo.manipulate),
     .gizmoSetDrawList = gizmoSetDrawList,
 };
+
+fn isMouseDoubleClicked(mouse_button: public.MouseButton) bool {
+    return zgui.isMouseDoubleClicked(@enumFromInt(@intFromEnum(mouse_button)));
+}
+
+fn isMouseClicked(mouse_button: public.MouseButton) bool {
+    return zgui.isMouseClicked(@enumFromInt(@intFromEnum(mouse_button)));
+}
+
+fn beginPopup(str_id: [:0]const u8, flags: public.WindowFlags) bool {
+    return zgui.beginPopup(str_id, std.mem.bytesToValue(zgui.WindowFlags, std.mem.asBytes(&flags)));
+}
+
+fn openPopup(str_id: [:0]const u8, flags: public.PopupFlags) void {
+    zgui.openPopup(str_id, std.mem.bytesToValue(zgui.PopupFlags, std.mem.asBytes(&flags)));
+}
 
 pub fn gizmoSetDrawList(draw_list: ?public.DrawList) void {
     zgui.gizmo.setDrawList(if (draw_list) |dl| @ptrCast(dl.ptr) else null);
@@ -1337,7 +1395,7 @@ pub fn initFonts(font_size: f32, scale_factor: f32) void {
     fa_cfg.font_data_owned_by_atlas = false;
     fa_cfg.merge_mode = true;
     _ = zgui.io.addFontFromMemoryWithConfig(
-        if (false) _fa_regular_font else _fa_solid_font,
+        _fa_solid_font,
         sized_pixel,
         fa_cfg,
         &[_]u16{ public.CoreIcons.ICON_MIN_FA, public.CoreIcons.ICON_MAX_FA, 0 },

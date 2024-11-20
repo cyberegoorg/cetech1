@@ -129,6 +129,7 @@ pub var api = cetech1.kernel.KernelApi{
     .restart = restart,
     .getDb = getDb,
     .isTestigMode = isTestigMode,
+    .isHeadlessMode = isHeadlessMode,
     .getMainWindow = getMainWindow,
     .getGpuCtx = getGpuCtx,
     .getExternalsCredit = getExternalsCredit,
@@ -152,6 +153,10 @@ fn getGpuCtx() ?*cetech1.gpu.GpuContext {
 
 fn isTestigMode() bool {
     return 1 == getIntArgs("--test-ui") orelse 0;
+}
+
+fn isHeadlessMode() bool {
+    return _headless;
 }
 
 fn restart() void {
@@ -410,14 +415,25 @@ fn registerSignals() !void {
     }
 }
 
+var _headless = false;
+
 pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootArgs) !void {
     while (_restart) {
         _restart = false;
 
         // Main Allocator
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        const gpa_allocator = gpa.allocator();
-        defer _ = gpa.deinit();
+        var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+        const gpa_allocator, const is_debug = gpa: {
+            if (builtin.os.tag == .wasi) break :gpa .{ std.heap.wasm_allocator, false };
+            break :gpa switch (builtin.mode) {
+                .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true }, //TODO: FAIL on ReleaseSafe in 0.14.0
+                .ReleaseFast, .ReleaseSmall => .{ debug_allocator.allocator(), true },
+                // .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false }, //TODO: FAIL in 0.14.0
+            };
+        };
+        defer if (is_debug) {
+            _ = debug_allocator.deinit();
+        };
 
         try initProgramArgs(gpa_allocator);
 
@@ -426,12 +442,12 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         _max_tick_rate = getIntArgs("--max-kernel-tick-rate") orelse 60;
         const load_dynamic = 1 == getIntArgs("--load-dynamic") orelse @intFromBool(boot_args.load_dynamic);
         const asset_root = getStrArgs("--asset-root") orelse "";
-        const headless = 1 == getIntArgs("--headless") orelse @intFromBool(boot_args.headless);
+        _headless = 1 == getIntArgs("--headless") orelse @intFromBool(boot_args.headless);
         const fullscreen = 1 == getIntArgs("--fullscreen") orelse 0;
         const renderer_type = getStrArgs("--renderer");
 
         // Init Kernel
-        try init(gpa_allocator, headless);
+        try init(gpa_allocator, _headless);
         defer deinit(gpa_allocator) catch undefined;
 
         // Test args
@@ -444,7 +460,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         defer bigDeinit() catch unreachable;
 
         var kernel_tick: u64 = 1;
-        var last_call = std.time.milliTimestamp();
+        var tick_last_call = std.time.milliTimestamp();
 
         // Build phase graph
         try _phases_dag.build_all();
@@ -479,7 +495,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         var kernel_task_gen: cetech1.apidb.InterfaceVersion = 0;
 
         // Main window
-        if (!headless) {
+        if (!_headless) {
             var w: i32 = 1024;
             var h: i32 = 768;
 
@@ -493,14 +509,19 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
             log.info("Using video mode {d}x{d}", .{ w, h });
 
-            main_window = try platform.api.createWindow(w, h, "cetech1", if (fullscreen) monitor else null);
+            main_window = try platform.api.createWindow(
+                w,
+                h,
+                cetech1_options.app_name ++ " - powered by CETech1",
+                if (fullscreen) monitor else null,
+            );
         }
 
         gpu_context = try gpu.api.createContext(
             main_window,
             if (renderer_type) |r| cetech1.gpu.Backend.fromString(r) else null,
-            !headless,
-            headless,
+            !_headless,
+            _headless,
         );
 
         try initKernelTasks();
@@ -509,28 +530,34 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         const dt_couter = try metrics.api.getCounter("kernel/dt");
         const tick_duration_counter = try metrics.api.getCounter("kernel/tick_duration");
 
-        while (_running and !_quit and !_restart) : (kernel_tick += 1) {
-            profiler_private.api.frameMark();
+        var last_game_tick_task: cetech1.task.TaskID = .none;
+        var game_tick_last_call = std.time.milliTimestamp();
+
+        var game_tick: usize = 0;
+
+        profiler_private.api.frameMark();
+        while (_running and !_quit and !_restart) : (kernel_tick +%= 1) {
             var update_zone_ctx = profiler_private.ztracy.ZoneN(@src(), "kernelUpdate");
             defer update_zone_ctx.End();
 
+            //const tick_duration = cetech1.metrics.MetricScopedDuration.begin(tick_duration_counter);
             const tick_duration = cetech1.metrics.MetricScopedDuration.begin(tick_duration_counter);
+            defer tick_duration.end();
 
             const now = std.time.milliTimestamp();
-            const dt_ms = now - last_call;
-            const dt_s: f32 = @as(f32, @floatFromInt(dt_ms)) / std.time.ms_per_s;
-            last_call = now;
+            const kernel_dt_ms = now - tick_last_call;
+            tick_last_call = now;
 
-            dt_couter.* = @floatFromInt(dt_ms);
+            dt_couter.* = @floatFromInt(kernel_dt_ms);
 
-            checkfs_timer += dt_ms;
+            checkfs_timer += kernel_dt_ms;
 
             const tmp_frame_alloc = try tempalloc.api.create();
             defer tempalloc.api.destroy(tmp_frame_alloc);
 
             // Any dynamic modules changed?
             // TODO: Watch
-            if (checkfs_timer >= (5 * std.time.ms_per_s)) {
+            if (checkfs_timer >= (10 * std.time.ms_per_s)) {
                 checkfs_timer = 0;
 
                 const reloaded_modules = try modules.reloadAllIfNeeded(tmp_frame_alloc);
@@ -538,22 +565,6 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             }
 
             platform.api.poolEvents();
-            actions.checkInputs();
-
-            // Begin loop
-            {
-                var zone_ctx = profiler_private.ztracy.ZoneN(@src(), "Begin loop");
-                defer zone_ctx.End();
-
-                const impls = try apidb.api.getImpl(tmp_frame_alloc, public.KernelLoopHookI);
-                defer tmp_frame_alloc.free(impls);
-
-                for (impls) |iface| {
-                    iface.begin_loop(kernel_tick, dt_s) catch |err| {
-                        log.err("Begin loop failed: {any}", .{err});
-                    };
-                }
-            }
 
             // Any public.KernelTaskI iface changed? (add/remove)?
             const new_kernel_gen = apidb.api.getInterafcesVersion(public.KernelTaskI);
@@ -569,38 +580,60 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                 kernel_task_update_gen = new_kernel_update_gen;
             }
 
-            // Do hard work.
-            try doKernelUpdateTasks(kernel_tick, dt_s);
+            const GameTickTask = struct {
+                kernel_tick: u64,
+                dt_s: f32,
+                fast_mode: bool,
 
-            // TODO remove
-            try ecs.progressAll(dt_s);
+                pub fn exec(self: *@This()) !void {
+                    profiler_private.api.frameMark();
 
-            // Render frame
-            if (gpu_context) |ctx| {
-                const impls = try apidb.api.getImpl(tmp_frame_alloc, public.KernelRenderI);
-                defer tmp_frame_alloc.free(impls);
+                    var task_zone_ctx = profiler_private.ztracy.ZoneN(@src(), "GameTick");
+                    defer task_zone_ctx.End();
 
-                for (impls) |iface| {
-                    try iface.render(ctx, kernel_tick, dt_s, !headless);
+                    const noww = std.time.milliTimestamp();
+
+                    const tmp_alloc = try tempalloc.api.create();
+                    defer tempalloc.api.destroy(tmp_alloc);
+
+                    // TODO: stange delta, unshit this shit
+                    actions.checkInputs();
+
+                    // Do hard work.
+                    try doKernelUpdateTasks(self.kernel_tick, self.dt_s);
+
+                    // clean main DB
+                    try _cdb.gc(tmp_alloc, assetdb.getDb());
+
+                    try metrics.pushFrames();
+
+                    if (!(isTestigMode() and self.fast_mode)) {
+                        const t = try sleepIfNeed(tmp_alloc, noww, _max_tick_rate, task.api.getThreadNum() - 1);
+                        task.api.wait(t);
+                    }
                 }
-            }
+            };
 
-            // End loop
-            {
-                const impls = try apidb.api.getImpl(tmp_frame_alloc, public.KernelLoopHookI);
-                defer tmp_frame_alloc.free(impls);
+            if (task.api.isDone(last_game_tick_task)) {
+                const noww = std.time.milliTimestamp();
+                const game_dt_ms = noww - game_tick_last_call;
+                const game_dt_s: f32 = @as(f32, @floatFromInt(game_dt_ms)) / std.time.ms_per_s;
+                game_tick_last_call = noww;
 
-                for (impls) |iface| {
-                    try iface.end_loop();
-                }
-            }
-
-            tick_duration.end();
-
-            // Dont drill cpu if there is no hard work.
-            // But not if test is running and is active fast mode
-            if (!(coreui.api.testIsRunning() and fast_mode)) {
-                try sleepIfNeed(tmp_frame_alloc, last_call, _max_tick_rate, kernel_tick);
+                const t = try task.api.schedule(
+                    .none,
+                    GameTickTask{
+                        .dt_s = game_dt_s,
+                        .kernel_tick = kernel_tick,
+                        .fast_mode = fast_mode,
+                    },
+                    .{},
+                );
+                last_game_tick_task = t;
+                // task.api.wait(t);
+                game_tick +%= 1;
+            } else {
+                task.api.doOneTask();
             }
 
             if (_next_asset_root != null) {
@@ -610,9 +643,6 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                 );
                 _next_asset_root = null;
             }
-
-            // clean main DB
-            try _cdb.gc(tmp_frame_alloc, assetdb.getDb());
 
             // Check window close request
             if (main_window) |window| {
@@ -628,19 +658,36 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             // If set max-kernel-tick and reach limit then quit
             if (max_kernel_tick > 0) _quit = kernel_tick >= max_kernel_tick;
 
-            if (test_ui) {
-                _quit = !coreui.api.testIsRunning();
+            if (test_ui and game_tick > 1) {
+                const impls = try apidb.api.getImpl(tmp_frame_alloc, public.KernelTestingI);
+                defer tmp_frame_alloc.free(impls);
+
+                for (impls) |iface| {
+                    _quit = !try iface.isRunning();
+                }
             }
 
-            try metrics.pushFrames();
+            {
+                var zone_ctx = profiler_private.ztracy.ZoneN(@src(), "renderFrame");
+                defer zone_ctx.End();
+                _ = gpu.api.renderFrame(0);
+            }
         }
 
-        if (test_ui) {
-            coreui.api.testPrintResult();
+        task.api.wait(last_game_tick_task);
 
-            const result = coreui.api.testGetResult();
-            if (result.count_success != result.count_tested) {
-                @panic("Why are you break my app?");
+        if (test_ui) {
+            const impls = try apidb.api.getImpl(_kernel_allocator, public.KernelTestingI);
+            defer _kernel_allocator.free(impls);
+
+            for (impls) |iface| {
+                iface.printResult();
+
+                const result = iface.getResult();
+
+                if (result.count_success != result.count_tested) {
+                    @panic("Why are you break my app?");
+                }
             }
         }
 
@@ -655,20 +702,19 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
     }
 }
 
-fn sleepIfNeed(allocator: std.mem.Allocator, last_call: i64, max_rate: u32, kernel_tick: u64) !void {
-    _ = kernel_tick;
+fn sleepIfNeed(allocator: std.mem.Allocator, last_call: i64, max_rate: u32, worker_n: u64) !cetech1.task.TaskID {
     const frame_limit_time: f32 = (1.0 / @as(f32, @floatFromInt(max_rate)) * std.time.ms_per_s);
 
     const dt: f32 = @floatFromInt(std.time.milliTimestamp() - last_call);
     if (dt < frame_limit_time) {
-        var zone_ctx = profiler_private.ztracy.ZoneN(@src(), "ShityFrameLimitSleeper");
-        defer zone_ctx.End();
-        const sleep_time: u64 = @intFromFloat((frame_limit_time - dt) * 0.65 * std.time.ns_per_ms);
+        // var zone_ctx = profiler_private.ztracy.ZoneN(@src(), "ShityFrameLimitSleeper");
+        // defer zone_ctx.End();
+        const sleep_time: u64 = @intFromFloat((frame_limit_time - dt) * 0.62 * std.time.ns_per_ms);
 
-        const n = task.api.getThreadNum();
+        const n = worker_n;
         var wait_tasks = std.ArrayList(cetech1.task.TaskID).init(allocator);
         defer wait_tasks.deinit();
-        for (0..n) |_| {
+        for (0..n) |idx| {
             const SleepTask = struct {
                 sleep_time: u64,
                 pub fn exec(self: *@This()) !void {
@@ -677,31 +723,37 @@ fn sleepIfNeed(allocator: std.mem.Allocator, last_call: i64, max_rate: u32, kern
                     std.time.sleep(self.sleep_time);
                 }
             };
-            const t = try task.api.schedule(.none, SleepTask{ .sleep_time = sleep_time });
+            const t = try task.api.schedule(
+                .none,
+                SleepTask{ .sleep_time = sleep_time },
+                .{ .affinity = @intCast(idx + 1) },
+            );
             try wait_tasks.append(t);
         }
 
-        // Sleep but pool events and draw coreui
-        const sleep_begin = std.time.milliTimestamp();
-        while (true) {
-            const sleep_time_s: f32 = @as(f32, @floatFromInt(sleep_time)) / std.time.ns_per_s;
-            const sleep_delta_s: f32 = @as(f32, @floatFromInt(std.time.milliTimestamp() - sleep_begin)) / std.time.ms_per_s;
-            if (sleep_delta_s > sleep_time_s) break;
-            platform.api.poolEventsWithTimeout(std.math.clamp(sleep_time_s - sleep_delta_s, 0.0, sleep_time_s));
+        // // Sleep but pool events and draw coreui
+        // const sleep_begin = std.time.milliTimestamp();
+        // while (true) {
+        //     const sleep_time_s: f32 = @as(f32, @floatFromInt(sleep_time)) / std.time.ns_per_s;
+        //     const sleep_delta_s: f32 = @as(f32, @floatFromInt(std.time.milliTimestamp() - sleep_begin)) / std.time.ms_per_s;
+        //     if (sleep_delta_s > sleep_time_s) break;
+        //     platform.api.poolEventsWithTimeout(std.math.clamp(sleep_time_s - sleep_delta_s, 0.0, sleep_time_s));
 
-            if (main_window) |window| {
-                if (window.shouldClose()) {
-                    if (can_quit_handler) |can_quit| {
-                        _ = can_quit();
-                    } else {
-                        _quit = true;
-                    }
-                }
-            }
-        }
+        //     if (main_window) |window| {
+        //         if (window.shouldClose()) {
+        //             if (can_quit_handler) |can_quit| {
+        //                 _ = can_quit();
+        //             } else {
+        //                 _quit = true;
+        //             }
+        //         }
+        //     }
+        // }
 
-        task.api.wait(try task.api.combine(wait_tasks.items));
+        return task.api.combine(wait_tasks.items);
     }
+
+    return .none;
 }
 
 fn addPhase(name: [:0]const u8, depend: []const strid.StrId64) !void {
@@ -839,6 +891,7 @@ fn doKernelUpdateTasks(kernel_tick: u64, dt: f32) !void {
                     .kernel_tick = kernel_tick,
                     .dt = dt,
                 },
+                .{ .affinity = update_handler.affinity },
             );
             try _tmp_taskid_map.put(task_strid, job_id);
         }

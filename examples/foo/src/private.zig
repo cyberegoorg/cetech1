@@ -20,7 +20,6 @@ const log = std.log.scoped(module_name);
 var _allocator: Allocator = undefined;
 var _log: *const cetech1.log.LogAPI = undefined;
 var _cdb: *const cdb.CdbAPI = undefined;
-var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 
@@ -134,6 +133,7 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "FooUpdate",
     &[_]strid.StrId64{},
+    null,
     KernelTask,
 );
 
@@ -141,6 +141,7 @@ var update_task2 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "FooUpdate2",
     &[_]strid.StrId64{strid.strId64("FooUpdate")},
+    null,
     KernelTask,
 );
 
@@ -148,6 +149,7 @@ var update_task3 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "FooUpdate3",
     &[_]strid.StrId64{strid.strId64("FooUpdate2")},
+    null,
     KernelTask,
 );
 
@@ -158,6 +160,7 @@ var update_task4 = cetech1.kernel.KernelTaskUpdateI.implment(
         strid.strId64("FooUpdate2"),
         strid.strId64("FooUpdate"),
     },
+    null,
     KernelTask,
 );
 
@@ -167,6 +170,7 @@ var update_task5 = cetech1.kernel.KernelTaskUpdateI.implment(
     &[_]strid.StrId64{
         //strid.strId64("FooUpdate4"),
     },
+    null,
     KernelTask,
 );
 var update_task6 = cetech1.kernel.KernelTaskUpdateI.implment(
@@ -175,6 +179,7 @@ var update_task6 = cetech1.kernel.KernelTaskUpdateI.implment(
     &[_]strid.StrId64{
         //strid.strId64("FooUpdate5"),
     },
+    null,
     KernelTask,
 );
 var update_task7 = cetech1.kernel.KernelTaskUpdateI.implment(
@@ -183,6 +188,7 @@ var update_task7 = cetech1.kernel.KernelTaskUpdateI.implment(
     &[_]strid.StrId64{
         //strid.strId64("FooUpdate5"),
     },
+    null,
     KernelTask,
 );
 var update_task8 = cetech1.kernel.KernelTaskUpdateI.implment(
@@ -191,6 +197,7 @@ var update_task8 = cetech1.kernel.KernelTaskUpdateI.implment(
     &[_]strid.StrId64{
         //strid.strId64("FooUpdate7"),
     },
+    null,
     KernelTask,
 );
 
@@ -200,7 +207,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _allocator = allocator;
     _log = log_api;
     _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
 

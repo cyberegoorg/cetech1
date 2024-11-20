@@ -1,14 +1,14 @@
 const zgui = @import("zgui");
 const zbgfx = @import("zbgfx");
 
-var glfw_init = false;
+var backend_init = false;
 
 pub fn init(
     window: ?*const anyopaque, // zglfw.Window
 ) void {
     if (window) |w| {
         zgui.backend.init(w);
-        glfw_init = true;
+        backend_init = true;
     }
 
     ImGui_ImplBgfx_Init();
@@ -16,7 +16,7 @@ pub fn init(
 
 pub fn deinit() void {
     ImGui_ImplBgfx_Shutdown();
-    if (glfw_init) zgui.backend.deinit();
+    if (backend_init) zgui.backend.deinit();
 }
 
 pub fn newFrame(fb_width: u32, fb_height: u32) void {
@@ -30,7 +30,7 @@ pub fn newFrame(fb_width: u32, fb_height: u32) void {
         h = 768;
     }
 
-    if (glfw_init) zgui.backend.newFrame();
+    if (backend_init) zgui.backend.newFrame();
 
     zgui.io.setDisplaySize(@floatFromInt(w), @floatFromInt(h));
     zgui.io.setDisplayFramebufferScale(1.0, 1.0);

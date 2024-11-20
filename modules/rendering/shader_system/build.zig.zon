@@ -1,0 +1,14 @@
+.{
+    .name = .shader_system,
+    .fingerprint = 0x3ad1dabc4612b80c,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .graphvm = .{ .path = "../../scripting/graphvm" },
+        .editor_inspector = .{ .path = "../../editor/inspector" },
+    },
+}

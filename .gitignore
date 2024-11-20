@@ -37,6 +37,13 @@ _static.zig
 .vscode/launch.json
 .vscode/settings.json
 
+# Fleet
+.fleet/settings.json
+.fleet/run.json
+
+# Idea
+.idea/
+
 # temp folder for tests
 /fixtures/tmp
 

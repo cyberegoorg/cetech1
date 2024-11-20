@@ -3,7 +3,8 @@
 // TODO: How to move this to root?
 
 .{
-    .name = "cetech1",
+    .name = .cetech1_public,
+    .fingerprint = 0xfff3e34584da4c1e,
     .version = "0.1.0",
     .paths = .{
         "includes",
@@ -12,7 +13,7 @@
     },
 
     .dependencies = .{
-        .zmath = .{ .path = "../externals/shared/lib/zig-gamedev/libs/zmath" },
+        .zmath = .{ .path = "../externals/shared/lib/zmath" },
         .ziglangSet = .{ .path = "../externals/shared/lib/ziglang-set" },
     },
 }

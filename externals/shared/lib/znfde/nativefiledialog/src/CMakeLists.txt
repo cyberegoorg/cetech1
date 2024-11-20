@@ -2,7 +2,9 @@ set(TARGET_NAME nfd)
 
 set(PUBLIC_HEADER_FILES
   include/nfd.h
-  include/nfd.hpp)
+  include/nfd.hpp
+  include/nfd_sdl2.h
+  include/nfd_glfw3.h)
 
 set(SOURCE_FILES ${PUBLIC_HEADER_FILES})
 
@@ -58,6 +60,9 @@ endif()
 
 # Define the library
 add_library(${TARGET_NAME} ${SOURCE_FILES})
+
+# Define alias library to fail early in dependent projects
+add_library(${TARGET_NAME}::${TARGET_NAME} ALIAS ${TARGET_NAME})
 
 if (BUILD_SHARED_LIBS)
   target_compile_definitions(${TARGET_NAME} PRIVATE NFD_EXPORT INTERFACE NFD_SHARED)
@@ -132,4 +137,9 @@ if (NFD_INSTALL)
     NAMESPACE ${TARGET_NAME}::
     FILE ${TARGET_NAME}-config.cmake
   )
+endif()
+
+option(NFD_OVERRIDE_RECENT_WITH_DEFAULT "Use defaultPath instead of recent folder on Windows" OFF)
+if (NFD_OVERRIDE_RECENT_WITH_DEFAULT)
+    target_compile_definitions(${TARGET_NAME} PRIVATE NFD_OVERRIDE_RECENT_WITH_DEFAULT)
 endif()

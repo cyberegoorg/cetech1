@@ -1,24 +1,36 @@
-[submodule "externals/shared/lib/zig-gamedev"]
-	path = externals/shared/lib/zig-gamedev
-	url = https://github.com/OndraVoves/zig-gamedev.git
-[submodule "externals/shared/tools/zls"]
-	path = externals/shared/tools/zls
-	url = https://github.com/zigtools/zls.git
-[submodule "externals/shared/lib/SDL_GameControllerDB"]
-	path = externals/shared/lib/SDL_GameControllerDB
-	url = https://github.com/mdqinc/SDL_GameControllerDB.git
-[submodule "zig"]
-	path = zig
-	url = https://github.com/cyberegoorg/cetech1-zig.git
-[submodule "externals/shared/lib/zbgfx"]
-	path = externals/shared/lib/zbgfx
+[submodule "externals/shared/repo/SDL_GameControllerDB"]
+	path = externals/shared/repo/SDL_GameControllerDB
+	url = https://github.com/cyberegoorg/SDL_GameControllerDB.git
+[submodule "externals/shared/repo/zbgfx"]
+	path = externals/shared/repo/zbgfx
 	url = https://github.com/cyberegoorg/zbgfx.git
-[submodule "externals/shared/lib/ziglang-set"]
-	path = externals/shared/lib/ziglang-set
-	url = https://github.com/deckarep/ziglang-set
-[submodule "externals/shared/lib/zig-uuid"]
-	path = externals/shared/lib/zig-uuid
-	url = https://github.com/tensorush/zig-uuid.git
-[submodule "externals/shared/lib/zf"]
-	path = externals/shared/lib/zf
-	url = https://github.com/OndraVoves/zf.git
+[submodule "externals/shared/repo/zf"]
+	path = externals/shared/repo/zf
+	url = https://github.com/cyberegoorg/zf.git
+[submodule "externals/shared/repo/zflecs"]
+	path = externals/shared/repo/zflecs
+	url = https://github.com/cyberegoorg/zflecs.git
+[submodule "externals/shared/repo/zglfw"]
+	path = externals/shared/repo/zglfw
+	url = https://github.com/cyberegoorg/zglfw.git
+[submodule "externals/shared/repo/zgui"]
+	path = externals/shared/repo/zgui
+	url = https://github.com/cyberegoorg/zgui.git
+[submodule "externals/shared/repo/zig-uuid"]
+	path = externals/shared/repo/zig-uuid
+	url = https://github.com/cyberegoorg/zig-uuid.git
+[submodule "externals/shared/repo/ziglang-set"]
+	path = externals/shared/repo/ziglang-set
+	url = https://github.com/cyberegoorg/ziglang-set.git
+[submodule "externals/shared/repo/zls"]
+	path = externals/shared/repo/zls
+	url = https://github.com/zigtools/zls.git
+[submodule "externals/shared/repo/zmath"]
+	path = externals/shared/repo/zmath
+	url = https://github.com/cyberegoorg/zmath.git
+[submodule "externals/shared/repo/ztracy"]
+	path = externals/shared/repo/ztracy
+	url = https://github.com/cyberegoorg/ztracy.git
+[submodule "externals/shared/repo/znfde"]
+	path = externals/shared/repo/znfde
+	url = https://github.com/cyberegoorg/znfde.git

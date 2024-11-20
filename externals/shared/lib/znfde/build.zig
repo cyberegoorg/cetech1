@@ -36,7 +36,7 @@ pub fn build(b: *std.Build) void {
             lib.linkSystemLibrary("uuid");
         },
         .macos => {
-            lib.defineCMacro("NFD_MACOS_ALLOWEDCONTENTTYPES", "1");
+            lib.root_module.addCMacro("NFD_MACOS_ALLOWEDCONTENTTYPES", "1");
             lib.addCSourceFile(.{ .file = b.path("nativefiledialog/src/nfd_cocoa.m"), .flags = &cflags });
             lib.linkFramework("AppKit");
             lib.linkFramework("UniformTypeIdentifiers");

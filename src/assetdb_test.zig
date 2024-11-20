@@ -565,7 +565,7 @@ test "asset: Should save asset root dir" {
     try std.testing.expect(!private.api.isAssetModified(asset));
 
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_foo_asset" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_foo_asset.json" });
         defer std.testing.allocator.free(path);
 
         var f = std.fs.cwd().openFile(path, .{});
@@ -574,7 +574,7 @@ test "asset: Should save asset root dir" {
     }
 
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "." ++ public.Folder.name });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "." ++ public.Folder.name ++ ".json" });
         defer std.testing.allocator.free(path);
 
         var f = std.fs.cwd().openFile(path, .{});
@@ -633,7 +633,7 @@ test "asset: Should save modified asset" {
     try std.testing.expect(!private.api.isAssetModified(asset));
 
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_foo_asset" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_foo_asset.json" });
         defer std.testing.allocator.free(path);
 
         var f = std.fs.cwd().openFile(path, .{});
@@ -642,7 +642,7 @@ test "asset: Should save modified asset" {
     }
 
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "." ++ public.Folder.name });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "." ++ public.Folder.name ++ ".json" });
         defer std.testing.allocator.free(path);
 
         var f = std.fs.cwd().openFile(path, .{});
@@ -714,7 +714,7 @@ test "asset: Should rename asset" {
 
     // Original asset does not exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_foo_asset" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_foo_asset.json" });
         defer std.testing.allocator.free(path);
 
         const f = std.fs.cwd().openFile(path, .{});
@@ -732,7 +732,7 @@ test "asset: Should rename asset" {
 
     // Asset with new name exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "bar.ct_foo_asset" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "bar.ct_foo_asset.json" });
         defer std.testing.allocator.free(path);
 
         var f = std.fs.cwd().openFile(path, .{});
@@ -825,7 +825,7 @@ test "asset: Should move asset" {
 
     // Asset with new folder exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "bar", "foo.ct_foo_asset" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "bar", "foo.ct_foo_asset.json" });
         defer std.testing.allocator.free(path);
 
         var f = std.fs.cwd().openFile(path, .{});
@@ -960,7 +960,7 @@ test "asset: Should revive asset" {
 
     // Original asset does not exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_foo_asset" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_foo_asset.json" });
         defer std.testing.allocator.free(path);
 
         var f = std.fs.cwd().openFile(path, .{});
@@ -1019,7 +1019,7 @@ test "asset: Should create asset without asset root" {
 
     // Original asset does not exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_foo_asset" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_foo_asset.json" });
         defer std.testing.allocator.free(path);
 
         var f = std.fs.cwd().openFile(path, .{});
@@ -1081,7 +1081,7 @@ test "asset: Should create folder without asset root" {
 
     // Original asset does not exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo", "foo.ct_foo_asset" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo", "foo.ct_foo_asset.json" });
         defer std.testing.allocator.free(path);
 
         var f = std.fs.cwd().openFile(path, .{});
@@ -1157,7 +1157,7 @@ test "asset: Should rename folder" {
 
     // Original asset does not exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo", "foo.ct_foo_asset" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo", "foo.ct_foo_asset.json" });
         defer std.testing.allocator.free(path);
 
         const f = std.fs.cwd().openFile(path, .{});
@@ -1175,7 +1175,7 @@ test "asset: Should rename folder" {
 
     // Asset with new folder exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "bar", "foo.ct_foo_asset" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "bar", "foo.ct_foo_asset.json" });
         defer std.testing.allocator.free(path);
 
         var f = std.fs.cwd().openFile(path, .{});
@@ -1271,7 +1271,7 @@ test "asset: Should move folder" {
 
     // Asset with new folder exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "bar", "foo", "foo.ct_foo_asset" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "bar", "foo", "foo.ct_foo_asset.json" });
         defer std.testing.allocator.free(path);
 
         var f = std.fs.cwd().openFile(path, .{});
