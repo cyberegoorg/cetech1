@@ -493,7 +493,12 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
             log.info("Using video mode {d}x{d}", .{ w, h });
 
-            main_window = try platform.api.createWindow(w, h, "cetech1", if (fullscreen) monitor else null);
+            main_window = try platform.api.createWindow(
+                w,
+                h,
+                cetech1_options.app_name ++ " - powered by CETech1",
+                if (fullscreen) monitor else null,
+            );
         }
 
         gpu_context = try gpu.api.createContext(

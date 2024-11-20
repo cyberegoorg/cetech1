@@ -60,12 +60,15 @@ const init_logic_system_i = ecs.SystemI.implement(
 
             const world = it.getWorld();
             const ents = it.entities();
-            const render_component = it.field(public.EntityLogicComponent, 1).?;
+            const logic_component = it.field(public.EntityLogicComponent, 1).?;
 
-            const instances = try alloc.alloc(graphvm.GraphInstance, render_component.len);
+            const instances = try alloc.alloc(graphvm.GraphInstance, logic_component.len);
             defer alloc.free(instances);
 
-            try _graphvm.createInstances(alloc, render_component[0].graph, instances);
+            // TODO: SHIT
+            if (logic_component[0].graph.isEmpty()) return;
+
+            try _graphvm.createInstances(alloc, logic_component[0].graph, instances);
 
             try _graphvm.buildInstances(alloc, instances);
 
@@ -147,7 +150,7 @@ const logic_c = ecs.ComponentI.implement(
 
             const position = std.mem.bytesAsValue(public.EntityLogicComponent, data);
             position.* = public.EntityLogicComponent{
-                .graph = public.EntityLogicComponentCdb.readSubObj(_cdb, r, .graph).?,
+                .graph = public.EntityLogicComponentCdb.readSubObj(_cdb, r, .graph) orelse .{},
             };
         }
     },
@@ -179,8 +182,9 @@ const logic_instance_c = ecs.ComponentI.implement(
             const alloc = try _tmpalloc.create();
             defer _tmpalloc.destroy(alloc);
             const components = it.field(public.EntityLogicComponentInstance, 0).?;
+
+            // TODO: real multi call
             for (components) |component| {
-                // TODO: real multi call
                 try _graphvm.executeNode(alloc, &.{component.graph_container}, graphvm.EVENT_SHUTDOWN_NODE_TYPE);
             }
         }

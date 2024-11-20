@@ -292,7 +292,7 @@ fn cdbTreeView(
                 const set_state = if (visible) _cdb.getRelation(obj.top_level_obj, obj.obj, prop_idx, null) else .not_owned;
                 const set_color = _editor.getStateColor(set_state);
 
-                const o = .{ .top_level_obj = obj.top_level_obj, .obj = subobj, .prop_idx = prop_idx, .parent_obj = obj.obj };
+                const o = coreui.SelectionItem{ .top_level_obj = obj.top_level_obj, .obj = subobj, .prop_idx = prop_idx, .parent_obj = obj.obj };
                 _coreui.pushStyleColor4f(.{ .idx = .text, .c = set_color });
                 const open = api.cdbTreeNode(
                     label,
@@ -409,7 +409,7 @@ fn cdbTreeView(
                             const set_color = _editor.getStateColor(set_state);
 
                             _coreui.pushStyleColor4f(.{ .idx = .text, .c = set_color });
-                            const oo = .{ .top_level_obj = obj.top_level_obj, .obj = subobj, .in_set_obj = subobj, .prop_idx = prop_idx, .parent_obj = obj.obj };
+                            const oo = coreui.SelectionItem{ .top_level_obj = obj.top_level_obj, .obj = subobj, .in_set_obj = subobj, .prop_idx = prop_idx, .parent_obj = obj.obj };
                             const open_inset = api.cdbTreeNode(
                                 label,
                                 depth < args.max_autopen_depth,

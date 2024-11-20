@@ -774,8 +774,8 @@ pub fn initIds() !void {
     try _id_map.map(public.Monitor, EcsMonitor);
     try _id_map.map(public.OnTableCreate, EcsOnTableCreate);
     try _id_map.map(public.OnTableDelete, EcsOnTableDelete);
-    try _id_map.map(public.OnTableEmpty, EcsOnTableEmpty);
-    try _id_map.map(public.OnTableFill, EcsOnTableFill);
+    // try _id_map.map(public.OnTableEmpty, EcsOnTableEmpty);
+    // try _id_map.map(public.OnTableFill, EcsOnTableFill);
 
     // Register components
     const impls = apidb.api.getImpl(_allocator, public.ComponentI) catch undefined;
@@ -922,7 +922,7 @@ pub fn createWorld() !public.World {
             };
         }
 
-        zflecs.SYSTEM(world, iface.name, _id_map.find(iface.phase).?, &system_desc);
+        _ = zflecs.SYSTEM(world, iface.name, _id_map.find(iface.phase).?, &system_desc);
 
         if (iface.simulation) {
             try w.simulated_systems.append(system_desc.entity);
@@ -1087,8 +1087,8 @@ extern const EcsUnSet: entity_t;
 extern const EcsMonitor: entity_t;
 extern const EcsOnTableCreate: entity_t;
 extern const EcsOnTableDelete: entity_t;
-extern const EcsOnTableEmpty: entity_t;
-extern const EcsOnTableFill: entity_t;
+// extern const EcsOnTableEmpty: entity_t;
+// extern const EcsOnTableFill: entity_t;
 
 extern const EcsOnDelete: entity_t;
 extern const EcsOnDeleteTarget: entity_t;
