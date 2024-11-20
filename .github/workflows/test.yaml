@@ -29,8 +29,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: true
+
+      - name: Fetch zig submodule
+        run: git submodule update --init externals/shared
 
       - name: Read .zig-version
         id: zigversion
@@ -58,10 +59,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: true
 
-          
+      - name: Fetch zig submodule
+        run: git submodule update --init externals/shared
+
       - name: Prepare
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
@@ -165,10 +166,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: true
 
-      # - name: Prepare
+      - name: Fetch zig submodule
+        run: git submodule update --init externals/shared
+
+      # - name: Prepare`
       #   run: |
       #     brew update
       #     brew install kcov
@@ -256,9 +258,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: true
-          
+
+      - name: Fetch zig submodule
+        run: git submodule update --init externals/shared
+
       - name: Read .zig-version
         id: zigversion
         uses: juliangruber/read-file-action@v1

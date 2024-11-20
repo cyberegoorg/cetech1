@@ -129,12 +129,12 @@ CETech provide ZLS as submodule, but you must build it.
 <tabs>
     <tab title="MacOS/Linux">
         <code-block lang="bash">
-            zig/bin/ARCH/zig build zls
+            zig/bin/ARCH/zig build -Dwith_zls zls
         </code-block>
     </tab>
     <tab title="Windows">
         <code-block lang="bash">
-            zig/bin/ARCH/zig.exe build zls
+            zig/bin/ARCH/zig.exe build -Dwith_zls zls
         </code-block>
     </tab>
 </tabs>
