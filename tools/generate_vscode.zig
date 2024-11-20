@@ -184,7 +184,7 @@ fn createOrUpdateSettingsJson(allocator: std.mem.Allocator, vscode_dir: std.fs.D
     defer allocator.free(base_path);
 
     // Zig
-    const zig_path = try std.fs.path.join(allocator, &.{ base_path, "zig", "bin", osBasedZigDir(), osBasedProgram("zig") });
+    const zig_path = try std.fs.path.join(allocator, &.{ base_path, "externals", "shared", "zig", "bin", osBasedZigDir(), osBasedProgram("zig") });
     defer allocator.free(zig_path);
     try parsed.value.object.put("zig.path", .{ .string = zig_path });
 
