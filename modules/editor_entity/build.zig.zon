@@ -11,5 +11,6 @@
         .renderer = .{ .path = "../renderer" },
         .camera = .{ .path = "../camera" },
         .transform = .{ .path = "../transform" },
+        .graphvm = .{ .path = "../graphvm" },
     },
 }

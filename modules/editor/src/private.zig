@@ -37,6 +37,7 @@ const TabsIds = std.AutoArrayHashMap(strid.StrId32, TabsIdPool);
 
 const ContextToLabel = std.AutoArrayHashMap(strid.StrId64, [:0]const u8);
 
+// TODO: from config
 const REPO_URL = "https://github.com/cyberegoorg/cetech1";
 const ONLINE_DOCUMENTATION = "https://cyberegoorg.github.io/cetech1/about.html";
 
@@ -871,7 +872,7 @@ var coreui_ui_i = coreui.CoreUII.implement(struct {
 
 var editor_kernel_task = cetech1.kernel.KernelTaskI.implement(
     "Editor",
-    &[_]strid.StrId64{},
+    &[_]strid.StrId64{strid.strId64("Renderer")},
     struct {
         pub fn init() !void {
             _g.main_db = _kernel.getDb();

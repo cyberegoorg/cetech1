@@ -25,6 +25,8 @@ const Viewport = renderer.Viewport;
 const editor = @import("editor");
 const Icons = coreui.CoreIcons;
 
+const graphvm = @import("graphvm");
+
 const module_name = .editor_entity;
 
 // Need for logging from std.
@@ -55,6 +57,7 @@ var _renderer: *const renderer.RendererApi = undefined;
 var _platform: *const cetech1.platform.PlatformApi = undefined;
 var _editor: *const editor.EditorAPI = undefined;
 var _camera: *const camera.CameraAPI = undefined;
+var _graphvm: *const graphvm.GraphVMApi = undefined;
 
 // Global state that can surive hot-reload
 const G = struct {
@@ -391,6 +394,79 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 });
 
+const entity_value_type_i = graphvm.GraphValueTypeI.implement(
+    ecs.EntityId,
+    .{
+        .name = "entity",
+        .type_hash = graphvm.PinTypes.Entity,
+        .cdb_type_hash = cetech1.cdb_types.u64Type.type_hash,
+    },
+    struct {
+        pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
+            _ = allocator;
+            const v = cetech1.cdb_types.u64Type.readValue(u64, _cdb, _cdb.readObj(obj).?, .value);
+            @memcpy(value, std.mem.asBytes(&v));
+        }
+
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
+            const v = std.mem.bytesAsValue(u64, value);
+            return @intCast(v.*);
+        }
+
+        pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
+            return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(u64, value)});
+        }
+    },
+);
+
+const get_entity_node_i = graphvm.NodeI.implement(
+    .{
+        .name = "Get entity",
+        .type_name = "get_entity",
+        .category = "ECS",
+    },
+    null,
+    struct {
+        pub fn getInputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+            _ = node_obj; // autofix
+            _ = graph_obj; // autofix
+            _ = self; // autofix
+            return allocator.dupe(graphvm.NodePin, &.{});
+        }
+
+        pub fn getOutputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+            _ = node_obj; // autofix
+            _ = graph_obj; // autofix
+            _ = self; // autofix
+            return allocator.dupe(graphvm.NodePin, &.{
+                graphvm.NodePin.init("Entity", graphvm.NodePin.pinHash("entity", true), graphvm.PinTypes.Entity, null),
+            });
+        }
+
+        pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: graphvm.OutPins) !void {
+            _ = in_pins; // autofix
+            _ = self; // autofix
+            if (_graphvm.getContext(anyopaque, args.instance, ecs.ECS_ENTITY_CONTEXT)) |ent| {
+                const ent_id = @intFromPtr(ent);
+                try out_pins.writeTyped(ecs.EntityId, 0, ent_id, ent_id);
+            }
+        }
+
+        // pub fn icon(
+        //     buff: [:0]u8,
+        //     allocator: std.mem.Allocator,
+        //     db: cdb.DbId,
+        //     node_obj: cdb.ObjId,
+        // ) ![:0]u8 {
+        //     _ = allocator; // autofix
+        //     _ = db; // autofix
+        //     _ = node_obj; // autofix
+
+        //     return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_STOP});
+        // }
+    },
+);
+
 const ActivatedViewportActionSet = cetech1.strid.strId32("entity_activated_viewport");
 const ViewportActionSet = cetech1.strid.strId32("entity_viewport");
 const MoveAction = cetech1.strid.strId32("move");
@@ -482,6 +558,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _platform = apidb.getZigApi(module_name, cetech1.platform.PlatformApi).?;
     _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
     _camera = apidb.getZigApi(module_name, camera.CameraAPI).?;
+    _graphvm = apidb.getZigApi(module_name, graphvm.GraphVMApi).?;
 
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});
@@ -492,6 +569,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
     try apidb.implOrRemove(module_name, editor.TabTypeI, &foo_tab, load);
+
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &entity_value_type_i, true);
+    try apidb.implOrRemove(module_name, graphvm.NodeI, &get_entity_node_i, true);
 
     return true;
 }

@@ -1,0 +1,11 @@
+.{
+    .name = "cetech1-externals-shared",
+    .version = "0.1.0",
+    .paths = .{
+        "fonts",
+        "lib",
+        "src",
+        "README.md",
+    },
+    .dependencies = .{},
+}

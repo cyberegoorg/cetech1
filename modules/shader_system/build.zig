@@ -19,7 +19,7 @@ pub fn build(b: *std.Build) !void {
     });
 
     const slib = b.addStaticLibrary(.{
-        .name = "static",
+        .name = "ct_shader_system_static",
         .version = version,
         .root_source_file = b.path("src/private.zig"),
         .target = target,

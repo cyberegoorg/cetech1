@@ -99,9 +99,7 @@ const init_render_graph_system_i = ecs.SystemI.implement(
         },
     },
     struct {
-        pub fn update(iter: *ecs.IterO) !void {
-            var it = _ecs.toIter(iter);
-
+        pub fn update(it: *ecs.Iter) !void {
             const alloc = try _tmpalloc.create();
             defer _tmpalloc.destroy(alloc);
 
@@ -109,9 +107,12 @@ const init_render_graph_system_i = ecs.SystemI.implement(
             const ents = it.entities();
             const render_component = it.field(public.RenderComponent, 1).?;
 
+            // log.debug("{}", .{ents.len});
+
             const instances = try alloc.alloc(graphvm.GraphInstance, render_component.len);
             defer alloc.free(instances);
 
+            // TODO: SHIT
             if (render_component[0].graph.isEmpty()) return;
 
             try _graphvm.createInstances(alloc, render_component[0].graph, instances);
@@ -123,9 +124,9 @@ const init_render_graph_system_i = ecs.SystemI.implement(
                 try _graphvm.setInstanceContext(instances[idx], ecs.ECS_ENTITY_CONTEXT, @ptrFromInt(ents[idx]));
             }
 
-            world.deferSuspend();
-            try _graphvm.executeNode(alloc, instances, graphvm.EVENT_INIT_NODE_TYPE);
-            world.deferResume();
+            // world.deferSuspend();
+            try _graphvm.executeNode(alloc, instances, graphvm.EVENT_INIT_NODE_TYPE, .{ .use_tasks = false });
+            // world.deferResume();
         }
     },
 );
@@ -188,10 +189,8 @@ const rc_initialized_c = ecs.ComponentI.implement(
             const alloc = try _tmpalloc.create();
             defer _tmpalloc.destroy(alloc);
             const components = it.field(public.RenderComponentInstance, 0).?;
-            for (components) |component| {
-                // TODO: real multi call
-                try _graphvm.executeNode(alloc, &.{component.graph_container}, graphvm.EVENT_SHUTDOWN_NODE_TYPE);
-            }
+
+            try _graphvm.executeNode(alloc, toInstanceSlice(components), graphvm.EVENT_SHUTDOWN_NODE_TYPE, .{ .use_tasks = false });
         }
     },
 );
@@ -230,7 +229,7 @@ const render_component_renderer_i = renderer.RendereableI.implement(public.Rende
             try render_components.appendSlice(containers);
         }
 
-        try _graphvm.executeNode(allocator, render_components.items, renderer.CULLING_VOLUME_NODE_TYPE);
+        try _graphvm.executeNode(allocator, render_components.items, renderer.CULLING_VOLUME_NODE_TYPE, .{});
 
         const states = try _graphvm.getNodeState(renderer.CullingVolume, allocator, render_components.items, renderer.CULLING_VOLUME_NODE_TYPE);
         defer allocator.free(states);
@@ -268,7 +267,7 @@ const render_component_renderer_i = renderer.RendereableI.implement(public.Rende
                     const volumes = try _graphvm.getNodeState(renderer.CullingVolume, allocator, ci, renderer.CULLING_VOLUME_NODE_TYPE);
                     defer allocator.free(volumes);
 
-                    try _graphvm.executeNode(allocator, ci, renderer.DRAW_CALL_NODE_TYPE);
+                    try _graphvm.executeNode(allocator, ci, renderer.DRAW_CALL_NODE_TYPE, .{});
                     const draw_calls = try _graphvm.getNodeState(renderer.DrawCall, allocator, ci, renderer.DRAW_CALL_NODE_TYPE);
                     defer allocator.free(draw_calls);
 

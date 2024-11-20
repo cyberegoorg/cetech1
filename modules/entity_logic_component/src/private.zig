@@ -42,30 +42,30 @@ var _g: *G = undefined;
 
 const init_logic_system_i = ecs.SystemI.implement(
     .{
-        .name = "init entity logic component",
-        .multi_threaded = false,
+        .name = "logic_component.init",
+        .multi_threaded = true,
         .phase = ecs.OnLoad,
-        .immediate = false,
         .query = &.{
             .{ .id = ecs.id(public.EntityLogicComponentInstance), .inout = .Out, .oper = .Not },
             .{ .id = ecs.id(public.EntityLogicComponent), .inout = .In },
         },
     },
     struct {
-        pub fn update(iter: *ecs.IterO) !void {
-            var it = _ecs.toIter(iter);
-
+        pub fn update(it: *ecs.Iter) !void {
             const alloc = try _tmpalloc.create();
             defer _tmpalloc.destroy(alloc);
 
             const world = it.getWorld();
             const ents = it.entities();
-            const render_component = it.field(public.EntityLogicComponent, 1).?;
+            const logic_component = it.field(public.EntityLogicComponent, 1).?;
 
-            const instances = try alloc.alloc(graphvm.GraphInstance, render_component.len);
+            const instances = try alloc.alloc(graphvm.GraphInstance, logic_component.len);
             defer alloc.free(instances);
 
-            try _graphvm.createInstances(alloc, render_component[0].graph, instances);
+            // TODO: SHIT
+            if (logic_component[0].graph.isEmpty()) return;
+
+            try _graphvm.createInstances(alloc, logic_component[0].graph, instances);
 
             try _graphvm.buildInstances(alloc, instances);
 
@@ -76,11 +76,11 @@ const init_logic_system_i = ecs.SystemI.implement(
                 try _graphvm.setInstanceContext(instances[idx], ecs.ECS_ENTITY_CONTEXT, @ptrFromInt(ents[idx]));
             }
 
-            world.deferSuspend();
+            // world.deferSuspend();
             //_ = world.deferBegin();
-            try _graphvm.executeNode(alloc, instances, graphvm.EVENT_INIT_NODE_TYPE);
+            try _graphvm.executeNode(alloc, instances, graphvm.EVENT_INIT_NODE_TYPE, .{ .use_tasks = false });
             //_ = world.deferEnd();
-            world.deferResume();
+            // world.deferResume();
         }
     },
 );
@@ -94,18 +94,16 @@ pub fn toContanerSlice(from: anytype) []const graphvm.GraphInstance {
 
 const tick_logic_system_i = ecs.SystemI.implement(
     .{
-        .name = "tick logic component",
-        .multi_threaded = false,
-        .phase = ecs.OnLoad,
+        .name = "logic_component.tick",
+        .multi_threaded = true,
+        .phase = ecs.OnUpdate,
         .query = &.{
             .{ .id = ecs.id(public.EntityLogicComponentInstance), .inout = .In },
             .{ .id = ecs.id(public.EntityLogicComponent), .inout = .In },
         },
     },
     struct {
-        pub fn update(iter: *ecs.IterO) !void {
-            var it = _ecs.toIter(iter);
-
+        pub fn update(it: *ecs.Iter) !void {
             const alloc = try _tmpalloc.create();
             defer _tmpalloc.destroy(alloc);
 
@@ -116,9 +114,9 @@ const tick_logic_system_i = ecs.SystemI.implement(
                 try _graphvm.setInstanceContext(toContanerSlice(render_component)[idx], ecs.ECS_WORLD_CONTEXT, world.ptr);
             }
 
-            world.deferSuspend();
-            try _graphvm.executeNode(alloc, toContanerSlice(render_component), graphvm.EVENT_TICK_NODE_TYPE);
-            world.deferResume();
+            // world.deferSuspend();
+            try _graphvm.executeNode(alloc, toContanerSlice(render_component), graphvm.EVENT_TICK_NODE_TYPE, .{ .use_tasks = false });
+            // world.deferResume();
         }
     },
 );
@@ -147,7 +145,7 @@ const logic_c = ecs.ComponentI.implement(
 
             const position = std.mem.bytesAsValue(public.EntityLogicComponent, data);
             position.* = public.EntityLogicComponent{
-                .graph = public.EntityLogicComponentCdb.readSubObj(_cdb, r, .graph).?,
+                .graph = public.EntityLogicComponentCdb.readSubObj(_cdb, r, .graph) orelse .{},
             };
         }
     },
@@ -179,10 +177,9 @@ const logic_instance_c = ecs.ComponentI.implement(
             const alloc = try _tmpalloc.create();
             defer _tmpalloc.destroy(alloc);
             const components = it.field(public.EntityLogicComponentInstance, 0).?;
-            for (components) |component| {
-                // TODO: real multi call
-                try _graphvm.executeNode(alloc, &.{component.graph_container}, graphvm.EVENT_SHUTDOWN_NODE_TYPE);
-            }
+
+            // TODO: real multi call
+            try _graphvm.executeNode(alloc, toContanerSlice(components), graphvm.EVENT_SHUTDOWN_NODE_TYPE, .{ .use_tasks = false });
         }
     },
 );

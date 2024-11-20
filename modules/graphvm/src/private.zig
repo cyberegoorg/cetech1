@@ -2310,6 +2310,8 @@ fn clusterByGraph(allocator: std.mem.Allocator, sorted_instances: []const public
     var cluster_begin_idx: usize = 0;
     var current_obj = sorted_instances[0].graph;
     for (sorted_instances, 0..) |inst, idx| {
+        if (inst.graph.isEmpty()) continue;
+
         if (inst.graph.eql(current_obj)) continue;
         try clusters.append(sorted_instances[cluster_begin_idx..idx]);
         current_obj = inst.graph;
@@ -2320,7 +2322,7 @@ fn clusterByGraph(allocator: std.mem.Allocator, sorted_instances: []const public
     return clusters.toOwnedSlice();
 }
 
-fn executeNodes(allocator: std.mem.Allocator, instances: []const public.GraphInstance, event_hash: strid.StrId32) !void {
+fn executeNodes(allocator: std.mem.Allocator, instances: []const public.GraphInstance, event_hash: strid.StrId32, cfg: public.ExecuteConfig) !void {
     var zone_ctx = _profiler.ZoneN(@src(), "GraphVM - execute nodes");
     defer zone_ctx.End();
 
@@ -2349,6 +2351,7 @@ fn executeNodes(allocator: std.mem.Allocator, instances: []const public.GraphIns
                 .profiler_api = _profiler,
 
                 .count = cluster.len,
+                .batch_size = if (cfg.use_tasks) 32 else cluster.len,
             },
             ARGS{
                 .items = cluster,

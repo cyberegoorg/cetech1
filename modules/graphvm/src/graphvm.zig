@@ -161,6 +161,9 @@ pub const PinTypes = struct {
     pub const VEC4F = strid.strId32("vec4f");
     pub const QUATF = strid.strId32("quatf");
 
+    // TODO: Move
+    pub const Entity = strid.strId32("entity");
+
     pub const COLOR4F = strid.strId32("color4f");
 
     // For inputs
@@ -409,6 +412,10 @@ pub const GraphInstance = struct {
 pub const CALL_GRAPH_NODE_TYPE_STR = "call_graph";
 pub const CALL_GRAPH_NODE_TYPE = strid.strId32(CALL_GRAPH_NODE_TYPE_STR);
 
+pub const ExecuteConfig = struct {
+    use_tasks: bool = true,
+};
+
 pub const GraphVMApi = struct {
     pub inline fn getNodeState(api: *const GraphVMApi, comptime T: type, allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: strid.StrId32) ![]?*T {
         const result = try api.getNodeStateFn(allocator, instances, node_type);
@@ -448,7 +455,7 @@ pub const GraphVMApi = struct {
     createInstance: *const fn (allocator: std.mem.Allocator, graph: cdb.ObjId) anyerror!GraphInstance,
     createInstances: *const fn (allocator: std.mem.Allocator, graph: cdb.ObjId, instances: []GraphInstance) anyerror!void,
     destroyInstance: *const fn (instance: GraphInstance) void,
-    executeNode: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: strid.StrId32) anyerror!void,
+    executeNode: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: strid.StrId32, cfg: ExecuteConfig) anyerror!void,
     buildInstances: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance) anyerror!void,
 
     setInstanceContext: *const fn (instance: GraphInstance, context_name: strid.StrId32, context: *anyopaque) anyerror!void,

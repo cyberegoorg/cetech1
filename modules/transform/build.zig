@@ -19,7 +19,7 @@ pub fn build(b: *std.Build) !void {
     });
 
     const slib = b.addStaticLibrary(.{
-        .name = "static",
+        .name = "ct_transform_static",
         .version = version,
         .root_source_file = b.path("src/private.zig"),
         .target = target,
@@ -28,6 +28,7 @@ pub fn build(b: *std.Build) !void {
 
     inline for (.{ lib, slib }) |l| {
         l.root_module.addImport("cetech1", cetech1_module);
+        l.root_module.addImport("graphvm", b.dependency("graphvm", .{}).module("graphvm"));
 
         b.installArtifact(l);
     }

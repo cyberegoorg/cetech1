@@ -12,6 +12,8 @@ const zm = cetech1.math;
 
 const public = @import("transform.zig");
 
+const graphvm = @import("graphvm");
+
 const module_name = .transform;
 
 // Need for logging from std.
@@ -29,6 +31,7 @@ var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
+var _graphvm: *const graphvm.GraphVMApi = undefined;
 
 var _ecs: *const ecs.EcsAPI = undefined;
 var _gpu: *const gpu.GpuApi = undefined;
@@ -146,7 +149,7 @@ const world_tranform_c = cetech1.ecs.ComponentI.implement(public.WorldTransform,
 const transform_system_i = ecs.SystemI.implement(
     .{
         .name = "transform.transform",
-        .multi_threaded = false,
+        // .multi_threaded = true,
         .instanced = true,
         .phase = ecs.OnValidate,
         .query = &.{
@@ -158,14 +161,13 @@ const transform_system_i = ecs.SystemI.implement(
         },
     },
     struct {
-        pub fn iterate(iter: *ecs.IterO) !void {
-            var it = _ecs.toIter(iter);
-            var zone_ctx = _profiler.ZoneN(@src(), "Transform system");
-            defer zone_ctx.End();
+        pub fn iterate(it: *ecs.Iter) !void {
+            // log.debug("BEGIN", .{});
 
             while (it.next()) {
                 if (!it.changed()) {
                     it.skip();
+                    // log.debug("SKIP", .{});
                     continue;
                 }
 
@@ -179,6 +181,8 @@ const transform_system_i = ecs.SystemI.implement(
                 const rotations = it.field(public.Rotation, 3);
                 const scales = it.field(public.Scale, 4);
                 const count = it.count();
+
+                // log.debug("{}", .{count});
 
                 if (parent_world_transform) |p| {
                     if (it.isSelf(2)) {
@@ -244,9 +248,7 @@ const spawn_transform_world_system_i = ecs.SystemI.implement(
         },
     },
     struct {
-        pub fn update(iter: *ecs.IterO) !void {
-            var it = _ecs.toIter(iter);
-
+        pub fn update(it: *ecs.Iter) !void {
             const world = it.getWorld();
             const ents = it.entities();
             for (0..it.count()) |i| {
@@ -256,52 +258,55 @@ const spawn_transform_world_system_i = ecs.SystemI.implement(
     },
 );
 
-// const set_position_node_i = graphvm.NodeI.implement(
-//     .{
-//         .name = "Set position",
-//         .type_name = "transform_set_position",
-//         .category = "Transform",
-//         .sidefect = true,
-//     },
-//     null,
-//     struct {
-//         pub fn getInputPins(allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
-//             _ = node_obj; // autofix
-//             _ = graph_obj; // autofix
-//             return allocator.dupe(graphvm.NodePin, &.{
-//                 graphvm.NodePin.init("Flow", graphvm.NodePin.pinHash("flow", false), graphvm.PinTypes.Flow),
-//                 graphvm.NodePin.init("Entity", graphvm.NodePin.pinHash("entity", false), ecs.PinTypes.Entity),
-//                 graphvm.NodePin.init("Position", graphvm.NodePin.pinHash("position", false), graphvm.PinTypes.VEC3F),
-//             });
-//         }
+const set_position_node_i = graphvm.NodeI.implement(
+    .{
+        .name = "Set position",
+        .type_name = "transform_set_position",
+        .category = "Transform",
+        .sidefect = true,
+    },
+    null,
+    struct {
+        pub fn getInputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+            _ = node_obj; // autofix
+            _ = graph_obj; // autofix
+            _ = self;
+            return allocator.dupe(graphvm.NodePin, &.{
+                graphvm.NodePin.init("Flow", graphvm.NodePin.pinHash("flow", false), graphvm.PinTypes.Flow, null),
+                graphvm.NodePin.init("Entity", graphvm.NodePin.pinHash("entity", false), ecs.PinTypes.Entity, null),
+                graphvm.NodePin.init("Position", graphvm.NodePin.pinHash("position", false), graphvm.PinTypes.VEC3F, null),
+            });
+        }
 
-//         pub fn getOutputPins(allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
-//             _ = node_obj; // autofix
-//             _ = graph_obj; // autofix
-//             return allocator.dupe(graphvm.NodePin, &.{});
-//         }
+        pub fn getOutputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+            _ = node_obj; // autofix
+            _ = graph_obj; // autofix
+            _ = self;
+            return allocator.dupe(graphvm.NodePin, &.{});
+        }
 
-//         pub fn execute(args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: graphvm.OutPins) !void {
-//             _ = out_pins; // autofix
+        pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: graphvm.OutPins) !void {
+            _ = out_pins; // autofix
+            _ = self;
 
-//             _, const ent = in_pins.read(ecs.EntityId, 1) orelse return;
-//             _, const position = in_pins.read([3]f32, 2) orelse return;
+            _, const ent = in_pins.read(ecs.EntityId, 1) orelse return;
+            _, const position = in_pins.read([3]f32, 2) orelse return;
 
-//             const w = graphvm_private.api.getContext(anyopaque, args.instance, ecs.ECS_WORLD_CONTEXT) orelse return;
+            const w = _graphvm.getContext(anyopaque, args.instance, ecs.ECS_WORLD_CONTEXT) orelse return;
 
-//             const world = ecs_private.api.toWorld(w);
-//             _ = world.setId(
-//                 public.Position,
-//                 ent,
-//                 &public.Position{
-//                     .x = position[0],
-//                     .y = position[1],
-//                     .z = position[2],
-//                 },
-//             );
-//         }
-//     },
-// );
+            const world = _ecs.toWorld(w);
+            _ = world.setId(
+                public.Position,
+                ent,
+                &public.Position{
+                    .x = position[0],
+                    .y = position[1],
+                    .z = position[2],
+                },
+            );
+        }
+    },
+);
 
 // CDB
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
@@ -378,6 +383,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
     _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
     _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
+    _graphvm = apidb.getZigApi(module_name, graphvm.GraphVMApi).?;
 
     // impl interface
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
@@ -388,6 +394,8 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, ecs.ComponentI, &scale_c, load);
     try apidb.implOrRemove(module_name, ecs.SystemI, &transform_system_i, load);
     try apidb.implOrRemove(module_name, ecs.SystemI, &spawn_transform_world_system_i, load);
+
+    try apidb.implOrRemove(module_name, graphvm.NodeI, &set_position_node_i, true);
 
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});

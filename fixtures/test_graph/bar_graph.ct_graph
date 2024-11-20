@@ -47,6 +47,20 @@
       "node_type": "event_shutdown",
       "pos_x": 3.69e2,
       "pos_y": 1.74e2
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "01955339-858f-71f5-826f-0ca60e1f9612",
+      "node_type": "get_entity",
+      "pos_x": 7.06e2,
+      "pos_y": 7.8e1
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "01955339-91b5-7b25-a1aa-fc3b78419a38",
+      "node_type": "transform_set_position",
+      "pos_x": 9.09e2,
+      "pos_y": 3e1
     }
   ],
   "groups": [
@@ -74,14 +88,30 @@
       "to_node": "ct_graph_node:0190a236-6b65-7be9-92c7-d0648629f0b8",
       "from_pin": "out:value",
       "to_pin": "in:value"
+    },
+    {
+      "__type_name": "ct_graph_connection",
+      "__uuid": "01955339-999e-7f9c-9633-b544f6cc2916",
+      "from_node": "ct_graph_node:01955339-858f-71f5-826f-0ca60e1f9612",
+      "to_node": "ct_graph_node:01955339-91b5-7b25-a1aa-fc3b78419a38",
+      "from_pin": "out:entity",
+      "to_pin": "in:entity"
     }
-
   ],
   "interface": {
     "__type_name": "ct_graph_interface",
     "__uuid": "0190a235-58ed-7b62-8d18-b02927168f39"
   },
   "data": [
-
+    {
+      "__type_name": "ct_graph_data",
+      "__uuid": "01955339-bc5a-714b-924c-394fe6de3f30",
+      "to_node": "ct_graph_node:01955339-91b5-7b25-a1aa-fc3b78419a38",
+      "to_node_pin": "in:position",
+      "value": {
+        "__type_name": "ct_vec_3f",
+        "__uuid": "01955339-9e55-7386-a8b8-1f2dfe645d9e"
+      }
+    }
   ]
 }
