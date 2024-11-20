@@ -2,7 +2,19 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/externals/shared/lib/zbgfx" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/externals/shared/lib/zig-gamedev" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/repo/SDL_GameControllerDB" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/repo/system_sdk" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/repo/zbgfx" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/repo/zf" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/repo/zflecs" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/repo/zglfw" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/repo/zgui" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/repo/zig-uuid" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/repo/ziglang-set" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/repo/zjobs" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/repo/zls" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/repo/zmath" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/externals/shared/repo/ztracy" vcs="Git" />
   </component>
 </project>

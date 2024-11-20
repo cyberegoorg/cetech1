@@ -1,1 +1,1 @@
-zig/bin/<ARCH>/zig.exe build
+zig.exe build

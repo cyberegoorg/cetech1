@@ -871,7 +871,7 @@ var coreui_ui_i = coreui.CoreUII.implement(struct {
 
 var editor_kernel_task = cetech1.kernel.KernelTaskI.implement(
     "Editor",
-    &[_]strid.StrId64{},
+    &[_]strid.StrId64{strid.strId64("Renderer")},
     struct {
         pub fn init() !void {
             _g.main_db = _kernel.getDb();

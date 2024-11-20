@@ -20,7 +20,6 @@
 
 - [Git](https://git-scm.com/downloads)
 - [Git-lfs](https://git-lfs.com)
-- [curl](https://curl.se/download.html)
 
 ## Clone
 
@@ -30,14 +29,27 @@
     </tab>
 </tabs>
 
+## Get ZIG
+
+Get ZIG `0.14.0-dev.2577+271452d22` a.k.a `2024.11.0-mach`.
+
+<tabs>
+    <tab title="ZVM">
+        Get <a href="https://www.zvm.app">ZVM</a>
+        <code-block lang="bash">
+            zvm vmu zig mach
+            zvm i 2024.11.0-mach
+        </code-block>
+    </tab>
+</tabs>
+
 ## Repository structure
 
 | Folder                                                                        | Description                                          |
 |-------------------------------------------------------------------------------|------------------------------------------------------|
 | [`Writerside/`](https://github.com/cyberegoorg/cetech1/tree/main/Writerside/) | This documentation                                   |
-| [`zig/`](https://github.com/cyberegoorg/cetech1/tree/main/zig/)               | Submodule for prebuilt zig                           |
 | [`externals/`](https://github.com/cyberegoorg/cetech1/tree/main/externals/)   | 3rd-party library and tools                          |
-| [`fixtures/`](https://github.com/cyberegoorg/cetech1/tree/main/fixtures/)       | Tests fixtures                                        |
+| [`fixtures/`](https://github.com/cyberegoorg/cetech1/tree/main/fixtures/)     | Tests fixtures                                       |
 | [`public/`](https://github.com/cyberegoorg/cetech1/tree/main/public/)         | Public API for modules                               |
 | [`src/`](https://github.com/cyberegoorg/cetech1/tree/main/src/)               | Main source code folder                              |
 | [`modules/`](https://github.com/cyberegoorg/cetech1/tree/main/modules/)       | There is all modules that is possible part of engine |
@@ -63,8 +75,8 @@
 | `-Dstatic_modules=`  | `true` or `false` | `false` | Build all modules in static mode.                                           |
 | `-Dwith_samples=`    | `true` or `false` | `true`  | Build with sample modules.                                                  |
 | `-Dwith_editor=`     | `true` or `false` | `true`  | Build with editor modules.                                                  |
-| `-Dwith_tracy=`      | `true` or `false` | `true`  | Build with [tracy](#tracy-profiler) support.                                 |
-| `-Dwith_nfd=`        | `true` or `false` | `true`  | Build with NFD (native file dialog)                                          |
+| `-Dwith_tracy=`      | `true` or `false` | `true`  | Build with [tracy](#tracy-profiler) support.                                |
+| `-Dwith_nfd=`        | `true` or `false` | `true`  | Build with NFD (native file dialog)                                         |
 | `-Dnfd_portal=`      | `true` or `false` | `true`  | Build NFD with xdg-desktop-portal instead of GTK. Linux, nice for SteamDeck |
 
 ## Run
@@ -129,12 +141,16 @@ CETech provide ZLS as submodule, but you must build it.
 <tabs>
     <tab title="MacOS/Linux">
         <code-block lang="bash">
-            zig/bin/ARCH/zig build zls
+            git -C externals/shared submodule update --init repo/zls
+            cd externals/shared/repo/zls
+            zig build -Doptimize=ReleaseFast
         </code-block>
     </tab>
     <tab title="Windows">
         <code-block lang="bash">
-            zig/bin/ARCH/zig.exe build zls
+            git -C externals/shared submodule update --init repo/zls
+            cd externals/shared/repo/zls
+            zig.exe build -Doptimize=ReleaseFast
         </code-block>
     </tab>
 </tabs>
@@ -143,11 +159,21 @@ CETech provide ZLS as submodule, but you must build it.
 
 > Repository contain recommended extension.
 
-1. Build [ZLS](#zls)
-2. Crate vscode configs.
+1. Create vscode configs.
     <code-block lang="bash">
-        # This generate vscode launch.json with predefined cases and
-        # create or update settings.json with path to zig and zls.
-        zig/bin/ARCH/zig build vscode
+        # This generate vscode launch.json with predefined cases
+        # create or update settings.json
+        # and set zls path to locally builded
+        zig build gen-ide -Dide=vscode
     </code-block>
-3. Install extension `ziglang.vscode-zig` (or install all recommended)
+2. Install extension `ziglang.vscode-zig` (or install all recommended)
+
+## Fleet
+
+1. Create fleet configs.
+    <code-block lang="bash">
+        # This generate fleet run.json with predefined cases
+        # create or update settings.json
+        # and set zls path to locally builded
+        zig build gen-ide -Dide=fleet
+    </code-block>

@@ -12,7 +12,7 @@
     },
 
     .dependencies = .{
-        .zmath = .{ .path = "../externals/shared/lib/zig-gamedev/libs/zmath" },
+        .zmath = .{ .path = "../externals/shared/lib/zmath" },
         .ziglangSet = .{ .path = "../externals/shared/lib/ziglang-set" },
     },
 }

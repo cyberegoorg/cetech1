@@ -2310,6 +2310,8 @@ fn clusterByGraph(allocator: std.mem.Allocator, sorted_instances: []const public
     var cluster_begin_idx: usize = 0;
     var current_obj = sorted_instances[0].graph;
     for (sorted_instances, 0..) |inst, idx| {
+        if (inst.graph.isEmpty()) continue;
+
         if (inst.graph.eql(current_obj)) continue;
         try clusters.append(sorted_instances[cluster_begin_idx..idx]);
         current_obj = inst.graph;

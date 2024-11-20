@@ -34,9 +34,9 @@ const log = std.log.scoped(module_name);
 
 var _cdb = &cdb_private.api;
 
-const _main_font = @embedFile("embed/fonts/Roboto-Medium.ttf");
-const _fa_solid_font = @embedFile("embed/fonts/fa-solid-900.ttf");
-const _fa_regular_font = @embedFile("embed/fonts/fa-regular-400.ttf");
+const _main_font = @embedFile("Roboto-Medium");
+const _fa_solid_font = @embedFile("fa-solid-900");
+const _fa_regular_font = @embedFile("fa-regular-400");
 
 const DEFAULT_IMGUI_INI = @embedFile("embed/imgui.ini");
 

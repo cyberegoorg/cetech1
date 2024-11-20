@@ -112,6 +112,7 @@ const init_render_graph_system_i = ecs.SystemI.implement(
             const instances = try alloc.alloc(graphvm.GraphInstance, render_component.len);
             defer alloc.free(instances);
 
+            // TODO: SHIT
             if (render_component[0].graph.isEmpty()) return;
 
             try _graphvm.createInstances(alloc, render_component[0].graph, instances);

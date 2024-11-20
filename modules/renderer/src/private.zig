@@ -959,7 +959,7 @@ const RenderViewportTask = struct {
                             ),
                         };
 
-                        const v = .{
+                        const v = public.Viewer{
                             .camera = cameras[idx],
                             .mtx = zm.matToArr(zm.inverse(camera_transforms[idx].mtx)),
                             .proj = zm.matToArr(pmtx),
