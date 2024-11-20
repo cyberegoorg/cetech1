@@ -134,6 +134,7 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "FooUpdate",
     &[_]strid.StrId64{},
+    null,
     KernelTask,
 );
 
@@ -141,6 +142,7 @@ var update_task2 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "FooUpdate2",
     &[_]strid.StrId64{strid.strId64("FooUpdate")},
+    null,
     KernelTask,
 );
 
@@ -148,6 +150,7 @@ var update_task3 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "FooUpdate3",
     &[_]strid.StrId64{strid.strId64("FooUpdate2")},
+    null,
     KernelTask,
 );
 
@@ -158,6 +161,7 @@ var update_task4 = cetech1.kernel.KernelTaskUpdateI.implment(
         strid.strId64("FooUpdate2"),
         strid.strId64("FooUpdate"),
     },
+    null,
     KernelTask,
 );
 
@@ -167,6 +171,7 @@ var update_task5 = cetech1.kernel.KernelTaskUpdateI.implment(
     &[_]strid.StrId64{
         //strid.strId64("FooUpdate4"),
     },
+    null,
     KernelTask,
 );
 var update_task6 = cetech1.kernel.KernelTaskUpdateI.implment(
@@ -175,6 +180,7 @@ var update_task6 = cetech1.kernel.KernelTaskUpdateI.implment(
     &[_]strid.StrId64{
         //strid.strId64("FooUpdate5"),
     },
+    null,
     KernelTask,
 );
 var update_task7 = cetech1.kernel.KernelTaskUpdateI.implment(
@@ -183,6 +189,7 @@ var update_task7 = cetech1.kernel.KernelTaskUpdateI.implment(
     &[_]strid.StrId64{
         //strid.strId64("FooUpdate5"),
     },
+    null,
     KernelTask,
 );
 var update_task8 = cetech1.kernel.KernelTaskUpdateI.implment(
@@ -191,6 +198,7 @@ var update_task8 = cetech1.kernel.KernelTaskUpdateI.implment(
     &[_]strid.StrId64{
         //strid.strId64("FooUpdate7"),
     },
+    null,
     KernelTask,
 );
 

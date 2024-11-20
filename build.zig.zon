@@ -1,16 +1,22 @@
 .{
-    .name = "cetech1",
+    .name = .cetech1_kernel,
     .version = "0.1.0",
+    .minimum_zig_version = "0.14.0",
+    .fingerprint = 0x999557f3ebfaa97a,
     .paths = .{
-        "Writerside",
-        "includes",
+        "docs",
         "src",
         "public",
+        "modules",
         "tests",
+        "externals",
+        "fixtures",
+
         "build.zig",
         "build.zig.zon",
-        "LICENSE",
+        "CONTRIBUTING.md",
         "README.md",
+        "LICENSE",
     },
     .dependencies = .{
         //
@@ -19,61 +25,62 @@
         .cetech1 = .{ .path = "public/" },
 
         //
-        // CETech1 examples
+        // CETech1 bundled modules
         //
-        .foo = .{ .path = "examples/foo" },
-        .editor_foo_tab = .{ .path = "examples/editor_foo_tab" },
-        .editor_foo_viewport_tab = .{ .path = "examples/editor_foo_viewport_tab" },
 
-        //
-        // CETech1 bundled  modules
-        //
-        .graphvm = .{ .path = "modules/graphvm" },
-        .default_rg = .{ .path = "modules/default_rg" },
-        .render_component = .{ .path = "modules/render_component" },
-        .entity_logic_component = .{ .path = "modules/entity_logic_component" },
-        .renderer = .{ .path = "modules/renderer" },
-        .transform = .{ .path = "modules/transform" },
-        .camera = .{ .path = "modules/camera" },
-        .shader_system = .{ .path = "modules/shader_system" },
+        // EDITOR
+        .editor = .{ .path = "modules/editor/editor", .lazy = true },
+        .editor_asset = .{ .path = "modules/editor/asset", .lazy = true },
+        .editor_asset_browser = .{ .path = "modules/editor/asset_browser", .lazy = true },
+        .editor_explorer = .{ .path = "modules/editor/explorer", .lazy = true },
+        .editor_fixtures = .{ .path = "modules/editor/fixtures", .lazy = true },
+        .editor_inspector = .{ .path = "modules/editor/inspector", .lazy = true },
+        .editor_obj_buffer = .{ .path = "modules/editor/obj_buffer", .lazy = true },
+        .editor_tags = .{ .path = "modules/editor/tags", .lazy = true },
+        .editor_tree = .{ .path = "modules/editor/tree", .lazy = true },
+        .editor_log = .{ .path = "modules/editor/log", .lazy = true },
+        .editor_graph = .{ .path = "modules/editor/graph", .lazy = true },
+        .editor_metrics = .{ .path = "modules/editor/metrics", .lazy = true },
+        .editor_entity_asset = .{ .path = "modules/editor/entity_asset", .lazy = true },
+        .editor_entity = .{ .path = "modules/editor/entity", .lazy = true },
+        .editor_asset_preview = .{ .path = "modules/editor/asset_preview", .lazy = true },
+        .editor_simulation = .{ .path = "modules/editor/simulation", .lazy = true },
 
-        //
-        // CETech1 bundled editor modules
-        //
-        .editor = .{ .path = "modules/editor" },
-        .editor_asset = .{ .path = "modules/editor_asset" },
-        .editor_asset_browser = .{ .path = "modules/editor_asset_browser" },
-        .editor_explorer = .{ .path = "modules/editor_explorer" },
-        .editor_fixtures = .{ .path = "modules/editor_fixtures" },
-        .editor_inspector = .{ .path = "modules/editor_inspector" },
-        .editor_obj_buffer = .{ .path = "modules/editor_obj_buffer" },
-        .editor_tags = .{ .path = "modules/editor_tags" },
-        .editor_tree = .{ .path = "modules/editor_tree" },
-        .editor_log = .{ .path = "modules/editor_log" },
-        .editor_graph = .{ .path = "modules/editor_graph" },
-        .editor_metrics = .{ .path = "modules/editor_metrics" },
-        .editor_entity_asset = .{ .path = "modules/editor_entity_asset" },
-        .editor_entity = .{ .path = "modules/editor_entity" },
-        .editor_asset_preview = .{ .path = "modules/editor_asset_preview" },
-        .editor_simulation = .{ .path = "modules/editor_simulation" },
+        // SCRIPTING
+        .graphvm = .{ .path = "modules/scripting/graphvm", .lazy = true },
+        .entity_logic_component = .{ .path = "modules/scripting/entity_logic_component", .lazy = true },
+
+        // RENDERING
+        .default_rg = .{ .path = "modules/rendering/default_rg", .lazy = true },
+        .renderer = .{ .path = "modules/rendering/renderer", .lazy = true },
+        .shader_system = .{ .path = "modules/rendering/shader_system", .lazy = true },
+        .transform = .{ .path = "modules/rendering/transform", .lazy = true },
+        .camera = .{ .path = "modules/rendering/camera", .lazy = true },
+        .render_component = .{ .path = "modules/rendering/render_component", .lazy = true },
 
         //
         // Externals
         //
-        .zls = .{ .path = "externals/shared/tools/zls" },
         .zf = .{ .path = "externals/shared/lib/zf" },
         .uuid = .{ .path = "externals/shared/lib/zig-uuid/" },
         .znfde = .{ .path = "externals/shared/lib/znfde" },
         .zbgfx = .{ .path = "externals/shared/lib/zbgfx" },
 
         // zig-gamedev
-        .system_sdk = .{ .path = "externals/shared/lib/zig-gamedev/libs/system-sdk" },
-        .zglfw = .{ .path = "externals/shared/lib/zig-gamedev/libs/zglfw" },
-        .zpool = .{ .path = "externals/shared/lib/zig-gamedev/libs/zpool" },
-        .zjobs = .{ .path = "externals/shared/lib/zig-gamedev/libs/zjobs" },
-        .ztracy = .{ .path = "externals/shared/lib/zig-gamedev/libs/ztracy" },
-        .zgui = .{ .path = "externals/shared/lib/zig-gamedev/libs/zgui" },
-        .zflecs = .{ .path = "externals/shared/lib/zig-gamedev/libs/zflecs" },
-        //.znfde = .{ .path = "externals/shared/lib/zig-gamedev/libs/znfde" },
+        .system_sdk = .{
+            .url = "https://github.com/zig-gamedev/system_sdk/archive/c0dbf11cdc17da5904ea8a17eadc54dee26567ec.tar.gz",
+            .hash = "system_sdk-0.3.0-dev-alwUNnYaaAJAtIdE2fg4NQfDqEKs7QCXy_qYukAOBfmF",
+        },
+        .zglfw = .{ .path = "externals/shared/lib/zglfw" },
+        .zflecs = .{ .path = "externals/shared/lib/zflecs" },
+        .ztracy = .{ .path = "externals/shared/lib/ztracy" },
+        .zgui = .{ .path = "externals/shared/lib/zgui" },
+
+        //
+        // CETech1 examples
+        //
+        .foo = .{ .path = "examples/foo", .lazy = true },
+        .editor_foo_tab = .{ .path = "examples/editor_foo_tab", .lazy = true },
+        .editor_foo_viewport_tab = .{ .path = "examples/editor_foo_viewport_tab", .lazy = true },
     },
 }

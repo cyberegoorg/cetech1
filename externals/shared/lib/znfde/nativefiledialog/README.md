@@ -3,14 +3,14 @@
 
 ![GitHub Actions](https://github.com/btzy/nativefiledialog-extended/workflows/build/badge.svg)
 
-A small C library with that portably invokes native file open, folder select and file save dialogs.  Write dialog code once and have it pop up native dialogs on all supported platforms.  Avoid linking large dependencies like wxWidgets and Qt.
+A small C library that portably invokes native file open, folder select and file save dialogs.  Write dialog code once and have it pop up native dialogs on all supported platforms.  Avoid linking large dependencies like wxWidgets and Qt.
 
 This library is based on Michael Labbe's Native File Dialog ([mlabbe/nativefiledialog](https://github.com/mlabbe/nativefiledialog)).
 
 Features:
 
 - Lean C API, static library &mdash; no C++/ObjC runtime needed
-- Supports Windows (MSVC, MinGW, Clang), MacOS (Clang), and Linux (GTK, portal) (GCC, Clang)
+- Supports Windows (MSVC, MinGW, Clang), macOS (Clang), and Linux (GTK, portal) (GCC, Clang)
 - Zlib licensed
 - Friendly names for filters (e.g. `C/C++ Source files (*.c;*.cpp)` instead of `(*.c;*.cpp)`) on platforms that support it
 - Automatically append file extension on platforms where users expect it
@@ -19,7 +19,7 @@ Features:
 - Consistent UTF-8 support on all platforms
 - Native character set (UTF-16 `wchar_t`) support on Windows
 - Initialization and de-initialization of platform library (e.g. COM (Windows) / GTK (Linux GTK) / D-Bus (Linux portal)) decoupled from dialog functions, so applications can choose when to initialize/de-initialize
-- Multiple file selection support (for file open dialog)
+- Multiple selection support (for file open and folder select dialogs)
 - Support for Vista's modern `IFileDialog` on Windows
 - No third party dependencies
 - Modern CMake build system
@@ -37,6 +37,7 @@ Features added in Native File Dialog Extended:
 - Support for setting a default file name
 - Native character set (UTF-16 `wchar_t`) support on Windows
 - xdg-desktop-portal support on Linux that opens the "native" file chooser (see "Usage" section below)
+- Multiple folder selection support
 - Initialization and de-initialization of platform library decoupled from file dialog functions
 - Modern CMake build system
 - Optional C++ wrapper with `unique_ptr` auto-freeing semantics and optional parameters
@@ -57,14 +58,17 @@ int main(void)
     
     NFD_Init();
 
-    nfdchar_t *outPath;
-    nfdfilteritem_t filterItem[2] = { { "Source code", "c,cpp,cc" }, { "Headers", "h,hpp" } };
-    nfdresult_t result = NFD_OpenDialog(&outPath, filterItem, 2, NULL);
+    nfdu8char_t *outPath;
+    nfdu8filteritem_t filters[2] = { { "Source code", "c,cpp,cc" }, { "Headers", "h,hpp" } };
+    nfdopendialogu8args_t args = {0};
+    args.filterList = filters;
+    args.filterCount = 2;
+    nfdresult_t result = NFD_OpenDialogU8_With(&outPath, &args);
     if (result == NFD_OKAY)
     {
         puts("Success!");
         puts(outPath);
-        NFD_FreePath(outPath);
+        NFD_FreePathU8(outPath);
     }
     else if (result == NFD_CANCEL)
     {
@@ -80,16 +84,18 @@ int main(void)
 }
 ```
 
-See [NFD.h](src/include/nfd.h) for more options.
+The `U8`/`u8` in NFDe refer to the API for UTF-8 characters (`char`), which most consumers probably want.  An `N`/`n` version is also available, which uses the native character type (`wchar_t` on Windows and `char` on other platforms).
 
-If you are using a platform abstraction framework such as SDL or GLFW, also see the "Usage" section below.
+For the full list of arguments that you can set on the `args` struct, see the "All Options" section below.
+
+If you are using a platform abstraction framework such as SDL or GLFW, also see the "Usage with a Platform Abstraction Framework" section below.
 
 # Screenshots #
 
 ![Windows 10](screens/open_win10.png?raw=true#gh-light-mode-only)
 ![Windows 10](screens/open_win10_dark.png?raw=true#gh-dark-mode-only)
-![MacOS 10.13](screens/open_macos_11.0.png?raw=true#gh-light-mode-only)
-![MacOS 10.13](screens/open_macos_11.0_dark.png?raw=true#gh-dark-mode-only)
+![macOS 10.13](screens/open_macos_11.0.png?raw=true#gh-light-mode-only)
+![macOS 10.13](screens/open_macos_11.0_dark.png?raw=true#gh-dark-mode-only)
 ![GTK3 on Ubuntu 20.04](screens/open_gtk3.png?raw=true#gh-light-mode-only)
 ![GTK3 on Ubuntu 20.04](screens/open_gtk3_dark.png?raw=true#gh-dark-mode-only)
 
@@ -165,24 +171,78 @@ Make sure `libgtk-3-dev` is installed on your system.
 #### Portal
 Make sure `libdbus-1-dev` is installed on your system.
 
-### MacOS
-On MacOS, add `AppKit` and `UniformTypeIdentifiers` to the list of frameworks.
+### macOS
+On macOS, add `AppKit` and `UniformTypeIdentifiers` to the list of frameworks.
 
 ### Windows
 On Windows (both MSVC and MinGW), ensure you are building against `ole32.lib`, `uuid.lib`, and `shell32.lib`.
 
 # Usage
 
-See `NFD.h` for API calls.  See the `test` directory for example code (both C and C++).
+## All Options
+
+To open a dialog, you set options on a struct and then pass that struct to an NFDe function, e.g.:
+```C
+nfdopendialogu8args_t args = {0};
+args.filterList = filters;
+args.filterCount = 2;
+nfdresult_t result = NFD_OpenDialogU8_With(&outPath, &args);
+```
+
+All options are optional and may be set individually (zero initialization sets all options to reasonable defaults), except for `filterList` and `filterCount` which must be either both set or both left unset.
+
+**Future versions of NFDe may add additional options to the end of the arguments struct without bumping the major version number, so to ensure backward API compatibility, you should not assume that the struct has a specific length or number of fields.**  You may assume that zero-initialization of the struct will continue to set all options to reasonable defaults, so assigning `{0}` to the struct is acceptable.  For those building shared libraries of NFDe, backward ABI compatibility is ensured by an internal version index (`NFD_INTERFACE_VERSION`), which is expected to be transparent to consumers.
+
+**OpenDialog**/**OpenDialogMultiple**:
+```C
+typedef struct {
+    const nfdu8filteritem_t* filterList;
+    nfdfiltersize_t filterCount;
+    const nfdu8char_t* defaultPath;
+    nfdwindowhandle_t parentWindow;
+} nfdopendialogu8args_t;
+```
+
+**SaveDialog**:
+```C
+typedef struct {
+    const nfdu8filteritem_t* filterList;
+    nfdfiltersize_t filterCount;
+    const nfdu8char_t* defaultPath;
+    const nfdu8char_t* defaultName;
+    nfdwindowhandle_t parentWindow;
+} nfdsavedialogu8args_t;
+```
+
+**PickFolder**/**PickFolderMultiple**:
+```C
+typedef struct {
+    const nfdu8char_t* defaultPath;
+    nfdwindowhandle_t parentWindow;
+} nfdpickfolderu8args_t;
+```
+
+- `filterList` and `filterCount`: Set these to customize the file filter (it appears as a dropdown menu on Windows and Linux, but simply hides files on macOS).  Set `filterList` to a pointer to the start of the array of filter items and `filterCount` to the number of filter items in that array.  See the "File Filter Syntax" section below for details.
+- `defaultPath`: Set this to the default folder that the dialog should open to (on Windows, if there is a recently used folder, it opens to that folder instead of the folder you pass, unless the `NFD_OVERRIDE_RECENT_WITH_DEFAULT` build option is set to ON).
+- `defaultName`: (For SaveDialog only) Set this to the file name that should be pre-filled on the dialog.
+- `parentWindow`: Set this to the native window handle of the parent of this dialog.  See the "Usage with a Platform Abstraction Framework" section for details.  It is also possible to pass a handle even if you do not use a platform abstraction framework.
+
+## Examples
+
+See the `test` directory for example code (both C and C++).
 
 If you turned on the option to build the `test` directory (`-DNFD_BUILD_TESTS=ON`), then `build/bin` will contain the compiled test programs.
+
+There is also an SDL2 example, which needs to be enabled separately with `-DNFD_BUILD_SDL2_TESTS=ON`.  It requires SDL2 to be installed on your machine.
+
+Compiled examples (including the SDL2 example) are also uploaded as artefacts to GitHub Actions, and may be downloaded from there.
 
 ## File Filter Syntax
 
 Files can be filtered by file extension groups:
 
 ```C
-nfdfilteritem_t filterItem[2] = { { "Source code", "c,cpp,cc" }, { "Headers", "h,hpp" } };
+nfdu8filteritem_t filters[2] = { { "Source code", "c,cpp,cc" }, { "Headers", "h,hpp" } };
 ```
 
 A file filter is a pair of strings comprising the friendly name and the specification (multiple file extensions are comma-separated).
@@ -191,13 +251,13 @@ A list of file filters can be passed as an argument when invoking the library.
 
 A wildcard filter is always added to every dialog.
 
-*Note: On MacOS, the file dialogs do not have friendly names and there is no way to switch between filters, so the filter specifications are combined (e.g. "c,cpp,cc,h,hpp").  The filter specification is also never explicitly shown to the user.  This is usual MacOS behaviour and users expect it.*
+*Note: On macOS, the file dialogs do not have friendly names and there is no way to switch between filters, so the filter specifications are combined (e.g. "c,cpp,cc,h,hpp").  The filter specification is also never explicitly shown to the user.  This is usual macOS behaviour and users expect it.*
 
 *Note 2: You must ensure that the specification string is non-empty and that every file extension has at least one character.  Otherwise, bad things might ensue (i.e. undefined behaviour).*
 
 *Note 3: On Linux, the file extension is appended (if missing) when the user presses down the "Save" button.  The appended file extension will remain visible to the user, even if an overwrite prompt is shown and the user then presses "Cancel".*
 
-*Note 4: On Windows, the default folder parameter is only used if there is no recently used folder available.  Otherwise, the default folder will be the folder that was last used.  Internally, the Windows implementation calls [IFileDialog::SetDefaultFolder(IShellItem)](https://docs.microsoft.com/en-us/windows/desktop/api/shobjidl_core/nf-shobjidl_core-ifiledialog-setdefaultfolder).  This is usual Windows behaviour and users expect it.*
+*Note 4: On Windows, the default folder parameter is only used if there is no recently used folder available, unless the `NFD_OVERRIDE_RECENT_WITH_DEFAULT` build option is set to ON.  Otherwise, the default folder will be the folder that was last used.  Internally, the Windows implementation calls [IFileDialog::SetDefaultFolder(IShellItem)](https://docs.microsoft.com/en-us/windows/desktop/api/shobjidl_core/nf-shobjidl_core-ifiledialog-setdefaultfolder).  This is usual Windows behaviour and users expect it.*
 
 ## Iterating Over PathSets
 
@@ -234,7 +294,33 @@ Macros that might be defined by `nfd.h`:
 
 ## Usage with a Platform Abstraction Framework
 
-NFDe is known to work with SDL2 and GLFW, and should also work with other platform abstraction framworks.  However, you should initialize NFDe _after_ initializing the framework, and probably should deinitialize NFDe _before_ deinitializing the framework.  This is because some frameworks expect to be initialized on a "clean slate", and they may configure the system in a different way from NFDe.  `NFD_Init` is generally very careful not to disrupt the existing configuration unless necessary, and `NFD_Quit` restores the configuration back exactly to what it was before initialization.
+NFDe is known to work with SDL2 and GLFW, and should also work with other platform abstraction framworks.  This section explains how to use NFDe properly with such frameworks.
+
+### Parent window handle
+
+The `parentWindow` argument allows the user to give the dialog a parent.
+
+If using SDL2, include `<nfd_sdl2.h>` and call the following function to set the parent window handle:
+```C
+NFD_GetNativeWindowFromSDLWindow(sdlWindow /* SDL_Window* */, &args.parentWindow);
+```
+
+If using GLFW3, define the appropriate `GLFW_EXPOSE_NATIVE_*` macros described on the [GLFW native access page](https://www.glfw.org/docs/latest/group__native.html), and then include `<nfd_glfw3.h>` and call the following function to set the parent window handle:
+```C
+NFD_GetNativeWindowFromGLFWWindow(glfwWindow /* GLFWwindow* */, &args.parentWindow);
+```
+
+If you are using another platform abstraction framework, or not using any such framework, you can set `args.parentWindow` manually.
+
+Win32 (Windows), Cocoa (macOS), and X11 (Linux) windows are supported.  Passing a Wayland (Linux) window currently does nothing (i.e. the dialog acts as if it has no parent), but support is likely to be added in the future.
+
+#### Why pass a parent window handle?
+
+To make a window (in this case the file dialog) stay above another window, we need to declare the bottom window as the parent of the top window.  This keeps the dialog window from disappearing behind the parent window if the user clicks on the parent window while the dialog is open.  Keeping the dialog above the window that invoked it is the expected behaviour on all supported operating systems, and so passing the parent window handle is recommended if possible.
+
+### Initialization order
+
+You should initialize NFDe _after_ initializing the framework, and probably should deinitialize NFDe _before_ deinitializing the framework.  This is because some frameworks expect to be initialized on a "clean slate", and they may configure the system in a different way from NFDe.  `NFD_Init` is generally very careful not to disrupt the existing configuration unless necessary, and `NFD_Quit` restores the configuration back exactly to what it was before initialization.
 
 An example with SDL2:
 
@@ -264,30 +350,27 @@ On Linux, you can use the portal implementation instead of GTK, which will open 
 
 To use the portal implementation, add `-DNFD_PORTAL=ON` to the build command.
 
-*Note:  Setting a default path is not supported by the portal implementation, and any default path passed to NFDe will be ignored.  This is a limitation of the portal API, so there is no way NFDe can work around it.  If this feature is something you desire, please show your interest on https://github.com/flatpak/xdg-desktop-portal/pull/874.*
-
-*Note 2:  The folder picker is only supported on org.freedesktop.portal.FileChooser interface version >= 3, which corresponds to xdg-desktop-portal version >= 1.7.1.  `NFD_PickFolder()` will query the interface version at runtime, and return `NFD_ERROR` if the version is too low.
+*Note:  The folder picker is only supported on org.freedesktop.portal.FileChooser interface version >= 3, which corresponds to xdg-desktop-portal version >= 1.7.1.  `NFD_PickFolder()` will query the interface version at runtime, and return `NFD_ERROR` if the version is too low.
 
 ### What is a portal?
 
-Unlike Windows and MacOS, Linux does not have a file chooser baked into the operating system.  Linux applications that want a file chooser usually link with a library that provides one (such as GTK, as in the Linux screenshot above).  This is a mostly acceptable solution that many applications use, but may make the file chooser look foreign on non-GTK distros.
+Unlike Windows and macOS, Linux does not have a file chooser baked into the operating system.  Linux applications that want a file chooser usually link with a library that provides one (such as GTK, as in the Linux screenshot above).  This is a mostly acceptable solution that many applications use, but may make the file chooser look foreign on non-GTK distros.
 
-Flatpak was introduced in 2015, and with it came a standardized interface to open a file chooser.  Applications using this interface did not need to come with a file chooser, and could use the one provided by Flatpak.  This interface became known as the desktop portal, and its use expanded to non-Flatpak applications.  Now, most major desktop Linux distros come with the desktop portal installed, with file choosers that fit the theme of the distro.  Users can also install a different portal backend if desired.  There are currently two known backends: GTK and KDE.  (XFCE does not currently seem to have a portal backend.)
+Flatpak was introduced in 2015, and with it came a standardized interface to open a file chooser.  Applications using this interface did not need to come with a file chooser, and could use the one provided by Flatpak.  This interface became known as the desktop portal, and its use expanded to non-Flatpak applications.  Now, most major desktop Linux distros come with the desktop portal installed, with file choosers that fit the theme of the distro.  Users can also install a different portal backend if desired.  There are currently three known backends with file chooser support: GTK, KDE, and LXQt; Gnome and Xapp backends depend on the GTK one for this functionality.  The Xapp backend has been designed for Cinnamon, MATE, and XFCE.  Other desktop environments do not seem to currently have a portal backend.
 
 ## Platform-specific Quirks
 
-### MacOS
+### macOS
 
-- If the MacOS deployment target is ≥ 11.0, the [allowedContentTypes](https://developer.apple.com/documentation/appkit/nssavepanel/3566857-allowedcontenttypes?language=objc) property of NSSavePanel is used instead of the deprecated [allowedFileTypes](https://developer.apple.com/documentation/appkit/nssavepanel/1534419-allowedfiletypes?language=objc) property for file filters.  Thus, if you are filtering by a custom file extension specific to your application, you will need to define the data type in your `Info.plist` file as per the [Apple documentation](https://developer.apple.com/documentation/uniformtypeidentifiers/defining_file_and_data_types_for_your_app).  (It is possible to force NFDe to use allowedFileTypes by adding `-DNFD_USE_ALLOWEDCONTENTTYPES_IF_AVAILABLE=OFF` to your CMake build command, but this is not recommended.  If you need to support older MacOS versions, you should be setting the correct deployment target instead.)
+- If the macOS deployment target is ≥ 11.0, the [allowedContentTypes](https://developer.apple.com/documentation/appkit/nssavepanel/3566857-allowedcontenttypes?language=objc) property of NSSavePanel is used instead of the deprecated [allowedFileTypes](https://developer.apple.com/documentation/appkit/nssavepanel/1534419-allowedfiletypes?language=objc) property for file filters.  Thus, if you are filtering by a custom file extension specific to your application, you will need to define the data type in your `Info.plist` file as per the [Apple documentation](https://developer.apple.com/documentation/uniformtypeidentifiers/defining_file_and_data_types_for_your_app).  (It is possible to force NFDe to use allowedFileTypes by adding `-DNFD_USE_ALLOWEDCONTENTTYPES_IF_AVAILABLE=OFF` to your CMake build command, but this is not recommended.  If you need to support older macOS versions, you should be setting the correct deployment target instead.)
 
 # Known Limitations #
 
  - No support for Windows XP's legacy dialogs such as `GetOpenFileName`.  (There are no plans to support this; you shouldn't be still using Windows XP anyway.)
  - No Emscripten (WebAssembly) bindings.  (This might get implemented if I decide to port Circuit Sandbox for the web, but I don't think there is any way to implement a web-based folder picker.)
  - GTK dialogs don't set the existing window as parent, so if users click the existing window while the dialog is open then the dialog will go behind it.  GTK writes a warning to stdout or stderr about this.
- - Portal dialogs (the alternative to GTK on Linux) don't support a default path.  Any default path you supply will be ignored.
  - This library is not compatible with the original Native File Dialog library.  Things might break if you use both in the same project.  (There are no plans to support this; you have to use one or the other.)
- - This library does not explicitly dispatch calls to the UI thread.  This may lead to crashes if you call functions from other threads when the platform does not support it (e.g. MacOS).  Users are generally expected to call NFDe from an appropriate UI thread (i.e. the thread performing the UI event loop).
+ - This library does not explicitly dispatch calls to the UI thread.  This may lead to crashes if you call functions from other threads when the platform does not support it (e.g. macOS).  Users are generally expected to call NFDe from an appropriate UI thread (i.e. the thread performing the UI event loop).
 
 # Reporting Bugs #
 

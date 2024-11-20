@@ -1,1 +1,1 @@
-./Writerside/topics/CHANGELOG.md
+./docs/topics/CHANGELOG.md

@@ -27,33 +27,38 @@ const module_name = .gpu;
 const ThreadId = std.Thread.Id;
 const EncoderMap = std.AutoArrayHashMap(ThreadId, *bgfx.Encoder);
 
-var _allocator: std.mem.Allocator = undefined;
-
-var _encoder_map: EncoderMap = undefined;
-var _encoder_map_lock: std.Thread.Mutex = .{};
-
+const EncoderArray = std.ArrayList(?*bgfx.Encoder);
 const PalletColorMap = std.AutoArrayHashMap(u32, u8);
 
+var _allocator: std.mem.Allocator = undefined;
+var _encoders: EncoderArray = undefined;
 var _pallet_map: PalletColorMap = undefined;
 
 pub fn init(allocator: std.mem.Allocator) !void {
     _allocator = allocator;
     bgfx_init = false;
-
-    _encoder_map = EncoderMap.init(allocator);
-    try _encoder_map.ensureTotalCapacity(std.Thread.getCpuCount() catch 1);
-
-    _encoder_map_lock = .{};
-
     _pallet_map = PalletColorMap.init(allocator);
 }
 
 pub fn deinit() void {
     if (bgfx_init) {
-        zbgfx.debugdraw.deinit();
-        bgfx.shutdown();
+        const Task = struct {
+            pub fn exec(_: *@This()) !void {
+                zbgfx.debugdraw.deinit();
+                bgfx.shutdown();
+                _encoders.deinit();
+            }
+        };
+        const task_id = task.api.schedule(
+            cetech1.task.TaskID.none,
+            Task{},
+            .{ .affinity = 1 },
+        ) catch undefined;
+        while (!task.api.isDone(task_id)) {
+            std.time.sleep(1 * std.time.ns_per_ms);
+            _ = bgfx.renderFrame(0);
+        }
     }
-    _encoder_map.deinit();
     _pallet_map.deinit();
 }
 
@@ -164,7 +169,7 @@ pub const api = public.GpuApi{
     .setViewOrder = @ptrCast(&bgfx.setViewOrder),
     .resetView = @ptrCast(&bgfx.resetView),
     .getEncoder = getEncoder,
-    //.encoderEnd = @ptrCast(&bgfx.encoderEnd),
+    .endEncoder = endEncoder,
     .requestScreenShot = @ptrCast(&bgfx.requestScreenShot),
     .renderFrame = @ptrCast(&bgfx.renderFrame),
     .overrideInternalTexturePtr = @ptrCast(&bgfx.overrideInternalTexturePtr),
@@ -278,7 +283,7 @@ fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless
 
     bgfxInit.type = @enumFromInt(@intFromEnum(backend));
 
-    const cpu_count: u16 = @intCast(std.Thread.getCpuCount() catch 1);
+    const cpu_count: u16 = @intCast(task.api.getThreadNum());
 
     bgfxInit.debug = true;
     bgfxInit.profile = true;
@@ -296,7 +301,7 @@ fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless
         bgfxInit.resolution.height = @intCast(framebufferSize[1]);
 
         if (vsync) {
-            bgfxInit.resolution.reset |= bgfx.ResetFlags_Vsync;
+            bgfxInit.resolution.reset |= bgfx.ResetFlags_Vsync; // | bgfx.ResetFlags_FlipAfterRender;
         }
 
         bgfxInit.platformData.nwh = context.window.?.getOsWindowHandler();
@@ -306,8 +311,8 @@ fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless
         bgfxInit.platformData.type = bgfx.NativeWindowHandleType.Default;
     }
 
-    // Do not create render thread.
-    _ = bgfx.renderFrame(-1);
+    // // Do not create render thread.
+    // _ = bgfx.renderFrame(-1);
 
     if (!bgfx.init(&bgfxInit)) {
         return error.BgfxInitFailed;
@@ -315,6 +320,13 @@ fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless
 
     bgfx_init = true;
     zbgfx.debugdraw.init();
+
+    _encoders = try .initCapacity(_allocator, task.api.getThreadNum());
+    for (0..task.api.getThreadNum()) |_| {
+        _encoders.appendAssumeCapacity(null);
+    }
+
+    log.info("Renderer backend: {}", .{backend});
 }
 
 const GpuContext = struct {
@@ -331,8 +343,35 @@ fn createContext(window: ?cetech1.platform.Window, backend: ?public.Backend, vsy
     }
     context.headless = headles;
 
-    const default_backend = if (headles) public.Backend.noop else public.Backend.auto;
-    try initBgfx(context, backend orelse default_backend, vsync, headles);
+    // claim main thread as render thread.
+    _ = bgfx.renderFrame(-1);
+
+    const Task = struct {
+        context: *GpuContext,
+        backend: ?public.Backend,
+        vsync: bool,
+        headles: bool,
+
+        pub fn exec(s: *@This()) !void {
+            const default_backend = if (s.headles) public.Backend.noop else public.Backend.auto;
+            try initBgfx(s.context, s.backend orelse default_backend, s.vsync, s.headles);
+        }
+    };
+    const task_id = try task.api.schedule(
+        cetech1.task.TaskID.none,
+        Task{
+            .context = context,
+            .backend = backend,
+            .vsync = vsync,
+            .headles = headles,
+        },
+        .{ .affinity = 1 },
+    );
+    while (!task.api.isDone(task_id)) {
+        std.time.sleep(1 * std.time.ns_per_ms);
+        _ = bgfx.renderFrame(0);
+    }
+
     return @ptrCast(context);
 }
 
@@ -459,33 +498,54 @@ pub fn destroyDDEncoder(encoder: public.DDEncoder) void {
 }
 
 fn getEncoder() ?public.Encoder {
-    const thread_id = std.Thread.getCurrentId();
+    var zone_ctx = profiler.ztracy.ZoneN(@src(), "getEncoder");
+    defer zone_ctx.End();
 
-    {
-        _encoder_map_lock.lock();
-        defer _encoder_map_lock.unlock();
-        if (_encoder_map.get(thread_id)) |encoder| {
+    const wid = task.api.getWorkerId();
+    if (_encoders.items[wid]) |encoder| {
+        return .{ .ptr = @ptrCast(encoder), .vtable = &encoder_vt };
+    } else {
+        if (bgfx.encoderBegin(false)) |encoder| {
+            _encoders.items[wid] = encoder;
             return .{ .ptr = @ptrCast(encoder), .vtable = &encoder_vt };
+        } else {
+            log.warn("Empty encoder", .{});
+            return null;
         }
     }
-
-    if (bgfx.encoderBegin(false)) |encoder| {
-        {
-            _encoder_map_lock.lock();
-            defer _encoder_map_lock.unlock();
-            _encoder_map.put(thread_id, @ptrCast(encoder)) catch undefined;
-            return .{ .ptr = @ptrCast(encoder), .vtable = &encoder_vt };
-        }
-    }
-
+    log.warn("No encoder", .{});
     return null;
+}
+
+pub fn endEncoder(encoder: public.Encoder) void {
+    var zone_ctx = profiler.ztracy.ZoneN(@src(), "endEncoder");
+    defer zone_ctx.End();
+    _ = encoder;
+    // bgfx.encoderEnd(@ptrCast(encoder.ptr));
+    // const wid = task.api.getWorkerId();
+
+    // _encoders.items[wid] = null;
+    // bgfx.encoderEnd(@ptrCast(encoder.ptr));
+    // for (_encoders.items) |*value| {
+    //     if (value.*) |e| {
+    //         bgfx.encoderEnd(@ptrCast(e));
+    //     }
+    //     value.* = null;
+    // }
+    //_encoders.clearRetainingCapacity();
 }
 
 pub fn endAllUsedEncoders() void {
     var zone_ctx = profiler.ztracy.ZoneN(@src(), "endAllUsedEncoders");
     defer zone_ctx.End();
-    for (_encoder_map.values()) |encoder| {
-        bgfx.encoderEnd(@ptrCast(encoder));
+
+    // log.debug("Begin end encoders", .{});
+    for (_encoders.items) |*value| {
+        if (value.*) |e| {
+            // log.debug("End encoder {} {}", .{ idx, e });
+            bgfx.encoderEnd(@ptrCast(e));
+        }
+        value.* = null;
     }
-    _encoder_map.clearRetainingCapacity();
+    // log.debug("End end encoders", .{});
 }

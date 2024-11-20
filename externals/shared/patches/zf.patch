@@ -1,0 +1,15 @@
+diff --git a/externals/shared/lib/zf/zls.build.json b/externals/shared/lib/zf/zls.build.json
+new file mode 100644
+index 00000000..d61e9e55
+--- /dev/null
++++ b/externals/shared/lib/zf/zls.build.json
+@@ -0,0 +1,8 @@
++{
++    "build_options": [
++        {
++            "name": "with_tui",
++            "value": false
++        }
++    ]
++}
+\ No newline at end of file

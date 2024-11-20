@@ -298,6 +298,7 @@ const AnalyzeInfo = struct {
                         .path = try root_dir.realpathAlloc(tmp_allocator, entry.name),
                         .tmp_allocator = tmp_allocator,
                     },
+                    .{},
                 );
                 try tasks.append(task_id);
             } else if (entry.kind == .directory) {
@@ -588,7 +589,7 @@ const AssetRootFS = struct {
             tasks.appendAssumeCapacity(export_task);
         }
 
-        task.api.wait(try task.api.combine(tasks.items));
+        task.api.waitMany(tasks.items);
 
         self.asset_root_last_version = _cdb.getVersion(self.asset_root);
     }
@@ -628,7 +629,7 @@ const AssetRootFS = struct {
 
         try self.commitDeleteChanges(tmp_allocator);
 
-        task.api.wait(try task.api.combine(tasks.items));
+        task.api.waitMany(tasks.items);
 
         self.asset_root_last_version = _cdb.getVersion(self.asset_root);
     }
@@ -767,7 +768,7 @@ const AssetRootFS = struct {
         var tasks = std.ArrayList(cetech1.task.TaskID).init(tmp_allocator);
         defer tasks.deinit();
         try self.analyzer.analyzeFolder(root_dir, self.asset_root_folder, &tasks, tmp_allocator);
-        task.api.wait(try task.api.combine(tasks.items));
+        task.api.waitMany(tasks.items);
         //tasks.clearRetainingCapacity();
 
         try self.asset_dag.reset();
@@ -836,8 +837,8 @@ const AssetRootFS = struct {
 
         //try writeAssetDOTGraph();
 
-        const sync_job = try task.api.combine(self.tmp_taskid_map.values());
-        task.api.wait(sync_job);
+        // const sync_job = try task.api.combine(self.tmp_taskid_map.values());
+        task.api.waitMany(self.tmp_taskid_map.values());
 
         // Resave obj version
         const all_asset_copy = try tmp_allocator.dupe(cdb.ObjId, self.asset_objid2version.keys());
@@ -950,6 +951,9 @@ const AssetRootFS = struct {
     fn saveFolderObj(self: *Self, tmp_allocator: std.mem.Allocator, folder_asset: cdb.ObjId, root_path: []const u8) !void {
         var zone_ctx = profiler.ztracy.Zone(@src());
         defer zone_ctx.End();
+
+        self.analyzer.file_info_lck.lock();
+        defer self.analyzer.file_info_lck.unlock();
 
         var buff: [128]u8 = undefined;
         const sub_path = try getPathForFolder(&buff, folder_asset);
@@ -1095,6 +1099,7 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
                 .folder = folder,
                 .filename = filename,
             },
+            .{},
         );
     }
 
@@ -1151,6 +1156,7 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
                 .asset = asset,
                 .root_path = root_path,
             },
+            .{},
         );
     }
 });

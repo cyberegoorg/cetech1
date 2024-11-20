@@ -15,13 +15,13 @@ pub const AllocatorProfiler = struct {
     }
 
     pub fn allocator(self: *AllocatorProfiler) std.mem.Allocator {
-        return .{ .ptr = self, .vtable = &.{ .alloc = Self.alloc, .resize = Self.resize, .free = Self.free } };
+        return .{ .ptr = self, .vtable = &.{ .alloc = Self.alloc, .resize = Self.resize, .free = Self.free, .remap = Self.remap } };
     }
 
     fn alloc(
         ctx: *anyopaque,
         len: usize,
-        log2_ptr_align: u8,
+        log2_ptr_align: std.mem.Alignment,
         ra: usize,
     ) ?[*]u8 {
         const self: *AllocatorProfiler = @ptrCast(@alignCast(ctx));
@@ -43,7 +43,7 @@ pub const AllocatorProfiler = struct {
     fn resize(
         ctx: *anyopaque,
         buf: []u8,
-        log2_ptr_align: u8,
+        log2_ptr_align: std.mem.Alignment,
         new_len: usize,
         ra: usize,
     ) bool {
@@ -68,7 +68,7 @@ pub const AllocatorProfiler = struct {
     fn free(
         ctx: *anyopaque,
         buf: []u8,
-        log2_ptr_align: u8,
+        log2_ptr_align: std.mem.Alignment,
         ra: usize,
     ) void {
         const self: *AllocatorProfiler = @ptrCast(@alignCast(ctx));
@@ -78,6 +78,31 @@ pub const AllocatorProfiler = struct {
         } else {
             self.profiler_api.free(buf.ptr);
         }
+    }
+
+    fn remap(
+        ctx: *anyopaque,
+        buf: []u8,
+        log2_ptr_align: std.mem.Alignment,
+        new_len: usize,
+        ra: usize,
+    ) ?[*]u8 {
+        const self: *AllocatorProfiler = @ptrCast(@alignCast(ctx));
+        const result = self.child_allocator.rawRemap(buf, log2_ptr_align, new_len, ra);
+        if (result != null) {
+            if (self.name != null) {
+                self.profiler_api.freeNamed(self.name.?, buf.ptr);
+                self.profiler_api.allocNamed(self.name.?, buf.ptr, new_len);
+            } else {
+                self.profiler_api.free(buf.ptr);
+                self.profiler_api.alloc(buf.ptr, new_len);
+            }
+        } else {
+            var buffer: [128]u8 = undefined;
+            const msg = std.fmt.bufPrint(&buffer, "resize failed requesting {d} -> {d}", .{ buf.len, new_len }) catch return result;
+            self.profiler_api.msgWithColor(msg, 0xFF0000);
+        }
+        return result;
     }
 };
 

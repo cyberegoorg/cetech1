@@ -44,9 +44,7 @@ pub const KernelTaskI = struct {
         return KernelTaskI{
             .name = name,
             .depends = depends,
-
             .init = T.init,
-
             .shutdown = T.shutdown,
         };
     }
@@ -61,12 +59,14 @@ pub const KernelTaskUpdateI = struct {
     phase: strid.StrId64,
     name: [:0]const u8,
     depends: []const strid.StrId64,
+    affinity: ?u32 = null,
     update: *const fn (kernel_tick: u64, dt: f32) anyerror!void,
 
     pub inline fn implment(
         phase: strid.StrId64,
         name: [:0]const u8,
         depends: []const strid.StrId64,
+        affinity: ?u32,
         comptime T: type,
     ) KernelTaskUpdateI {
         if (!std.meta.hasFn(T, "update")) @compileError("implement me");
@@ -75,46 +75,8 @@ pub const KernelTaskUpdateI = struct {
             .phase = phase,
             .name = name,
             .depends = depends,
+            .affinity = affinity,
             .update = T.update,
-        };
-    }
-};
-
-// TODO: TEMP SHIT
-pub const KernelLoopHookI = struct {
-    pub const c_name = "ct_kernel_loop_hook_i";
-    pub const name_hash = strid.strId64(@This().c_name);
-
-    begin_loop: *const fn (kernel_tick: u64, dt: f32) anyerror!void,
-    end_loop: *const fn () anyerror!void,
-
-    pub inline fn implement(
-        comptime T: type,
-    ) KernelLoopHookI {
-        if (!std.meta.hasFn(T, "beginLoop")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "endLoop")) @compileError("implement me");
-
-        return KernelLoopHookI{
-            .begin_loop = T.beginLoop,
-            .end_loop = T.endLoop,
-        };
-    }
-};
-
-// TODO: TEMP SHIT
-pub const KernelRenderI = struct {
-    pub const c_name = "ct_kernel_render_i";
-    pub const name_hash = strid.strId64(@This().c_name);
-
-    render: *const fn (ctx: *gpu.GpuContext, kernel_tick: u64, dt: f32, vsync: bool) anyerror!void,
-
-    pub inline fn implment(
-        comptime T: type,
-    ) KernelRenderI {
-        if (!std.meta.hasFn(T, "render")) @compileError("implement me");
-
-        return KernelRenderI{
-            .render = T.render,
         };
     }
 };
@@ -126,6 +88,7 @@ pub const KernelApi = struct {
     setKernelTickRate: *const fn (rate: u32) void,
     openAssetRoot: *const fn (asset_root: ?[]const u8) void,
     restart: *const fn () void,
+    isHeadlessMode: *const fn () bool,
     isTestigMode: *const fn () bool,
 
     getMainWindow: *const fn () ?platform.Window,

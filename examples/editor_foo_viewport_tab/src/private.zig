@@ -62,7 +62,7 @@ const G = struct {
 };
 var _g: *G = undefined;
 
-const SPHERE_COUNT = 1_000;
+const DRAW_OBJ_COUNT = 1_000;
 
 const seed: u64 = 1111;
 var prng = std.Random.DefaultPrng.init(seed);
@@ -124,8 +124,8 @@ const velocity_c = ecs.ComponentI.implement(
 
 const move_system_i = ecs.SystemI.implement(
     .{
-        .name = "move system",
-        .multi_threaded = false,
+        .name = "move_system",
+        .multi_threaded = true,
         .phase = ecs.OnUpdate,
         .simulation = true,
         .query = &.{
@@ -134,8 +134,8 @@ const move_system_i = ecs.SystemI.implement(
         },
     },
     struct {
-        pub fn update(iter: *ecs.IterO) !void {
-            var it = _ecs.toIter(iter);
+        pub fn update(world: ecs.World, it: *ecs.Iter) !void {
+            _ = world;
 
             const p = it.field(transform.Position, 0).?;
             const v = it.field(Velocity, 1).?;
@@ -205,7 +205,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         // TODO: TEMP HARDCODE SHIT HACK - created in 2024... if you still read this and year is not 2024 am still idiot ;)
         if (_assetdb.getObjId(_uuid.fromStr("0191e6d1-830a-73d8-992a-aa6f9add6d1e").?)) |e_obj| {
-            const entities = try _ecs.spawnManyFromCDB(allocator, w, e_obj, SPHERE_COUNT);
+            const entities = try _ecs.spawnManyFromCDB(allocator, w, e_obj, DRAW_OBJ_COUNT);
             defer allocator.free(entities);
 
             const rnd = prng.random();

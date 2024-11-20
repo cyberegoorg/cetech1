@@ -1,0 +1,12 @@
+.{
+    .name = .cetech1_externals_shared,
+    .fingerprint = 0x6585efad9790dda7,
+    .version = "0.1.0",
+    .paths = .{
+        "fonts",
+        "lib",
+        "src",
+        "README.md",
+    },
+    .dependencies = .{},
+}
