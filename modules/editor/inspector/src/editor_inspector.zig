@@ -11,20 +11,20 @@ const editor = @import("editor");
 
 pub const UiPropertiesConfigAspect = struct {
     pub const c_name = "ct_properties_config_aspect";
-    pub const name_hash = strid.strId32(@This().c_name);
+    pub const name_hash = cetech1.strId32(@This().c_name);
     hide_prototype: bool = false,
 };
 
 pub const UiPropertyConfigAspect = struct {
     pub const c_name = "ct_ui_property_config_aspect";
-    pub const name_hash = strid.strId32(@This().c_name);
+    pub const name_hash = cetech1.strId32(@This().c_name);
 
     hide_prototype: bool = false,
 };
 
 pub const UiVisualPropertyConfigAspect = struct {
     pub const c_name = "ct_ui_visual_property_aspect";
-    pub const name_hash = strid.strId32(@This().c_name);
+    pub const name_hash = cetech1.strId32(@This().c_name);
 
     no_subtree: bool = false,
 };
@@ -40,7 +40,7 @@ pub const cdbPropertiesViewArgs = struct {
 
 pub const UiEmbedPropertyAspect = struct {
     pub const c_name = "ct_ui_embed_property_aspect";
-    pub const name_hash = strid.strId32(@This().c_name);
+    pub const name_hash = cetech1.strId32(@This().c_name);
 
     ui_properties: *const fn (
         allocator: std.mem.Allocator,
@@ -60,7 +60,7 @@ pub const UiEmbedPropertyAspect = struct {
 
 pub const UiEmbedPropertiesAspect = struct {
     pub const c_name = "ct_ui_embed_properties_aspect";
-    pub const name_hash = strid.strId32(@This().c_name);
+    pub const name_hash = cetech1.strId32(@This().c_name);
 
     ui_properties: *const fn (
         allocator: std.mem.Allocator,
@@ -79,7 +79,7 @@ pub const UiEmbedPropertiesAspect = struct {
 
 pub const UiPropertyAspect = struct {
     pub const c_name = "ct_ui_property_aspect";
-    pub const name_hash = strid.strId32(@This().c_name);
+    pub const name_hash = cetech1.strId32(@This().c_name);
 
     ui_property: *const fn (
         allocator: std.mem.Allocator,
@@ -99,7 +99,7 @@ pub const UiPropertyAspect = struct {
 
 pub const UiPropertiesAspect = struct {
     pub const c_name = "ct_ui_properties_aspect";
-    pub const name_hash = strid.strId32(@This().c_name);
+    pub const name_hash = cetech1.strId32(@This().c_name);
 
     ui_properties: *const fn (
         allocator: std.mem.Allocator,

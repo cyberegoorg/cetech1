@@ -7,9 +7,8 @@ const coreui = cetech1.coreui;
 const tempalloc = cetech1.tempalloc;
 const gpu = cetech1.gpu;
 
-const zm = cetech1.math;
+const zm = cetech1.math.zmath;
 const ecs = cetech1.ecs;
-const primitives = cetech1.primitives;
 const actions = cetech1.actions;
 
 const assetdb = cetech1.assetdb;
@@ -93,14 +92,14 @@ const EntityEditorTab = struct {
 // Fill editor tab interface
 var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
-    .tab_hash = cetech1.strid.strId32(TAB_NAME),
+    .tab_hash = cetech1.strId32(TAB_NAME),
 
     // TODO: Bug on linux CI
     .create_on_init = true,
     .show_sel_obj_in_title = true,
     .show_pin_object = true,
 
-    .ignore_selection_from_tab = &.{cetech1.strid.strId32("ct_editor_asset_browser_tab")},
+    .ignore_selection_from_tab = &.{cetech1.strId32("ct_editor_asset_browser_tab")},
 }, struct {
 
     // Return name for menu /Tabs/
@@ -138,6 +137,8 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             },
         };
 
+        tab_inst.viewport.setDebugCulling(true);
+
         return &tab_inst.tab_i;
     }
 
@@ -174,16 +175,16 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         const new_entity = !tab_o.root_entity_obj.eql(entiy_obj);
         tab_o.root_entity_obj = entiy_obj;
 
-        const tmp_alloc = try _tempalloc.create();
-        defer _tempalloc.destroy(tmp_alloc);
+        const allocator = try _tempalloc.create();
+        defer _tempalloc.destroy(allocator);
 
         if (new_entity) {
             if (tab_o.root_entity) |root_ent| {
                 tab_o.world.destroyEntities(&.{root_ent});
             }
 
-            const ents = try _ecs.spawnManyFromCDB(tmp_alloc, tab_o.world, entiy_obj, 1);
-            defer tmp_alloc.free(ents);
+            const ents = try _ecs.spawnManyFromCDB(allocator, tab_o.world, entiy_obj, 1);
+            defer allocator.free(ents);
             tab_o.root_entity = ents[0];
 
             tab_o.camera = camera.SimpleFPSCamera.init(.{
@@ -335,7 +336,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         }
 
         if (_coreui.menuItem(allocator, cetech1.coreui.CoreIcons.FA_GAMEPAD, .{}, null)) {
-            _editor.openTabWithPinnedObj(cetech1.strid.strId32("ct_editor_simulation"), .{
+            _editor.openTabWithPinnedObj(cetech1.strId32("ct_editor_simulation"), .{
                 .top_level_obj = tab_o.selection.top_level_obj,
                 .obj = tab_o.selection.top_level_obj,
             });
@@ -343,12 +344,13 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         if (_coreui.beginMenu(allocator, cetech1.coreui.Icons.Debug, true, null)) {
             defer _coreui.endMenu();
+            _renderer.uiDebugMenuItems(allocator, tab_o.viewport);
             tab_o.flecs_port = uiRemoteDebugMenuItems(&tab_o.world, allocator, tab_o.flecs_port);
         }
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.strid.StrId32) !void {
+    pub fn objSelected(inst: *editor.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) !void {
         _ = sender_tab_hash; // autofix
         var tab_o: *EntityEditorTab = @alignCast(@ptrCast(inst));
 
@@ -429,20 +431,17 @@ const get_entity_node_i = graphvm.NodeI.implement(
     },
     null,
     struct {
-        pub fn getInputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+        pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
             _ = node_obj; // autofix
             _ = graph_obj; // autofix
             _ = self; // autofix
-            return allocator.dupe(graphvm.NodePin, &.{});
-        }
 
-        pub fn getOutputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
-            _ = self; // autofix
-            return allocator.dupe(graphvm.NodePin, &.{
-                graphvm.NodePin.init("Entity", graphvm.NodePin.pinHash("entity", true), graphvm.PinTypes.Entity, null),
-            });
+            return .{
+                .in = try allocator.dupe(graphvm.NodePin, &.{}),
+                .out = try allocator.dupe(graphvm.NodePin, &.{
+                    graphvm.NodePin.init("Entity", graphvm.NodePin.pinHash("entity", true), graphvm.PinTypes.Entity, null),
+                }),
+            };
         }
 
         pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: graphvm.OutPins) !void {
@@ -469,15 +468,15 @@ const get_entity_node_i = graphvm.NodeI.implement(
     },
 );
 
-const ActivatedViewportActionSet = cetech1.strid.strId32("entity_activated_viewport");
-const ViewportActionSet = cetech1.strid.strId32("entity_viewport");
-const MoveAction = cetech1.strid.strId32("move");
-const LookAction = cetech1.strid.strId32("look");
-const LookActivationAction = cetech1.strid.strId32("look_activation");
+const ActivatedViewportActionSet = cetech1.strId32("entity_activated_viewport");
+const ViewportActionSet = cetech1.strId32("entity_viewport");
+const MoveAction = cetech1.strId32("move");
+const LookAction = cetech1.strId32("look");
+const LookActivationAction = cetech1.strId32("look_activation");
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
     "EditorEntityTab",
-    &[_]cetech1.strid.StrId64{renderer.RENDERER_KERNEL_TASK},
+    &[_]cetech1.StrId64{renderer.RENDERER_KERNEL_TASK},
     struct {
         pub fn init() !void {
             _g.rg = try _render_graph.create();
@@ -548,8 +547,12 @@ fn uiRemoteDebugMenuItems(world: *ecs.World, allocator: std.mem.Allocator, port:
     if (_coreui.beginMenu(allocator, coreui.Icons.Entity ++ "  " ++ "ECS", true, null)) {
         defer _coreui.endMenu();
 
-        const debug_label = std.fmt.bufPrintZ(&buf, coreui.Icons.Debug ++ "  " ++ "Remote debug", .{}) catch return null;
-        if (_coreui.menuItemPtr(allocator, debug_label, .{ .selected = &remote_active }, null)) {
+        if (_coreui.menuItemPtr(
+            allocator,
+            coreui.Icons.Debug ++ "  " ++ "Remote debug",
+            .{ .selected = &remote_active },
+            null,
+        )) {
             if (world.setRemoteDebugActive(remote_active)) |p| {
                 const url = std.fmt.allocPrintZ(allocator, URL, .{p}) catch return null;
                 defer allocator.free(url);

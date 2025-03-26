@@ -33,11 +33,11 @@ inline fn isLiveCycle(cycle: u64) bool {
 
 pub fn JobSystem(comptime queue_config: QueueConfig) type {
     const Atomic = std.atomic.Value;
-    const FreeQueue = cetech1.mem.MPMCBoundedQueue(usize, queue_config.max_jobs);
-    const TaskQueue = cetech1.mem.MPMCBoundedQueue(public.TaskID, queue_config.max_jobs);
-    const PrioTaskQueue = cetech1.mem.MPMCBoundedQueue(public.TaskID, 1024);
+    const FreeQueue = cetech1.MPMCBoundedQueue(usize, queue_config.max_jobs);
+    const TaskQueue = cetech1.MPMCBoundedQueue(public.TaskID, queue_config.max_jobs);
+    const PrioTaskQueue = cetech1.MPMCBoundedQueue(public.TaskID, 1024);
 
-    const TaskBuffer = std.ArrayList(public.TaskID);
+    const TaskBuffer = cetech1.ArrayList(public.TaskID);
 
     const Worker = struct {
         const Self = @This();
@@ -186,7 +186,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
 
         pub fn deinit(self: *Self) void {
             for (0..queue_config.max_threads) |wid| {
-                self.workers[wid].buffer.deinit();
+                self.workers[wid].buffer.deinit(self.allocator);
             }
         }
 
@@ -594,7 +594,7 @@ fn combine(prereq: []const public.TaskID) !public.TaskID {
 }
 
 test "MPMCBoundedQueue" {
-    const Q = cetech1.mem.MPMCBoundedQueue(u32, 128);
+    const Q = cetech1.MPMCBoundedQueue(u32, 128);
     var q = Q.init();
 
     try std.testing.expect(null == q.pop());

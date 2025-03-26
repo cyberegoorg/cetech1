@@ -49,12 +49,12 @@ const ExplorerTab = struct {
 // Fill editor tab interface
 var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = EXPLORER_TAB_NAME,
-    .tab_hash = strid.strId32(EXPLORER_TAB_NAME),
+    .tab_hash = cetech1.strId32(EXPLORER_TAB_NAME),
 
     .create_on_init = true,
     .show_pin_object = true,
     .show_sel_obj_in_title = true,
-    .ignore_selection_from_tab = &.{cetech1.strid.strId32("ct_editor_asset_browser_tab")},
+    .ignore_selection_from_tab = &.{cetech1.strId32("ct_editor_asset_browser_tab")},
 }, struct {
 
     // Can open tab
@@ -184,7 +184,7 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?strid.StrId32) !void {
+    pub fn objSelected(inst: *editor.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) !void {
         _ = sender_tab_hash; // autofix
 
         var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));

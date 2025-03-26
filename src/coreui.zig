@@ -63,14 +63,14 @@ var _new_scale_factor: ?f32 = null;
 // var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
 //     cetech1.kernel.PreStore,
 //     "CoreUI",
-//     &[_]cetech1.strid.StrId64{},
+//     &[_]cetech1.StrId64{},
 //     KernelTask.update,
 // );
 
 var ui_being_task = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.PreUpdate,
     "CoreUI: begin",
-    &[_]cetech1.strid.StrId64{},
+    &[_]cetech1.StrId64{},
     0,
     struct {
         pub fn update(_: u64, _: f32) !void {
@@ -109,7 +109,7 @@ var ui_being_task = cetech1.kernel.KernelTaskUpdateI.implment(
 var ui_draw_task = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.PostUpdate,
     "CoreUI: draw",
-    &[_]cetech1.strid.StrId64{},
+    &[_]cetech1.StrId64{},
     1,
     struct {
         pub fn update(kernel_tick: u64, dt: f32) !void {
@@ -123,7 +123,7 @@ var ui_draw_task = cetech1.kernel.KernelTaskUpdateI.implment(
 var ui_end_task = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.PreStore,
     "CoreUI: end",
-    &[_]cetech1.strid.StrId64{},
+    &[_]cetech1.StrId64{},
     0,
     struct {
         pub fn update(_: u64, _: f32) !void {
@@ -1311,8 +1311,8 @@ fn pushObjUUID(obj: cdb.ObjId) void {
 
 fn uiFilterPass(allocator: std.mem.Allocator, filter: [:0]const u8, value: [:0]const u8, is_path: bool) ?f64 {
     // Collect token for filter
-    var tokens = std.ArrayList([]const u8).init(allocator);
-    defer tokens.deinit();
+    var tokens = cetech1.ArrayList([]const u8){};
+    defer tokens.deinit(allocator);
 
     var split = std.mem.splitAny(u8, filter, " ");
     const first = split.first();
@@ -1323,7 +1323,7 @@ fn uiFilterPass(allocator: std.mem.Allocator, filter: [:0]const u8, value: [:0]c
         var buff: [128]u8 = undefined;
         const lower_token = std.ascii.lowerString(&buff, word);
 
-        tokens.append(lower_token) catch return null;
+        tokens.append(allocator, lower_token) catch return null;
     }
     //return 0;
 
@@ -1362,15 +1362,15 @@ pub fn labelText(label: [:0]const u8, text: [:0]const u8) void {
     zgui.labelText(label, "{s}", .{text});
 }
 
-pub fn coreUI(tmp_allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
+pub fn coreUI(allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
     var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "CoreUI");
     defer update_zone_ctx.End();
 
-    const impls = try apidb.api.getImpl(tmp_allocator, cetech1.coreui.CoreUII);
-    defer tmp_allocator.free(impls);
+    const impls = try apidb.api.getImpl(allocator, cetech1.coreui.CoreUII);
+    defer allocator.free(impls);
 
     for (impls) |iface| {
-        try iface.ui(tmp_allocator, kernel_tick, dt);
+        try iface.ui(allocator, kernel_tick, dt);
     }
 
     backend.draw();

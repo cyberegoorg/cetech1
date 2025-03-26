@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const strid = @import("strid.zig");
+const cetech1 = @import("root.zig");
 
 const platform = @import("platform.zig");
 
@@ -9,7 +9,7 @@ pub const ButtonAction = struct {};
 pub const AxisAction = struct {};
 
 pub const Action = struct {
-    name: strid.StrId32,
+    name: cetech1.StrId32,
 
     action: union(enum) {
         button: ButtonAction,
@@ -56,15 +56,15 @@ pub const ActionMapping = union(enum) {
 };
 
 pub const ActionsAPI = struct {
-    createActionSet: *const fn (name: strid.StrId32) anyerror!void,
-    addActions: *const fn (action_set: strid.StrId32, actions: []const Action) anyerror!void,
-    addMappings: *const fn (action_set: strid.StrId32, action: strid.StrId32, mapping: []const ActionMapping) anyerror!void,
+    createActionSet: *const fn (name: cetech1.StrId32) anyerror!void,
+    addActions: *const fn (action_set: cetech1.StrId32, actions: []const Action) anyerror!void,
+    addMappings: *const fn (action_set: cetech1.StrId32, action: cetech1.StrId32, mapping: []const ActionMapping) anyerror!void,
 
-    pushSet: *const fn (action_set: strid.StrId32) void,
+    pushSet: *const fn (action_set: cetech1.StrId32) void,
     popSet: *const fn () void,
 
-    isSetActive: *const fn (action_set: strid.StrId32) bool,
+    isSetActive: *const fn (action_set: cetech1.StrId32) bool,
 
-    isActionDown: *const fn (action: strid.StrId32) bool,
-    getActionAxis: *const fn (action: strid.StrId32) [2]f32,
+    isActionDown: *const fn (action: cetech1.StrId32) bool,
+    getActionAxis: *const fn (action: cetech1.StrId32) [2]f32,
 };

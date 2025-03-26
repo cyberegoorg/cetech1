@@ -242,7 +242,7 @@ const string_value_type_i = public.GraphValueTypeI.implement(
 
         pub fn calcValidityHash(value: []const u8) !public.ValidityHash {
             const v = std.mem.bytesAsValue([:0]u8, value);
-            return strid.strId64(v.*).id;
+            return cetech1.strId64(v.*).id;
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
@@ -387,20 +387,17 @@ const event_node_i = public.NodeI.implement(
     struct {
         const Self = @This();
 
-        pub fn getInputPins(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const public.NodePin {
+        pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
             _ = self; // autofix
             _ = node_obj; // autofix
             _ = graph_obj; // autofix
-            return allocator.dupe(public.NodePin, &.{});
-        }
 
-        pub fn getOutputPins(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const public.NodePin {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
-            return allocator.dupe(public.NodePin, &.{
-                public.NodePin.init("Flow", public.NodePin.pinHash("flow", true), public.PinTypes.Flow, null),
-            });
+            return .{
+                .in = try allocator.dupe(public.NodePin, &.{}),
+                .out = try allocator.dupe(public.NodePin, &.{
+                    public.NodePin.init("Flow", public.NodePin.pinHash("flow", true), public.PinTypes.Flow, null),
+                }),
+            };
         }
 
         pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: public.OutPins) !void {
@@ -436,20 +433,16 @@ const event_shutdown_node_i = public.NodeI.implement(
     struct {
         const Self = @This();
 
-        pub fn getInputPins(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const public.NodePin {
+        pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
             _ = self; // autofix
             _ = node_obj; // autofix
             _ = graph_obj; // autofix
-            return allocator.dupe(public.NodePin, &.{});
-        }
-
-        pub fn getOutputPins(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const public.NodePin {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
-            return allocator.dupe(public.NodePin, &.{
-                public.NodePin.init("Flow", public.NodePin.pinHash("flow", true), public.PinTypes.Flow, null),
-            });
+            return .{
+                .in = try allocator.dupe(public.NodePin, &.{}),
+                .out = try allocator.dupe(public.NodePin, &.{
+                    public.NodePin.init("Flow", public.NodePin.pinHash("flow", true), public.PinTypes.Flow, null),
+                }),
+            };
         }
 
         pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: public.OutPins) !void {
@@ -485,20 +478,16 @@ const event_tick_node_i = public.NodeI.implement(
     struct {
         const Self = @This();
 
-        pub fn getInputPins(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const public.NodePin {
+        pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
             _ = self; // autofix
             _ = node_obj; // autofix
             _ = graph_obj; // autofix
-            return allocator.dupe(public.NodePin, &.{});
-        }
-
-        pub fn getOutputPins(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const public.NodePin {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
-            return allocator.dupe(public.NodePin, &.{
-                public.NodePin.init("Flow", public.NodePin.pinHash("flow", true), public.PinTypes.Flow, null),
-            });
+            return .{
+                .in = try allocator.dupe(public.NodePin, &.{}),
+                .out = try allocator.dupe(public.NodePin, &.{
+                    public.NodePin.init("Flow", public.NodePin.pinHash("flow", true), public.PinTypes.Flow, null),
+                }),
+            };
         }
 
         pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: public.OutPins) !void {
@@ -535,21 +524,17 @@ const print_node_i = public.NodeI.implement(
     },
     PrintNodeState,
     struct {
-        pub fn getInputPins(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const public.NodePin {
+        pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
             _ = self; // autofix
             _ = node_obj; // autofix
             _ = graph_obj; // autofix
-            return allocator.dupe(public.NodePin, &.{
-                public.NodePin.init("Flow", public.NodePin.pinHash("flow", false), public.PinTypes.Flow, null),
-                public.NodePin.init("Value", public.NodePin.pinHash("value", false), public.PinTypes.GENERIC, null),
-            });
-        }
-
-        pub fn getOutputPins(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const public.NodePin {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
-            return allocator.dupe(public.NodePin, &.{});
+            return .{
+                .in = try allocator.dupe(public.NodePin, &.{
+                    public.NodePin.init("Flow", public.NodePin.pinHash("flow", false), public.PinTypes.Flow, null),
+                    public.NodePin.init("Value", public.NodePin.pinHash("value", false), public.PinTypes.GENERIC, null),
+                }),
+                .out = try allocator.dupe(public.NodePin, &.{}),
+            };
         }
 
         pub fn create(self: *const public.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {
@@ -572,9 +557,9 @@ const print_node_i = public.NodeI.implement(
 
             var buffer: [256]u8 = undefined;
             var fba = std.heap.FixedBufferAllocator.init(&buffer);
-            const tmp_allocator = fba.allocator();
+            const allocator = fba.allocator();
 
-            const str_value = try iface.valueToString(tmp_allocator, in_pins.data.?[1].?[0..iface.size]);
+            const str_value = try iface.valueToString(allocator, in_pins.data.?[1].?[0..iface.size]);
             log.debug("{s}", .{str_value});
         }
 
@@ -610,30 +595,28 @@ const const_node_i = public.NodeI.implement(
         const Self = @This();
         const out = public.NodePin.pinHash("value", true);
 
-        pub fn getInputPins(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const public.NodePin {
+        pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
             _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
-            return allocator.dupe(public.NodePin, &.{});
-        }
 
-        pub fn getOutputPins(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const public.NodePin {
-            _ = self; // autofix
             const db = _cdb.getDbFromObjid(graph_obj);
             const node_r = public.GraphType.read(_cdb, node_obj).?;
+
+            var type_hash: cetech1.StrId32 = .{};
             if (public.NodeType.readSubObj(_cdb, node_r, .settings)) |setting| {
                 const settings_r = public.ConstNodeSettings.read(_cdb, setting).?;
 
                 if (public.ConstNodeSettings.readSubObj(_cdb, settings_r, .value)) |value_obj| {
                     const value_type = _graphvm.findValueTypeIByCdb(_cdb.getTypeHash(db, value_obj.type_idx).?).?;
-
-                    return allocator.dupe(public.NodePin, &.{
-                        public.NodePin.init("Value", public.NodePin.pinHash("value", true), value_type.type_hash, null),
-                    });
+                    type_hash = value_type.type_hash;
                 }
             }
 
-            return allocator.dupe(public.NodePin, &.{});
+            return .{
+                .in = try allocator.dupe(public.NodePin, &.{}),
+                .out = try allocator.dupe(public.NodePin, &.{
+                    public.NodePin.init("Value", public.NodePin.pinHash("value", true), type_hash, null),
+                }),
+            };
         }
 
         pub fn create(self: *const public.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {
@@ -699,25 +682,20 @@ const random_f32_node_i = public.NodeI.implement(
         const Self = @This();
         const out = public.NodePin.pinHash("value", true);
 
-        pub fn getInputPins(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const public.NodePin {
+        pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
             _ = self; // autofix
             _ = node_obj; // autofix
             _ = graph_obj; // autofix
-            return allocator.dupe(public.NodePin, &.{
-                public.NodePin.init("Min", public.NodePin.pinHash("min", false), public.PinTypes.F32, null),
-                public.NodePin.init("Max", public.NodePin.pinHash("max", false), public.PinTypes.F32, null),
-                public.NodePin.init("Seed", public.NodePin.pinHash("seed", false), public.PinTypes.U64, null),
-            });
-        }
-
-        pub fn getOutputPins(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const public.NodePin {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
-
-            return allocator.dupe(public.NodePin, &.{
-                public.NodePin.init("Value", public.NodePin.pinHash("value", true), public.PinTypes.F32, null),
-            });
+            return .{
+                .in = try allocator.dupe(public.NodePin, &.{
+                    public.NodePin.init("Min", public.NodePin.pinHash("min", false), public.PinTypes.F32, null),
+                    public.NodePin.init("Max", public.NodePin.pinHash("max", false), public.PinTypes.F32, null),
+                    public.NodePin.init("Seed", public.NodePin.pinHash("seed", false), public.PinTypes.U64, null),
+                }),
+                .out = try allocator.dupe(public.NodePin, &.{
+                    public.NodePin.init("Value", public.NodePin.pinHash("value", true), public.PinTypes.F32, null),
+                }),
+            };
         }
 
         pub fn create(self: *const public.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {

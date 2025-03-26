@@ -78,16 +78,16 @@ const KernelTask = struct {
         _cdb = _kernel.getDb();
         _g.var_1 += 1;
 
-        const tmp_alloc = try _tmpalloc.create();
-        defer _tmpalloc.destroy(tmp_alloc);
+        const allocator = try _tmpalloc.create();
+        defer _tmpalloc.destroy(allocator);
 
         if (spam_log) log.info("kernel_tick:{}\tdt:{}\tg_var_1:{}", .{ kernel_tick, dt, _g.var_1 });
 
         // Alocator see in tracy
-        const foo = try tmp_alloc.create(public.FooAPI);
+        const foo = try allocator.create(public.FooAPI);
         if (spam_log) log.info("alloc {}", .{foo});
 
-        defer tmp_alloc.destroy(foo);
+        defer allocator.destroy(foo);
 
         // Cdb object create test
         // if (do_cdb) {
@@ -114,7 +114,7 @@ const KernelTask = struct {
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
     "FooKernelTask",
-    &[_]strid.StrId64{},
+    &[_]cetech1.StrId64{},
     struct {
         pub fn init() !void {
             log.info("TASK INIT", .{});
@@ -132,7 +132,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
 var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "FooUpdate",
-    &[_]strid.StrId64{},
+    &[_]cetech1.StrId64{},
     null,
     KernelTask,
 );
@@ -140,7 +140,7 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
 var update_task2 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "FooUpdate2",
-    &[_]strid.StrId64{strid.strId64("FooUpdate")},
+    &[_]cetech1.StrId64{cetech1.strId64("FooUpdate")},
     null,
     KernelTask,
 );
@@ -148,7 +148,7 @@ var update_task2 = cetech1.kernel.KernelTaskUpdateI.implment(
 var update_task3 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "FooUpdate3",
-    &[_]strid.StrId64{strid.strId64("FooUpdate2")},
+    &[_]cetech1.StrId64{cetech1.strId64("FooUpdate2")},
     null,
     KernelTask,
 );
@@ -156,9 +156,9 @@ var update_task3 = cetech1.kernel.KernelTaskUpdateI.implment(
 var update_task4 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "FooUpdate4",
-    &[_]strid.StrId64{
-        strid.strId64("FooUpdate2"),
-        strid.strId64("FooUpdate"),
+    &[_]cetech1.StrId64{
+        cetech1.strId64("FooUpdate2"),
+        cetech1.strId64("FooUpdate"),
     },
     null,
     KernelTask,
@@ -167,8 +167,8 @@ var update_task4 = cetech1.kernel.KernelTaskUpdateI.implment(
 var update_task5 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnStore,
     "FooUpdate5",
-    &[_]strid.StrId64{
-        //strid.strId64("FooUpdate4"),
+    &[_]cetech1.StrId64{
+        //cetech1.strId64("FooUpdate4"),
     },
     null,
     KernelTask,
@@ -176,8 +176,8 @@ var update_task5 = cetech1.kernel.KernelTaskUpdateI.implment(
 var update_task6 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnStore,
     "FooUpdate6",
-    &[_]strid.StrId64{
-        //strid.strId64("FooUpdate5"),
+    &[_]cetech1.StrId64{
+        //cetech1.strId64("FooUpdate5"),
     },
     null,
     KernelTask,
@@ -185,8 +185,8 @@ var update_task6 = cetech1.kernel.KernelTaskUpdateI.implment(
 var update_task7 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnStore,
     "FooUpdate7",
-    &[_]strid.StrId64{
-        //strid.strId64("FooUpdate5"),
+    &[_]cetech1.StrId64{
+        //cetech1.strId64("FooUpdate5"),
     },
     null,
     KernelTask,
@@ -194,8 +194,8 @@ var update_task7 = cetech1.kernel.KernelTaskUpdateI.implment(
 var update_task8 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnStore,
     "FooUpdate8",
-    &[_]strid.StrId64{
-        //strid.strId64("FooUpdate7"),
+    &[_]cetech1.StrId64{
+        //cetech1.strId64("FooUpdate7"),
     },
     null,
     KernelTask,

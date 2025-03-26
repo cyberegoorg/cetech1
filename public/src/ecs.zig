@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const strid = @import("strid.zig");
+const cetech1 = @import("root.zig");
 
 const cdb = @import("cdb.zig");
 
@@ -12,8 +12,8 @@ pub const ComponentId = EntityId;
 pub const SystemId = EntityId;
 
 pub const PinTypes = struct {
-    pub const Entity = strid.strId32("entity");
-    pub const World = strid.strId32("world");
+    pub const Entity = cetech1.strId32("entity");
+    pub const World = cetech1.strId32("world");
 };
 
 pub const Entity = cdb.CdbTypeDecl(
@@ -26,62 +26,62 @@ pub const Entity = cdb.CdbTypeDecl(
     struct {},
 );
 
-pub const Wildcard = strid.strId32("Wildcard");
-pub const Any = strid.strId32("Any");
-pub const Transitive = strid.strId32("Transitive");
-pub const Reflexive = strid.strId32("Reflexive");
-pub const Final = strid.strId32("Final");
-pub const DontInherit = strid.strId32("DontInherit");
-pub const Exclusive = strid.strId32("Exclusive");
-pub const Acyclic = strid.strId32("Acyclic");
-pub const Traversable = strid.strId32("Traversable");
-pub const Symmetric = strid.strId32("Symmetric");
-pub const With = strid.strId32("With");
-pub const OneOf = strid.strId32("OneOf");
-pub const IsA = strid.strId32("IsA");
-pub const ChildOf = strid.strId32("ChildOf");
-pub const DependsOn = strid.strId32("DependsOn");
-pub const SlotOf = strid.strId32("SlotOf");
-pub const OnDelete = strid.strId32("OnDelete");
-pub const OnDeleteTarget = strid.strId32("OnDeleteTarget");
-pub const Remove = strid.strId32("Remove");
-pub const Delete = strid.strId32("Delete");
-pub const Panic = strid.strId32("Panic");
+pub const Wildcard = cetech1.strId32("Wildcard");
+pub const Any = cetech1.strId32("Any");
+pub const Transitive = cetech1.strId32("Transitive");
+pub const Reflexive = cetech1.strId32("Reflexive");
+pub const Final = cetech1.strId32("Final");
+pub const DontInherit = cetech1.strId32("DontInherit");
+pub const Exclusive = cetech1.strId32("Exclusive");
+pub const Acyclic = cetech1.strId32("Acyclic");
+pub const Traversable = cetech1.strId32("Traversable");
+pub const Symmetric = cetech1.strId32("Symmetric");
+pub const With = cetech1.strId32("With");
+pub const OneOf = cetech1.strId32("OneOf");
+pub const IsA = cetech1.strId32("IsA");
+pub const ChildOf = cetech1.strId32("ChildOf");
+pub const DependsOn = cetech1.strId32("DependsOn");
+pub const SlotOf = cetech1.strId32("SlotOf");
+pub const OnDelete = cetech1.strId32("OnDelete");
+pub const OnDeleteTarget = cetech1.strId32("OnDeleteTarget");
+pub const Remove = cetech1.strId32("Remove");
+pub const Delete = cetech1.strId32("Delete");
+pub const Panic = cetech1.strId32("Panic");
 
-pub const PredEq = strid.strId32("PredEq");
-pub const PredMatch = strid.strId32("PredMatch");
-pub const PredLookup = strid.strId32("PredLookup");
-pub const Union = strid.strId32("Union");
-pub const Alias = strid.strId32("Alias");
-pub const Prefab = strid.strId32("Prefab");
-pub const Disabled = strid.strId32("Disabled");
+pub const PredEq = cetech1.strId32("PredEq");
+pub const PredMatch = cetech1.strId32("PredMatch");
+pub const PredLookup = cetech1.strId32("PredLookup");
+pub const Union = cetech1.strId32("Union");
+pub const Alias = cetech1.strId32("Alias");
+pub const Prefab = cetech1.strId32("Prefab");
+pub const Disabled = cetech1.strId32("Disabled");
 
-pub const OnStart = strid.strId32("OnStart");
-pub const PreFrame = strid.strId32("PreFrame");
-pub const OnLoad = strid.strId32("OnLoad");
-pub const PostLoad = strid.strId32("PostLoad");
-pub const PreUpdate = strid.strId32("PreUpdate");
-pub const OnUpdate = strid.strId32("OnUpdate");
-pub const OnValidate = strid.strId32("OnValidate");
-pub const PostUpdate = strid.strId32("PostUpdate");
-pub const PreStore = strid.strId32("PreStore");
-pub const OnStore = strid.strId32("OnStore");
-pub const PostFrame = strid.strId32("PostFrame");
+pub const OnStart = cetech1.strId32("OnStart");
+pub const PreFrame = cetech1.strId32("PreFrame");
+pub const OnLoad = cetech1.strId32("OnLoad");
+pub const PostLoad = cetech1.strId32("PostLoad");
+pub const PreUpdate = cetech1.strId32("PreUpdate");
+pub const OnUpdate = cetech1.strId32("OnUpdate");
+pub const OnValidate = cetech1.strId32("OnValidate");
+pub const PostUpdate = cetech1.strId32("PostUpdate");
+pub const PreStore = cetech1.strId32("PreStore");
+pub const OnStore = cetech1.strId32("OnStore");
+pub const PostFrame = cetech1.strId32("PostFrame");
 
-pub const Phase = strid.strId32("Phase");
-pub const OnAdd = strid.strId32("OnAdd");
-pub const OnRemove = strid.strId32("OnRemove");
-pub const OnSet = strid.strId32("OnSet");
-pub const Monitor = strid.strId32("Monitor");
-pub const OnTableCreate = strid.strId32("OnTableCreate");
-pub const OnTableDelete = strid.strId32("OnTableDelete");
-pub const OnTableEmpty = strid.strId32("OnTableEmpty");
-pub const OnTableFill = strid.strId32("OnTableFill");
+pub const Phase = cetech1.strId32("Phase");
+pub const OnAdd = cetech1.strId32("OnAdd");
+pub const OnRemove = cetech1.strId32("OnRemove");
+pub const OnSet = cetech1.strId32("OnSet");
+pub const Monitor = cetech1.strId32("Monitor");
+pub const OnTableCreate = cetech1.strId32("OnTableCreate");
+pub const OnTableDelete = cetech1.strId32("OnTableDelete");
+pub const OnTableEmpty = cetech1.strId32("OnTableEmpty");
+pub const OnTableFill = cetech1.strId32("OnTableFill");
 
-pub fn id(comptime T: type) strid.StrId32 {
+pub fn id(comptime T: type) cetech1.StrId32 {
     var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
     const name = name_iter.first();
-    return strid.strId32(name);
+    return cetech1.strId32(name);
 }
 
 pub const Self_ = 1 << 63;
@@ -121,7 +121,7 @@ pub const TermId = extern struct {
 };
 
 pub const QueryTerm = struct {
-    id: strid.StrId32,
+    id: cetech1.StrId32,
     inout: InOutKind = .InOutDefault,
     oper: OperatorKind = .And,
     src: TermId = .{},
@@ -135,10 +135,10 @@ pub const IterO = opaque {};
 pub const ComponentI = struct {
     const Self = @This();
     pub const c_name = "ct_ecs_component_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
     name: [:0]const u8,
-    id: strid.StrId32,
+    id: cetech1.StrId32,
     size: usize,
     aligment: usize,
 
@@ -172,7 +172,7 @@ pub const ComponentI = struct {
 
         return Self{
             .name = cname,
-            .id = strid.strId32(name),
+            .id = cetech1.strId32(name),
 
             .size = @sizeOf(T),
             .aligment = @alignOf(T),
@@ -262,10 +262,10 @@ pub const ComponentI = struct {
 
 pub const SystemI = struct {
     pub const c_name = "ct_ecs_system_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
     name: [:0]const u8 = undefined,
-    phase: strid.StrId32 = undefined,
+    phase: cetech1.StrId32 = undefined,
     query: []const QueryTerm,
     multi_threaded: bool = false,
     instanced: bool = false,
@@ -296,7 +296,7 @@ pub const SystemI = struct {
 
 pub const OnWorldI = struct {
     pub const c_name = "ct_ecs_on_world_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
     onCreate: *const fn (world: World) anyerror!void = undefined,
     onDestroy: *const fn (world: World) anyerror!void = undefined,
@@ -369,16 +369,16 @@ pub const World = struct {
     }
 
     pub inline fn setId(self: World, comptime T: type, entity: EntityId, ptr: ?*const T) EntityId {
-        return self.vtable.setId(self.ptr, entity, id(T), @sizeOf(T), ptr);
+        return self.vtable.setComponent(self.ptr, entity, id(T), @sizeOf(T), ptr);
     }
 
-    pub inline fn getMutId(self: World, comptime T: type, entity: EntityId) ?*T {
-        const ptr = self.vtable.getMutId(self.ptr, entity, id(T));
+    pub inline fn getMutComponent(self: World, comptime T: type, entity: EntityId) ?*T {
+        const ptr = self.vtable.getMutComponent(self.ptr, entity, id(T));
         return @alignCast(@ptrCast(ptr));
     }
 
-    pub inline fn setIdRaw(self: World, entity: EntityId, cid: strid.StrId32, size: usize, ptr: ?*const anyopaque) EntityId {
-        return self.vtable.setId(self.ptr, entity, cid, size, ptr);
+    pub inline fn setIdRaw(self: World, entity: EntityId, cid: cetech1.StrId32, size: usize, ptr: ?*const anyopaque) EntityId {
+        return self.vtable.setComponent(self.ptr, entity, cid, size, ptr);
     }
 
     pub inline fn progress(self: World, dt: f32) bool {
@@ -429,8 +429,9 @@ pub const World = struct {
         newEntities: *const fn (world: *anyopaque, allocator: std.mem.Allocator, id: EntityId, count: usize) ?[]EntityId,
         destroyEntities: *const fn (self: *anyopaque, ents: []const EntityId) void,
 
-        setId: *const fn (world: *anyopaque, entity: EntityId, id: strid.StrId32, size: usize, ptr: ?*const anyopaque) EntityId,
-        getMutId: *const fn (world: *anyopaque, entity: EntityId, id: strid.StrId32) ?*anyopaque,
+        setComponent: *const fn (world: *anyopaque, entity: EntityId, id: cetech1.StrId32, size: usize, ptr: ?*const anyopaque) EntityId,
+        getMutComponent: *const fn (world: *anyopaque, entity: EntityId, id: cetech1.StrId32) ?*anyopaque,
+
         createQuery: *const fn (world: *anyopaque, query: []const QueryTerm) anyerror!Query,
 
         progress: *const fn (world: *anyopaque, dt: f32) bool,
@@ -545,8 +546,8 @@ pub const Iter = struct {
     };
 };
 
-pub const ECS_WORLD_CONTEXT = strid.strId32("ecs_world_context");
-pub const ECS_ENTITY_CONTEXT = strid.strId32("ecs_entity_context");
+pub const ECS_WORLD_CONTEXT = cetech1.strId32("ecs_world_context");
+pub const ECS_ENTITY_CONTEXT = cetech1.strId32("ecs_entity_context");
 
 pub const EcsAPI = struct {
     createWorld: *const fn () anyerror!World,

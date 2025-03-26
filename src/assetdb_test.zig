@@ -25,14 +25,14 @@ pub fn WriteBlobToNull(
     blob: []const u8,
     asset: cdb.ObjId,
     obj_uuid: cetech1.uuid.Uuid,
-    prop_hash: cetech1.strid.StrId32,
+    prop_hash: cetech1.StrId32,
     root_path: []const u8,
-    tmp_allocator: std.mem.Allocator,
+    allocator: std.mem.Allocator,
 ) anyerror!void {
     _ = blob;
     _ = asset;
     _ = prop_hash;
-    _ = tmp_allocator;
+    _ = allocator;
     _ = obj_uuid;
     _ = root_path;
 }
@@ -40,13 +40,13 @@ pub fn WriteBlobToNull(
 pub fn ReadBlobFromNull(
     asset: cdb.ObjId,
     obj_uuid: cetech1.uuid.Uuid,
-    prop_hash: cetech1.strid.StrId32,
-    tmp_allocator: std.mem.Allocator,
+    prop_hash: cetech1.StrId32,
+    allocator: std.mem.Allocator,
 ) anyerror![]u8 {
     _ = asset;
     _ = obj_uuid;
     _ = prop_hash;
-    _ = tmp_allocator;
+    _ = allocator;
     return &.{};
 }
 
@@ -209,7 +209,7 @@ test "asset: Should save asset to json" {
             .{
                 private.api.getUuid(asset).?,
                 private.api.getUuid(asset_obj).?,
-                cetech1.strid.strId32(&private.api.getUuid(asset_obj).?.bytes).id,
+                cetech1.strId32(&private.api.getUuid(asset_obj).?.bytes).id,
                 private.api.getUuid(sub_obj1).?,
                 private.api.getUuid(ref_obj1).?,
                 private.api.getUuid(sub_obj2).?,

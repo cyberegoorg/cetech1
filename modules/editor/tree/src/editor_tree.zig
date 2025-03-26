@@ -10,12 +10,12 @@ const editor = @import("editor");
 
 pub const UiTreeAspect = struct {
     pub const c_name = "ct_ui_tree_aspect";
-    pub const name_hash = strid.strId32(@This().c_name);
+    pub const name_hash = cetech1.strId32(@This().c_name);
 
     ui_tree: *const fn (
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        context: []const strid.StrId64,
+        context: []const cetech1.StrId64,
         obj: coreui.SelectionItem,
         selected_obj: *coreui.Selection,
         depth: u32,
@@ -41,7 +41,7 @@ pub const UiTreeAspect = struct {
 
 pub const UiTreeFlatenPropertyAspect = struct {
     pub const c_name = "ct_ui_tree_flaten_aspect";
-    pub const name_hash = strid.strId32(@This().c_name);
+    pub const name_hash = cetech1.strId32(@This().c_name);
 
     pub fn implement() UiTreeFlatenPropertyAspect {
         return UiTreeFlatenPropertyAspect{};
@@ -65,7 +65,7 @@ pub const TreeAPI = struct {
     cdbTreeView: *const fn (
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        []const strid.StrId64,
+        []const cetech1.StrId64,
         obj: coreui.SelectionItem,
         selection: *coreui.Selection,
         depth: u32,
@@ -78,7 +78,7 @@ pub const TreeAPI = struct {
     cdbObjTreeNode: *const fn (
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        contexts: []const strid.StrId64,
+        contexts: []const cetech1.StrId64,
         selection: *coreui.Selection,
         obj: coreui.SelectionItem,
         default_open: bool,

@@ -4,7 +4,7 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const gpu = cetech1.gpu;
 
-const zm = cetech1.math;
+const zm = cetech1.math.zmath;
 const strid = cetech1.strid;
 const ecs = cetech1.ecs;
 
@@ -12,19 +12,19 @@ const transform = @import("transform");
 const camera = @import("camera");
 const shader_system = @import("shader_system");
 
-pub const RENDERER_KERNEL_TASK = strid.strId64("Renderer");
+pub const RENDERER_KERNEL_TASK = cetech1.strId64("Renderer");
 pub const CULLING_VOLUME_NODE_TYPE_STR = "culling_volume";
-pub const CULLING_VOLUME_NODE_TYPE = strid.strId32(CULLING_VOLUME_NODE_TYPE_STR);
+pub const CULLING_VOLUME_NODE_TYPE = cetech1.strId32(CULLING_VOLUME_NODE_TYPE_STR);
 
 pub const DRAW_CALL_NODE_TYPE_STR = "draw_call";
-pub const DRAW_CALL_NODE_TYPE = strid.strId32(DRAW_CALL_NODE_TYPE_STR);
+pub const DRAW_CALL_NODE_TYPE = cetech1.strId32(DRAW_CALL_NODE_TYPE_STR);
 
 pub const LSD_CUBE_NODE_TYPE_STR = "lsd_cube";
-pub const LSD_CUBE_NODE_TYPE = strid.strId32(LSD_CUBE_NODE_TYPE_STR);
+pub const LSD_CUBE_NODE_TYPE = cetech1.strId32(LSD_CUBE_NODE_TYPE_STR);
 
 pub const PinTypes = struct {
-    pub const GPU_GEOMETRY = strid.strId32("gpu_geometry");
-    pub const GPU_INDEX_BUFFER = strid.strId32("gpu_index_buffer");
+    pub const GPU_GEOMETRY = cetech1.strId32("gpu_geometry");
+    pub const GPU_INDEX_BUFFER = cetech1.strId32("gpu_index_buffer");
 };
 
 pub const GPUGeometryCdb = cdb.CdbTypeDecl(
@@ -68,9 +68,9 @@ pub const CullingVolume = struct {
     }
 };
 
-const MatList = std.ArrayListUnmanaged(transform.WorldTransform);
-const RenderableBufferList = std.ArrayListUnmanaged(u8);
-const CullingVolumeList = std.ArrayListUnmanaged(CullingVolume);
+const MatList = cetech1.ArrayList(transform.WorldTransform);
+const RenderableBufferList = cetech1.ByteList;
+const CullingVolumeList = cetech1.ArrayList(CullingVolume);
 
 pub const CullingRequest = struct {
     allocator: std.mem.Allocator,
@@ -171,7 +171,7 @@ pub const CullingResult = struct {
 
 pub const RendereableI = struct {
     pub const c_name = "ct_rg_component_renderer_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
     culling: ?*const fn (allocator: std.mem.Allocator, builder: GraphBuilder, world: ecs.World, viewers: []const Viewer, rq: *CullingRequest) anyerror!void = undefined,
     render: *const fn (
@@ -200,7 +200,7 @@ pub const RendereableI = struct {
 
 pub const DefaultRenderGraphI = struct {
     pub const c_name = "ct_rg_default_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
     create: *const fn (
         allocator: std.mem.Allocator,
@@ -252,6 +252,14 @@ pub const Viewport = struct {
         return self.vtable.renderMe(self.ptr);
     }
 
+    pub inline fn setDebugCulling(self: Viewport, enable: bool) void {
+        return self.vtable.setDebugCulling(self.ptr, enable);
+    }
+
+    pub inline fn getDebugCulling(self: Viewport) bool {
+        return self.vtable.getDebugCulling(self.ptr);
+    }
+
     ptr: *anyopaque,
     vtable: *const VTable,
 
@@ -260,9 +268,14 @@ pub const Viewport = struct {
         getTexture: *const fn (viewport: *anyopaque) ?gpu.TextureHandle,
         getFb: *const fn (viewport: *anyopaque) ?gpu.FrameBufferHandle,
         getSize: *const fn (viewport: *anyopaque) [2]f32,
+
         getMainCamera: *const fn (viewport: *anyopaque) ?ecs.EntityId,
         setMainCamera: *const fn (viewport: *anyopaque, camera_ent: ?ecs.EntityId) void,
+
         renderMe: *const fn (viewport: *anyopaque) void,
+
+        getDebugCulling: *const fn (viewport: *anyopaque) bool,
+        setDebugCulling: *const fn (viewport: *anyopaque, enable: bool) void,
 
         pub fn implement(comptime T: type) VTable {
             if (!std.meta.hasFn(T, "setSize")) @compileError("implement me");
@@ -279,6 +292,9 @@ pub const Viewport = struct {
                 .renderMe = &T.renderMe,
                 .setMainCamera = &T.setMainCamera,
                 .getMainCamera = &T.getMainCamera,
+
+                .getDebugCulling = &T.getDebugCulling,
+                .setDebugCulling = &T.setDebugCulling,
             };
         }
     };
@@ -334,10 +350,10 @@ pub const Viewer = struct {
     mtx: [16]f32,
     proj: [16]f32,
     camera: camera.Camera,
-    context: strid.StrId32,
+    context: cetech1.StrId32,
 };
 
-pub const ResourceId = strid.StrId32;
+pub const ResourceId = cetech1.StrId32;
 pub const ViewportColorResource = "viewport_color";
 
 pub const TextureInfo = struct {
@@ -396,7 +412,7 @@ pub const GraphBuilder = struct {
         return builder.vtable.getLayer(builder.ptr, layer);
     }
 
-    pub inline fn getLayerById(builder: GraphBuilder, layer: strid.StrId32) gpu.ViewId {
+    pub inline fn getLayerById(builder: GraphBuilder, layer: cetech1.StrId32) gpu.ViewId {
         return builder.vtable.getLayerById(builder.ptr, layer);
     }
 
@@ -424,7 +440,7 @@ pub const GraphBuilder = struct {
         exportLayer: *const fn (builder: *anyopaque, pass: *Pass, layer: []const u8) anyerror!void,
         getTexture: *const fn (builder: *anyopaque, texture: []const u8) ?gpu.TextureHandle,
         getLayer: *const fn (builder: *anyopaque, layer: []const u8) gpu.ViewId,
-        getLayerById: *const fn (builder: *anyopaque, layer: strid.StrId32) gpu.ViewId,
+        getLayerById: *const fn (builder: *anyopaque, layer: cetech1.StrId32) gpu.ViewId,
 
         getViewers: *const fn (builder: *anyopaque) []Viewer,
 
@@ -493,4 +509,6 @@ pub const RenderGraphApi = struct {
 pub const RendererApi = struct {
     createViewport: *const fn (name: [:0]const u8, rg: Graph, world: ?ecs.World, camera_ent: ecs.EntityId) anyerror!Viewport,
     destroyViewport: *const fn (viewport: Viewport) void,
+
+    uiDebugMenuItems: *const fn (allocator: std.mem.Allocator, viewport: Viewport) void,
 };

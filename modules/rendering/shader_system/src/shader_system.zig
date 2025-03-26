@@ -3,7 +3,7 @@ const std = @import("std");
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const strid = cetech1.strid;
-const math = cetech1.math;
+const math = cetech1.math.zmath;
 const gpu = cetech1.gpu;
 
 const renderer = @import("renderer");
@@ -11,13 +11,13 @@ const renderer = @import("renderer");
 pub const MAX_SYSTEMS = 64;
 
 pub const PinTypes = struct {
-    pub const GPU_SHADER = strid.strId32("gpu_shader");
+    pub const GPU_SHADER = cetech1.strId32("gpu_shader");
 
-    pub const GPU_VEC2 = strid.strId32("gpu_vec2");
-    pub const GPU_VEC3 = strid.strId32("gpu_vec3");
-    pub const GPU_VEC4 = strid.strId32("gpu_vec4");
+    pub const GPU_VEC2 = cetech1.strId32("gpu_vec2");
+    pub const GPU_VEC3 = cetech1.strId32("gpu_vec3");
+    pub const GPU_VEC4 = cetech1.strId32("gpu_vec4");
 
-    pub const GPU_FLOAT = strid.strId32("gpu_float");
+    pub const GPU_FLOAT = cetech1.strId32("gpu_float");
 };
 
 pub const GPUShaderInstanceCDB = cdb.CdbTypeDecl(
@@ -196,7 +196,7 @@ pub const DefGraphNodeInput = struct {
     name: [:0]const u8,
     display_name: ?[:0]const u8 = null,
     type: ?DefGraphNodeInputType = null,
-    stage: ?strid.StrId32 = null,
+    stage: ?cetech1.StrId32 = null,
     contexts: ?[]const []const u8 = null,
 };
 
@@ -271,38 +271,40 @@ pub const ShaderVariant = struct {
     state: u64,
     rgba: u32,
 
-    layer: ?strid.StrId32,
+    layer: ?cetech1.StrId32,
 
-    uniforms: std.AutoArrayHashMap(strid.StrId32, gpu.UniformHandle),
+    uniforms: cetech1.AutoArrayHashMap(cetech1.StrId32, gpu.UniformHandle) = .{},
 
     system_set: SystemSet,
 };
 
 // TODO: use idx and and array
 pub const UniformMap = struct {
-    data: std.AutoArrayHashMap(strid.StrId32, []u8),
+    allocator: std.mem.Allocator,
+    data: cetech1.AutoArrayHashMap(cetech1.StrId32, []u8),
 
     pub fn init(allocator: std.mem.Allocator, max_uniforms: usize) !UniformMap {
-        var data = std.AutoArrayHashMap(strid.StrId32, []u8).init(allocator);
-        try data.ensureTotalCapacity(max_uniforms);
+        var data = cetech1.AutoArrayHashMap(cetech1.StrId32, []u8){};
+        try data.ensureTotalCapacity(allocator, max_uniforms);
 
         return .{
+            .allocator = allocator,
             .data = data,
         };
     }
 
     pub fn deinit(self: *UniformMap) void {
         for (self.data.values()) |values| {
-            self.data.allocator.free(values);
+            self.allocator.free(values);
         }
-        self.data.deinit();
+        self.data.deinit(self.allocator);
     }
 
-    pub fn set(self: *UniformMap, name: strid.StrId32, value: anytype) !void {
+    pub fn set(self: *UniformMap, name: cetech1.StrId32, value: anytype) !void {
         // TODO: prealocate on create
         const result = self.data.getOrPutAssumeCapacity(name);
         if (!result.found_existing) {
-            result.value_ptr.* = try self.data.allocator.dupe(u8, std.mem.asBytes(&value));
+            result.value_ptr.* = try self.allocator.dupe(u8, std.mem.asBytes(&value));
             return;
         }
         @memcpy(result.value_ptr.*, std.mem.asBytes(&value));
@@ -319,8 +321,8 @@ pub const GpuValue = struct {
 };
 
 pub const TranspileStages = struct {
-    pub const Vertex = strid.strId32("gpu_vertex");
-    pub const Fragment = strid.strId32("gpu_fragment");
+    pub const Vertex = cetech1.strId32("gpu_vertex");
+    pub const Fragment = cetech1.strId32("gpu_fragment");
 };
 
 pub const ConstructNodeSettings = cdb.CdbTypeDecl(
@@ -368,75 +370,67 @@ pub const UniformNodeResultType = enum {
     color,
 };
 
-pub const TranspileStageMap = std.AutoArrayHashMap(strid.StrId32, std.ArrayList(u8));
-pub const TranspileContextMap = std.StringArrayHashMap(TranspileStageMap);
+pub const TranspileStageMap = cetech1.AutoArrayHashMap(cetech1.StrId32, cetech1.ByteList);
+pub const TranspileContextMap = std.StringArrayHashMapUnmanaged(TranspileStageMap);
 
 pub const GpuTranspileState = struct {
     shader: ?Shader = null,
 
     // TODO: split to transpile context and state?
-    common_code: std.ArrayList(u8),
+    common_code: cetech1.ByteList = .{},
 
-    context_map: TranspileContextMap,
-    context_result_map: TranspileContextMap,
+    context_map: TranspileContextMap = .{},
+    context_result_map: TranspileContextMap = .{},
 
-    imports: std.StringArrayHashMap(DefImport),
-    guard_set: std.AutoArrayHashMap(strid.StrId64, void),
+    imports: std.StringArrayHashMapUnmanaged(DefImport) = .{},
+    guard_set: cetech1.AutoArrayHashMap(cetech1.StrId64, void) = .{},
     var_counter: u32 = 0,
 
-    defines: std.StringArrayHashMap(void),
+    defines: std.StringArrayHashMapUnmanaged(void) = .{},
 
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) GpuTranspileState {
         return .{
             .allocator = allocator,
-            .common_code = std.ArrayList(u8).init(allocator),
-
-            .imports = std.StringArrayHashMap(DefImport).init(allocator),
-            .guard_set = std.AutoArrayHashMap(strid.StrId64, void).init(allocator),
-
-            .context_map = TranspileContextMap.init(allocator),
-            .context_result_map = TranspileContextMap.init(allocator),
-            .defines = std.StringArrayHashMap(void).init(allocator),
         };
     }
 
     pub fn deinit(self: *GpuTranspileState) void {
-        self.common_code.deinit();
+        self.common_code.deinit(self.allocator);
 
-        self.imports.deinit();
-        self.guard_set.deinit();
+        self.imports.deinit(self.allocator);
+        self.guard_set.deinit(self.allocator);
 
-        self.defines.deinit();
+        self.defines.deinit(self.allocator);
 
         for (self.context_map.values()) |*v| {
-            for (v.values()) |vv| {
-                vv.deinit();
+            for (v.values()) |*vv| {
+                vv.deinit(self.allocator);
             }
-            v.deinit();
+            v.deinit(self.allocator);
         }
 
         for (self.context_result_map.values()) |*v| {
-            for (v.values()) |vv| {
-                vv.deinit();
+            for (v.values()) |*vv| {
+                vv.deinit(self.allocator);
             }
-            v.deinit();
+            v.deinit(self.allocator);
         }
     }
 
-    pub fn getWriter(self: *GpuTranspileState, context: []const u8, stage: strid.StrId32) !std.ArrayList(u8).Writer {
-        const get_ctx_result = try self.context_map.getOrPut(context);
+    pub fn getWriter(self: *GpuTranspileState, context: []const u8, stage: cetech1.StrId32) !cetech1.ByteList.Writer {
+        const get_ctx_result = try self.context_map.getOrPut(self.allocator, context);
         if (!get_ctx_result.found_existing) {
-            get_ctx_result.value_ptr.* = TranspileStageMap.init(self.allocator);
+            get_ctx_result.value_ptr.* = .{};
         }
 
-        const get_result = try get_ctx_result.value_ptr.getOrPut(stage);
+        const get_result = try get_ctx_result.value_ptr.getOrPut(self.allocator, stage);
         if (!get_result.found_existing) {
-            get_result.value_ptr.* = std.ArrayList(u8).init(self.allocator);
+            get_result.value_ptr.* = .{};
         }
 
-        return get_result.value_ptr.*.writer();
+        return get_result.value_ptr.*.writer(self.allocator);
     }
 
     pub inline fn fromBytes(state: []u8) *GpuTranspileState {
@@ -455,22 +449,22 @@ pub const ShaderSystemAPI = struct {
     addShaderDefiniton: *const fn (name: []const u8, definition: ShaderDefinition) anyerror!void,
     addSystemDefiniton: *const fn (name: []const u8, definition: ShaderDefinition) anyerror!void,
 
-    compileShader: *const fn (allocator: std.mem.Allocator, use_definitions: []const strid.StrId32, definition: ?ShaderDefinition) anyerror!?Shader,
+    compileShader: *const fn (allocator: std.mem.Allocator, use_definitions: []const cetech1.StrId32, definition: ?ShaderDefinition) anyerror!?Shader,
     destroyShader: *const fn (shader: Shader) void,
 
     createShaderInstance: *const fn (shader: Shader) anyerror!ShaderInstance,
     destroyShaderInstance: *const fn (shader: *ShaderInstance) void,
     selectShaderVariant: *const fn (
         shader_instance: ShaderInstance,
-        context: strid.StrId32,
+        context: cetech1.StrId32,
         systems: SystemSet,
     ) ?*const ShaderVariant,
 
     submitShaderUniforms: *const fn (encoder: gpu.Encoder, variant: *const ShaderVariant, shader_instance: ShaderInstance) void,
 
-    createSystemInstance: *const fn (system: strid.StrId32) anyerror!SystemInstance,
+    createSystemInstance: *const fn (system: cetech1.StrId32) anyerror!SystemInstance,
     destroySystemInstance: *const fn (system: *SystemInstance) void,
     submitSystemUniforms: *const fn (encoder: gpu.Encoder, system_instance: SystemInstance) void,
 
-    getSystemIdx: *const fn (system: strid.StrId32) usize,
+    getSystemIdx: *const fn (system: cetech1.StrId32) usize,
 };

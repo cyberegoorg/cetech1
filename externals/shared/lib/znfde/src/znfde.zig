@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("c.zig");
+const cnfde = @import("cnfde");
 const log = std.log.scoped(.znfde);
 
 pub const Error = error{
@@ -7,7 +7,7 @@ pub const Error = error{
 };
 
 pub fn makeError() Error {
-    if (c.NFD_GetError()) |ptr| {
+    if (cnfde.NFD_GetError()) |ptr| {
         log.err("{s}\n", .{
             std.mem.sliceTo(ptr, 0),
         });
@@ -24,7 +24,7 @@ const FilterItem = extern struct {
 pub fn openFileDialog(allocator: std.mem.Allocator, filter: ?[]const FilterItem, default_path: ?[:0]const u8) !?[:0]const u8 {
     var out_path: [*c]u8 = null;
 
-    const result = c.NFD_OpenDialog(
+    const result = cnfde.NFD_OpenDialog(
         &out_path,
         if (filter) |f| @ptrCast(f.ptr) else null,
         if (filter) |f| @intCast(f.len) else 0,
@@ -32,7 +32,7 @@ pub fn openFileDialog(allocator: std.mem.Allocator, filter: ?[]const FilterItem,
     );
 
     return switch (result) {
-        c.NFD_OKAY => {
+        cnfde.NFD_OKAY => {
             if (out_path == null) {
                 return null;
             }
@@ -40,7 +40,7 @@ pub fn openFileDialog(allocator: std.mem.Allocator, filter: ?[]const FilterItem,
             defer std.c.free(out_path);
             return try allocator.dupeZ(u8, std.mem.sliceTo(out_path, 0));
         },
-        c.NFD_ERROR => makeError(),
+        cnfde.NFD_ERROR => makeError(),
         else => null,
     };
 }
@@ -49,7 +49,7 @@ pub fn openFileDialog(allocator: std.mem.Allocator, filter: ?[]const FilterItem,
 pub fn saveFileDialog(allocator: std.mem.Allocator, filter: ?[]const FilterItem, default_path: ?[:0]const u8, default_name: ?[:0]const u8) !?[:0]const u8 {
     var out_path: [*c]u8 = null;
 
-    const result = c.NFD_SaveDialog(
+    const result = cnfde.NFD_SaveDialog(
         &out_path,
         if (filter) |f| @ptrCast(f.ptr) else null,
         if (filter) |f| @intCast(f.len) else 0,
@@ -58,7 +58,7 @@ pub fn saveFileDialog(allocator: std.mem.Allocator, filter: ?[]const FilterItem,
     );
 
     return switch (result) {
-        c.NFD_OKAY => {
+        cnfde.NFD_OKAY => {
             if (out_path == null) {
                 return null;
             }
@@ -66,7 +66,7 @@ pub fn saveFileDialog(allocator: std.mem.Allocator, filter: ?[]const FilterItem,
             defer std.c.free(out_path);
             return try allocator.dupeZ(u8, std.mem.sliceTo(out_path, 0));
         },
-        c.NFD_ERROR => makeError(),
+        cnfde.NFD_ERROR => makeError(),
         else => null,
     };
 }
@@ -75,29 +75,29 @@ pub fn saveFileDialog(allocator: std.mem.Allocator, filter: ?[]const FilterItem,
 pub fn openFolderDialog(allocator: std.mem.Allocator, default_path: ?[:0]const u8) !?[:0]const u8 {
     var out_path: [*c]u8 = null;
 
-    const result = c.NFD_PickFolder(&out_path, if (default_path != null) default_path.?.ptr else null);
+    const result = cnfde.NFD_PickFolder(&out_path, if (default_path != null) default_path.?.ptr else null);
 
     return switch (result) {
-        c.NFD_OKAY => {
+        cnfde.NFD_OKAY => {
             if (out_path == null) {
                 return null;
             }
             defer std.c.free(out_path);
             return try allocator.dupeZ(u8, std.mem.sliceTo(out_path, 0));
         },
-        c.NFD_ERROR => makeError(),
+        cnfde.NFD_ERROR => makeError(),
         else => null,
     };
 }
 
 pub fn init() !void {
-    const result = c.NFD_Init();
+    const result = cnfde.NFD_Init();
     return switch (result) {
-        c.NFD_ERROR => makeError(),
+        cnfde.NFD_ERROR => makeError(),
         else => {},
     };
 }
 
 pub fn deinit() void {
-    c.NFD_Quit();
+    cnfde.NFD_Quit();
 }

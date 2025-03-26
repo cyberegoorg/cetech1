@@ -77,7 +77,7 @@ const ObjBufferTab = struct {
 var obj_buffer_tab = editor.TabTypeI.implement(
     editor.TabTypeIArgs{
         .tab_name = TAB_NAME,
-        .tab_hash = cetech1.strid.strId32(TAB_NAME),
+        .tab_hash = cetech1.strId32(TAB_NAME),
 
         .create_on_init = true,
         .show_pin_object = false,
@@ -117,7 +117,7 @@ var obj_buffer_tab = editor.TabTypeI.implement(
             tab_o.inter_selection.deinit();
             tab_o.obj_buffer.deinit();
 
-            _editor.propagateSelection(tab_inst, &.{.{ .top_level_obj = .{}, .obj = cdb.OBJID_ZERO }});
+            _editor.propagateSelection(tab_inst, &.{.{ .top_level_obj = .{}, .obj = .{} }});
 
             if (_g.last_focused == tab_o) {
                 _g.last_focused = null;
@@ -232,7 +232,7 @@ var buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn isValid(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        contexts: cetech1.strid.StrId64,
+        contexts: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !bool {
@@ -253,7 +253,7 @@ var buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn menu(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        contexts: cetech1.strid.StrId64,
+        contexts: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !void {
@@ -269,7 +269,7 @@ var add_to_buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn isValid(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        contexts: cetech1.strid.StrId64,
+        contexts: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !bool {
@@ -295,7 +295,7 @@ var add_to_buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn menu(
         allocator: std.mem.Allocator,
         tab_: *editor.TabO,
-        contexts: cetech1.strid.StrId64,
+        contexts: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !void {

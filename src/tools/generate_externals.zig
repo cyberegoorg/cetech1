@@ -4,7 +4,7 @@ pub const ExternalsItem = struct {
     name: []const u8,
     license: []const u8,
 };
-pub const ExternalsList = std.ArrayList(ExternalsItem);
+pub const ExternalsList = std.ArrayListUnmanaged(ExternalsItem);
 
 pub const ExternalsConfig = struct {
     externals: []const ExternalsItem,

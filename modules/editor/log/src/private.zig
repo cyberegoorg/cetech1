@@ -35,7 +35,7 @@ const LogEntry = struct {
     msg: [:0]const u8,
 };
 
-const LogBuffer = std.ArrayList(LogEntry);
+const LogBuffer = cetech1.ArrayList(LogEntry);
 
 // Global state that can surive hot-reload
 const G = struct {
@@ -97,7 +97,7 @@ pub fn levelColor(level: cetech1.log.LogAPI.Level) [4]f32 {
 // Fill editor tab interface
 var log_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
-    .tab_hash = cetech1.strid.strId32(TAB_NAME),
+    .tab_hash = cetech1.strId32(TAB_NAME),
     .create_on_init = true,
     .category = "Debug",
 }, struct {
@@ -236,7 +236,7 @@ var handler = cetech1.log.LogHandlerI.implement(struct {
         defer _g.log_buffer_lock.unlock();
 
         if (_g.log_buffer) |*buffer| {
-            try buffer.append(.{ .level = level, .scope = try _allocator.dupeZ(u8, scope), .msg = try _allocator.dupeZ(u8, log_msg) });
+            try buffer.append(_allocator, .{ .level = level, .scope = try _allocator.dupeZ(u8, scope), .msg = try _allocator.dupeZ(u8, log_msg) });
         }
     }
 });
@@ -254,7 +254,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     // create global variable that can survive reload
     _g = try apidb.globalVar(G, module_name, "_g", .{});
-    if (_g.log_buffer == null) _g.log_buffer = LogBuffer.init(_allocator);
+    if (_g.log_buffer == null) _g.log_buffer = .{};
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
@@ -272,7 +272,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
             _allocator.free(entry.scope);
         }
 
-        _g.log_buffer.?.deinit();
+        _g.log_buffer.?.deinit(_allocator);
         _g.log_buffer = null;
     }
 

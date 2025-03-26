@@ -12,8 +12,17 @@ pub fn build(b: *std.Build) void {
         ) orelse true,
     };
 
+    const translate_c = b.addTranslateC(.{
+        .root_source_file = b.path("nativefiledialog/src/include/nfd.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const znfde = b.addModule("root", .{
         .root_source_file = b.path("src/znfde.zig"),
+        .imports = &.{
+            .{ .name = "cnfde", .module = translate_c.createModule() },
+        },
     });
 
     var lib: *std.Build.Step.Compile = undefined;

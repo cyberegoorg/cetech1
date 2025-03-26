@@ -1,6 +1,6 @@
 const std = @import("std");
 const platform = @import("platform.zig");
-const strid = @import("strid.zig");
+const cetech1 = @import("root.zig");
 const cdb = @import("cdb.zig");
 
 const ecs = @import("ecs.zig");
@@ -1023,7 +1023,7 @@ pub const DebugFlags = u32;
 /// No debug.
 pub const DebugFlags_None: DebugFlags = 0x00000000;
 
-/// Enable wireframe for all primitives.
+/// Enable wireframe for all cetech1.math.
 pub const DebugFlags_Wireframe: DebugFlags = 0x00000001;
 
 /// Enable infinitely fast hardware test. No draw calls will be submitted to driver.

@@ -88,7 +88,7 @@ test "Can implement and use interface" {
 
     const FooInterface = struct {
         pub const c_name = "ct_foo_i";
-        pub const name_hash = strid.strId64(@This().c_name);
+        pub const name_hash = cetech1.strId64(@This().c_name);
 
         bar: *const fn () f32,
     };
@@ -120,7 +120,7 @@ test "Interface should have multiple implementation" {
 
     const ct_foo_i = struct {
         pub const c_name = "ct_foo_i";
-        pub const name_hash = strid.strId64(@This().c_name);
+        pub const name_hash = cetech1.strId64(@This().c_name);
 
         bar: *const fn () i32,
     };
@@ -160,7 +160,7 @@ test "Interface implementation can be removed" {
 
     const ct_foo_i = struct {
         pub const c_name = "ct_foo_i";
-        pub const name_hash = strid.strId64(@This().c_name);
+        pub const name_hash = cetech1.strId64(@This().c_name);
         bar: *const fn () i32,
     };
 

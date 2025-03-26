@@ -8,16 +8,16 @@ const strid = cetech1.strid;
 const log = std.log.scoped(.editor);
 
 pub const Contexts = struct {
-    pub const edit = cetech1.strid.strId64("ct_edit_context");
-    pub const create = cetech1.strid.strId64("ct_create_context");
-    pub const delete = cetech1.strid.strId64("ct_delete_context");
-    pub const open = cetech1.strid.strId64("ct_open_context");
-    pub const debug = cetech1.strid.strId64("ct_debug_context");
+    pub const edit = cetech1.strId64("ct_edit_context");
+    pub const create = cetech1.strId64("ct_create_context");
+    pub const delete = cetech1.strId64("ct_delete_context");
+    pub const open = cetech1.strId64("ct_open_context");
+    pub const debug = cetech1.strId64("ct_debug_context");
 };
 
 pub const UiSetMenusAspect = struct {
     pub const c_name = "ct_ui_set_menus_aspect";
-    pub const name_hash = strid.strId32(@This().c_name);
+    pub const name_hash = cetech1.strId32(@This().c_name);
 
     add_menu: *const fn (
         allocator: std.mem.Allocator,
@@ -35,7 +35,7 @@ pub const UiSetMenusAspect = struct {
 
 pub const UiVisualAspect = struct {
     pub const c_name = "ct_ui_visual_aspect";
-    pub const name_hash = strid.strId32(@This().c_name);
+    pub const name_hash = cetech1.strId32(@This().c_name);
 
     ui_name: ?*const fn (
         buff: [:0]u8,
@@ -70,7 +70,7 @@ pub const UiVisualAspect = struct {
 
 pub const UiDropObj = struct {
     pub const c_name = "ct_ui_drop_aspect";
-    pub const name_hash = strid.strId32(@This().c_name);
+    pub const name_hash = cetech1.strId32(@This().c_name);
 
     ui_drop_obj: *const fn (
         allocator: std.mem.Allocator,
@@ -91,12 +91,12 @@ pub const UiDropObj = struct {
 
 pub const ObjContextMenuI = struct {
     pub const c_name = "ct_editor_obj_context_menu_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
     is_valid: ?*const fn (
         allocator: std.mem.Allocator,
         tab: *TabO,
-        context: strid.StrId64,
+        context: cetech1.StrId64,
         obj: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) anyerror!bool,
@@ -104,7 +104,7 @@ pub const ObjContextMenuI = struct {
     menu: ?*const fn (
         allocator: std.mem.Allocator,
         tab: *TabO,
-        context: strid.StrId64,
+        context: cetech1.StrId64,
         obj: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) anyerror!void,
@@ -122,9 +122,9 @@ pub const ObjContextMenuI = struct {
 
 pub const CreateAssetI = struct {
     pub const c_name = "ct_assetbrowser_create_asset_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
-    cdb_type: strid.StrId32,
+    cdb_type: cetech1.StrId32,
 
     menu_item: *const fn () anyerror![:0]const u8,
 
@@ -134,7 +134,7 @@ pub const CreateAssetI = struct {
         folder: cdb.ObjId,
     ) anyerror!void,
 
-    pub fn implement(cdb_type: strid.StrId32, comptime T: type) CreateAssetI {
+    pub fn implement(cdb_type: cetech1.StrId32, comptime T: type) CreateAssetI {
         if (!std.meta.hasFn(T, "menuItem")) @compileError("implement me");
         if (!std.meta.hasFn(T, "create")) @compileError("implement me");
 
@@ -158,27 +158,27 @@ pub const TabI = struct {
 
 pub const TabTypeIArgs = struct {
     tab_name: [:0]const u8,
-    tab_hash: strid.StrId32,
+    tab_hash: cetech1.StrId32,
     category: ?[:0]const u8 = null,
     create_on_init: bool = false,
     show_pin_object: bool = false,
     show_sel_obj_in_title: bool = false,
-    ignore_selection_from_tab: ?[]const strid.StrId32 = null,
-    only_selection_from_tab: ?[]const strid.StrId32 = null,
+    ignore_selection_from_tab: ?[]const cetech1.StrId32 = null,
+    only_selection_from_tab: ?[]const cetech1.StrId32 = null,
 };
 
 pub const TabTypeI = struct {
     pub const c_name = "ct_editor_tab_type_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
     tab_name: [:0]const u8 = undefined,
-    tab_hash: strid.StrId32 = .{},
+    tab_hash: cetech1.StrId32 = .{},
     category: ?[:0]const u8 = null,
     create_on_init: bool = false,
     show_pin_object: bool = false,
     show_sel_obj_in_title: bool = false,
-    ignore_selection_from_tab: ?[]const strid.StrId32 = null,
-    only_selection_from_tab: ?[]const strid.StrId32 = null,
+    ignore_selection_from_tab: ?[]const cetech1.StrId32 = null,
+    only_selection_from_tab: ?[]const cetech1.StrId32 = null,
 
     menu_name: *const fn () anyerror![:0]const u8 = undefined,
     title: *const fn (*TabO) anyerror![:0]const u8 = undefined,
@@ -189,7 +189,7 @@ pub const TabTypeI = struct {
 
     menu: ?*const fn (*TabO) anyerror!void = null,
     ui: *const fn (*TabO, kernel_tick: u64, dt: f32) anyerror!void = undefined,
-    obj_selected: ?*const fn (*TabO, []const coreui.SelectionItem, sender_tab_hash: ?strid.StrId32) anyerror!void = null,
+    obj_selected: ?*const fn (*TabO, []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) anyerror!void = null,
     focused: ?*const fn (*TabO) anyerror!void = null,
     asset_root_opened: ?*const fn (*TabO) anyerror!void = null,
 
@@ -239,13 +239,13 @@ pub const EditorAPI = struct {
     propagateSelection: *const fn (tab: *TabO, obj: []const coreui.SelectionItem) void,
 
     // Tabs
-    openTabWithPinnedObj: *const fn (tab_type_hash: strid.StrId32, obj: coreui.SelectionItem) void,
-    getAllTabsByType: *const fn (allocator: std.mem.Allocator, tab_type_hash: strid.StrId32) anyerror![]*TabI,
+    openTabWithPinnedObj: *const fn (tab_type_hash: cetech1.StrId32, obj: coreui.SelectionItem) void,
+    getAllTabsByType: *const fn (allocator: std.mem.Allocator, tab_type_hash: cetech1.StrId32) anyerror![]*TabI,
 
     showObjContextMenu: *const fn (
         allocator: std.mem.Allocator,
         tab: *TabO,
-        contexts: []const strid.StrId64,
+        contexts: []const cetech1.StrId64,
         obj: coreui.SelectionItem,
     ) anyerror!void,
 

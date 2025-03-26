@@ -81,7 +81,7 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn isValid(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        context: cetech1.strid.StrId64,
+        context: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !bool {
@@ -107,7 +107,7 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn menu(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        context: strid.StrId64,
+        context: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !void {
@@ -136,15 +136,15 @@ const entity_component_menu_aspect = editor.UiSetMenusAspect.implement(struct {
         const db = _cdb.getDbFromObjid(obj);
         const entity_r = ecs.Entity.read(_cdb, obj).?;
 
-        var components_set = cetech1.mem.Set(cdb.TypeIdx).init(allocator);
-        defer components_set.deinit();
+        var components_set = cetech1.ArraySet(cdb.TypeIdx).init();
+        defer components_set.deinit(allocator);
 
         if (try ecs.Entity.readSubObjSet(_cdb, entity_r, .components, allocator)) |components| {
             defer allocator.free(components);
             //try components_set.ensureTotalCapacity(components.len);
 
             for (components) |component_obj| {
-                _ = try components_set.add(component_obj.type_idx);
+                _ = try components_set.add(allocator, component_obj.type_idx);
             }
         }
 

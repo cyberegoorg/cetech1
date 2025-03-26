@@ -9,7 +9,7 @@ const ecs = cetech1.ecs;
 const renderer = @import("renderer");
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
-const zm = cetech1.math;
+const zm = cetech1.math.zmath;
 
 const public = @import("camera.zig");
 const editor_inspector = @import("editor_inspector");
@@ -109,7 +109,7 @@ var camera_type_aspec = editor_inspector.UiPropertyAspect.implement(struct {
 });
 
 fn cameraSetingsMenu(world: ecs.World, camera_ent: ecs.EntityId) void {
-    var c = world.getMutId(public.Camera, camera_ent);
+    var c = world.getMutComponent(public.Camera, camera_ent);
     var cur_idx: i32 = @intFromEnum(c.?.type);
     if (_coreui.combo("type", .{ .current_item = &cur_idx, .items_separated_by_zeros = "perspective\x00" ++ "ortho\x00" })) {
         c.?.type = @enumFromInt(cur_idx);

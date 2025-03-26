@@ -8,7 +8,7 @@ const kernel = @import("kernel.zig");
 
 const strid = cetech1.strid;
 const public = cetech1.actions;
-const zm = cetech1.math;
+const zm = cetech1.math.zmath;
 
 pub var api = public.ActionsAPI{
     .createActionSet = createActionSet,
@@ -24,25 +24,27 @@ pub var api = public.ActionsAPI{
 const module_name = .actions;
 const log = std.log.scoped(module_name);
 
-const ActionsSet = std.AutoArrayHashMap(strid.StrId32, Action);
-const ActionSetMap = std.AutoArrayHashMap(strid.StrId32, ActionsSet);
+const ActionsSet = cetech1.AutoArrayHashMap(cetech1.StrId32, Action);
+const ActionSetMap = cetech1.AutoArrayHashMap(cetech1.StrId32, ActionsSet);
 
-const MappingList = std.ArrayList(public.ActionMapping);
-const ActiveSetStack = std.ArrayList(strid.StrId32);
+const MappingList = cetech1.ArrayList(public.ActionMapping);
+const ActiveSetStack = cetech1.StrId32List;
 
 const Action = struct {
     action: public.Action,
-    mapping: MappingList,
+    mapping: MappingList = .{},
 
-    pub fn init(allocator: std.mem.Allocator, action: public.Action) !Action {
+    pub fn init(action: public.Action) !Action {
         return .{
             .action = action,
-            .mapping = MappingList.init(allocator),
         };
     }
 
-    pub fn deinit(self: *Action) void {
-        self.mapping.deinit();
+    pub fn deinit(
+        self: *Action,
+        allocator: std.mem.Allocator,
+    ) void {
+        self.mapping.deinit(allocator);
     }
 };
 
@@ -52,61 +54,61 @@ var _active_set_stack: ActiveSetStack = undefined;
 
 pub fn init(allocator: std.mem.Allocator) !void {
     _allocator = allocator;
-    _action_set = ActionSetMap.init(allocator);
-    _active_set_stack = ActiveSetStack.init(allocator);
+    _action_set = .{};
+    _active_set_stack = .{};
 }
 
 pub fn deinit() void {
     for (_action_set.values()) |*value| {
         for (value.values()) |*value2| {
-            value2.deinit();
+            value2.deinit(_allocator);
         }
-        value.deinit();
+        value.deinit(_allocator);
     }
 
-    _action_set.deinit();
-    _active_set_stack.deinit();
+    _action_set.deinit(_allocator);
+    _active_set_stack.deinit(_allocator);
 }
 
 pub fn registerToApi() !void {
     try apidb.api.setZigApi(module_name, public.ActionsAPI, &api);
 }
 
-pub fn createActionSet(name: strid.StrId32) !void {
-    const result = try _action_set.getOrPut(name);
+pub fn createActionSet(name: cetech1.StrId32) !void {
+    const result = try _action_set.getOrPut(_allocator, name);
     if (!result.found_existing) {
-        result.value_ptr.* = ActionsSet.init(_allocator);
+        result.value_ptr.* = .{};
     }
 }
-pub fn addActions(action_set: strid.StrId32, actions: []const public.Action) !void {
+pub fn addActions(action_set: cetech1.StrId32, actions: []const public.Action) !void {
     var set = _action_set.getPtr(action_set) orelse return error.ActionSetNotFound;
 
     for (actions) |action| {
-        const result = try set.getOrPut(action.name);
+        const result = try set.getOrPut(_allocator, action.name);
         if (!result.found_existing) {
-            result.value_ptr.* = try Action.init(_allocator, action);
+            result.value_ptr.* = try .init(action);
         }
     }
 }
-pub fn addMappings(action_set: strid.StrId32, action: strid.StrId32, mapping: []const public.ActionMapping) !void {
+pub fn addMappings(action_set: cetech1.StrId32, action: cetech1.StrId32, mapping: []const public.ActionMapping) !void {
     var set = _action_set.getPtr(action_set) orelse return error.ActionSetNotFound;
     var a = set.getPtr(action) orelse return error.ActionNotFound;
-    try a.mapping.appendSlice(mapping);
+    try a.mapping.appendSlice(_allocator, mapping);
 }
 
-fn pushSet(action_set: strid.StrId32) void {
-    _active_set_stack.append(action_set) catch undefined;
+fn pushSet(action_set: cetech1.StrId32) void {
+    _active_set_stack.append(_allocator, action_set) catch undefined;
 }
 
 fn popSet() void {
     _ = _active_set_stack.pop();
 }
 
-fn isSetActive(action_set: strid.StrId32) bool {
+fn isSetActive(action_set: cetech1.StrId32) bool {
     return _active_set_stack.getLast().eql(action_set);
 }
 
-fn isActionDown(action: strid.StrId32) bool {
+fn isActionDown(action: cetech1.StrId32) bool {
     if (_active_set_stack.items.len == 0) return false;
 
     const set = _action_set.getPtr(_active_set_stack.getLast()) orelse return false;
@@ -167,7 +169,7 @@ pub fn checkInputs() void {
     last_pos = mouse_pos;
 }
 
-fn getActionAxis(action: strid.StrId32) [2]f32 {
+fn getActionAxis(action: cetech1.StrId32) [2]f32 {
     if (_active_set_stack.items.len == 0) return .{ 0, 0 };
 
     const set = _action_set.getPtr(_active_set_stack.getLast()).?;

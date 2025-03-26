@@ -7,9 +7,8 @@ const coreui = cetech1.coreui;
 const tempalloc = cetech1.tempalloc;
 const gpu = cetech1.gpu;
 
-const zm = cetech1.math;
+const zm = cetech1.math.zmath;
 const ecs = cetech1.ecs;
-const primitives = cetech1.primitives;
 const actions = cetech1.actions;
 
 const assetdb = cetech1.assetdb;
@@ -90,13 +89,13 @@ const SimulationTab = struct {
 // Fill editor tab interface
 var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
-    .tab_hash = cetech1.strid.strId32(TAB_NAME),
+    .tab_hash = cetech1.strId32(TAB_NAME),
 
     //    .create_on_init = true,
     .show_sel_obj_in_title = true,
     .show_pin_object = true,
 
-    .ignore_selection_from_tab = &.{cetech1.strid.strId32("ct_editor_asset_browser_tab")},
+    .ignore_selection_from_tab = &.{cetech1.strId32("ct_editor_asset_browser_tab")},
 }, struct {
 
     // Return name for menu /Tabs/
@@ -261,12 +260,13 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         if (_coreui.beginMenu(allocator, cetech1.coreui.Icons.Debug, true, null)) {
             defer _coreui.endMenu();
+            _renderer.uiDebugMenuItems(allocator, tab_o.viewport);
             tab_o.flecs_port = _editor_entity.uiRemoteDebugMenuItems(&tab_o.world, allocator, tab_o.flecs_port);
         }
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.strid.StrId32) !void {
+    pub fn objSelected(inst: *editor.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) !void {
         _ = sender_tab_hash; // autofix
         var tab_o: *SimulationTab = @alignCast(@ptrCast(inst));
 
@@ -305,7 +305,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
     "EditorSimulationTab",
-    &[_]cetech1.strid.StrId64{renderer.RENDERER_KERNEL_TASK},
+    &[_]cetech1.StrId64{renderer.RENDERER_KERNEL_TASK},
     struct {
         pub fn init() !void {
             _g.rg = try _render_graph.create();

@@ -6,7 +6,7 @@ const cdb = cetech1.cdb;
 const coreui = cetech1.coreui;
 const tempalloc = cetech1.tempalloc;
 const gpu = cetech1.gpu;
-const zm = cetech1.math;
+const zm = cetech1.math.zmath;
 const ecs = cetech1.ecs;
 const actions = cetech1.actions;
 const assetdb = cetech1.assetdb;
@@ -87,12 +87,12 @@ const AssetPreviewTab = struct {
 // Fill editor tab interface
 var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
-    .tab_hash = cetech1.strid.strId32(TAB_NAME),
+    .tab_hash = cetech1.strId32(TAB_NAME),
 
     // TODO: Bug on linux CI
     .create_on_init = true,
     .show_sel_obj_in_title = true,
-    .only_selection_from_tab = &.{cetech1.strid.strId32("ct_editor_asset_browser_tab")},
+    .only_selection_from_tab = &.{cetech1.strId32("ct_editor_asset_browser_tab")},
     .show_pin_object = true,
 }, struct {
 
@@ -134,6 +134,8 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 .inst = @ptrCast(tab_inst),
             },
         };
+
+        tab_inst.viewport.setDebugCulling(true);
 
         return &tab_inst.tab_i;
     }
@@ -251,12 +253,13 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         if (_coreui.beginMenu(allocator, cetech1.coreui.Icons.Debug, true, null)) {
             defer _coreui.endMenu();
+            _renderer.uiDebugMenuItems(allocator, tab_o.viewport);
             tab_o.flecs_port = _editor_entity.uiRemoteDebugMenuItems(&tab_o.world, allocator, tab_o.flecs_port);
         }
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.strid.StrId32) !void {
+    pub fn objSelected(inst: *editor.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) !void {
         _ = sender_tab_hash; // autofix
         var tab_o: *AssetPreviewTab = @alignCast(@ptrCast(inst));
 
@@ -319,15 +322,15 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 });
 
-const ActivatedViewportActionSet = cetech1.strid.strId32("preview_activated_viewport");
-const ViewportActionSet = cetech1.strid.strId32("preview_viewport");
-const MoveAction = cetech1.strid.strId32("move");
-const LookAction = cetech1.strid.strId32("look");
-const LookActivationAction = cetech1.strid.strId32("look_activation");
+const ActivatedViewportActionSet = cetech1.strId32("preview_activated_viewport");
+const ViewportActionSet = cetech1.strId32("preview_viewport");
+const MoveAction = cetech1.strId32("move");
+const LookAction = cetech1.strId32("look");
+const LookActivationAction = cetech1.strId32("look_activation");
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
     "AssetPreviewTab",
-    &[_]cetech1.strid.StrId64{},
+    &[_]cetech1.StrId64{},
     struct {
         pub fn init() !void {
             try _actions.createActionSet(ViewportActionSet);

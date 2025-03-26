@@ -9,7 +9,7 @@ const ecs = cetech1.ecs;
 const renderer = @import("renderer");
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
-const zm = cetech1.math;
+const zm = cetech1.math.zmath;
 
 const graphvm = @import("graphvm");
 const transform = @import("transform");
@@ -49,7 +49,7 @@ var _g: *G = undefined;
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
     "RenderComponentInit",
-    &[_]strid.StrId64{strid.strId64("ShaderSystem")},
+    &[_]cetech1.StrId64{cetech1.strId64("ShaderSystem")},
     struct {
         pub fn init() !void {}
 
@@ -59,14 +59,14 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                     q.destroy();
                 }
 
-                wq.deinit();
+                wq.deinit(_allocator);
                 _g.world2query = null;
             }
         }
     },
 );
 
-const World2CullingQuery = std.AutoArrayHashMap(ecs.World, ecs.Query);
+const World2CullingQuery = cetech1.AutoArrayHashMap(ecs.World, ecs.Query);
 
 const query_onworld_i = ecs.OnWorldI.implement(struct {
     pub fn onCreate(world: ecs.World) !void {
@@ -76,10 +76,10 @@ const query_onworld_i = ecs.OnWorldI.implement(struct {
         });
 
         if (_g.world2query == null) {
-            _g.world2query = World2CullingQuery.init(_allocator);
+            _g.world2query = World2CullingQuery{};
         }
 
-        try _g.world2query.?.put(world, q);
+        try _g.world2query.?.put(_allocator, world, q);
     }
     pub fn onDestroy(world: ecs.World) !void {
         if (_g.world2query) |*wq| {
@@ -275,20 +275,20 @@ const render_component_renderer_i = renderer.RendereableI.implement(public.Rende
         var q = _g.world2query.?.get(world).?;
         var it = try q.iter();
 
-        var all_transforms = std.ArrayList(transform.WorldTransform).init(allocator);
-        defer all_transforms.deinit();
+        var all_transforms = cetech1.ArrayList(transform.WorldTransform){};
+        defer all_transforms.deinit(allocator);
 
-        var all_render_components = std.ArrayList(graphvm.GraphInstance).init(allocator);
-        defer all_render_components.deinit();
+        var all_render_components = cetech1.ArrayList(graphvm.GraphInstance){};
+        defer all_render_components.deinit(allocator);
 
         while (q.next(&it)) {
             const t = it.field(transform.WorldTransform, 0).?;
             const rc = it.field(public.RenderComponentInstance, 1).?;
 
-            try all_transforms.appendSlice(t);
+            try all_transforms.appendSlice(allocator, t);
 
             const containers = toInstanceSlice(rc);
-            try all_render_components.appendSlice(containers);
+            try all_render_components.appendSlice(allocator, containers);
         }
 
         try _graphvm.executeNode(
@@ -308,33 +308,33 @@ const render_component_renderer_i = renderer.RendereableI.implement(public.Rende
 
         if (states.len == 0) return;
 
-        var volumes = std.ArrayList(renderer.CullingVolume).init(allocator);
-        defer volumes.deinit();
+        var volumes = cetech1.ArrayList(renderer.CullingVolume){};
+        defer volumes.deinit(allocator);
 
-        var transforms_with_volumes = std.ArrayList(transform.WorldTransform).init(allocator);
-        defer transforms_with_volumes.deinit();
+        var transforms_with_volumes = cetech1.ArrayList(transform.WorldTransform){};
+        defer transforms_with_volumes.deinit(allocator);
 
-        var render_components_with_volumes = std.ArrayList(graphvm.GraphInstance).init(allocator);
-        defer render_components_with_volumes.deinit();
+        var render_components_with_volumes = cetech1.ArrayList(graphvm.GraphInstance){};
+        defer render_components_with_volumes.deinit(allocator);
 
-        var transforms_without_volumes = std.ArrayList(transform.WorldTransform).init(allocator);
-        defer transforms_without_volumes.deinit();
+        var transforms_without_volumes = cetech1.ArrayList(transform.WorldTransform){};
+        defer transforms_without_volumes.deinit(allocator);
 
-        var render_components_without_volumes = std.ArrayList(graphvm.GraphInstance).init(allocator);
-        defer render_components_without_volumes.deinit();
+        var render_components_without_volumes = cetech1.ArrayList(graphvm.GraphInstance){};
+        defer render_components_without_volumes.deinit(allocator);
 
         volumes.clearRetainingCapacity();
-        try volumes.ensureTotalCapacity(states.len);
+        try volumes.ensureTotalCapacity(allocator, states.len);
         for (states, 0..) |volume, idx| {
             if (volume) |v| {
                 const culling_volume: *renderer.CullingVolume = @alignCast(@ptrCast(v));
                 volumes.appendAssumeCapacity(culling_volume.*);
 
-                try transforms_with_volumes.append(all_transforms.items[idx]);
-                try render_components_with_volumes.append(all_render_components.items[idx]);
+                try transforms_with_volumes.append(allocator, all_transforms.items[idx]);
+                try render_components_with_volumes.append(allocator, all_render_components.items[idx]);
             } else {
-                try transforms_without_volumes.append(all_transforms.items[idx]);
-                try render_components_without_volumes.append(all_render_components.items[idx]);
+                try transforms_without_volumes.append(allocator, all_transforms.items[idx]);
+                try render_components_without_volumes.append(allocator, all_render_components.items[idx]);
             }
         }
 

@@ -1,5 +1,8 @@
 const std = @import("std");
 const profiler = @import("profiler.zig");
+const cetech1 = @import("root.zig");
+
+pub const TaskIdList = cetech1.ArrayList(TaskID);
 
 // ID for tasks
 pub const TaskID = enum(u32) {
@@ -42,8 +45,6 @@ pub const TaskID = enum(u32) {
         }
     };
 };
-
-pub const TaskIDList = std.ArrayList(TaskID);
 
 /// Structure for task wrap
 pub const TaskStub = struct {
@@ -91,8 +92,8 @@ pub fn batchWorkloadTask(
     const batch_count = items_count / args.batch_size;
     const batch_rest = items_count - (batch_count * args.batch_size);
 
-    var tasks = try std.ArrayList(TaskID).initCapacity(args.allocator, if (batch_rest == 0) batch_count else batch_count + 1);
-    defer tasks.deinit();
+    var tasks = try TaskIdList.initCapacity(args.allocator, if (batch_rest == 0) batch_count else batch_count + 1);
+    defer tasks.deinit(args.allocator);
 
     for (0..batch_count) |batch_id| {
         const task = CREATE_TASK_FCE.createTask(create_args, batch_id, args, args.batch_size);

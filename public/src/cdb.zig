@@ -1,14 +1,13 @@
 const std = @import("std");
-const strid = @import("strid.zig");
+const cetech1 = @import("root.zig");
 const uuid = @import("uuid.zig");
 
 const log = std.log.scoped(.assetdb);
 
-pub const OBJID_ZERO = ObjId{};
-
 pub const ObjVersion = u64;
+pub const TypeHash = cetech1.StrId32;
 
-pub const TypeHash = strid.StrId32;
+pub const ObjIdList = cetech1.ArrayList(ObjId);
 
 /// Type idx
 pub const TypeIdx = packed struct(u16) {
@@ -153,7 +152,7 @@ pub const ObjRelation = enum {
 
 pub const CreateTypesI = struct {
     pub const c_name = "ct_cdbcreate_cdbtypes_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
     create_types: *const fn (db: DbId) void,
 
@@ -174,7 +173,7 @@ pub const CreateTypesI = struct {
 
 pub const PostCreateTypesI = struct {
     pub const c_name = "ct_cdbpost_create_cdbtypes_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
     post_create_types: *const fn (db: DbId) anyerror!void,
 
@@ -207,7 +206,7 @@ pub fn CdbTypeDecl(comptime type_name: [:0]const u8, comptime props_enum: type, 
         pub const f = extend;
 
         pub const name = type_name;
-        pub const type_hash = strid.strId32(type_name);
+        pub const type_hash = cetech1.strId32(type_name);
         pub const PropsEnum = props_enum;
 
         pub inline fn propIdx(prop: PropsEnum) u32 {
@@ -564,8 +563,8 @@ pub const CdbAPI = struct {
 
     // Get all object that referenece this obj.
     // Caller own the memory.
-    pub inline fn getReferencerSet(self: Self, tmp_allocator: std.mem.Allocator, obj: ObjId) ![]ObjId {
-        return try self.getReferencerSetFn(tmp_allocator, obj);
+    pub inline fn getReferencerSet(self: Self, allocator: std.mem.Allocator, obj: ObjId) ![]ObjId {
+        return try self.getReferencerSetFn(allocator, obj);
     }
 
     // Get object parent.
@@ -621,8 +620,8 @@ pub const CdbAPI = struct {
 
     // Do GC work.
     // This destroy object and reader pointer are invalid to use after this.
-    pub inline fn gc(self: Self, tmp_allocator: std.mem.Allocator, db: DbId) !void {
-        return try self.gcFn(db, tmp_allocator);
+    pub inline fn gc(self: Self, allocator: std.mem.Allocator, db: DbId) !void {
+        return try self.gcFn(db, allocator);
     }
 
     /// Create object for type hash
@@ -786,9 +785,9 @@ pub const CdbAPI = struct {
 
     // Aspects
     addAspectFn: *const fn (db: DbId, type_idx: TypeIdx, apect_name: []const u8, aspect_ptr: *anyopaque) anyerror!void,
-    getAspectFn: *const fn (db: DbId, type_idx: TypeIdx, aspect_hash: strid.StrId32) ?*anyopaque,
+    getAspectFn: *const fn (db: DbId, type_idx: TypeIdx, aspect_hash: cetech1.StrId32) ?*anyopaque,
     addPropertyAspectFn: *const fn (db: DbId, type_idx: TypeIdx, prop_idx: u32, apect_name: []const u8, aspect_ptr: *anyopaque) anyerror!void,
-    getPropertyAspectFn: *const fn (db: DbId, type_idx: TypeIdx, prop_idx: u32, aspect_hash: strid.StrId32) ?*anyopaque,
+    getPropertyAspectFn: *const fn (db: DbId, type_idx: TypeIdx, prop_idx: u32, aspect_hash: cetech1.StrId32) ?*anyopaque,
 
     hasTypeSetFn: *const fn (db: DbId, type_idx: TypeIdx) bool,
     hasTypeSubobjectFn: *const fn (db: DbId, type_idx: TypeIdx) bool,
@@ -798,7 +797,7 @@ pub const CdbAPI = struct {
 
     getDefaultObjectFn: *const fn (db: DbId, type_idx: TypeIdx) ?ObjId,
     getFirstObjectFn: *const fn (db: DbId, type_idx: TypeIdx) ObjId,
-    getAllObjectByTypeFn: *const fn (db: DbId, tmp_allocator: std.mem.Allocator, type_idx: TypeIdx) ?[]ObjId,
+    getAllObjectByTypeFn: *const fn (db: DbId, allocator: std.mem.Allocator, type_idx: TypeIdx) ?[]ObjId,
 
     addOnObjIdDestroyedFn: *const fn (db: DbId, fce: OnObjIdDestroyed) anyerror!void,
     removeOnObjIdDestroyedFn: *const fn (db: DbId, fce: OnObjIdDestroyed) void,

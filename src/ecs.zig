@@ -24,77 +24,94 @@ const entity_t = zflecs.entity_t;
 const module_name = .ecs;
 const log = std.log.scoped(module_name);
 
-const SimulatedSystemsList = std.ArrayList(zflecs.entity_t);
+const SimulatedSystemsList = cetech1.ArrayList(zflecs.entity_t);
+
+const WorldPool = cetech1.heap.VirtualPool(World);
+const WorldSet = cetech1.ArraySet(*World);
+
+const PrefabObjPair = struct { world: public.World, obj: cdb.ObjId };
+const Obj2Prefab = cetech1.AutoArrayHashMap(PrefabObjPair, public.EntityId);
+
+const ComponentObjPair = struct { world: public.World, obj: cdb.ObjId };
+const ComponentObj2Entity = cetech1.AutoArrayHashMap(ComponentObjPair, cdb.ObjId);
+
+const StrId2Id = cetech1.AutoArrayHashMap(cetech1.StrId32, public.Id);
+const Id2StrId = cetech1.AutoArrayHashMap(public.Id, cetech1.StrId32);
+
+const ChangedObjsSet = cetech1.ArraySet(cdb.ObjId);
+const ComponentVersionMap = cetech1.AutoArrayHashMap(cdb.TypeIdx, cdb.TypeVersion);
+
 const World = struct {
+    allocator: std.mem.Allocator,
+
     w: *zflecs.world_t,
     simulate: bool = true,
-    id_map: IdMap,
-    simulated_systems: SimulatedSystemsList,
+    id_map: IdMap = .{},
+    simulated_systems: SimulatedSystemsList = .{},
 
     IsFromCdb: zflecs.entity_t = undefined,
 
     pub fn init(allocator: std.mem.Allocator, w: *zflecs.world_t) !World {
         var self = World{
             .w = w,
-            .simulated_systems = SimulatedSystemsList.init(allocator),
-            .id_map = IdMap.init(allocator),
             .IsFromCdb = zflecs.new_entity(w, "IsFromCdb"),
+            .allocator = allocator,
         };
 
-        try self.id_map.map(public.Wildcard, EcsWildcard);
-        try self.id_map.map(public.Any, EcsAny);
-        try self.id_map.map(public.Transitive, EcsTransitive);
-        try self.id_map.map(public.Reflexive, EcsReflexive);
-        try self.id_map.map(public.Final, EcsFinal);
-        try self.id_map.map(public.DontInherit, EcsDontInherit);
-        try self.id_map.map(public.Exclusive, EcsExclusive);
-        try self.id_map.map(public.Acyclic, EcsAcyclic);
-        try self.id_map.map(public.Traversable, EcsTraversable);
-        try self.id_map.map(public.Symmetric, EcsSymmetric);
-        try self.id_map.map(public.With, EcsWith);
-        try self.id_map.map(public.OneOf, EcsOneOf);
-        try self.id_map.map(public.IsA, EcsIsA);
-        try self.id_map.map(public.ChildOf, EcsChildOf);
-        try self.id_map.map(public.DependsOn, EcsDependsOn);
-        try self.id_map.map(public.SlotOf, EcsSlotOf);
-        try self.id_map.map(public.OnDelete, EcsOnDelete);
-        try self.id_map.map(public.OnDeleteTarget, EcsOnDeleteTarget);
-        try self.id_map.map(public.Remove, EcsRemove);
-        try self.id_map.map(public.Delete, EcsDelete);
-        try self.id_map.map(public.Panic, EcsPanic);
-        try self.id_map.map(public.PredEq, EcsPredEq);
-        try self.id_map.map(public.PredMatch, EcsPredMatch);
-        try self.id_map.map(public.PredLookup, EcsPredLookup);
-        try self.id_map.map(public.Union, EcsUnion);
-        try self.id_map.map(public.Alias, EcsAlias);
-        try self.id_map.map(public.Prefab, EcsPrefab);
-        try self.id_map.map(public.Disabled, EcsDisabled);
-        try self.id_map.map(public.OnStart, EcsOnStart);
-        try self.id_map.map(public.PreFrame, EcsPreFrame);
-        try self.id_map.map(public.OnLoad, EcsOnLoad);
-        try self.id_map.map(public.PostLoad, EcsPostLoad);
-        try self.id_map.map(public.PreUpdate, EcsPreUpdate);
-        try self.id_map.map(public.OnUpdate, EcsOnUpdate);
-        try self.id_map.map(public.OnValidate, EcsOnValidate);
-        try self.id_map.map(public.PostUpdate, EcsPostUpdate);
-        try self.id_map.map(public.PreStore, EcsPreStore);
-        try self.id_map.map(public.OnStore, EcsOnStore);
-        try self.id_map.map(public.PostFrame, EcsPostFrame);
-        try self.id_map.map(public.Phase, EcsPhase);
-        try self.id_map.map(public.OnAdd, EcsOnAdd);
-        try self.id_map.map(public.OnRemove, EcsOnRemove);
-        try self.id_map.map(public.OnSet, EcsOnSet);
-        try self.id_map.map(public.Monitor, EcsMonitor);
-        try self.id_map.map(public.OnTableCreate, EcsOnTableCreate);
-        try self.id_map.map(public.OnTableDelete, EcsOnTableDelete);
+        try self.id_map.map(self.allocator, public.Wildcard, EcsWildcard);
+        try self.id_map.map(self.allocator, public.Any, EcsAny);
+        try self.id_map.map(self.allocator, public.Transitive, EcsTransitive);
+        try self.id_map.map(self.allocator, public.Reflexive, EcsReflexive);
+        try self.id_map.map(self.allocator, public.Final, EcsFinal);
+        try self.id_map.map(self.allocator, public.DontInherit, EcsDontInherit);
+        try self.id_map.map(self.allocator, public.Exclusive, EcsExclusive);
+        try self.id_map.map(self.allocator, public.Acyclic, EcsAcyclic);
+        try self.id_map.map(self.allocator, public.Traversable, EcsTraversable);
+        try self.id_map.map(self.allocator, public.Symmetric, EcsSymmetric);
+        try self.id_map.map(self.allocator, public.With, EcsWith);
+        try self.id_map.map(self.allocator, public.OneOf, EcsOneOf);
+        try self.id_map.map(self.allocator, public.IsA, EcsIsA);
+        try self.id_map.map(self.allocator, public.ChildOf, EcsChildOf);
+        try self.id_map.map(self.allocator, public.DependsOn, EcsDependsOn);
+        try self.id_map.map(self.allocator, public.SlotOf, EcsSlotOf);
+        try self.id_map.map(self.allocator, public.OnDelete, EcsOnDelete);
+        try self.id_map.map(self.allocator, public.OnDeleteTarget, EcsOnDeleteTarget);
+        try self.id_map.map(self.allocator, public.Remove, EcsRemove);
+        try self.id_map.map(self.allocator, public.Delete, EcsDelete);
+        try self.id_map.map(self.allocator, public.Panic, EcsPanic);
+        try self.id_map.map(self.allocator, public.PredEq, EcsPredEq);
+        try self.id_map.map(self.allocator, public.PredMatch, EcsPredMatch);
+        try self.id_map.map(self.allocator, public.PredLookup, EcsPredLookup);
+        try self.id_map.map(self.allocator, public.Union, EcsUnion);
+        try self.id_map.map(self.allocator, public.Alias, EcsAlias);
+        try self.id_map.map(self.allocator, public.Prefab, EcsPrefab);
+        try self.id_map.map(self.allocator, public.Disabled, EcsDisabled);
+        try self.id_map.map(self.allocator, public.OnStart, EcsOnStart);
+        try self.id_map.map(self.allocator, public.PreFrame, EcsPreFrame);
+        try self.id_map.map(self.allocator, public.OnLoad, EcsOnLoad);
+        try self.id_map.map(self.allocator, public.PostLoad, EcsPostLoad);
+        try self.id_map.map(self.allocator, public.PreUpdate, EcsPreUpdate);
+        try self.id_map.map(self.allocator, public.OnUpdate, EcsOnUpdate);
+        try self.id_map.map(self.allocator, public.OnValidate, EcsOnValidate);
+        try self.id_map.map(self.allocator, public.PostUpdate, EcsPostUpdate);
+        try self.id_map.map(self.allocator, public.PreStore, EcsPreStore);
+        try self.id_map.map(self.allocator, public.OnStore, EcsOnStore);
+        try self.id_map.map(self.allocator, public.PostFrame, EcsPostFrame);
+        try self.id_map.map(self.allocator, public.Phase, EcsPhase);
+        try self.id_map.map(self.allocator, public.OnAdd, EcsOnAdd);
+        try self.id_map.map(self.allocator, public.OnRemove, EcsOnRemove);
+        try self.id_map.map(self.allocator, public.OnSet, EcsOnSet);
+        try self.id_map.map(self.allocator, public.Monitor, EcsMonitor);
+        try self.id_map.map(self.allocator, public.OnTableCreate, EcsOnTableCreate);
+        try self.id_map.map(self.allocator, public.OnTableDelete, EcsOnTableDelete);
 
         return self;
     }
 
     pub fn deinit(self: *World) void {
         _ = ecs_fini(self.w);
-        self.simulated_systems.deinit();
-        self.id_map.deinit();
+        self.simulated_systems.deinit(self.allocator);
+        self.id_map.deinit(self.allocator);
     }
 
     pub fn toPublic(world: *World) public.World {
@@ -125,11 +142,11 @@ const World = struct {
         }
     }
 
-    pub fn setId(self: *World, entity: public.EntityId, id: cetech1.strid.StrId32, size: usize, ptr: ?*const anyopaque) public.EntityId {
+    pub fn setComponent(self: *World, entity: public.EntityId, id: cetech1.StrId32, size: usize, ptr: ?*const anyopaque) public.EntityId {
         return zflecs.set_id(self.w, entity, self.id_map.find(id).?, size, ptr);
     }
 
-    pub fn getMutId(self: *World, entity: public.EntityId, id: cetech1.strid.StrId32) ?*anyopaque {
+    pub fn getMutComponent(self: *World, entity: public.EntityId, id: cetech1.StrId32) ?*anyopaque {
         return zflecs.get_mut_id(self.w, entity, self.id_map.find(id).?);
     }
 
@@ -210,48 +227,29 @@ const World = struct {
     }
 };
 
-const WorldPool = cetech1.mem.VirtualPool(World);
-const WorldSet = std.AutoArrayHashMap(*World, void);
-
-const PrefabObjPair = struct { world: public.World, obj: cdb.ObjId };
-const Obj2Prefab = std.AutoArrayHashMap(PrefabObjPair, public.EntityId);
-
-const ComponentObjPair = struct { world: public.World, obj: cdb.ObjId };
-const ComponentObj2Entity = std.AutoArrayHashMap(ComponentObjPair, cdb.ObjId);
-
-const StrId2Id = std.AutoArrayHashMap(cetech1.strid.StrId32, public.Id);
-const Id2StrId = std.AutoArrayHashMap(public.Id, cetech1.strid.StrId32);
-
 var _cdb = &cdb_private.api;
 
 var _world_pool: WorldPool = undefined;
 
 const IdMap = struct {
-    strId2id: StrId2Id,
-    id2StrId: Id2StrId,
+    strId2id: StrId2Id = .{},
+    id2StrId: Id2StrId = .{},
 
-    pub fn init(allocator: std.mem.Allocator) IdMap {
-        return IdMap{
-            .strId2id = StrId2Id.init(allocator),
-            .id2StrId = Id2StrId.init(allocator),
-        };
+    pub fn deinit(self: *IdMap, allocator: std.mem.Allocator) void {
+        self.strId2id.deinit(allocator);
+        self.id2StrId.deinit(allocator);
     }
 
-    pub fn deinit(self: *IdMap) void {
-        self.strId2id.deinit();
-        self.id2StrId.deinit();
+    pub fn map(self: *IdMap, allocator: std.mem.Allocator, strid: cetech1.StrId32, id: public.Id) !void {
+        try self.strId2id.put(allocator, strid, id);
+        try self.id2StrId.put(allocator, id, strid);
     }
 
-    pub fn map(self: *IdMap, strid: cetech1.strid.StrId32, id: public.Id) !void {
-        try self.strId2id.put(strid, id);
-        try self.id2StrId.put(id, strid);
-    }
-
-    pub fn find(self: *IdMap, strid: cetech1.strid.StrId32) ?public.Id {
+    pub fn find(self: *IdMap, strid: cetech1.StrId32) ?public.Id {
         return self.strId2id.get(strid);
     }
 
-    pub fn findById(self: *IdMap, id: public.Id) ?cetech1.strid.StrId32 {
+    pub fn findById(self: *IdMap, id: public.Id) ?cetech1.StrId32 {
         return self.id2StrId.get(id);
     }
 };
@@ -282,14 +280,14 @@ pub fn init(allocator: std.mem.Allocator) !void {
     _allocator = allocator;
     FlecsAllocator.allocator = allocator;
 
-    _obj2prefab = Obj2Prefab.init(allocator);
-    _obj2parent_obj = ComponentObj2Entity.init(allocator);
-    _component_version = ComponentVersionMap.init(allocator);
+    _obj2prefab = .{};
+    _obj2parent_obj = .{};
+    _component_version = .{};
 
     _world_data_lck = .{};
 
-    _world_data = WorldSet.init(allocator);
-    try _world_data.ensureTotalCapacity(128);
+    _world_data = .init();
+    try _world_data.ensureTotalCapacity(allocator, 128);
 
     _world_pool = try WorldPool.init(allocator, 128);
 
@@ -319,15 +317,15 @@ pub fn init(allocator: std.mem.Allocator) !void {
 }
 
 pub fn deinit() void {
-    for (_world_data.keys()) |value| {
+    for (_world_data.unmanaged.keys()) |value| {
         destroyWorld(value.toPublic());
     }
 
-    _obj2prefab.deinit();
-    _obj2parent_obj.deinit();
-    _component_version.deinit();
+    _obj2prefab.deinit(_allocator);
+    _obj2parent_obj.deinit(_allocator);
+    _component_version.deinit(_allocator);
 
-    _world_data.deinit();
+    _world_data.deinit(_allocator);
     _world_pool.deinit();
 }
 
@@ -335,16 +333,13 @@ fn getWorldPtr(world: public.World) *World {
     return @alignCast(@ptrCast(world.ptr));
 }
 
-const ChangedObjsSet = std.AutoArrayHashMap(cdb.ObjId, void);
-const ComponentVersionMap = std.AutoArrayHashMap(cdb.TypeIdx, cdb.TypeVersion);
-
 var _component_version: ComponentVersionMap = undefined;
 var _entity_version: cdb.TypeVersion = 0;
 
 var sync_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnLoad,
     "ECS: sync cdb",
-    &[_]cetech1.strid.StrId64{},
+    &[_]cetech1.StrId64{},
     null,
     struct {
         pub fn update(kernel_tick: u64, dt: f32) !void {
@@ -354,11 +349,11 @@ var sync_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
             const alloc = try tempalloc.api.create();
             defer tempalloc.api.destroy(alloc);
 
-            var processed_obj = ChangedObjsSet.init(alloc);
-            defer processed_obj.deinit();
+            var processed_obj = ChangedObjsSet.init();
+            defer processed_obj.deinit(alloc);
 
-            var deleted_ent_obj = ChangedObjsSet.init(alloc);
-            defer deleted_ent_obj.deinit();
+            var deleted_ent_obj = ChangedObjsSet.init();
+            defer deleted_ent_obj.deinit(alloc);
 
             const db = assetdb_private.getDb();
 
@@ -381,7 +376,7 @@ var sync_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
 
                         //if (deleted_ent_obj.contains()) continue;
 
-                        for (_world_data.keys()) |world| {
+                        for (_world_data.unmanaged.keys()) |world| {
                             const w = toWorld(world);
 
                             const prefab_ent = _obj2prefab.get(.{ .world = w, .obj = entity_obj }) orelse continue;
@@ -390,7 +385,7 @@ var sync_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
                                 if (deleted_entity) continue;
                                 if (processed_obj.contains(component_obj)) continue;
 
-                                try _obj2parent_obj.put(.{ .world = w, .obj = component_obj }, entity_obj);
+                                try _obj2parent_obj.put(_allocator, .{ .world = w, .obj = component_obj }, entity_obj);
 
                                 const component_data = try alloc.alloc(u8, iface.size);
                                 defer alloc.free(component_data);
@@ -438,7 +433,7 @@ var sync_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
                             }
                         }
 
-                        try processed_obj.put(component_obj, {});
+                        _ = try processed_obj.add(alloc, component_obj);
                     }
                 } else {
                     if (_cdb.getAllObjectByType(alloc, db, type_idx)) |objs| {
@@ -448,7 +443,7 @@ var sync_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
                     }
                 }
 
-                try _component_version.put(type_idx, changed.last_version);
+                try _component_version.put(_allocator, type_idx, changed.last_version);
             }
 
             // TODO: clean maps on delete components and entities
@@ -459,7 +454,7 @@ var sync_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
                     for (changed.objects) |entity_obj| {
                         const is_alive = _cdb.isAlive(entity_obj);
                         if (!is_alive) {
-                            try deleted_ent_obj.put(entity_obj, {});
+                            _ = try deleted_ent_obj.add(alloc, entity_obj);
                         }
                     }
 
@@ -468,7 +463,7 @@ var sync_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
 
                         const is_alive = !deleted_ent_obj.contains(entity_obj);
 
-                        for (_world_data.keys()) |world| {
+                        for (_world_data.unmanaged.keys()) |world| {
                             const w = toWorld(world);
 
                             const parent_obj = _cdb.getParent(entity_obj);
@@ -482,7 +477,7 @@ var sync_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
                                     const ent = try getOrCreatePrefab(alloc, w, db, entity_obj);
                                     zflecs.add_id(world.w, ent, zflecs.make_pair(EcsChildOf, parent_prefab_ent));
 
-                                    try _obj2parent_obj.put(.{ .world = w, .obj = entity_obj }, parent_obj);
+                                    try _obj2parent_obj.put(_allocator, .{ .world = w, .obj = entity_obj }, parent_obj);
 
                                     // Propagate to prefab instances
                                     var qd = zflecs.query_desc_t{};
@@ -506,7 +501,7 @@ var sync_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
                             }
                         }
 
-                        try processed_obj.put(entity_obj, {});
+                        _ = try processed_obj.add(alloc, entity_obj);
                     }
                 } else {
                     if (_cdb.getAllObjectByType(alloc, db, public.Entity.typeIdx(_cdb, db))) |objs| {
@@ -525,16 +520,16 @@ var sync_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
 var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "ECS: progress worlds",
-    &[_]cetech1.strid.StrId64{},
+    &[_]cetech1.StrId64{},
     null,
     struct {
         pub fn update(kernel_tick: u64, dt: f32) !void {
             _ = kernel_tick;
 
-            const tmp_alloc = try tempalloc.api.create();
-            defer tempalloc.api.destroy(tmp_alloc);
+            const allocator = try tempalloc.api.create();
+            defer tempalloc.api.destroy(allocator);
 
-            try progressAll(tmp_alloc, dt);
+            try progressAll(allocator, dt);
         }
     },
 );
@@ -593,7 +588,7 @@ fn findComponentIByCdbHash(cdb_hash: cdb.TypeHash) ?*const public.ComponentI {
 }
 
 fn getOrCreatePrefab(allocator: std.mem.Allocator, world: public.World, db: cdb.DbId, obj: cdb.ObjId) !public.EntityId {
-    const get_or_put = try _obj2prefab.getOrPut(.{ .world = world, .obj = obj });
+    const get_or_put = try _obj2prefab.getOrPut(_allocator, .{ .world = world, .obj = obj });
     if (get_or_put.found_existing) return get_or_put.value_ptr.*;
 
     const w = getWorldPtr(world);
@@ -615,7 +610,7 @@ fn getOrCreatePrefab(allocator: std.mem.Allocator, world: public.World, db: cdb.
         for (components) |component_obj| {
             const component_hash = _cdb.getTypeHash(db, component_obj.type_idx).?;
 
-            try _obj2parent_obj.put(.{ .world = world, .obj = component_obj }, obj);
+            try _obj2parent_obj.put(_allocator, .{ .world = world, .obj = component_obj }, obj);
 
             const iface = findComponentIByCdbHash(component_hash).?;
 
@@ -634,7 +629,7 @@ fn getOrCreatePrefab(allocator: std.mem.Allocator, world: public.World, db: cdb.
     if (try public.Entity.readSubObjSet(_cdb, top_level_obj_r, .childrens, allocator)) |childrens| {
         defer allocator.free(childrens);
         for (childrens) |child| {
-            try _obj2parent_obj.put(.{ .world = world, .obj = child }, obj);
+            try _obj2parent_obj.put(_allocator, .{ .world = world, .obj = child }, obj);
 
             const ent = try getOrCreatePrefab(allocator, world, db, child);
             zflecs.add_id(w.w, ent, zflecs.make_pair(EcsChildOf, prefab_ent));
@@ -655,8 +650,8 @@ const world_vt = public.World.VTable{
     .newEntity = @ptrCast(&World.newEntity),
     .newEntities = @ptrCast(&World.newEntities),
     .destroyEntities = @ptrCast(&World.destroyEntities),
-    .setId = @ptrCast(&World.setId),
-    .getMutId = @ptrCast(&World.getMutId),
+    .setComponent = @ptrCast(&World.setComponent),
+    .getMutComponent = @ptrCast(&World.getMutComponent),
     .progress = @ptrCast(&World.progress),
     .createQuery = @ptrCast(&World.createQuery),
     .deferBegin = @ptrCast(&World.deferBegin),
@@ -758,8 +753,9 @@ pub fn progressAll(allocator: std.mem.Allocator, dt: f32) !void {
 
     const parallel = false; // lets make all workers for one world.
     if (parallel) {
-        var tasks = try std.ArrayList(cetech1.task.TaskID).initCapacity(allocator, _world_data.count());
-        defer tasks.deinit();
+        var tasks = try cetech1.task.TaskIdList.initCapacity(allocator, _world_data.count());
+        defer tasks.deinit(allocator);
+
         for (_world_data.keys()) |world| {
             const Task = struct {
                 world: *World,
@@ -783,7 +779,7 @@ pub fn progressAll(allocator: std.mem.Allocator, dt: f32) !void {
             task.api.waitMany(tasks.items);
         }
     } else {
-        for (_world_data.keys()) |world| {
+        for (_world_data.unmanaged.keys()) |world| {
             _ = World.progress(world, dt);
         }
     }
@@ -858,7 +854,7 @@ pub fn createWorld() !public.World {
     zflecs.set_binding_ctx(world, w, free_w);
 
     const wd = World.toPublic(w);
-    try _world_data.put(w, {});
+    _ = try _world_data.add(_allocator, w);
 
     // Register components
     const impls = apidb.api.getImpl(_allocator, public.ComponentI) catch undefined;
@@ -886,13 +882,13 @@ pub fn createWorld() !public.World {
                     },
                 },
             });
-            try w.id_map.map(iface.id, component_id);
+            try w.id_map.map(w.allocator, iface.id, component_id);
         } else {
             const component_id = zflecs.entity_init(world, &.{
                 .use_low_id = true,
                 .name = iface.name,
             });
-            try w.id_map.map(iface.id, component_id);
+            try w.id_map.map(w.allocator, iface.id, component_id);
         }
     }
 
@@ -957,7 +953,7 @@ pub fn createWorld() !public.World {
         _ = zflecs.SYSTEM(world, iface.name, w.id_map.find(iface.phase).?, &system_desc);
 
         if (iface.simulation) {
-            try w.simulated_systems.append(system_desc.entity);
+            try w.simulated_systems.append(w.allocator, system_desc.entity);
         }
     }
 
@@ -983,7 +979,7 @@ pub fn destroyWorld(world: public.World) void {
 
     _world_data_lck.lock();
     defer _world_data_lck.unlock();
-    _ = _world_data.swapRemove(@alignCast(@ptrCast(world.ptr)));
+    _ = _world_data.remove(@alignCast(@ptrCast(world.ptr)));
 }
 
 fn toIter(iter: *public.IterO) public.Iter {

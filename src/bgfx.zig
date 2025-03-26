@@ -356,7 +356,7 @@ pub const DebugFlags = u32;
 /// No debug.
 pub const DebugFlags_None: DebugFlags = 0x00000000;
 
-/// Enable wireframe for all primitives.
+/// Enable wireframe for all cetech1.math.
 pub const DebugFlags_Wireframe: DebugFlags = 0x00000001;
 
 /// Enable infinitely fast hardware test. No draw calls will be submitted to driver.
@@ -1553,7 +1553,7 @@ pub const Encoder = opaque {
     }
     /// Set stencil test state.
     /// <param name="_fstencil">Front stencil state.</param>
-    /// <param name="_bstencil">Back stencil state. If back is set to `BGFX_STENCIL_NONE` _fstencil is applied to both front and back facing primitives.</param>
+    /// <param name="_bstencil">Back stencil state. If back is set to `BGFX_STENCIL_NONE` _fstencil is applied to both front and back facing cetech1.math.</param>
     pub fn setStencil(self: ?*Encoder, _fstencil: u32, _bstencil: u32) void {
         return bgfx_encoder_set_stencil(self, _fstencil, _bstencil);
     }
@@ -2943,7 +2943,7 @@ extern fn bgfx_encoder_set_condition(self: ?*Encoder, _handle: OcclusionQueryHan
 
 /// Set stencil test state.
 /// <param name="_fstencil">Front stencil state.</param>
-/// <param name="_bstencil">Back stencil state. If back is set to `BGFX_STENCIL_NONE` _fstencil is applied to both front and back facing primitives.</param>
+/// <param name="_bstencil">Back stencil state. If back is set to `BGFX_STENCIL_NONE` _fstencil is applied to both front and back facing cetech1.math.</param>
 extern fn bgfx_encoder_set_stencil(self: ?*Encoder, _fstencil: u32, _bstencil: u32) void;
 
 /// Set scissor for draw primitive.
@@ -3315,7 +3315,7 @@ extern fn bgfx_set_condition(_handle: OcclusionQueryHandle, _visible: bool) void
 
 /// Set stencil test state.
 /// <param name="_fstencil">Front stencil state.</param>
-/// <param name="_bstencil">Back stencil state. If back is set to `BGFX_STENCIL_NONE` _fstencil is applied to both front and back facing primitives.</param>
+/// <param name="_bstencil">Back stencil state. If back is set to `BGFX_STENCIL_NONE` _fstencil is applied to both front and back facing cetech1.math.</param>
 pub fn setStencil(_fstencil: u32, _bstencil: u32) void {
     return bgfx_set_stencil(_fstencil, _bstencil);
 }

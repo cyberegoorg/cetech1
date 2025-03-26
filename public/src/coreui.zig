@@ -3,11 +3,11 @@ const std = @import("std");
 
 const cdb = @import("cdb.zig");
 const modules = @import("modules.zig");
-const strid = @import("strid.zig");
+const cetech1 = @import("root.zig");
 
 const platform = @import("platform.zig");
 const gpu = @import("gpu.zig");
-const ArraySet = @import("mem.zig").Set;
+const ArraySet = @import("root.zig").ArraySet;
 
 const log = std.log.scoped(.coreui);
 
@@ -39,14 +39,19 @@ pub const SelectionItem = struct {
 pub const Selection = struct {
     const Item = SelectionItem;
     const SetImpl = ArraySet(Item);
-    storage: SetImpl,
+
+    storage: SetImpl = .init(),
+
+    allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) Selection {
-        return Selection{ .storage = SetImpl.init(allocator) };
+        return Selection{
+            .allocator = allocator,
+        };
     }
 
     pub fn deinit(self: *Selection) void {
-        self.storage.deinit();
+        self.storage.deinit(self.allocator);
     }
 
     pub fn clear(self: *Selection) void {
@@ -54,7 +59,7 @@ pub const Selection = struct {
     }
 
     pub fn add(self: *Selection, objs: []const Item) !void {
-        _ = try self.storage.appendSlice(objs);
+        _ = try self.storage.appendSlice(self.allocator, objs);
     }
 
     pub fn remove(self: *Selection, objs: []const Item) void {
@@ -79,14 +84,14 @@ pub const Selection = struct {
     }
 
     pub fn toSlice(self: Selection, allocator: std.mem.Allocator) ?[]Item {
-        var result = std.ArrayList(Item).initCapacity(allocator, self.count()) catch return null;
+        var result = cetech1.ArrayList(Item).initCapacity(allocator, self.count()) catch return null;
         var it = self.storage.iterator();
 
         while (it.next()) |v| {
             result.appendAssumeCapacity(v.key_ptr.*);
         }
 
-        return result.toOwnedSlice() catch return null;
+        return result.toOwnedSlice(allocator) catch return null;
     }
 
     pub fn first(self: Selection) Item {
@@ -208,7 +213,7 @@ pub const Icons = struct {
 
 pub const CoreUII = struct {
     pub const c_name = "ct_coreui_ui_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
     ui: *const fn (allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) anyerror!void,
 
@@ -310,7 +315,7 @@ pub const TestContext = opaque {
 
 pub const RegisterTestsI = struct {
     pub const c_name = "ct_coreui_register_tests_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
     register_tests: *const fn () anyerror!void,
 

@@ -43,6 +43,7 @@ _static.zig
 
 # Idea
 .idea/
+Zig.iml
 
 # temp folder for tests
 /fixtures/tmp

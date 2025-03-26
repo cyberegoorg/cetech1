@@ -50,7 +50,7 @@ var rename_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn isValid(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        contexts: cetech1.strid.StrId64,
+        contexts: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !bool {
@@ -74,7 +74,7 @@ var rename_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn menu(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        context: strid.StrId64,
+        context: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !void {
@@ -164,7 +164,7 @@ var move_to_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn isValid(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        contexts: cetech1.strid.StrId64,
+        contexts: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !bool {
@@ -187,7 +187,7 @@ var move_to_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn menu(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        context: strid.StrId64,
+        context: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !void {
@@ -203,7 +203,7 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn isValid(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        context: cetech1.strid.StrId64,
+        context: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !bool {
@@ -229,7 +229,7 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn menu(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        context: strid.StrId64,
+        context: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !void {
@@ -268,7 +268,7 @@ var create_from_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn isValid(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        context: cetech1.strid.StrId64,
+        context: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !bool {
@@ -294,7 +294,7 @@ var create_from_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn menu(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        context: strid.StrId64,
+        context: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !void {
@@ -325,7 +325,7 @@ var reviel_in_os = editor.ObjContextMenuI.implement(struct {
     pub fn isValid(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        context: cetech1.strid.StrId64,
+        context: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !bool {
@@ -351,7 +351,7 @@ var reviel_in_os = editor.ObjContextMenuI.implement(struct {
     pub fn menu(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        context: strid.StrId64,
+        context: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !void {
@@ -376,7 +376,7 @@ var delete_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn isValid(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        context: cetech1.strid.StrId64,
+        context: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !bool {
@@ -402,7 +402,7 @@ var delete_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn menu(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        context: strid.StrId64,
+        context: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !void {
@@ -453,7 +453,7 @@ var create_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn isValid(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        contexts: cetech1.strid.StrId64,
+        contexts: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !bool {
@@ -479,7 +479,7 @@ var create_context_menu_i = editor.ObjContextMenuI.implement(struct {
     pub fn menu(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        context: strid.StrId64,
+        context: cetech1.StrId64,
         selection: []const coreui.SelectionItem,
         filter: ?[:0]const u8,
     ) !void {
@@ -666,7 +666,7 @@ var asset_ui_tree_aspect = editor_tree.UiTreeAspect.implement(struct {
     pub fn uiTree(
         allocator: std.mem.Allocator,
         tab: *editor.TabO,
-        contexts: []const strid.StrId64,
+        contexts: []const cetech1.StrId64,
         obj: coreui.SelectionItem,
         selection: *coreui.Selection,
         depth: u32,
@@ -718,11 +718,11 @@ var asset_ui_tree_aspect = editor_tree.UiTreeAspect.implement(struct {
             defer _coreui.treePop();
 
             if (is_folder) {
-                var folders = std.ArrayList(cdb.ObjId).init(allocator);
-                defer folders.deinit();
+                var folders = cetech1.cdb.ObjIdList{};
+                defer folders.deinit(allocator);
 
-                var assets = std.ArrayList(cdb.ObjId).init(allocator);
-                defer assets.deinit();
+                var assets = cetech1.cdb.ObjIdList{};
+                defer assets.deinit(allocator);
 
                 const set = try _cdb.getReferencerSet(allocator, asset_obj);
                 defer allocator.free(set);
@@ -730,9 +730,9 @@ var asset_ui_tree_aspect = editor_tree.UiTreeAspect.implement(struct {
                 for (set) |ref_obj| {
                     if (ref_obj.type_idx.eql(AssetTypeIdx)) {
                         if (_assetdb.isAssetFolder(ref_obj)) {
-                            try folders.append(ref_obj);
+                            try folders.append(allocator, ref_obj);
                         } else {
-                            try assets.append(ref_obj);
+                            try assets.append(allocator, ref_obj);
                         }
                     }
                 }
@@ -1160,32 +1160,32 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     }
 });
 
-fn filerAsset(tmp_allocator: std.mem.Allocator, filter: [:0]const u8, tags_filter: cdb.ObjId) !assetdb.FilteredAssets {
-    var result = std.ArrayList(assetdb.FilteredAsset).init(tmp_allocator);
+fn filerAsset(allocator: std.mem.Allocator, filter: [:0]const u8, tags_filter: cdb.ObjId) !assetdb.FilteredAssets {
+    var result = cetech1.ArrayList(assetdb.FilteredAsset){};
     var buff: [256:0]u8 = undefined;
     var buff2: [256:0]u8 = undefined;
     var buff3: [256:0]u8 = undefined;
 
-    var filter_set = std.AutoArrayHashMap(cdb.ObjId, void).init(tmp_allocator);
-    defer filter_set.deinit();
+    var filter_set = cetech1.AutoArrayHashMap(cdb.ObjId, void){};
+    defer filter_set.deinit(allocator);
 
     if (_cdb.readObj(tags_filter)) |filter_r| {
-        if (assetdb.Tags.readRefSet(_cdb, filter_r, .Tags, tmp_allocator)) |tags| {
-            defer tmp_allocator.free(tags);
+        if (assetdb.Tags.readRefSet(_cdb, filter_r, .Tags, allocator)) |tags| {
+            defer allocator.free(tags);
             for (tags) |tag| {
-                try filter_set.put(tag, {});
+                try filter_set.put(allocator, tag, {});
             }
         }
     }
-    const set = try assetdb.AssetRoot.readSubObjSet(_cdb, _cdb.readObj(_assetdb.getAssetRootObj()).?, .Assets, tmp_allocator);
+    const set = try assetdb.AssetRoot.readSubObjSet(_cdb, _cdb.readObj(_assetdb.getAssetRootObj()).?, .Assets, allocator);
     if (set) |s| {
-        defer tmp_allocator.free(s);
+        defer allocator.free(s);
 
         for (s) |obj| {
             if (filter_set.count() != 0) {
                 if (_cdb.readObj(obj)) |asset_r| {
-                    if (assetdb.Asset.readRefSet(_cdb, asset_r, .Tags, tmp_allocator)) |asset_tags| {
-                        defer tmp_allocator.free(asset_tags);
+                    if (assetdb.Asset.readRefSet(_cdb, asset_r, .Tags, allocator)) |asset_tags| {
+                        defer allocator.free(asset_tags);
 
                         var pass_n: u32 = 0;
                         for (asset_tags) |tag| {
@@ -1201,12 +1201,12 @@ fn filerAsset(tmp_allocator: std.mem.Allocator, filter: [:0]const u8, tags_filte
             const f = try std.fmt.bufPrintZ(&buff, "{s}", .{filter});
             const p = try std.fmt.bufPrintZ(&buff2, "{s}", .{path});
 
-            const score = _coreui.uiFilterPass(tmp_allocator, f, p, true) orelse continue;
-            try result.append(.{ .score = score, .obj = obj });
+            const score = _coreui.uiFilterPass(allocator, f, p, true) orelse continue;
+            try result.append(allocator, .{ .score = score, .obj = obj });
         }
     }
 
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator);
 }
 
 const api = public.EditorAssetAPI{

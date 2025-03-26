@@ -37,34 +37,33 @@ const module_name = .kernel;
 
 const log = std.log.scoped(module_name);
 
+const UpdateArray = cetech1.ArrayList(*const public.KernelTaskUpdateI);
+const KernelTaskArray = cetech1.ArrayList(*const public.KernelTaskI);
+const PhaseMap = cetech1.AutoArrayHashMap(cetech1.StrId64, Phase);
+
 const BootArgs = struct {
     max_kernel_tick: u32 = 0,
     headless: bool = false,
     load_dynamic: bool = true,
 };
 
-const UpdateArray = std.ArrayList(*const public.KernelTaskUpdateI);
-const KernelTaskArray = std.ArrayList(*const public.KernelTaskI);
-const PhaseMap = std.AutoArrayHashMap(strid.StrId64, Phase);
-
 const Phase = struct {
     const Self = @This();
 
     name: [:0]const u8,
     update_dag: cetech1.dag.StrId64DAG,
-    update_chain: UpdateArray,
+    update_chain: UpdateArray = .{},
 
     pub fn init(allocator: std.mem.Allocator, name: [:0]const u8) Self {
         return .{
             .name = name,
             .update_dag = cetech1.dag.StrId64DAG.init(allocator),
-            .update_chain = UpdateArray.init(allocator),
         };
     }
 
-    pub fn deinit(self: *Self) void {
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         self.update_dag.deinit();
-        self.update_chain.deinit();
+        self.update_chain.deinit(allocator);
     }
 
     pub fn reset(self: *Self) !void {
@@ -100,12 +99,12 @@ var _phase_map: PhaseMap = undefined;
 var _phases_dag: cetech1.dag.StrId64DAG = undefined;
 
 var _args: [][:0]u8 = undefined;
-var _args_map: std.StringArrayHashMap([]const u8) = undefined;
+var _args_map: std.StringArrayHashMapUnmanaged([]const u8) = undefined;
 
-var _tmp_depend_array: std.ArrayList(cetech1.task.TaskID) = undefined;
-var _tmp_taskid_map: std.AutoArrayHashMap(strid.StrId64, cetech1.task.TaskID) = undefined;
+var _tmp_depend_array: cetech1.task.TaskIdList = undefined;
+var _tmp_taskid_map: cetech1.AutoArrayHashMap(cetech1.StrId64, cetech1.task.TaskID) = undefined;
 
-var _iface_map: std.AutoArrayHashMap(strid.StrId64, *const public.KernelTaskUpdateI) = undefined;
+var _iface_map: cetech1.AutoArrayHashMap(cetech1.StrId64, *const public.KernelTaskUpdateI) = undefined;
 
 var _running: bool = false;
 var _quit: bool = false;
@@ -211,15 +210,15 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     _update_dag = cetech1.dag.StrId64DAG.init(_kernel_allocator);
 
     _phases_dag = cetech1.dag.StrId64DAG.init(_kernel_allocator);
-    _phase_map = PhaseMap.init(_kernel_allocator);
+    _phase_map = .{};
 
     _task_dag = cetech1.dag.StrId64DAG.init(_kernel_allocator);
-    _task_chain = KernelTaskArray.init(_kernel_allocator);
+    _task_chain = .{};
 
-    _tmp_depend_array = std.ArrayList(cetech1.task.TaskID).init(_kernel_allocator);
-    _tmp_taskid_map = std.AutoArrayHashMap(strid.StrId64, cetech1.task.TaskID).init(_kernel_allocator);
+    _tmp_depend_array = .{};
+    _tmp_taskid_map = .{};
 
-    _iface_map = std.AutoArrayHashMap(strid.StrId64, *const public.KernelTaskUpdateI).init(_kernel_allocator);
+    _iface_map = .{};
 
     try tempalloc.init(_tmp_alocator_pool_allocator.allocator(), 256);
 
@@ -251,14 +250,14 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try ecs.registerToApi();
     try metrics.registerToApi();
 
-    try addPhase("OnLoad", &[_]strid.StrId64{});
-    try addPhase("PostLoad", &[_]strid.StrId64{cetech1.kernel.OnLoad});
-    try addPhase("PreUpdate", &[_]strid.StrId64{cetech1.kernel.PostLoad});
-    try addPhase("OnUpdate", &[_]strid.StrId64{cetech1.kernel.PreUpdate});
-    try addPhase("OnValidate", &[_]strid.StrId64{cetech1.kernel.OnUpdate});
-    try addPhase("PostUpdate", &[_]strid.StrId64{cetech1.kernel.OnValidate});
-    try addPhase("PreStore", &[_]strid.StrId64{cetech1.kernel.PostUpdate});
-    try addPhase("OnStore", &[_]strid.StrId64{cetech1.kernel.PreStore});
+    try addPhase("OnLoad", &[_]cetech1.StrId64{});
+    try addPhase("PostLoad", &[_]cetech1.StrId64{cetech1.kernel.OnLoad});
+    try addPhase("PreUpdate", &[_]cetech1.StrId64{cetech1.kernel.PostLoad});
+    try addPhase("OnUpdate", &[_]cetech1.StrId64{cetech1.kernel.PreUpdate});
+    try addPhase("OnValidate", &[_]cetech1.StrId64{cetech1.kernel.OnUpdate});
+    try addPhase("PostUpdate", &[_]cetech1.StrId64{cetech1.kernel.OnValidate});
+    try addPhase("PreStore", &[_]cetech1.StrId64{cetech1.kernel.PostUpdate});
+    try addPhase("OnStore", &[_]cetech1.StrId64{cetech1.kernel.PreStore});
 
     log.info("version: {}", .{cetech1_options.version});
 }
@@ -291,19 +290,19 @@ pub fn deinit(
     apidb.deinit();
     tempalloc.deinit();
 
-    _iface_map.deinit();
-    _tmp_depend_array.deinit();
-    _tmp_taskid_map.deinit();
+    _iface_map.deinit(_kernel_allocator);
+    _tmp_depend_array.deinit(_kernel_allocator);
+    _tmp_taskid_map.deinit(_kernel_allocator);
 
     for (_phase_map.values()) |*value| {
-        value.deinit();
+        value.deinit(_kernel_allocator);
     }
 
     _update_dag.deinit();
     _phases_dag.deinit();
-    _phase_map.deinit();
+    _phase_map.deinit(_kernel_allocator);
     _task_dag.deinit();
-    _task_chain.deinit();
+    _task_chain.deinit(_kernel_allocator);
 
     deinitArgs(allocator);
     profiler_private.deinit();
@@ -311,14 +310,14 @@ pub fn deinit(
 
 fn initProgramArgs(allocator: std.mem.Allocator) !void {
     _args = try std.process.argsAlloc(allocator);
-    _args_map = std.StringArrayHashMap([]const u8).init(allocator);
+    _args_map = .{};
 
     var args_idx: u32 = 1; // Skip program name
     while (args_idx < _args.len) {
         const name = _args[args_idx];
 
         if (args_idx + 1 >= _args.len) {
-            try _args_map.put(name, "1");
+            try _args_map.put(allocator, name, "1");
             break;
         }
 
@@ -326,17 +325,17 @@ fn initProgramArgs(allocator: std.mem.Allocator) !void {
 
         if (std.mem.startsWith(u8, value, "-")) {
             args_idx += 1;
-            try _args_map.put(name, "1");
+            try _args_map.put(allocator, name, "1");
         } else {
             args_idx += 2;
-            try _args_map.put(name, value);
+            try _args_map.put(allocator, name, value);
         }
     }
 }
 
 fn deinitArgs(allocator: std.mem.Allocator) void {
     std.process.argsFree(allocator, _args);
-    _args_map.deinit();
+    _args_map.deinit(allocator);
 }
 
 fn setArgs(arg_name: []const u8, arg_value: []const u8) !void {
@@ -593,8 +592,8 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
                     const noww = std.time.milliTimestamp();
 
-                    const tmp_alloc = try tempalloc.api.create();
-                    defer tempalloc.api.destroy(tmp_alloc);
+                    const allocator = try tempalloc.api.create();
+                    defer tempalloc.api.destroy(allocator);
 
                     // TODO: stange delta, unshit this shit
                     actions.checkInputs();
@@ -603,12 +602,12 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                     try doKernelUpdateTasks(self.kernel_tick, self.dt_s);
 
                     // clean main DB
-                    try _cdb.gc(tmp_alloc, assetdb.getDb());
+                    try _cdb.gc(allocator, assetdb.getDb());
 
                     try metrics.pushFrames();
 
                     if (!(isTestigMode() and self.fast_mode)) {
-                        const t = try sleepIfNeed(tmp_alloc, noww, _max_tick_rate, task.api.getThreadNum() - 1);
+                        const t = try sleepIfNeed(allocator, noww, _max_tick_rate, task.api.getThreadNum() - 1);
                         task.api.wait(t);
                     }
                 }
@@ -712,8 +711,9 @@ fn sleepIfNeed(allocator: std.mem.Allocator, last_call: i64, max_rate: u32, work
         const sleep_time: u64 = @intFromFloat((frame_limit_time - dt) * 0.62 * std.time.ns_per_ms);
 
         const n = worker_n;
-        var wait_tasks = std.ArrayList(cetech1.task.TaskID).init(allocator);
-        defer wait_tasks.deinit();
+        var wait_tasks = try cetech1.task.TaskIdList.initCapacity(allocator, n);
+        defer wait_tasks.deinit(allocator);
+
         for (0..n) |idx| {
             const SleepTask = struct {
                 sleep_time: u64,
@@ -728,7 +728,7 @@ fn sleepIfNeed(allocator: std.mem.Allocator, last_call: i64, max_rate: u32, work
                 SleepTask{ .sleep_time = sleep_time },
                 .{ .affinity = @intCast(idx + 1) },
             );
-            try wait_tasks.append(t);
+            wait_tasks.appendAssumeCapacity(t);
         }
 
         // // Sleep but pool events and draw coreui
@@ -756,10 +756,10 @@ fn sleepIfNeed(allocator: std.mem.Allocator, last_call: i64, max_rate: u32, work
     return .none;
 }
 
-fn addPhase(name: [:0]const u8, depend: []const strid.StrId64) !void {
-    const name_hash = strid.strId64(name);
+fn addPhase(name: [:0]const u8, depend: []const cetech1.StrId64) !void {
+    const name_hash = cetech1.strId64(name);
     const phase = Phase.init(_kernel_allocator, name);
-    try _phase_map.put(name_hash, phase);
+    try _phase_map.put(_kernel_allocator, name_hash, phase);
     try _phases_dag.add(name_hash, depend);
 }
 
@@ -770,8 +770,8 @@ fn generateKernelTaskChain(alloctor: std.mem.Allocator) !void {
     try _task_dag.reset();
     _task_chain.clearRetainingCapacity();
 
-    var iface_map = std.AutoArrayHashMap(strid.StrId64, *const public.KernelTaskI).init(_kernel_allocator);
-    defer iface_map.deinit();
+    var iface_map = cetech1.AutoArrayHashMap(cetech1.StrId64, *const public.KernelTaskI){};
+    defer iface_map.deinit(_kernel_allocator);
 
     const impls = try apidb.api.getImpl(alloctor, public.KernelTaskI);
     defer alloctor.free(impls);
@@ -779,15 +779,15 @@ fn generateKernelTaskChain(alloctor: std.mem.Allocator) !void {
     for (impls) |iface| {
         const depends = iface.depends;
 
-        const name_hash = strid.strId64(iface.name);
+        const name_hash = cetech1.strId64(iface.name);
 
         try _task_dag.add(name_hash, depends);
-        try iface_map.put(name_hash, iface);
+        try iface_map.put(_kernel_allocator, name_hash, iface);
     }
 
     try _task_dag.build_all();
     for (_task_dag.output.keys()) |name| {
-        try _task_chain.append(iface_map.get(name).?);
+        try _task_chain.append(_kernel_allocator, iface_map.get(name).?);
     }
 
     dumpKernelTask();
@@ -812,12 +812,12 @@ fn generateTaskUpdateChain(allocator: std.mem.Allocator) !void {
     for (impls) |iface| {
         const depends = iface.depends;
 
-        const name_hash = strid.strId64(iface.name);
+        const name_hash = cetech1.strId64(iface.name);
 
         var phase = _phase_map.getPtr(iface.phase).?;
         try phase.update_dag.add(name_hash, depends);
 
-        try _iface_map.put(name_hash, iface);
+        try _iface_map.put(_kernel_allocator, name_hash, iface);
     }
 
     for (_phases_dag.output.keys()) |phase_hash| {
@@ -826,7 +826,7 @@ fn generateTaskUpdateChain(allocator: std.mem.Allocator) !void {
         try phase.update_dag.build_all();
 
         for (phase.update_dag.output.keys()) |name| {
-            try phase.update_chain.append(_iface_map.get(name).?);
+            try phase.update_chain.append(_kernel_allocator, _iface_map.get(name).?);
         }
     }
 
@@ -863,7 +863,7 @@ fn doKernelUpdateTasks(kernel_tick: u64, dt: f32) !void {
                 }
             };
 
-            const task_strid = strid.strId64(update_handler.name);
+            const task_strid = cetech1.strId64(update_handler.name);
 
             var prereq = cetech1.task.TaskID.none;
 
@@ -873,7 +873,7 @@ fn doKernelUpdateTasks(kernel_tick: u64, dt: f32) !void {
 
                 for (depeds.?) |d| {
                     if (_tmp_taskid_map.get(d)) |task_id| {
-                        try _tmp_depend_array.append(task_id);
+                        try _tmp_depend_array.append(_kernel_allocator, task_id);
                     } else {
                         log.err("No task {d}", .{d.id});
                     }
@@ -893,7 +893,7 @@ fn doKernelUpdateTasks(kernel_tick: u64, dt: f32) !void {
                 },
                 .{ .affinity = update_handler.affinity },
             );
-            try _tmp_taskid_map.put(task_strid, job_id);
+            try _tmp_taskid_map.put(_kernel_allocator, task_strid, job_id);
         }
 
         const sync_job = try task.api.combine(_tmp_taskid_map.values());
@@ -923,7 +923,7 @@ fn dumpKernelUpdatePhaseTree() !void {
         const last_idx = if (_phases_dag.output.keys().len != 0) _phases_dag.output.keys().len else 0;
         const is_last = (last_idx - 1) == idx;
         for (phase.update_chain.items) |update_fce| {
-            const task_name_strid = strid.strId64(update_fce.name);
+            const task_name_strid = cetech1.strId64(update_fce.name);
             const dep_arr = phase.update_dag.dependList(task_name_strid);
             const is_root = dep_arr == null;
             const tags = if (is_root) "R" else " ";
@@ -931,12 +931,12 @@ fn dumpKernelUpdatePhaseTree() !void {
             var depends_line: ?[]u8 = null;
 
             if (!is_root) {
-                var depends_name = std.ArrayList([]const u8).init(_kernel_allocator);
-                defer depends_name.deinit();
+                var depends_name = try cetech1.ArrayList([]const u8).initCapacity(_kernel_allocator, dep_arr.?.len);
+                defer depends_name.deinit(_kernel_allocator);
 
                 for (dep_arr.?) |dep_id| {
                     const dep_iface = _iface_map.getPtr(dep_id).?;
-                    try depends_name.append(dep_iface.*.name);
+                    depends_name.appendAssumeCapacity(dep_iface.*.name);
                 }
 
                 depends_line = try std.mem.join(_kernel_allocator, ", ", depends_name.items);
@@ -985,7 +985,7 @@ fn dumpKernelUpdatePhaseTreeD2() !void {
         try writer.print("{s}: {{\n", .{phase.name});
 
         for (phase.update_chain.items) |update_fce| {
-            const task_name_strid = strid.strId64(update_fce.name);
+            const task_name_strid = cetech1.strId64(update_fce.name);
             const dep_arr = phase.update_dag.dependList(task_name_strid);
             const is_root = dep_arr == null;
             const iface = _iface_map.getPtr(task_name_strid).?;

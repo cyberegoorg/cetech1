@@ -5,8 +5,8 @@ const cetech1 = @import("cetech1");
 const public = cetech1.cdb;
 const cdb_private = @import("cdb.zig");
 
-const StrId32 = cetech1.strid.StrId32;
-const strId32 = cetech1.strid.strId32;
+const StrId32 = cetech1.StrId32;
+const strId32 = cetech1.strId32;
 
 const cdb = cetech1.cdb;
 
@@ -108,7 +108,7 @@ test "cdb: Should register aspect" {
 
     const FooAspect = struct {
         pub const c_name = "foo_aspect";
-        pub const name_hash = cetech1.strid.strId32("foo_aspect");
+        pub const name_hash = cetech1.strId32("foo_aspect");
 
         const Self = @This();
         barFn: *const fn (db_: public.DbId) void,
@@ -164,7 +164,7 @@ test "cdb: Should register property aspect" {
 
     const FooAspect = struct {
         pub const c_name = "foo_aspect";
-        pub const name_hash = cetech1.strid.strId32("foo_aspect");
+        pub const name_hash = cetech1.strId32("foo_aspect");
 
         const Self = @This();
         barFn: *const fn (db_: public.DbId) void,
@@ -1210,7 +1210,7 @@ test "cdb: Should use prototype" {
     _cdb.setValue(f64, obj1_w, 0, 1);
     try _cdb.writeCommit(obj1_w);
 
-    try std.testing.expectEqual(public.OBJID_ZERO, _cdb.getPrototype(_cdb.readObj(obj1).?));
+    try std.testing.expectEqual(public.ObjId{}, _cdb.getPrototype(_cdb.readObj(obj1).?));
 
     const obj2 = try _cdb.createObjectFromPrototype(obj1);
 

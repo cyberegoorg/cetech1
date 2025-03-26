@@ -72,7 +72,7 @@ const AssetBrowserTab = struct {
 
 var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = ASSET_BROWSER_NAME,
-    .tab_hash = strid.strId32(ASSET_BROWSER_NAME),
+    .tab_hash = cetech1.strId32(ASSET_BROWSER_NAME),
     .create_on_init = true,
 }, struct {
     pub fn menuName() ![:0]const u8 {
@@ -239,7 +239,7 @@ const UiAssetBrowserResult = struct {
 fn uiAssetBrowser(
     allocator: std.mem.Allocator,
     tab: *editor.TabO,
-    context: []const strid.StrId64,
+    context: []const cetech1.StrId64,
     root_folder: cdb.ObjId,
     selectection: *coreui.Selection,
     filter_buff: [:0]u8,

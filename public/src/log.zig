@@ -2,14 +2,14 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const strid = @import("strid.zig");
+const cetech1 = @import("root.zig");
 
 pub const MAX_LOG_ENTRY_SIZE = 1024 * 8; //TODO SHIT
 const LogFn = fn (comptime std.log.Level, comptime @TypeOf(.enum_literal), comptime []const u8, anytype) void;
 
 pub const LogHandlerI = struct {
     pub const c_name = "ct_log_handler_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
     log: *const fn (level: LogAPI.Level, scope: [:0]const u8, log_msg: [:0]const u8) anyerror!void,
 

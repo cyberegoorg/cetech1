@@ -36,7 +36,7 @@ const G = struct {
 };
 var _g: *G = undefined;
 
-const SelectedMetrics = cetech1.mem.Set([]const u8);
+const SelectedMetrics = cetech1.ArraySet([]const u8);
 // Struct for tab type
 const MetricsTab = struct {
     tab_i: editor.TabI,
@@ -50,7 +50,7 @@ const MetricsTab = struct {
 // Fill editor tab interface
 var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
-    .tab_hash = cetech1.strid.strId32(TAB_NAME),
+    .tab_hash = cetech1.strId32(TAB_NAME),
     .create_on_init = true,
     .category = "Debug",
 }, struct {
@@ -77,7 +77,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 .vt = _g.test_tab_vt_ptr,
                 .inst = @ptrCast(tab_inst),
             },
-            .selected_metrics = SelectedMetrics.init(_allocator),
+            .selected_metrics = SelectedMetrics.init(),
         };
         return &tab_inst.tab_i;
     }
@@ -85,7 +85,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     // Destroy tab instantce
     pub fn destroy(tab_inst: *editor.TabI) !void {
         const tab_o: *MetricsTab = @alignCast(@ptrCast(tab_inst.inst));
-        tab_o.selected_metrics.deinit();
+        tab_o.selected_metrics.deinit(_allocator);
         _allocator.destroy(tab_o);
     }
 
@@ -195,7 +195,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                             if (tab_o.selected_metrics.contains(metric_name)) {
                                 _ = tab_o.selected_metrics.remove(metric_name);
                             } else {
-                                _ = try tab_o.selected_metrics.add(metric_name);
+                                _ = try tab_o.selected_metrics.add(_allocator, metric_name);
                             }
                         }
                     }
@@ -211,7 +211,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                         if (tab_o.selected_metrics.contains(metric_name)) {
                             _ = tab_o.selected_metrics.remove(metric_name);
                         } else {
-                            _ = try tab_o.selected_metrics.add(metric_name);
+                            _ = try tab_o.selected_metrics.add(_allocator, metric_name);
                         }
                     }
                 }

@@ -63,7 +63,7 @@ const PinId = packed struct(u64) {
     objgen: cdb.ObjIdGen,
     pin_hash: u32,
 
-    pub fn init(obj: cdb.ObjId, pin_hash: cetech1.strid.StrId32) PinId {
+    pub fn init(obj: cdb.ObjId, pin_hash: cetech1.StrId32) PinId {
         return .{
             .objid = obj.id,
             .objgen = obj.gen,
@@ -79,7 +79,7 @@ const PinId = packed struct(u64) {
         return .{ .gen = self.objgen, .id = self.objid, .type_idx = graphvm.NodeType.typeIdx(_cdb, db), .db = db };
     }
 
-    pub fn getPinHash(self: *const PinId) cetech1.strid.StrId32 {
+    pub fn getPinHash(self: *const PinId) cetech1.StrId32 {
         return .{ .id = self.pin_hash };
     }
 
@@ -89,11 +89,11 @@ const PinId = packed struct(u64) {
     }
 };
 
-const PinHashNameMap = std.AutoHashMap(struct { cdb.ObjId, cetech1.strid.StrId32 }, [:0]const u8);
-const PinValueTypeMap = std.AutoArrayHashMap(struct { cdb.ObjId, cetech1.strid.StrId32 }, cetech1.strid.StrId32);
-const PinDataMap = std.AutoHashMap(struct { cdb.ObjId, cetech1.strid.StrId32 }, cdb.ObjId);
+const PinHashNameMap = cetech1.AutoHashMap(struct { cdb.ObjId, cetech1.StrId32 }, [:0]const u8);
+const PinValueTypeMap = cetech1.AutoArrayHashMap(struct { cdb.ObjId, cetech1.StrId32 }, cetech1.StrId32);
+const PinDataMap = cetech1.AutoHashMap(struct { cdb.ObjId, cetech1.StrId32 }, cdb.ObjId);
 
-const ToFromConMap = std.AutoHashMap(struct { cdb.ObjId, cetech1.strid.StrId32 }, struct { cdb.ObjId, cetech1.strid.StrId32 });
+const ToFromConMap = cetech1.AutoHashMap(struct { cdb.ObjId, cetech1.StrId32 }, struct { cdb.ObjId, cetech1.StrId32 });
 
 // Struct for tab type
 const GraphEditorTab = struct {
@@ -114,10 +114,10 @@ const GraphEditorTab = struct {
     ctxPinId: node_editor.PinId = 0,
     ctxPos: [2]f32 = .{ 0, 0 },
 
-    pinhash_map: PinHashNameMap,
-    pindata_map: PinDataMap,
-    pintype_map: PinValueTypeMap,
-    resolved_pintype_map: PinValueTypeMap,
+    pinhash_map: PinHashNameMap = .{},
+    pindata_map: PinDataMap = .{},
+    pintype_map: PinValueTypeMap = .{},
+    resolved_pintype_map: PinValueTypeMap = .{},
 };
 
 const SaveJson = struct { group_size: struct { x: f32, y: f32 } };
@@ -218,11 +218,11 @@ fn drawIcon(drawlist: coreui.DrawList, icon_type: PinIconType, a: [2]f32, b: [2]
 // Fill editor tab interface
 var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
-    .tab_hash = cetech1.strid.strId32(TAB_NAME),
+    .tab_hash = cetech1.strId32(TAB_NAME),
     .create_on_init = true,
     .show_pin_object = true,
     .show_sel_obj_in_title = true,
-    .ignore_selection_from_tab = &.{cetech1.strid.strId32("ct_editor_asset_browser_tab")},
+    .ignore_selection_from_tab = &.{cetech1.strId32("ct_editor_asset_browser_tab")},
 }, struct {
 
     // Return name for menu /Tabs/
@@ -260,10 +260,6 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             }),
             .inter_selection = coreui.Selection.init(_allocator),
             .db = _assetdb.getDb(),
-            .pinhash_map = PinHashNameMap.init(_allocator),
-            .pindata_map = PinDataMap.init(_allocator),
-            .pintype_map = PinValueTypeMap.init(_allocator),
-            .resolved_pintype_map = PinValueTypeMap.init(_allocator),
             .tab_i = .{
                 .vt = _g.test_tab_vt_ptr,
                 .inst = @ptrCast(tab_inst),
@@ -276,10 +272,10 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     pub fn destroy(tab_inst: *editor.TabI) !void {
         const tab_o: *GraphEditorTab = @alignCast(@ptrCast(tab_inst.inst));
 
-        tab_o.pinhash_map.deinit();
-        tab_o.pindata_map.deinit();
-        tab_o.pintype_map.deinit();
-        tab_o.resolved_pintype_map.deinit();
+        tab_o.pinhash_map.deinit(_allocator);
+        tab_o.pindata_map.deinit(_allocator);
+        tab_o.pintype_map.deinit(_allocator);
+        tab_o.resolved_pintype_map.deinit(_allocator);
 
         tab_o.inter_selection.deinit();
 
@@ -294,8 +290,8 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         _ = dt;
         const tab_o: *GraphEditorTab = @alignCast(@ptrCast(inst));
 
-        const tmp_alloc = try _tempalloc.create();
-        defer _tempalloc.destroy(tmp_alloc);
+        const allocator = try _tempalloc.create();
+        defer _tempalloc.destroy(allocator);
 
         var buf: [128]u8 = undefined;
         _node_editor.setCurrentEditor(tab_o.editor);
@@ -347,38 +343,38 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             const ne_style = _node_editor.getStyle();
 
             if (new_graph) {
-                if (try graphvm.GraphType.readSubObjSet(_cdb, graph_r, .data, tmp_alloc)) |datas| {
+                if (try graphvm.GraphType.readSubObjSet(_cdb, graph_r, .data, allocator)) |datas| {
                     for (datas) |data| {
                         const data_r = graphvm.GraphDataType.read(_cdb, data).?;
 
                         const to_node = graphvm.GraphDataType.readRef(_cdb, data_r, .to_node).?;
                         const to_node_pin_str = graphvm.GraphDataType.readStr(_cdb, data_r, .to_node_pin).?;
-                        const to_node_pin = cetech1.strid.strId32(to_node_pin_str);
+                        const to_node_pin = cetech1.strId32(to_node_pin_str);
 
                         const pin_k = .{ to_node, to_node_pin };
-                        try tab_o.pindata_map.put(pin_k, data);
+                        try tab_o.pindata_map.put(_allocator, pin_k, data);
                     }
                 }
             }
 
-            const all_connections = try graphvm.GraphType.readSubObjSet(_cdb, graph_r, .connections, tmp_alloc);
-            defer if (all_connections) |c| tmp_alloc.free(c);
+            const all_connections = try graphvm.GraphType.readSubObjSet(_cdb, graph_r, .connections, allocator);
+            defer if (all_connections) |c| allocator.free(c);
 
-            const all_nodes = try graphvm.GraphType.readSubObjSet(_cdb, graph_r, .nodes, tmp_alloc);
-            defer if (all_nodes) |c| tmp_alloc.free(c);
+            const all_nodes = try graphvm.GraphType.readSubObjSet(_cdb, graph_r, .nodes, allocator);
+            defer if (all_nodes) |c| allocator.free(c);
 
             // Resolve pin types (need for generics)
             // TODO: SHIT
             // TODO: cache and move to graphvm
             {
-                var dag = cetech1.dag.DAG(u64).init(tmp_alloc);
+                var dag = cetech1.dag.DAG(u64).init(allocator);
                 defer dag.deinit();
 
-                var to_from_map = ToFromConMap.init(tmp_alloc);
-                defer to_from_map.deinit();
+                var to_from_map = ToFromConMap{};
+                defer to_from_map.deinit(allocator);
 
-                var depends = std.ArrayList(u64).init(tmp_alloc);
-                defer depends.deinit();
+                var depends = cetech1.ArrayList(u64){};
+                defer depends.deinit(allocator);
 
                 tab_o.resolved_pintype_map.clearRetainingCapacity();
 
@@ -402,8 +398,8 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                                 // only conection to this node
                                 if (to_node != node) continue;
 
-                                try to_from_map.put(.{ to_node, to_pin }, .{ from_node, from_pin });
-                                try depends.append(from_node.toU64());
+                                try to_from_map.put(allocator, .{ to_node, to_pin }, .{ from_node, from_pin });
+                                try depends.append(allocator, from_node.toU64());
                                 //try dag.add(from_node.toU64(), &.{});
                             }
                         }
@@ -422,19 +418,15 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                     const node_iface = _graph.findNodeI(node_type_hash).?;
 
                     // log.debug("\t{s} {s}", .{ _assetdb.getUuid(node_obj).?, node_iface.name });
+                    var pins_def = try node_iface.getPinsDef(node_iface, allocator, graph_obj, node_obj);
+                    defer pins_def.deinit(allocator);
 
-                    const in_pins = try node_iface.getInputPins(node_iface, tmp_alloc, graph_obj, node_obj);
-                    defer tmp_alloc.free(in_pins);
-
-                    const out_pins = try node_iface.getOutputPins(node_iface, tmp_alloc, graph_obj, node_obj);
-                    defer tmp_alloc.free(out_pins);
-
-                    for (in_pins) |in_pin| {
+                    for (pins_def.in) |in_pin| {
                         const is_generic = in_pin.type_hash.eql(graphvm.PinTypes.GENERIC);
                         if (is_generic) {
                             const data = tab_o.pindata_map.get(.{ node_obj, in_pin.pin_hash });
 
-                            var resolved_type: cetech1.strid.StrId32 = .{};
+                            var resolved_type: cetech1.StrId32 = .{};
                             if (data) |d| {
                                 const data_r = graphvm.GraphDataType.read(_cdb, d).?;
 
@@ -450,18 +442,18 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                                 }
                             }
 
-                            try tab_o.resolved_pintype_map.put(.{ node_obj, in_pin.pin_hash }, resolved_type);
+                            try tab_o.resolved_pintype_map.put(_allocator, .{ node_obj, in_pin.pin_hash }, resolved_type);
                         } else {
-                            try tab_o.resolved_pintype_map.put(.{ node_obj, in_pin.pin_hash }, in_pin.type_hash);
+                            try tab_o.resolved_pintype_map.put(_allocator, .{ node_obj, in_pin.pin_hash }, in_pin.type_hash);
                         }
                     }
 
-                    for (out_pins) |out_pin| {
+                    for (pins_def.out) |out_pin| {
                         if (out_pin.type_of) |tof| {
                             const from_node_type = tab_o.resolved_pintype_map.get(.{ node_obj, tof }) orelse continue;
-                            try tab_o.resolved_pintype_map.put(.{ node_obj, out_pin.pin_hash }, from_node_type);
+                            try tab_o.resolved_pintype_map.put(_allocator, .{ node_obj, out_pin.pin_hash }, from_node_type);
                         } else {
-                            try tab_o.resolved_pintype_map.put(.{ node_obj, out_pin.pin_hash }, out_pin.type_hash);
+                            try tab_o.resolved_pintype_map.put(_allocator, .{ node_obj, out_pin.pin_hash }, out_pin.type_hash);
                         }
                     }
                 }
@@ -540,18 +532,18 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
                                 _coreui.tableNextColumn();
                                 var node_title: [:0]const u8 = undefined;
-                                defer tmp_alloc.free(node_title);
+                                defer allocator.free(node_title);
                                 if (node_i.title) |title_fce| {
-                                    node_title = try title_fce(node_i, tmp_alloc, node);
+                                    node_title = try title_fce(node_i, allocator, node);
                                 } else {
-                                    node_title = try tmp_alloc.dupeZ(u8, node_i.name);
+                                    node_title = try allocator.dupeZ(u8, node_i.name);
                                 }
 
                                 var icon_buf: [16:0]u8 = undefined;
                                 var node_icon: [:0]const u8 = undefined;
 
                                 if (node_i.icon) |icon_fce| {
-                                    node_icon = try icon_fce(node_i, &icon_buf, tmp_alloc, node);
+                                    node_icon = try icon_fce(node_i, &icon_buf, allocator, node);
                                 } else {
                                     node_icon = try std.fmt.bufPrintZ(&icon_buf, "{s}", .{coreui.Icons.Node});
                                 }
@@ -563,9 +555,10 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                             }
 
                             // Outputs
-                            const outputs = try node_i.getOutputPins(node_i, tmp_alloc, graph_obj, node);
-                            defer tmp_alloc.free(outputs);
-                            for (outputs) |output| {
+                            var pin_def = try node_i.getPinsDef(node_i, allocator, graph_obj, node);
+                            defer pin_def.deinit(allocator);
+
+                            for (pin_def.out) |output| {
                                 _coreui.tableNextColumn();
 
                                 const resolved_type = tab_o.resolved_pintype_map.get(.{ node, output.pin_hash }) orelse output.pin_hash;
@@ -579,7 +572,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                                 const txt_size = _coreui.calcTextSize(output.name, .{});
                                 _coreui.setCursorPosX(_coreui.getCursorPosX() + (max_x - txt_size[0] - pin_size));
 
-                                try tab_o.pinhash_map.put(.{ node, output.pin_hash }, output.pin_name);
+                                try tab_o.pinhash_map.put(_allocator, .{ node, output.pin_hash }, output.pin_name);
                                 const pinid = PinId.init(node, output.pin_hash).toU64();
                                 _node_editor.beginPin(pinid, .Output);
                                 {
@@ -612,7 +605,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                                         defer _coreui.popId();
 
                                         try _editor_inspector.cdbPropertiesObj(
-                                            tmp_alloc,
+                                            allocator,
                                             tab_o,
                                             tab_o.selection.top_level_obj,
                                             setting_obj,
@@ -628,9 +621,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                             }
 
                             // Input
-                            const inputs = try node_i.getInputPins(node_i, tmp_alloc, graph_obj, node);
-                            defer tmp_alloc.free(inputs);
-                            for (inputs) |input| {
+                            for (pin_def.in) |input| {
                                 _coreui.tableNextColumn();
 
                                 const resolved_type = tab_o.resolved_pintype_map.get(.{ node, input.pin_hash }) orelse input.pin_hash;
@@ -644,8 +635,8 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                                 const data = tab_o.pindata_map.get(pin_k);
                                 const data_connected = data != null;
 
-                                try tab_o.pinhash_map.put(pin_k, input.pin_name);
-                                try tab_o.pintype_map.put(pin_k, input.type_hash);
+                                try tab_o.pinhash_map.put(_allocator, pin_k, input.pin_name);
+                                try tab_o.pintype_map.put(_allocator, pin_k, input.type_hash);
 
                                 const pinid = PinId.init(node, input.pin_hash).toU64();
 
@@ -686,7 +677,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                                         const one_value = _cdb.getTypePropDef(tab_o.db, _cdb.getTypeIdx(tab_o.db, value_i.cdb_type_hash).?).?.len == 1;
 
                                         try _editor_inspector.cdbPropertiesObj(
-                                            tmp_alloc,
+                                            allocator,
                                             tab_o,
                                             tab_o.selection.top_level_obj,
                                             value_obj,
@@ -709,8 +700,8 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             }
 
             //Groups
-            if (try graphvm.GraphType.readSubObjSet(_cdb, graph_r, .groups, tmp_alloc)) |groups| {
-                defer tmp_alloc.free(groups);
+            if (try graphvm.GraphType.readSubObjSet(_cdb, graph_r, .groups, allocator)) |groups| {
+                defer allocator.free(groups);
 
                 for (groups) |group| {
                     const group_r = _cdb.readObj(group).?;
@@ -758,7 +749,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                     //TODO: inform user about invalid connection
                     if (_cdb.readObj(from_node)) |from_node_obj_r| {
                         const from_node_type = graphvm.NodeType.f.getNodeTypeId(_cdb, from_node_obj_r);
-                        const out_pin = (try _graph.getOutputPin(tmp_alloc, tab_o.root_graph_obj, from_node, from_node_type, from_pin)) orelse continue;
+                        const out_pin = (try _graph.getOutputPin(allocator, tab_o.root_graph_obj, from_node, from_node_type, from_pin)) orelse continue;
 
                         const resolved_type = tab_o.resolved_pintype_map.get(.{ from_node, from_pin }) orelse out_pin.type_hash;
                         type_color = _graph.getTypeColor(resolved_type);
@@ -803,18 +794,18 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
                     tab_o.filter = _coreui.uiFilter(&tab_o.filter_buff, tab_o.filter);
 
-                    const impls = try _apidb.getImpl(tmp_alloc, graphvm.NodeI);
-                    defer tmp_alloc.free(impls);
+                    const impls = try _apidb.getImpl(allocator, graphvm.NodeI);
+                    defer allocator.free(impls);
 
-                    var node_without_category = std.ArrayList(*const graphvm.NodeI).init(tmp_alloc);
-                    defer node_without_category.deinit();
+                    var node_without_category = cetech1.ArrayList(*const graphvm.NodeI){};
+                    defer node_without_category.deinit(allocator);
                     if (tab_o.filter) |filter| {
                         for (impls) |iface| {
                             var icon_buf: [16:0]u8 = undefined;
                             var node_icon: [:0]const u8 = undefined;
 
                             if (iface.icon) |icon_fce| {
-                                node_icon = try icon_fce(iface, &icon_buf, tmp_alloc, .{});
+                                node_icon = try icon_fce(iface, &icon_buf, allocator, .{});
                             } else {
                                 node_icon = try std.fmt.bufPrintZ(&icon_buf, "{s}", .{coreui.Icons.Node});
                             }
@@ -861,7 +852,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                                     count += 1;
                                 }
                             } else {
-                                try node_without_category.append(iface);
+                                try node_without_category.append(allocator, iface);
                                 continue;
                             }
 
@@ -870,7 +861,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                                 var node_icon: [:0]const u8 = undefined;
 
                                 if (iface.icon) |icon_fce| {
-                                    node_icon = try icon_fce(iface, &icon_buf, tmp_alloc, .{});
+                                    node_icon = try icon_fce(iface, &icon_buf, allocator, .{});
                                 } else {
                                     node_icon = try std.fmt.bufPrintZ(&icon_buf, "{s}", .{coreui.Icons.Node});
                                 }
@@ -923,7 +914,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                             var node_icon: [:0]const u8 = undefined;
 
                             if (iface.icon) |icon_fce| {
-                                node_icon = try icon_fce(iface, &icon_buf, tmp_alloc, .{});
+                                node_icon = try icon_fce(iface, &icon_buf, allocator, .{});
                             } else {
                                 node_icon = try std.fmt.bufPrintZ(&icon_buf, "{s}", .{coreui.Icons.Node});
                             }
@@ -963,7 +954,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                             if (node_type.eql(graphvm.CALL_GRAPH_NODE_TYPE)) {
                                 if (graphvm.CallGraphNodeSettings.readSubObj(_cdb, settings_r, .graph)) |graph| {
                                     if (_coreui.menuItem(_allocator, coreui.Icons.Open ++ "  " ++ "Open subgraph", .{}, null)) {
-                                        try _editor_obj_buffer.addToFirst(tmp_alloc, tab_o.db, .{ .top_level_obj = tab_o.selection.top_level_obj, .obj = graph });
+                                        try _editor_obj_buffer.addToFirst(allocator, tab_o.db, .{ .top_level_obj = tab_o.selection.top_level_obj, .obj = graph });
                                     }
                                 }
                             } else {
@@ -972,7 +963,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                                     defer _coreui.popId();
 
                                     try _editor_inspector.cdbPropertiesObj(
-                                        tmp_alloc,
+                                        allocator,
                                         tab_o,
                                         tab_o.selection.top_level_obj,
                                         settings,
@@ -1016,7 +1007,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                     const from_node_obj_r = _cdb.readObj(node_obj).?;
                     const from_node_type = graphvm.NodeType.f.getNodeTypeId(_cdb, from_node_obj_r);
 
-                    const is_output = try _graph.isOutputPin(tmp_alloc, tab_o.root_graph_obj, node_obj, from_node_type, pin_hash);
+                    const is_output = try _graph.isOutputPin(allocator, tab_o.root_graph_obj, node_obj, from_node_type, pin_hash);
 
                     const enabled = _cdb.isChildOff(tab_o.selection.top_level_obj, node_obj);
 
@@ -1040,13 +1031,13 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                                 if (_coreui.beginMenu(_allocator, "Add value", enabled, null)) {
                                     defer _coreui.endMenu();
 
-                                    const impls = try _apidb.getImpl(tmp_alloc, graphvm.GraphValueTypeI);
-                                    defer tmp_alloc.free(impls);
+                                    const impls = try _apidb.getImpl(allocator, graphvm.GraphValueTypeI);
+                                    defer allocator.free(impls);
                                     for (impls) |iface| {
                                         if (iface.cdb_type_hash.isEmpty()) continue;
                                         if (iface.type_hash.eql(graphvm.PinTypes.Flow)) continue;
 
-                                        if (_coreui.menuItem(tmp_alloc, iface.name, .{}, null)) {
+                                        if (_coreui.menuItem(allocator, iface.name, .{}, null)) {
                                             const data_obj = try graphvm.GraphDataType.createObject(_cdb, tab_o.db);
                                             const data_w = graphvm.GraphDataType.write(_cdb, data_obj).?;
 
@@ -1067,7 +1058,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                                             try _cdb.writeCommit(data_w);
                                             try _cdb.writeCommit(graph_w);
 
-                                            try tab_o.pindata_map.put(pin_k, data_obj);
+                                            try tab_o.pindata_map.put(_allocator, pin_k, data_obj);
                                         }
                                     }
                                 }
@@ -1096,7 +1087,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                                     try _cdb.writeCommit(data_w);
                                     try _cdb.writeCommit(graph_w);
 
-                                    try tab_o.pindata_map.put(pin_k, data_obj);
+                                    try tab_o.pindata_map.put(_allocator, pin_k, data_obj);
                                 }
                             }
                         }
@@ -1122,15 +1113,15 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
                         // If drag node from input to output swap it
                         // Allways OUT => IN semantic.
-                        if (try _graph.isInputPin(tmp_alloc, tab_o.root_graph_obj, from_node_obj, from_node_type, .{ .id = from_id.pin_hash })) {
+                        if (try _graph.isInputPin(allocator, tab_o.root_graph_obj, from_node_obj, from_node_type, .{ .id = from_id.pin_hash })) {
                             std.mem.swap(PinId, &from_id, &to_id);
                             std.mem.swap(cdb.ObjId, &from_node_obj, &to_node_obj);
-                            std.mem.swap(cetech1.strid.StrId32, &from_node_type, &to_node_type);
+                            std.mem.swap(cetech1.StrId32, &from_node_type, &to_node_type);
                             std.mem.swap(?node_editor.PinId, &ne_form_id, &ne_to_id);
                         }
 
-                        const is_input = try _graph.isInputPin(tmp_alloc, tab_o.root_graph_obj, to_node_obj, to_node_type, .{ .id = to_id.pin_hash });
-                        const is_output = try _graph.isOutputPin(tmp_alloc, tab_o.root_graph_obj, from_node_obj, from_node_type, .{ .id = from_id.pin_hash });
+                        const is_input = try _graph.isInputPin(allocator, tab_o.root_graph_obj, to_node_obj, to_node_type, .{ .id = to_id.pin_hash });
+                        const is_output = try _graph.isOutputPin(allocator, tab_o.root_graph_obj, from_node_obj, from_node_type, .{ .id = from_id.pin_hash });
 
                         if (ne_form_id.? == ne_to_id.?) {
                             _node_editor.rejectNewItem(.{ 1, 0, 0, 1 }, 3);
@@ -1139,8 +1130,8 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                         } else if (from_node_obj.eql(to_node_obj)) {
                             _node_editor.rejectNewItem(.{ 1, 0, 0, 1 }, 3);
                         } else {
-                            const output_pin_def = (try _graph.getOutputPin(tmp_alloc, tab_o.root_graph_obj, from_node_obj, from_node_type, .{ .id = from_id.pin_hash })).?;
-                            const input_pin_def = (try _graph.getInputPin(tmp_alloc, tab_o.root_graph_obj, to_node_obj, to_node_type, .{ .id = to_id.pin_hash })).?;
+                            const output_pin_def = (try _graph.getOutputPin(allocator, tab_o.root_graph_obj, from_node_obj, from_node_type, .{ .id = from_id.pin_hash })).?;
+                            const input_pin_def = (try _graph.getInputPin(allocator, tab_o.root_graph_obj, to_node_obj, to_node_type, .{ .id = to_id.pin_hash })).?;
 
                             const resolved_output = tab_o.resolved_pintype_map.get(.{ from_node_obj, .{ .id = from_id.pin_hash } }) orelse output_pin_def.type_hash;
                             const resolved_input = tab_o.resolved_pintype_map.get(.{ to_node_obj, .{ .id = to_id.pin_hash } }) orelse input_pin_def.type_hash;
@@ -1212,10 +1203,10 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         if (_node_editor.hasSelectionChanged()) {
             const selected_object_n = _node_editor.getSelectedObjectCount();
             if (selected_object_n != 0) {
-                const selected_nodes = try tmp_alloc.alloc(node_editor.NodeId, @intCast(selected_object_n));
+                const selected_nodes = try allocator.alloc(node_editor.NodeId, @intCast(selected_object_n));
 
-                var items = try std.ArrayList(coreui.SelectionItem).initCapacity(tmp_alloc, @intCast(selected_object_n));
-                defer items.deinit();
+                var items = try cetech1.ArrayList(coreui.SelectionItem).initCapacity(allocator, @intCast(selected_object_n));
+                defer items.deinit(allocator);
                 // Nodes
                 {
                     const nodes_n = _node_editor.getSelectedNodes(selected_nodes);
@@ -1265,7 +1256,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                     }
                 }
 
-                const objs = try items.toOwnedSlice();
+                const objs = try items.toOwnedSlice(allocator);
                 try tab_o.inter_selection.set(objs);
                 _editor.propagateSelection(inst, objs);
             } else {
@@ -1321,7 +1312,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.strid.StrId32) !void {
+    pub fn objSelected(inst: *editor.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) !void {
         _ = sender_tab_hash; // autofix
         var tab_o: *GraphEditorTab = @alignCast(@ptrCast(inst));
 

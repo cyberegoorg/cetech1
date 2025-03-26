@@ -2,7 +2,7 @@ const std = @import("std");
 const cdb = @import("cdb.zig");
 const cdb_types = @import("cdb_types.zig");
 const task = @import("task.zig");
-const strid = @import("strid.zig");
+const cetech1 = @import("root.zig");
 const uuid = @import("uuid.zig");
 const platform = @import("platform.zig");
 
@@ -70,7 +70,7 @@ pub const Project = cdb.CdbTypeDecl(
 
 pub const AssetRootOpenedI = extern struct {
     pub const c_name = "ct_cdb_assetroot_opened_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
     opened: ?*const fn () anyerror!void,
 
@@ -162,8 +162,8 @@ pub const AssetDBAPI = struct {
     }
 
     /// Open asset root folder, crete basic struct if not exist and load assets.
-    pub inline fn openAssetRootFolder(self: Self, asset_root_path: []const u8, tmp_allocator: std.mem.Allocator) !void {
-        try self.openAssetRootFolderFn(asset_root_path, tmp_allocator);
+    pub inline fn openAssetRootFolder(self: Self, asset_root_path: []const u8, allocator: std.mem.Allocator) !void {
+        try self.openAssetRootFolderFn(asset_root_path, allocator);
     }
 
     /// Get root folder object.
@@ -219,18 +219,18 @@ pub const AssetDBAPI = struct {
     }
 
     /// Force save all assets.
-    pub inline fn saveAllAssets(self: Self, tmp_allocator: std.mem.Allocator) !void {
-        return self.saveAllAssetsFn(tmp_allocator);
+    pub inline fn saveAllAssets(self: Self, allocator: std.mem.Allocator) !void {
+        return self.saveAllAssetsFn(allocator);
     }
 
     /// Save only modified assets.
-    pub inline fn saveAllModifiedAssets(self: Self, tmp_allocator: std.mem.Allocator) !void {
-        return self.saveAllModifiedAssetsFn(tmp_allocator);
+    pub inline fn saveAllModifiedAssets(self: Self, allocator: std.mem.Allocator) !void {
+        return self.saveAllModifiedAssetsFn(allocator);
     }
 
     /// Save asset.
-    pub inline fn saveAsset(self: Self, tmp_allocator: std.mem.Allocator, asset: cdb.ObjId) !void {
-        return self.saveAssetFn(tmp_allocator, asset);
+    pub inline fn saveAsset(self: Self, allocator: std.mem.Allocator, asset: cdb.ObjId) !void {
+        return self.saveAssetFn(allocator, asset);
     }
 
     isAssetNameValid: *const fn (allocator: std.mem.Allocator, folder: cdb.ObjId, type_idx: cdb.TypeIdx, base_name: [:0]const u8) anyerror!bool,
@@ -247,7 +247,7 @@ pub const AssetDBAPI = struct {
     getPathForFolder: *const fn (buff: []u8, asset: cdb.ObjId) anyerror![]u8,
 
     createNewFolder: *const fn (db: cdb.DbId, parent_folder: cdb.ObjId, name: [:0]const u8) anyerror!cdb.ObjId,
-    saveAsAllAssets: *const fn (tmp_allocator: std.mem.Allocator, path: []const u8) anyerror!void,
+    saveAsAllAssets: *const fn (allocator: std.mem.Allocator, path: []const u8) anyerror!void,
     deleteAsset: *const fn (asset: cdb.ObjId) anyerror!void,
     deleteFolder: *const fn (folder: cdb.ObjId) anyerror!void,
     isToDeleted: *const fn (asset_or_folder: cdb.ObjId) bool,
@@ -274,16 +274,16 @@ pub const AssetDBAPI = struct {
 
     //#region Pointers to implementation.
     createAssetFn: *const fn (asset_name: []const u8, asset_folder: cdb.ObjId, asset_obj: ?cdb.ObjId) ?cdb.ObjId,
-    openAssetRootFolderFn: *const fn (asset_root_path: []const u8, tmp_allocator: std.mem.Allocator) anyerror!void,
+    openAssetRootFolderFn: *const fn (asset_root_path: []const u8, allocator: std.mem.Allocator) anyerror!void,
     getRootFolderFn: *const fn () cdb.ObjId,
     getObjIdFn: *const fn (obj_uuid: uuid.Uuid) ?cdb.ObjId,
     getUuidFn: *const fn (obj: cdb.ObjId) ?uuid.Uuid,
     getOrCreateUUIDFn: *const fn (obj: cdb.ObjId) anyerror!uuid.Uuid,
     isAssetModifiedFn: *const fn (asset: cdb.ObjId) bool,
     isProjectModifiedFn: *const fn () bool,
-    saveAllAssetsFn: *const fn (tmp_allocator: std.mem.Allocator) anyerror!void,
-    saveAllModifiedAssetsFn: *const fn (tmp_allocator: std.mem.Allocator) anyerror!void,
-    saveAssetFn: *const fn (tmp_allocator: std.mem.Allocator, asset: cdb.ObjId) anyerror!void,
+    saveAllAssetsFn: *const fn (allocator: std.mem.Allocator) anyerror!void,
+    saveAllModifiedAssetsFn: *const fn (allocator: std.mem.Allocator) anyerror!void,
+    saveAssetFn: *const fn (allocator: std.mem.Allocator, asset: cdb.ObjId) anyerror!void,
     getTmpPathFn: *const fn ([]u8) anyerror!?[]u8,
     addAssetIOFn: *const fn (asset_io: *AssetIOI) void,
     removeAssetIOFn: *const fn (asset_io: *AssetIOI) void,

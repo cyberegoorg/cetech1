@@ -263,40 +263,40 @@ pub fn build(b: *std.Build) !void {
     const generate_static_tool = b.addExecutable(.{
         .name = "generate_static",
         .root_source_file = b.path("src/tools/generate_static.zig"),
-        .target = target,
+        .target = b.graph.host,
     });
 
     const generate_externals_tool = b.addExecutable(.{
         .name = "generate_externals",
         .root_source_file = b.path("src/tools/generate_externals.zig"),
-        .target = target,
+        .target = b.graph.host,
     });
 
     const generate_ide_tool = b.addExecutable(.{
         .name = "generate_ide",
         .root_source_file = b.path("src/tools/generate_ide.zig"),
-        .target = target,
+        .target = b.graph.host,
     });
     b.installArtifact(generate_ide_tool);
 
-    const ModulesSet = std.StringHashMap(void);
-    var module_set = ModulesSet.init(b.allocator);
-    defer module_set.deinit();
+    const ModulesSet = std.StringHashMapUnmanaged(void);
+    var module_set = ModulesSet{};
+    defer module_set.deinit(b.allocator);
     for (all_modules) |module| {
-        try module_set.put(module, {});
+        try module_set.put(b.allocator, module, {});
     }
 
     // Modules
-    var enabled_modules = std.ArrayList([]const u8).init(b.allocator);
-    defer enabled_modules.deinit();
+    var enabled_modules = std.ArrayListUnmanaged([]const u8){};
+    defer enabled_modules.deinit(b.allocator);
 
     if (options.modules) |modules| {
-        try enabled_modules.appendSlice(modules);
+        try enabled_modules.appendSlice(b.allocator, modules);
     } else {
-        try enabled_modules.appendSlice(&core_modules);
+        try enabled_modules.appendSlice(b.allocator, &core_modules);
 
-        if (options.enable_samples) try enabled_modules.appendSlice(&samples_modules);
-        if (options.enable_editor) try enabled_modules.appendSlice(&editor_modules);
+        if (options.enable_samples) try enabled_modules.appendSlice(b.allocator, &samples_modules);
+        if (options.enable_editor) try enabled_modules.appendSlice(b.allocator, &editor_modules);
     }
 
     //
