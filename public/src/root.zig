@@ -1,8 +1,31 @@
 const std = @import("std");
 
+// List
+pub const ArrayList = std.ArrayListUnmanaged;
+
+// HashMap
+pub const AutoArrayHashMap = std.AutoArrayHashMapUnmanaged;
+pub const AutoHashMapUnmanaged = std.AutoHashMapUnmanaged;
+
+// Sets
+const ziglangSet = @import("ziglangSet");
+pub const ArraySet = ziglangSet.ArraySetUnmanaged;
+pub const HashSet = ziglangSet.HashSetUnmanaged;
+
+// Queues
+const queues = @import("queue.zig");
+pub const MPMCBoundedQueue = queues.MPMCBoundedQueue;
+pub const QueueWithLock = queues.QueueWithLock;
+
+// StrId
+const strid = @import("strid.zig");
+pub const StrId32 = strid.StrId32;
+pub const StrId64 = strid.StrId64;
+pub const strId32 = strid.strId32;
+pub const strId64 = strid.strId64;
+
 pub const log = @import("log.zig");
-pub const mem = @import("mem.zig");
-pub const strid = @import("strid.zig");
+pub const heap = @import("heap.zig");
 pub const dag = @import("dag.zig");
 pub const uuid = @import("uuid.zig");
 pub const tempalloc = @import("tempalloc.zig");

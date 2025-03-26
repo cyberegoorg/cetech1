@@ -7,7 +7,7 @@ const coreui = cetech1.coreui;
 const tempalloc = cetech1.tempalloc;
 const gpu = cetech1.gpu;
 
-const zm = cetech1.math;
+const zm = cetech1.math.zmath;
 const ecs = cetech1.ecs;
 const primitives = cetech1.primitives;
 const actions = cetech1.actions;
@@ -153,13 +153,13 @@ const move_system_i = ecs.SystemI.implement(
 
 // Rendering component
 
-const ECS_WORLD_CONTEXT = cetech1.strid.strId32("ecs_world_context");
-const ECS_ENTITY_CONTEXT = cetech1.strid.strId32("ecs_entity_context");
+const ECS_WORLD_CONTEXT = cetech1.strId32("ecs_world_context");
+const ECS_ENTITY_CONTEXT = cetech1.strId32("ecs_entity_context");
 
 // Fill editor tab interface
 var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
-    .tab_hash = cetech1.strid.strId32(TAB_NAME),
+    .tab_hash = cetech1.strId32(TAB_NAME),
     .category = "Examples",
 }, struct {
 
@@ -308,15 +308,15 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 });
 
-const ActivatedViewportActionSet = cetech1.strid.strId32("foo_activated_viewport");
-const ViewportActionSet = cetech1.strid.strId32("foo_viewport");
-const MoveAction = cetech1.strid.strId32("move");
-const LookAction = cetech1.strid.strId32("look");
-const LookActivationAction = cetech1.strid.strId32("look_activation");
+const ActivatedViewportActionSet = cetech1.strId32("foo_activated_viewport");
+const ViewportActionSet = cetech1.strId32("foo_viewport");
+const MoveAction = cetech1.strId32("move");
+const LookAction = cetech1.strId32("look");
+const LookActivationAction = cetech1.strId32("look_activation");
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
     "FooViewportTab",
-    &[_]cetech1.strid.StrId64{renderer.RENDERER_KERNEL_TASK},
+    &[_]cetech1.StrId64{renderer.RENDERER_KERNEL_TASK},
     struct {
         pub fn init() !void {
             _g.rg = try _render_graph.create();

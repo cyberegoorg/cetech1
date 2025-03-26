@@ -11,11 +11,11 @@ pub var api = cetech1.tempalloc.TempAllocApi{
 const module_name = .tempalloc;
 
 var _allocator: std.mem.Allocator = undefined;
-var _tmp_pool: cetech1.mem.TmpAllocatorPool = undefined;
+var _tmp_pool: cetech1.heap.TmpAllocatorPool = undefined;
 
 pub fn init(allocator: std.mem.Allocator, max_allocators: u32) !void {
     _allocator = allocator;
-    _tmp_pool = try cetech1.mem.TmpAllocatorPool.init(allocator, max_allocators);
+    _tmp_pool = try cetech1.heap.TmpAllocatorPool.init(allocator, max_allocators);
 }
 
 pub fn deinit() void {

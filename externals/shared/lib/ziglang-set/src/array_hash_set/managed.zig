@@ -1,6 +1,6 @@
 /// Open Source Initiative OSI - The MIT License (MIT):Licensing
 /// The MIT License (MIT)
-/// Copyright (c) 2024 Ralph Caraveo (deckarep@gmail.com)
+/// Copyright (c) 2025 Ralph Caraveo (deckarep@gmail.com)
 /// Permission is hereby granted, free of charge, to any person obtaining a copy of
 /// this software and associated documentation files (the "Software"), to deal in
 /// the Software without restriction, including without limitation the rights to
@@ -102,8 +102,7 @@ pub fn ArraySetManaged(comptime E: type) type {
 
         /// Returns the number of total elements which may be present before
         /// it is no longer guaranteed that no allocations will be performed.
-        pub fn capacity(self: *Self) Size {
-            // Note: map.capacity() requires mutable access, probably an oversight.
+        pub fn capacity(self: Self) Size {
             return self.unmanaged.capacity();
         }
 
@@ -136,7 +135,7 @@ pub fn ArraySetManaged(comptime E: type) type {
         /// cloneWithAllocator may be return an Allocator.Error or the cloned Set.
         pub fn cloneWithAllocator(self: *Self, allocator: Allocator) Allocator.Error!Self {
             // Directly clone the unmanaged structure with the new allocator
-            const clonedUnmanaged = try self.unmanaged.cloneWithAllocator(allocator);
+            const clonedUnmanaged = try self.unmanaged.clone(allocator);
             return Self{
                 .allocator = allocator,
                 .unmanaged = clonedUnmanaged,

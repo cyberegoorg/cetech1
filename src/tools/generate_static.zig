@@ -14,10 +14,11 @@ pub fn main() !void {
     const modules_args = args[2];
 
     var modules_it = std.mem.splitSequence(u8, modules_args, ",");
-    var modules = std.ArrayList([]const u8).init(allcator);
-    defer modules.deinit();
+    var modules = std.ArrayListUnmanaged([]const u8){};
+    defer modules.deinit(allcator);
+
     while (modules_it.next()) |m| {
-        modules.append(m) catch |err| {
+        modules.append(allcator, m) catch |err| {
             fatal("unable populate modules to memory {s}", .{@errorName(err)});
         };
     }

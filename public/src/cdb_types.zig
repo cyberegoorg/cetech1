@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const cdb = @import("cdb.zig");
-const strid = @import("strid.zig");
+const cetech1 = @import("root.zig");
 
 pub const Color4f = cdb.CdbTypeDecl(
     "ct_color_4f",
@@ -222,7 +222,7 @@ pub fn BigTypeDecl(comptime type_name: [:0]const u8) type {
 }
 
 /// Add BigType db
-pub fn addBigType(db: *const cdb.CdbAPI, dbidx: cdb.DbId, name: []const u8, force_subobj_type: ?strid.StrId32) !cdb.TypeIdx {
+pub fn addBigType(db: *const cdb.CdbAPI, dbidx: cdb.DbId, name: []const u8, force_subobj_type: ?cetech1.StrId32) !cdb.TypeIdx {
     return db.addType(
         dbidx,
         name,

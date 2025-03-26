@@ -8,7 +8,7 @@ const ecs = cetech1.ecs;
 
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
-const zm = cetech1.math;
+const zm = cetech1.math.zmath;
 
 const public = @import("transform.zig");
 
@@ -267,22 +267,18 @@ const set_position_node_i = graphvm.NodeI.implement(
     },
     null,
     struct {
-        pub fn getInputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+        pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
             _ = node_obj; // autofix
             _ = graph_obj; // autofix
             _ = self;
-            return allocator.dupe(graphvm.NodePin, &.{
-                graphvm.NodePin.init("Flow", graphvm.NodePin.pinHash("flow", false), graphvm.PinTypes.Flow, null),
-                graphvm.NodePin.init("Entity", graphvm.NodePin.pinHash("entity", false), ecs.PinTypes.Entity, null),
-                graphvm.NodePin.init("Position", graphvm.NodePin.pinHash("position", false), graphvm.PinTypes.VEC3F, null),
-            });
-        }
-
-        pub fn getOutputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
-            _ = self;
-            return allocator.dupe(graphvm.NodePin, &.{});
+            return .{
+                .in = try allocator.dupe(graphvm.NodePin, &.{
+                    graphvm.NodePin.init("Flow", graphvm.NodePin.pinHash("flow", false), graphvm.PinTypes.Flow, null),
+                    graphvm.NodePin.init("Entity", graphvm.NodePin.pinHash("entity", false), ecs.PinTypes.Entity, null),
+                    graphvm.NodePin.init("Position", graphvm.NodePin.pinHash("position", false), graphvm.PinTypes.VEC3F, null),
+                }),
+                .out = try allocator.dupe(graphvm.NodePin, &.{}),
+            };
         }
 
         pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: graphvm.OutPins) !void {

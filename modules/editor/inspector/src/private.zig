@@ -23,7 +23,7 @@ pub const std_options: std.Options = .{
 const log = std.log.scoped(module_name);
 
 const INSPECTOR_TAB_NAME = "ct_editor_inspector_tab";
-const INSPECTOR_TAB_NAME_HASH = strid.strId32(INSPECTOR_TAB_NAME);
+const INSPECTOR_TAB_NAME_HASH = cetech1.strId32(INSPECTOR_TAB_NAME);
 
 const COLOR4F_PROPERTY_ASPECT_NAME = "ct_color_4f_properties_aspect";
 const FOLDER_NAME_PROPERTY_ASPECT_NAME = "ct_folder_name_property_aspect";
@@ -1039,12 +1039,12 @@ const PropertyTab = struct {
 // Fill editor tab interface
 var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = INSPECTOR_TAB_NAME,
-    .tab_hash = strid.strId32(INSPECTOR_TAB_NAME),
+    .tab_hash = cetech1.strId32(INSPECTOR_TAB_NAME),
 
     .create_on_init = true,
     .show_pin_object = true,
     .show_sel_obj_in_title = true,
-    .ignore_selection_from_tab = &.{cetech1.strid.strId32("ct_editor_asset_browser_tab")},
+    .ignore_selection_from_tab = &.{cetech1.strId32("ct_editor_asset_browser_tab")},
 }, struct {
     pub fn menuName() ![:0]const u8 {
         return coreui.Icons.Properties ++ "  " ++ "Inspector";
@@ -1117,7 +1117,7 @@ var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, obj: []const coreui.SelectionItem, sender_tab_hash: ?strid.StrId32) !void {
+    pub fn objSelected(inst: *editor.TabO, obj: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) !void {
         _ = sender_tab_hash; // autofix
         var tab_o: *PropertyTab = @alignCast(@ptrCast(inst));
         tab_o.selected_obj = obj[0];

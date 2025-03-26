@@ -2,8 +2,6 @@
 const std = @import("std");
 const mem = std.mem;
 const Allocator = mem.Allocator;
-const ArrayList = std.ArrayList;
-const StringArrayHashMap = std.StringArrayHashMap;
 
 const cetech1 = @import("cetech1");
 const strid = cetech1.strid;
@@ -23,55 +21,53 @@ const ApiItem = struct {
     api_size: usize,
 };
 
-const ApiHashMap = std.AutoArrayHashMap(strid.StrId64, ApiItem);
+const ApiHashMap = cetech1.AutoArrayHashMap(cetech1.StrId64, ApiItem);
 const ApiHashMapPool = std.heap.MemoryPool(ApiHashMap);
-const LanguagesApiHashMap = std.AutoArrayHashMap(strid.StrId64, *ApiHashMap);
+const LanguagesApiHashMap = cetech1.AutoArrayHashMap(cetech1.StrId64, *ApiHashMap);
 
-const InterfaceImplList = std.ArrayList(*const anyopaque);
-const InterfaceHashMap = std.AutoArrayHashMap(strid.StrId64, InterfaceImplList);
-const InterfaceGen = std.AutoArrayHashMap(strid.StrId64, u64);
+const InterfaceImplList = cetech1.ArrayList(*const anyopaque);
+const InterfaceHashMap = cetech1.AutoArrayHashMap(cetech1.StrId64, InterfaceImplList);
+const InterfaceGen = cetech1.AutoArrayHashMap(cetech1.StrId64, u64);
 
-const GlobalVarMap = std.AutoArrayHashMap(strid.StrId64, []u8);
-const Api2Modules = std.AutoArrayHashMap(strid.StrId64, []const u8);
+const GlobalVarMap = cetech1.AutoArrayHashMap(cetech1.StrId64, []u8);
+const Api2Modules = cetech1.AutoArrayHashMap(cetech1.StrId64, []const u8);
+const ModuleInfoMap = cetech1.AutoArrayHashMap(cetech1.StrId64, ModuleInfo);
 
 const ModuleInfo = struct {
     const Self = @This();
     module_name: []const u8,
-    provided_api: std.StringArrayHashMap(void),
-    need_api: std.StringArrayHashMap(void),
+    provided_api: cetech1.ArraySet([]const u8) = .init(),
+    need_api: cetech1.ArraySet([]const u8) = .init(),
 
-    fn init(allocator: std.mem.Allocator, module: []const u8) !Self {
+    fn init(module: []const u8) !Self {
         return .{
             .module_name = module,
-            .provided_api = std.StringArrayHashMap(void).init(allocator),
-            .need_api = std.StringArrayHashMap(void).init(allocator),
         };
     }
 
     fn deinit(self: *Self) void {
-        for (self.provided_api.keys()) |keys| {
+        for (self.provided_api.unmanaged.keys()) |keys| {
             _allocator.free(keys);
         }
 
-        for (self.need_api.keys()) |keys| {
+        for (self.need_api.unmanaged.keys()) |keys| {
             _allocator.free(keys);
         }
 
-        self.provided_api.deinit();
-        self.need_api.deinit();
+        self.provided_api.deinit(_allocator);
+        self.need_api.deinit(_allocator);
     }
 
     fn addProvidedApi(self: *Self, api_name: []const u8) !void {
         if (self.provided_api.contains(api_name)) return;
-        try self.provided_api.put(try _allocator.dupe(u8, api_name), {});
+        _ = try self.provided_api.add(_allocator, try _allocator.dupe(u8, api_name));
     }
 
     fn addNeedApi(self: *Self, api_name: []const u8) !void {
         if (self.need_api.contains(api_name)) return;
-        try self.need_api.put(try _allocator.dupe(u8, api_name), {});
+        _ = try self.need_api.add(_allocator, try _allocator.dupe(u8, api_name));
     }
 };
-const ModuleInfoMap = std.AutoArrayHashMap(strid.StrId64, ModuleInfo);
 
 pub var api = public.ApiDbAPI{
     .globalVarFn = globalVar,
@@ -99,17 +95,17 @@ var _api2module: Api2Modules = undefined;
 pub fn init(a: Allocator) !void {
     _init = true;
     _allocator = a;
-    _language_api_map = LanguagesApiHashMap.init(a);
+    _language_api_map = .{};
     _api_map_pool = ApiHashMapPool.init(a);
 
-    _interafce_gen = InterfaceGen.init(a);
-    _interafce_map = InterfaceHashMap.init(a);
+    _interafce_gen = .{};
+    _interafce_map = .{};
 
-    _module_info_map = ModuleInfoMap.init(a);
+    _module_info_map = .{};
 
-    _global_var_map = GlobalVarMap.init(a);
+    _global_var_map = .{};
 
-    _api2module = Api2Modules.init(a);
+    _api2module = .{};
 
     try api.setZigApi(module_name, public.ApiDbAPI, &api);
 }
@@ -122,30 +118,30 @@ pub fn deinit() void {
             _allocator.free(api_entry.api_ptr);
         }
 
-        api_map.deinit();
+        api_map.deinit(_allocator);
     }
 
     var it = _global_var_map.iterator();
     while (it.next()) |entry| {
         _allocator.free(entry.value_ptr.*);
     }
-    _global_var_map.deinit();
+    _global_var_map.deinit(_allocator);
 
     _api_map_pool.deinit();
-    _language_api_map.deinit();
+    _language_api_map.deinit(_allocator);
 
     for (_interafce_map.values()) |*v| {
-        v.deinit();
+        v.deinit(_allocator);
     }
 
-    _interafce_map.deinit();
-    _interafce_gen.deinit();
-    _api2module.deinit();
+    _interafce_map.deinit(_allocator);
+    _interafce_gen.deinit(_allocator);
+    _api2module.deinit(_allocator);
 
     for (_module_info_map.values()) |*v| {
         v.deinit();
     }
-    _module_info_map.deinit();
+    _module_info_map.deinit(_allocator);
 
     _init = false;
 }
@@ -156,17 +152,17 @@ fn _toBytes(ptr: *const anyopaque, ptr_size: usize) []u8 {
 }
 
 fn getOrCreateModuleInfo(module: []const u8) !*ModuleInfo {
-    const module_hash = strid.strId64(module);
+    const module_hash = cetech1.strId64(module);
     if (_module_info_map.getPtr(module_hash)) |mi| return mi;
-    const mi = try ModuleInfo.init(_allocator, module);
-    try _module_info_map.put(module_hash, mi);
+    const mi = try ModuleInfo.init(module);
+    try _module_info_map.put(_allocator, module_hash, mi);
     return _module_info_map.getPtr(module_hash).?;
 }
 
 fn globalVar(module: []const u8, var_name: []const u8, size: usize, default: []const u8) !*anyopaque {
     var buff: [256]u8 = undefined;
     const combine_name = try std.fmt.bufPrint(&buff, "{s}:{s}", .{ module, var_name });
-    const combine_hash = strid.strId64(combine_name);
+    const combine_hash = cetech1.strId64(combine_name);
 
     const v = _global_var_map.get(combine_hash);
     if (v == null) {
@@ -174,7 +170,7 @@ fn globalVar(module: []const u8, var_name: []const u8, size: usize, default: []c
         if (default.len != 0) {
             @memcpy(data, default);
         }
-        try _global_var_map.put(combine_hash, data);
+        try _global_var_map.put(_allocator, combine_hash, data);
         return data.ptr;
     }
 
@@ -182,21 +178,21 @@ fn globalVar(module: []const u8, var_name: []const u8, size: usize, default: []c
 }
 
 fn setApiOpaqueue(module: []const u8, language: []const u8, api_name: []const u8, api_ptr: *const anyopaque, api_size: usize) !void {
-    const language_hash = strid.strId64(language);
+    const language_hash = cetech1.strId64(language);
 
     if (!_language_api_map.contains(language_hash)) {
         const api_map = try _api_map_pool.create();
-        api_map.* = ApiHashMap.init(_allocator);
-        try _language_api_map.put(language_hash, api_map);
+        api_map.* = .{};
+        try _language_api_map.put(_allocator, language_hash, api_map);
     }
 
     log.debug("Register {s} api '{s}'", .{ language, api_name });
 
-    const api_name_hash = strid.strId64(api_name);
+    const api_name_hash = cetech1.strId64(api_name);
 
     var mi = try getOrCreateModuleInfo(module);
     try mi.addProvidedApi(api_name);
-    try _api2module.put(api_name_hash, mi.module_name);
+    try _api2module.put(_allocator, api_name_hash, mi.module_name);
 
     const api_ptr_intern = _getApiOpaque(language, api_name, api_size);
 
@@ -210,14 +206,14 @@ fn setApiOpaqueue(module: []const u8, language: []const u8, api_name: []const u8
 }
 
 fn _getApiOpaque(language: []const u8, api_name: []const u8, api_size: usize) ?*anyopaque {
-    const language_hash = strid.strId64(language);
+    const language_hash = cetech1.strId64(language);
 
     if (!_language_api_map.contains(language_hash)) {
         const api_map = _api_map_pool.create() catch return null;
-        api_map.* = ApiHashMap.init(_allocator);
-        _language_api_map.put(language_hash, api_map) catch return null;
+        api_map.* = .{};
+        _language_api_map.put(_allocator, language_hash, api_map) catch return null;
     }
-    const api_name_hash = strid.strId64(api_name);
+    const api_name_hash = cetech1.strId64(api_name);
 
     const api_map = _language_api_map.getPtr(language_hash).?;
 
@@ -226,7 +222,7 @@ fn _getApiOpaque(language: []const u8, api_name: []const u8, api_size: usize) ?*
     if (api_ptr == null) {
         const api_data = _allocator.alloc(u8, api_size) catch return null;
         @memset(api_data, 0);
-        api_map.*.put(api_name_hash, ApiItem{ .api_ptr = api_data, .api_size = api_size }) catch return null;
+        api_map.*.put(_allocator, api_name_hash, ApiItem{ .api_ptr = api_data, .api_size = api_size }) catch return null;
         return api_data.ptr;
     }
 
@@ -244,14 +240,14 @@ fn getApiOpaque(module: []const u8, language: []const u8, api_name: []const u8, 
 
 fn removeApi(module: []const u8, language: []const u8, api_name: []const u8) void {
     _ = module;
-    const language_hash = strid.strId64(language);
+    const language_hash = cetech1.strId64(language);
 
     var api_map = _language_api_map.get(language_hash);
     if (api_map == null) {
         return;
     }
 
-    const api_name_hash = strid.strId64(api_name);
+    const api_name_hash = cetech1.strId64(api_name);
 
     const api_ptr = api_map.?.get(api_name_hash);
 
@@ -262,12 +258,12 @@ fn removeApi(module: []const u8, language: []const u8, api_name: []const u8) voi
     @memset(api_ptr.?.api_ptr, 0);
 }
 
-fn increaseIfaceGen(interface_name: strid.StrId64) void {
+fn increaseIfaceGen(interface_name: cetech1.StrId64) void {
     const iface_gen = _interafce_gen.getPtr(interface_name).?;
     iface_gen.* += 1;
 }
 
-fn getInterafcesVersion(interface_name: strid.StrId64) u64 {
+fn getInterafcesVersion(interface_name: cetech1.StrId64) u64 {
     const iface_gen = _interafce_gen.getPtr(interface_name);
     if (iface_gen == null) return 0;
     return iface_gen.?.*;
@@ -282,27 +278,27 @@ pub fn dumpGlobalVar() void {
     // }
 }
 
-fn implInterface(module: []const u8, interface_name: strid.StrId64, impl_ptr: *const anyopaque) anyerror!void {
+fn implInterface(module: []const u8, interface_name: cetech1.StrId64, impl_ptr: *const anyopaque) anyerror!void {
     _ = module; // autofix
     if (!_interafce_map.contains(interface_name)) {
-        try _interafce_map.put(interface_name, InterfaceImplList.init(_allocator));
-        try _interafce_gen.put(interface_name, 0);
+        try _interafce_map.put(_allocator, interface_name, .{});
+        try _interafce_gen.put(_allocator, interface_name, 0);
     }
 
     var impl_list = _interafce_map.getPtr(interface_name).?;
-    try impl_list.append(impl_ptr);
+    try impl_list.append(_allocator, impl_ptr);
 
     increaseIfaceGen(interface_name);
 }
 
-fn getImpl(allocator: std.mem.Allocator, interface_name: strid.StrId64) ![]*const anyopaque {
+fn getImpl(allocator: std.mem.Allocator, interface_name: cetech1.StrId64) ![]*const anyopaque {
     if (_interafce_map.getPtr(interface_name)) |impl_list| {
         return allocator.dupe(*const anyopaque, impl_list.items);
     }
     return allocator.dupe(*const anyopaque, &.{});
 }
 
-fn removeImpl(module: []const u8, interface_name: strid.StrId64, impl_ptr: *const anyopaque) void {
+fn removeImpl(module: []const u8, interface_name: cetech1.StrId64, impl_ptr: *const anyopaque) void {
     _ = module;
     var impl_list = _interafce_map.getPtr(interface_name);
 
@@ -346,13 +342,13 @@ pub fn writeApiGraphD2(out_path: []const u8) !void {
 
         try writer.print("{s} : {{\n", .{name});
 
-        for (module_info.provided_api.keys()) |api_str| {
+        for (module_info.provided_api.unmanaged.keys()) |api_str| {
             try writer.print("  {s}\n", .{api_str});
         }
         try writer.print("}}\n", .{});
 
-        for (module_info.need_api.keys()) |api_str| {
-            if (_api2module.get(strid.strId64(api_str))) |api_module_name| {
+        for (module_info.need_api.unmanaged.keys()) |api_str| {
+            if (_api2module.get(cetech1.strId64(api_str))) |api_module_name| {
                 try writer.print("{s}->{s}: {s}\n", .{ name, api_module_name, api_str });
             }
         }

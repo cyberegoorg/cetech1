@@ -4,7 +4,7 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const gpu = cetech1.gpu;
 
-const zm = cetech1.math;
+const zm = cetech1.math.zmath;
 const strid = cetech1.strid;
 const ecs = cetech1.ecs;
 
@@ -12,19 +12,19 @@ const transform = @import("transform");
 const camera = @import("camera");
 const shader_system = @import("shader_system");
 
-pub const RENDERER_KERNEL_TASK = strid.strId64("Renderer");
+pub const RENDERER_KERNEL_TASK = cetech1.strId64("Renderer");
 pub const CULLING_VOLUME_NODE_TYPE_STR = "culling_volume";
-pub const CULLING_VOLUME_NODE_TYPE = strid.strId32(CULLING_VOLUME_NODE_TYPE_STR);
+pub const CULLING_VOLUME_NODE_TYPE = cetech1.strId32(CULLING_VOLUME_NODE_TYPE_STR);
 
 pub const DRAW_CALL_NODE_TYPE_STR = "draw_call";
-pub const DRAW_CALL_NODE_TYPE = strid.strId32(DRAW_CALL_NODE_TYPE_STR);
+pub const DRAW_CALL_NODE_TYPE = cetech1.strId32(DRAW_CALL_NODE_TYPE_STR);
 
 pub const LSD_CUBE_NODE_TYPE_STR = "lsd_cube";
-pub const LSD_CUBE_NODE_TYPE = strid.strId32(LSD_CUBE_NODE_TYPE_STR);
+pub const LSD_CUBE_NODE_TYPE = cetech1.strId32(LSD_CUBE_NODE_TYPE_STR);
 
 pub const PinTypes = struct {
-    pub const GPU_GEOMETRY = strid.strId32("gpu_geometry");
-    pub const GPU_INDEX_BUFFER = strid.strId32("gpu_index_buffer");
+    pub const GPU_GEOMETRY = cetech1.strId32("gpu_geometry");
+    pub const GPU_INDEX_BUFFER = cetech1.strId32("gpu_index_buffer");
 };
 
 pub const GPUGeometryCdb = cdb.CdbTypeDecl(
@@ -68,9 +68,9 @@ pub const CullingVolume = struct {
     }
 };
 
-const MatList = std.ArrayListUnmanaged(transform.WorldTransform);
-const RenderableBufferList = std.ArrayListUnmanaged(u8);
-const CullingVolumeList = std.ArrayListUnmanaged(CullingVolume);
+const MatList = cetech1.ArrayList(transform.WorldTransform);
+const RenderableBufferList = cetech1.ArrayList(u8);
+const CullingVolumeList = cetech1.ArrayList(CullingVolume);
 
 pub const CullingRequest = struct {
     allocator: std.mem.Allocator,
@@ -171,7 +171,7 @@ pub const CullingResult = struct {
 
 pub const RendereableI = struct {
     pub const c_name = "ct_rg_component_renderer_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
     culling: ?*const fn (allocator: std.mem.Allocator, builder: GraphBuilder, world: ecs.World, viewers: []const Viewer, rq: *CullingRequest) anyerror!void = undefined,
     render: *const fn (
@@ -200,7 +200,7 @@ pub const RendereableI = struct {
 
 pub const DefaultRenderGraphI = struct {
     pub const c_name = "ct_rg_default_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
     create: *const fn (
         allocator: std.mem.Allocator,
@@ -334,10 +334,10 @@ pub const Viewer = struct {
     mtx: [16]f32,
     proj: [16]f32,
     camera: camera.Camera,
-    context: strid.StrId32,
+    context: cetech1.StrId32,
 };
 
-pub const ResourceId = strid.StrId32;
+pub const ResourceId = cetech1.StrId32;
 pub const ViewportColorResource = "viewport_color";
 
 pub const TextureInfo = struct {
@@ -396,7 +396,7 @@ pub const GraphBuilder = struct {
         return builder.vtable.getLayer(builder.ptr, layer);
     }
 
-    pub inline fn getLayerById(builder: GraphBuilder, layer: strid.StrId32) gpu.ViewId {
+    pub inline fn getLayerById(builder: GraphBuilder, layer: cetech1.StrId32) gpu.ViewId {
         return builder.vtable.getLayerById(builder.ptr, layer);
     }
 
@@ -424,7 +424,7 @@ pub const GraphBuilder = struct {
         exportLayer: *const fn (builder: *anyopaque, pass: *Pass, layer: []const u8) anyerror!void,
         getTexture: *const fn (builder: *anyopaque, texture: []const u8) ?gpu.TextureHandle,
         getLayer: *const fn (builder: *anyopaque, layer: []const u8) gpu.ViewId,
-        getLayerById: *const fn (builder: *anyopaque, layer: strid.StrId32) gpu.ViewId,
+        getLayerById: *const fn (builder: *anyopaque, layer: cetech1.StrId32) gpu.ViewId,
 
         getViewers: *const fn (builder: *anyopaque) []Viewer,
 

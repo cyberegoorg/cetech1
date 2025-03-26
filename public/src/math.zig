@@ -1,3 +1,3 @@
 const std = @import("std");
 
-pub usingnamespace @import("zmath");
+pub const zmath = @import("zmath");

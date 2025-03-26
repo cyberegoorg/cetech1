@@ -97,7 +97,6 @@ Get ZIG `0.14.0`.
 | `--test-ui-speed`        | `fast`, `normal`,  `cinematic` | `fast`  | UI test speed.                              |
 | `--test-ui-junit`        | `str`                          | `null`  | UI test JUnit result filename.              |
 
-
 ## ZLS
 
 CETech provide ZLS as submodule, but you must build it.

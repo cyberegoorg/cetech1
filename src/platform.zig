@@ -29,8 +29,8 @@ pub const Window = struct {
     }
 };
 
-const WindowPool = cetech1.mem.PoolWithLock(Window);
-const WindowSet = std.AutoArrayHashMap(*Window, void);
+const WindowPool = cetech1.heap.PoolWithLock(Window);
+const WindowSet = cetech1.ArraySet(*Window);
 
 pub var api = public.PlatformApi{
     .createWindow = createWindow,
@@ -54,7 +54,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     _allocator = allocator;
 
     _window_pool = WindowPool.init(allocator);
-    _window_set = WindowSet.init(allocator);
+    _window_set = .init();
 
     // gamemode.start();
     // if (gamemode.isActive()) {
@@ -71,7 +71,7 @@ pub fn deinit() void {
     backend.deinit();
 
     _window_pool.deinit();
-    _window_set.deinit();
+    _window_set.deinit(_allocator);
 
     //gamemode.stop();
 }
@@ -93,7 +93,7 @@ fn createWindow(width: i32, height: i32, title: [:0]const u8, monitor: ?public.M
 
     const new_w = try _window_pool.create();
     new_w.* = Window.init(w);
-    try _window_set.put(new_w, {});
+    _ = try _window_set.add(_allocator, new_w);
 
     const window = public.Window{ .ptr = new_w, .vtable = &backend.window_vt };
 
@@ -109,7 +109,7 @@ fn destroyWindow(window: public.Window) void {
 
     backend.destroyWindow(window);
 
-    _ = _window_set.swapRemove(true_w);
+    _ = _window_set.remove(true_w);
     _window_pool.destroy(true_w);
 }
 
@@ -130,42 +130,42 @@ fn getPrimaryMonitor() ?public.Monitor {
 }
 
 fn openIn(allocator: std.mem.Allocator, open_type: public.OpenInType, url: []const u8) !void {
-    var args = std.ArrayList([]const u8).init(allocator);
-    defer args.deinit();
+    var args = cetech1.ArrayList([]const u8){};
+    defer args.deinit(allocator);
 
     switch (builtin.os.tag) {
         .windows => {
             // use explorer or start
             switch (open_type) {
                 .reveal => {
-                    try args.append("explorer");
+                    try args.append(allocator, "explorer");
                 },
                 else => {
-                    try args.append("start");
+                    try args.append(allocator, "start");
                 },
             }
 
-            try args.append(url);
+            try args.append(allocator, url);
         },
         .macos => {
-            try args.append("open");
+            try args.append(allocator, "open");
 
             // Open args
             switch (open_type) {
-                .reveal => try args.append("-R"),
-                .edit => try args.append("-t"),
+                .reveal => try args.append(allocator, "-R"),
+                .edit => try args.append(allocator, "-t"),
                 else => {},
             }
 
-            try args.append(url);
+            try args.append(allocator, url);
         },
         else => {
-            try args.append("xdg-open");
+            try args.append(allocator, "xdg-open");
 
             // xdg args
             switch (open_type) {
-                .reveal => try args.append(std.fs.path.dirname(url).?),
-                else => try args.append(url),
+                .reveal => try args.append(allocator, std.fs.path.dirname(url).?),
+                else => try args.append(allocator, url),
             }
         },
     }
@@ -175,7 +175,7 @@ fn openIn(allocator: std.mem.Allocator, open_type: public.OpenInType, url: []con
 }
 
 pub fn findWindowByInternal(window: *anyopaque) ?*Window {
-    for (_window_set.keys()) |w| {
+    for (_window_set.unmanaged.keys()) |w| {
         if (w.window == window) return w;
     }
     return null;

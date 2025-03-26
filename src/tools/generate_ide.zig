@@ -13,7 +13,7 @@ pub const LaunchCmd = struct {
     args: []const []const u8,
     //cwd: []const u8,
 };
-pub const CmdList = std.ArrayList(LaunchCmd);
+pub const CmdList = std.ArrayListUnmanaged(LaunchCmd);
 
 pub const LaunchConfig = struct {
     launchers: []const LaunchCmd,
@@ -43,7 +43,7 @@ pub fn generateEditorConfigs(allocator: std.mem.Allocator, editor_type: EditorTy
 }
 
 pub fn createLauchCmdForFixtures(allocator: std.mem.Allocator, dir_path: []const u8) ![]LaunchCmd {
-    var cmd_list = CmdList.init(allocator);
+    var cmd_list = CmdList{};
 
     var dir = try std.fs.openDirAbsolute(dir_path, .{ .iterate = true });
     defer dir.close();
@@ -54,7 +54,7 @@ pub fn createLauchCmdForFixtures(allocator: std.mem.Allocator, dir_path: []const
 
         const basename = std.fs.path.basename(path.name);
 
-        try cmd_list.append(.{
+        try cmd_list.append(allocator, .{
             .name = try std.fmt.allocPrint(allocator, "CETech1 - {s}", .{basename}),
             .args = try allocator.dupe([]const u8, &.{
                 "--asset-root",
@@ -62,7 +62,7 @@ pub fn createLauchCmdForFixtures(allocator: std.mem.Allocator, dir_path: []const
             }),
         });
     }
-    return cmd_list.toOwnedSlice();
+    return cmd_list.toOwnedSlice(allocator);
 }
 
 const ParseArgsResult = struct {
@@ -148,8 +148,8 @@ pub fn main() !void {
     var project_dir = try std.fs.openDirAbsolute(arguments.project_path, .{});
     defer project_dir.close();
 
-    var cmd_list = CmdList.init(allocator);
-    defer cmd_list.deinit();
+    var cmd_list = CmdList{};
+    defer cmd_list.deinit(allocator);
 
     var config_file = try std.fs.openFileAbsolute(arguments.config, .{});
     defer config_file.close();
@@ -172,7 +172,7 @@ pub fn main() !void {
 
     for (config.launchers) |launcher| {
         // std.log.debug("{any}", .{launcher});
-        try cmd_list.append(launcher);
+        try cmd_list.append(allocator, launcher);
     }
 
     var tmp_arena = std.heap.ArenaAllocator.init(allocator);
@@ -180,7 +180,7 @@ pub fn main() !void {
 
     if (arguments.fixtures_path) |fixtures_path| {
         const fixtures_cmds = try createLauchCmdForFixtures(tmp_arena.allocator(), fixtures_path);
-        try cmd_list.appendSlice(fixtures_cmds);
+        try cmd_list.appendSlice(allocator, fixtures_cmds);
     }
 
     try generateEditorConfigs(allocator, arguments.gen_type, project_dir, arguments, cmd_list.items);
@@ -212,7 +212,7 @@ pub const VSCodeLaunchConfig = struct {
     configurations: []const VSCodeLaunchCmd,
 };
 
-pub const VSCodeCmdList = std.ArrayList(VSCodeLaunchCmd);
+pub const VSCodeCmdList = std.ArrayListUnmanaged(VSCodeLaunchCmd);
 
 pub fn generateEditorConfigsVSCode(allocator: std.mem.Allocator, project_dir: std.fs.Dir, args: ParseArgsResult, launch_cmds: []const LaunchCmd) !void {
     try createOrUpdateSettingsJsonVSCode(allocator, project_dir, args);
@@ -220,15 +220,15 @@ pub fn generateEditorConfigsVSCode(allocator: std.mem.Allocator, project_dir: st
 }
 
 pub fn createLaunchersVSCode(allocator: std.mem.Allocator, project_dir: std.fs.Dir, args: ParseArgsResult, launch_cmds: []const LaunchCmd) !void {
-    var cmd_list = VSCodeCmdList.init(allocator);
-    defer cmd_list.deinit();
+    var cmd_list = VSCodeCmdList{};
+    defer cmd_list.deinit(allocator);
 
     var tmp_arena = std.heap.ArenaAllocator.init(allocator);
     defer tmp_arena.deinit();
     const tmp_alloc = tmp_arena.allocator();
 
     for (launch_cmds) |cmd| {
-        try cmd_list.append(.{
+        try cmd_list.append(allocator, .{
             .name = cmd.name,
             .program = try std.fmt.allocPrint(tmp_alloc, "{s}{s}", .{ cmd.program orelse args.bin_path, osBasedProgramExtension() }),
             .args = cmd.args,
@@ -333,7 +333,7 @@ pub const FleetCodeLaunchConfig = struct {
     configurations: []const FleetCodeLaunchCmd,
 };
 
-pub const FleetCodeCmdList = std.ArrayList(FleetCodeLaunchCmd);
+pub const FleetCodeCmdList = std.ArrayListUnmanaged(FleetCodeLaunchCmd);
 
 pub fn generateEditorConfigsFleet(allocator: std.mem.Allocator, project_dir: std.fs.Dir, args: ParseArgsResult, launch_cmds: []const LaunchCmd) !void {
     try createOrUpdateSettingsJsonFleet(allocator, project_dir, args);
@@ -341,15 +341,15 @@ pub fn generateEditorConfigsFleet(allocator: std.mem.Allocator, project_dir: std
 }
 
 pub fn createLaunchersFleet(allocator: std.mem.Allocator, project_dir: std.fs.Dir, args: ParseArgsResult, launch_cmds: []const LaunchCmd) !void {
-    var cmd_list = FleetCodeCmdList.init(allocator);
-    defer cmd_list.deinit();
+    var cmd_list = FleetCodeCmdList{};
+    defer cmd_list.deinit(allocator);
 
     var tmp_arena = std.heap.ArenaAllocator.init(allocator);
     defer tmp_arena.deinit();
     const tmp_alloc = tmp_arena.allocator();
 
     for (launch_cmds) |cmd| {
-        try cmd_list.append(.{
+        try cmd_list.append(allocator, .{
             .type = "command",
             .name = cmd.name,
             .program = try std.fmt.allocPrint(tmp_alloc, "{s}{s}", .{ cmd.program orelse args.bin_path, osBasedProgramExtension() }),

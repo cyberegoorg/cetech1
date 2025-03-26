@@ -13,12 +13,12 @@ const MAX_METRICS = 1024;
 
 const Metric = struct {
     name: [:0]u8,
-    values: std.ArrayList(f64),
+    values: cetech1.ArrayList(f64),
     current_value: f64 = 0,
     offset: usize = 0,
 };
 
-const MetricMap = std.StringArrayHashMap(usize);
+const MetricMap = std.StringArrayHashMapUnmanaged(usize);
 const MetricIdxAtomic = std.atomic.Value(u32);
 
 var _allocator: std.mem.Allocator = undefined;
@@ -31,16 +31,17 @@ var _frame: usize = 0;
 
 pub fn init(allocator: std.mem.Allocator) !void {
     _allocator = allocator;
-    _metric_map = MetricMap.init(allocator);
+    _metric_map = .{};
+    _frame = 0;
 }
 
 pub fn deinit() void {
     for (_metric_map.values()) |v| {
         _allocator.free(_metrics[v].name);
-        _metrics[v].values.deinit();
+        _metrics[v].values.deinit(_allocator);
     }
 
-    _metric_map.deinit();
+    _metric_map.deinit(_allocator);
     _last_idx = MetricIdxAtomic.init(0);
 }
 
@@ -58,10 +59,10 @@ pub fn getCounter(name: []const u8) !*f64 {
         const idx = _last_idx.fetchAdd(1, .release);
         _metrics[idx] = Metric{
             .name = new_name,
-            .values = try std.ArrayList(f64).initCapacity(_allocator, MAX_FRAMES),
+            .values = try .initCapacity(_allocator, MAX_FRAMES),
         };
 
-        try _metric_map.put(new_name, idx);
+        try _metric_map.put(_allocator, new_name, idx);
 
         return &_metrics[idx].current_value;
     }
@@ -88,14 +89,14 @@ pub fn pushFrames() !void {
 }
 
 pub fn getMetricsName(allocator: std.mem.Allocator) ![][]const u8 {
-    var names = std.ArrayList([]const u8).init(allocator);
+    var names = try cetech1.ArrayList([]const u8).initCapacity(allocator, _metric_map.count());
 
     for (_metric_map.values()) |idx| {
         const m = &_metrics[idx];
-        try names.append(m.name);
+        names.appendAssumeCapacity(m.name);
     }
 
-    return try names.toOwnedSlice();
+    return try names.toOwnedSlice(allocator);
 }
 
 pub fn getMetricValues(allocator: std.mem.Allocator, name: []const u8) ?[]f64 {

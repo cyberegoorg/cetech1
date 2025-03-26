@@ -18,17 +18,17 @@ const cetech1 = @import("cetech1");
 const public = cetech1.gpu;
 
 const render_graph = cetech1.render_graph;
-const zm = cetech1.math;
+const zm = cetech1.math.zmath;
 
 const log = std.log.scoped(.gpu);
 const bgfx_log = std.log.scoped(.bgfx);
 const module_name = .gpu;
 
 const ThreadId = std.Thread.Id;
-const EncoderMap = std.AutoArrayHashMap(ThreadId, *bgfx.Encoder);
+const EncoderMap = cetech1.AutoArrayHashMap(ThreadId, *bgfx.Encoder);
 
-const EncoderArray = std.ArrayList(?*bgfx.Encoder);
-const PalletColorMap = std.AutoArrayHashMap(u32, u8);
+const EncoderArray = cetech1.ArrayList(?*bgfx.Encoder);
+const PalletColorMap = cetech1.AutoArrayHashMap(u32, u8);
 
 var _allocator: std.mem.Allocator = undefined;
 var _encoders: EncoderArray = undefined;
@@ -37,7 +37,7 @@ var _pallet_map: PalletColorMap = undefined;
 pub fn init(allocator: std.mem.Allocator) !void {
     _allocator = allocator;
     bgfx_init = false;
-    _pallet_map = PalletColorMap.init(allocator);
+    _pallet_map = .{};
 }
 
 pub fn deinit() void {
@@ -46,7 +46,7 @@ pub fn deinit() void {
             pub fn exec(_: *@This()) !void {
                 zbgfx.debugdraw.deinit();
                 bgfx.shutdown();
-                _encoders.deinit();
+                _encoders.deinit(_allocator);
             }
         };
         const task_id = task.api.schedule(
@@ -59,7 +59,7 @@ pub fn deinit() void {
             _ = bgfx.renderFrame(0);
         }
     }
-    _pallet_map.deinit();
+    _pallet_map.deinit(_allocator);
 }
 
 pub fn registerToApi() !void {
@@ -260,7 +260,7 @@ fn addPaletteColor(color: u32) u8 {
     const idx: u8 = @truncate(pallet_id_counter.fetchAdd(1, .monotonic));
 
     bgfx.setPaletteColorRgba8(idx, color);
-    _pallet_map.put(color, idx) catch undefined;
+    _pallet_map.put(_allocator, color, idx) catch undefined;
 
     return idx;
 }

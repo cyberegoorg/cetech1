@@ -7,7 +7,7 @@ const ecs = cetech1.ecs;
 
 pub const AssetPreviewAspectI = struct {
     pub const c_name = "ct_asset_preview_aspect";
-    pub const name_hash = strid.strId32(@This().c_name);
+    pub const name_hash = cetech1.strId32(@This().c_name);
 
     create_preview_entity: ?*const fn (
         allocator: std.mem.Allocator,

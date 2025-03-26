@@ -1,5 +1,8 @@
 const std = @import("std");
 const profiler = @import("profiler.zig");
+const cetech1 = @import("root.zig");
+
+pub const TaskIDList = cetech1.ArrayList(TaskID);
 
 // ID for tasks
 pub const TaskID = enum(u32) {
@@ -42,8 +45,6 @@ pub const TaskID = enum(u32) {
         }
     };
 };
-
-pub const TaskIDList = std.ArrayList(TaskID);
 
 /// Structure for task wrap
 pub const TaskStub = struct {

@@ -1,6 +1,6 @@
 const std = @import("std");
 const platform = @import("platform.zig");
-const strid = @import("strid.zig");
+const cetech1 = @import("root.zig");
 const cdb = @import("cdb.zig");
 
 const ecs = @import("ecs.zig");

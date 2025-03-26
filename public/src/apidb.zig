@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const strid = @import("strid.zig");
+const cetech1 = @import("root.zig");
 
 pub const ImplIter = extern struct {
     interface: *const anyopaque,
@@ -128,9 +128,9 @@ pub const ApiDbAPI = struct {
     getApiOpaaqueFn: *const fn (module: []const u8, language: []const u8, api_name: []const u8, api_size: usize) ?*anyopaque,
     removeApiFn: *const fn (module: []const u8, language: []const u8, api_name: []const u8) void,
 
-    implInterfaceFn: *const fn (module: []const u8, interface_name: strid.StrId64, impl_ptr: *const anyopaque) anyerror!void,
-    getImplFn: *const fn (allocator: std.mem.Allocator, interface_name: strid.StrId64) anyerror![]*const anyopaque,
-    removeImplFn: *const fn (module: []const u8, interface_name: strid.StrId64, impl_ptr: *const anyopaque) void,
-    getInterafcesVersionFn: *const fn (interface_name: strid.StrId64) InterfaceVersion,
+    implInterfaceFn: *const fn (module: []const u8, interface_name: cetech1.StrId64, impl_ptr: *const anyopaque) anyerror!void,
+    getImplFn: *const fn (allocator: std.mem.Allocator, interface_name: cetech1.StrId64) anyerror![]*const anyopaque,
+    removeImplFn: *const fn (module: []const u8, interface_name: cetech1.StrId64, impl_ptr: *const anyopaque) void,
+    getInterafcesVersionFn: *const fn (interface_name: cetech1.StrId64) InterfaceVersion,
     //#endregion
 };

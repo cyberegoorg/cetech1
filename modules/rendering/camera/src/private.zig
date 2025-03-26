@@ -9,7 +9,7 @@ const ecs = cetech1.ecs;
 const renderer = @import("renderer");
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
-const zm = cetech1.math;
+const zm = cetech1.math.zmath;
 
 const public = @import("camera.zig");
 const editor_inspector = @import("editor_inspector");

@@ -68,7 +68,7 @@ fn cdbTreeNode(
 fn cdbObjTreeNode(
     allocator: std.mem.Allocator,
     tab: *editor.TabO,
-    contexts: []const strid.StrId64,
+    contexts: []const cetech1.StrId64,
     selection: *coreui.Selection,
     obj: coreui.SelectionItem,
     default_open: bool,
@@ -197,7 +197,7 @@ fn isLeaf(db: cdb.DbId, obj: cdb.ObjId) bool {
 fn cdbTreeView(
     allocator: std.mem.Allocator,
     tab: *editor.TabO,
-    context: []const strid.StrId64,
+    context: []const cetech1.StrId64,
     obj: coreui.SelectionItem,
     selection: *coreui.Selection,
     depth: u32,

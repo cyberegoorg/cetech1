@@ -1,6 +1,6 @@
 /// Open Source Initiative OSI - The MIT License (MIT):Licensing
 /// The MIT License (MIT)
-/// Copyright (c) 2024 Ralph Caraveo (deckarep@gmail.com)
+/// Copyright (c) 2025 Ralph Caraveo (deckarep@gmail.com)
 /// Permission is hereby granted, free of charge, to any person obtaining a copy of
 /// this software and associated documentation files (the "Software"), to deal in
 /// the Software without restriction, including without limitation the rights to
@@ -35,3 +35,10 @@ pub const ArraySetUnmanaged = @import("array_hash_set/unmanaged.zig").ArraySetUn
 
 /// ArraySetManaged is a conveniently exported "managed" version of an array-based Set.
 pub const ArraySetManaged = @import("array_hash_set/managed.zig").ArraySetManaged;
+
+test "tests" {
+    _ = @import("hash_set/unmanaged.zig");
+    _ = @import("hash_set/managed.zig");
+    _ = @import("array_hash_set/unmanaged.zig");
+    _ = @import("array_hash_set/managed.zig");
+}

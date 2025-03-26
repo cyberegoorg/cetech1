@@ -1,11 +1,10 @@
 //! Kernel is entry point/runner for engine.
 
 const std = @import("std");
-const cetech1 = @import("cetech1");
 
 //const cdb = cetech1.cdb;
 
-const strid = @import("strid.zig");
+const cetech1 = @import("root.zig");
 const cdb = @import("cdb.zig");
 const modules = @import("modules.zig");
 const gpu = @import("gpu.zig");
@@ -13,29 +12,29 @@ const platform = @import("platform.zig");
 
 const log = std.log.scoped(.kernel);
 
-pub const OnLoad = strid.strId64("OnLoad");
-pub const PostLoad = strid.strId64("PostLoad");
-pub const PreUpdate = strid.strId64("PreUpdate");
-pub const OnUpdate = strid.strId64("OnUpdate");
-pub const OnValidate = strid.strId64("OnValidate");
-pub const PostUpdate = strid.strId64("PostUpdate");
-pub const PreStore = strid.strId64("PreStore");
-pub const OnStore = strid.strId64("OnStore");
+pub const OnLoad = cetech1.strId64("OnLoad");
+pub const PostLoad = cetech1.strId64("PostLoad");
+pub const PreUpdate = cetech1.strId64("PreUpdate");
+pub const OnUpdate = cetech1.strId64("OnUpdate");
+pub const OnValidate = cetech1.strId64("OnValidate");
+pub const PostUpdate = cetech1.strId64("PostUpdate");
+pub const PreStore = cetech1.strId64("PreStore");
+pub const OnStore = cetech1.strId64("OnStore");
 
 // Create Kernel task interface.
 // You can implement init andor shutdown that is call only on main init/shutdown
 pub const KernelTaskI = struct {
     pub const c_name = "ct_kernel_task_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
     name: [:0]const u8,
-    depends: []const strid.StrId64,
+    depends: []const cetech1.StrId64,
     init: *const fn () anyerror!void,
     shutdown: *const fn () anyerror!void,
 
     pub inline fn implement(
         name: [:0]const u8,
-        depends: []const strid.StrId64,
+        depends: []const cetech1.StrId64,
         comptime T: type,
     ) KernelTaskI {
         if (!std.meta.hasFn(T, "init")) @compileError("implement me");
@@ -54,18 +53,18 @@ pub const KernelTaskI = struct {
 // You must implement update that is call every kernel main loop.
 pub const KernelTaskUpdateI = struct {
     pub const c_name = "ct_kernel_task_update_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
-    phase: strid.StrId64,
+    phase: cetech1.StrId64,
     name: [:0]const u8,
-    depends: []const strid.StrId64,
+    depends: []const cetech1.StrId64,
     affinity: ?u32 = null,
     update: *const fn (kernel_tick: u64, dt: f32) anyerror!void,
 
     pub inline fn implment(
-        phase: strid.StrId64,
+        phase: cetech1.StrId64,
         name: [:0]const u8,
-        depends: []const strid.StrId64,
+        depends: []const cetech1.StrId64,
         affinity: ?u32,
         comptime T: type,
     ) KernelTaskUpdateI {
@@ -88,7 +87,7 @@ pub const TestResult = struct {
 
 pub const KernelTestingI = struct {
     pub const c_name = "ct_kernel_testing_i";
-    pub const name_hash = strid.strId64(@This().c_name);
+    pub const name_hash = cetech1.strId64(@This().c_name);
 
     isRunning: *const fn () anyerror!bool,
     printResult: *const fn () void,

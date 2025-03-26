@@ -4,7 +4,6 @@ const std = @import("std");
 const builtin = @import("builtin");
 const mem = std.mem;
 const Allocator = mem.Allocator;
-const ArrayList = std.ArrayList;
 
 const apidb = @import("apidb.zig");
 const profiler_private = @import("profiler.zig");
@@ -22,7 +21,7 @@ const AllocatorItem = struct {
     tracy: cetech1.profiler.AllocatorProfiler,
     allocator: std.mem.Allocator = undefined,
 };
-const ModuleAlocatorMap = std.StringArrayHashMap(*AllocatorItem);
+const ModuleAlocatorMap = std.StringArrayHashMapUnmanaged(*AllocatorItem);
 
 const ModuleDesc = struct {
     desc: public.ModuleDesc,
@@ -44,8 +43,8 @@ const DynLibInfo = struct {
 
 const ModulesList = std.DoublyLinkedList(ModuleDesc);
 const ModulesListNodePool = std.heap.MemoryPool(ModulesList.Node);
-const DynModuleHashMap = std.StringArrayHashMap(DynLibInfo);
-const ModuleHashMap = std.StringArrayHashMap(ModuleDesc);
+const DynModuleHashMap = std.StringArrayHashMapUnmanaged(DynLibInfo);
+const ModuleHashMap = std.StringArrayHashMapUnmanaged(ModuleDesc);
 
 var _allocator: Allocator = undefined;
 var _modules_map: ModuleHashMap = undefined;
@@ -54,9 +53,9 @@ var _modules_allocator_map: ModuleAlocatorMap = undefined;
 
 pub fn init(allocator: Allocator) !void {
     _allocator = allocator;
-    _dyn_modules_map = DynModuleHashMap.init(allocator);
-    _modules_map = ModuleHashMap.init(allocator);
-    _modules_allocator_map = ModuleAlocatorMap.init(allocator);
+    _dyn_modules_map = .{};
+    _modules_map = .{};
+    _modules_allocator_map = .{};
 }
 
 pub fn deinit() void {
@@ -64,9 +63,9 @@ pub fn deinit() void {
         _allocator.destroy(value);
     }
 
-    _modules_map.deinit();
-    _modules_allocator_map.deinit();
-    _dyn_modules_map.deinit();
+    _modules_map.deinit(_allocator);
+    _modules_allocator_map.deinit(_allocator);
+    _dyn_modules_map.deinit(_allocator);
 }
 
 fn getDllExtension() []const u8 {
@@ -102,12 +101,12 @@ fn getModuleName(path: []const u8) []const u8 {
 
 pub fn addModules(modules: []const public.ModuleDesc) !void {
     for (modules) |v| {
-        try _modules_map.put(v.name, .{ .desc = v, .full_path = null });
+        try _modules_map.put(_allocator, v.name, .{ .desc = v, .full_path = null });
     }
 }
 
 pub fn addDynamicModule(desc: public.ModuleDesc, full_path: ?[:0]u8) !void {
-    try _modules_map.put(desc.name, .{ .desc = desc, .full_path = full_path });
+    try _modules_map.put(_allocator, desc.name, .{ .desc = desc, .full_path = full_path });
 }
 
 pub fn loadAll() !void {
@@ -126,7 +125,7 @@ pub fn loadAll() !void {
             };
             item_ptr.*.allocator = item_ptr.tracy.allocator();
 
-            try _modules_allocator_map.put(module_desc.desc.name, item_ptr);
+            try _modules_allocator_map.put(_allocator, module_desc.desc.name, item_ptr);
             alloc_item = _modules_allocator_map.getPtr(module_desc.desc.name);
         }
 
@@ -198,20 +197,20 @@ fn lessThanStr(ctx: void, lhs: []const u8, rhs: []const u8) bool {
 }
 
 pub fn loadDynModules() !void {
-    const tmp_allocator2 = _allocator;
+    const allocator = _allocator;
 
     // TODO remove this fucking long alloc hell
-    const exe_dir = try std.fs.selfExeDirPathAlloc(tmp_allocator2);
-    defer tmp_allocator2.free(exe_dir);
+    const exe_dir = try std.fs.selfExeDirPathAlloc(allocator);
+    defer allocator.free(exe_dir);
 
-    const module_dir = try std.fs.path.join(tmp_allocator2, if (builtin.os.tag == .windows) &.{exe_dir} else &.{ exe_dir, "..", "lib" });
-    defer tmp_allocator2.free(module_dir);
+    const module_dir = try std.fs.path.join(allocator, if (builtin.os.tag == .windows) &.{exe_dir} else &.{ exe_dir, "..", "lib" });
+    defer allocator.free(module_dir);
 
-    const cwd_path = try std.fs.cwd().realpathAlloc(tmp_allocator2, ".");
-    defer tmp_allocator2.free(cwd_path);
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
 
-    const module_dir_relat = try std.fs.path.relative(tmp_allocator2, cwd_path, module_dir);
-    defer tmp_allocator2.free(module_dir_relat);
+    const module_dir_relat = try std.fs.path.relative(allocator, cwd_path, module_dir);
+    defer allocator.free(module_dir_relat);
 
     var dir = std.fs.cwd().openDir(module_dir, .{ .iterate = true }) catch |err| {
         log.err("Could not open dynamic modules dir {}", .{err});
@@ -219,17 +218,17 @@ pub fn loadDynModules() !void {
     };
     defer dir.close();
 
-    var modules = std.ArrayList([:0]const u8).init(tmp_allocator2);
-    defer modules.deinit();
+    var modules = cetech1.ArrayList([:0]const u8){};
+    defer modules.deinit(allocator);
 
     var iterator = dir.iterate();
     while (try iterator.next()) |path| {
         const basename = std.fs.path.basename(path.name);
         if (!isDynamicModule(basename)) continue;
 
-        const full_path = try std.fs.path.joinZ(tmp_allocator2, &[_][]const u8{ module_dir_relat, path.name });
+        const full_path = try std.fs.path.joinZ(allocator, &[_][]const u8{ module_dir_relat, path.name });
 
-        try modules.append(full_path);
+        try modules.append(allocator, full_path);
     }
 
     std.sort.insertion([:0]const u8, modules.items, {}, lessThanStr);
@@ -238,10 +237,10 @@ pub fn loadDynModules() !void {
 
         const dyn_lib_info = _loadDynLib(full_path) catch continue;
 
-        try _dyn_modules_map.put(dyn_lib_info.full_path, dyn_lib_info);
+        try _dyn_modules_map.put(_allocator, dyn_lib_info.full_path, dyn_lib_info);
         try addDynamicModule(.{ .name = dyn_lib_info.name, .module_fce = dyn_lib_info.symbol }, dyn_lib_info.full_path);
 
-        tmp_allocator2.free(full_path);
+        allocator.free(full_path);
     }
 }
 
@@ -252,8 +251,8 @@ pub fn reloadAllIfNeeded(allocator: std.mem.Allocator) !bool {
     const keys = _dyn_modules_map.keys();
     const value = _dyn_modules_map.values();
 
-    var to_reload = std.ArrayList([]const u8).init(allocator);
-    defer to_reload.deinit();
+    var to_reload = cetech1.ArrayList([]const u8){};
+    defer to_reload.deinit(allocator);
 
     const dyn_modules_map_n = _dyn_modules_map.count();
     for (0..dyn_modules_map_n) |i| {
@@ -270,7 +269,7 @@ pub fn reloadAllIfNeeded(allocator: std.mem.Allocator) !bool {
         const f_stat = try f.stat();
 
         if (f_stat.mtime > v.mtime) {
-            try to_reload.append(k);
+            try to_reload.append(allocator, k);
         }
     }
     const modules_reloaded = to_reload.items.len != 0;

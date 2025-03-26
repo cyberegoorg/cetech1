@@ -151,7 +151,7 @@ pub fn build(b: *std.Build) void {
     });
 
     if (options.with_freetype) {
-        if (b.lazyDependency("freetype", .{})) |freetype| {
+        if (b.lazyDependency("freetype", .{ .optimize = optimize, .target = target })) |freetype| {
             imgui.linkLibrary(freetype.artifact("freetype"));
         }
         imgui.addCSourceFile(.{

@@ -7,7 +7,7 @@ const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 
 const primitives = cetech1.primitives;
-const zm = cetech1.math;
+const zm = cetech1.math.zmath;
 const gpu = cetech1.gpu;
 const dag = cetech1.dag;
 
@@ -65,11 +65,11 @@ var _g: *G = undefined;
 const CullingSystem = struct {
     const Self = @This();
 
-    const RequestPool = cetech1.mem.PoolWithLock(public.CullingRequest);
-    const RequestMap = std.AutoArrayHashMapUnmanaged(*const anyopaque, *public.CullingRequest);
+    const RequestPool = cetech1.heap.PoolWithLock(public.CullingRequest);
+    const RequestMap = cetech1.AutoArrayHashMap(*const anyopaque, *public.CullingRequest);
 
-    const ResultPool = cetech1.mem.PoolWithLock(public.CullingResult);
-    const ResultMap = std.AutoArrayHashMapUnmanaged(*const anyopaque, *public.CullingResult);
+    const ResultPool = cetech1.heap.PoolWithLock(public.CullingResult);
+    const ResultMap = cetech1.AutoArrayHashMap(*const anyopaque, *public.CullingResult);
 
     allocator: std.mem.Allocator,
 
@@ -79,14 +79,13 @@ const CullingSystem = struct {
     cr_pool: ResultPool,
     cr_map: ResultMap = .{},
 
-    tasks: cetech1.task.TaskIDList,
+    tasks: cetech1.task.TaskIDList = .{},
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
             .allocator = allocator,
             .crq_pool = RequestPool.init(allocator),
             .cr_pool = ResultPool.init(allocator),
-            .tasks = cetech1.task.TaskIDList.init(allocator),
         };
     }
 
@@ -105,7 +104,7 @@ const CullingSystem = struct {
         self.cr_map.deinit(self.allocator);
         self.cr_pool.deinit();
 
-        self.tasks.deinit();
+        self.tasks.deinit(self.allocator);
     }
 
     pub fn getRequest(self: *Self, rq_type: *const anyopaque, renderable_size: usize) !*public.CullingRequest {
@@ -193,7 +192,7 @@ const CullingSystem = struct {
                     }
                 },
             )) |t| {
-                try self.tasks.append(t);
+                try self.tasks.append(self.allocator, t);
             }
         }
 
@@ -296,36 +295,34 @@ const CullingTask = struct {
     }
 };
 
-const ModulePassList = std.ArrayList(ModuleOrPass);
-const PassList = std.ArrayList(*public.Pass);
+const ModulePassList = cetech1.ArrayList(ModuleOrPass);
+const PassList = cetech1.ArrayList(*public.Pass);
 
-const PassInfoMap = std.AutoArrayHashMap(*public.Pass, PassInfo);
-const ResourceSet = std.AutoArrayHashMap(public.ResourceId, void);
-const TextureInfoMap = std.AutoArrayHashMap(public.ResourceId, public.TextureInfo);
-const TextureMap = std.AutoArrayHashMap(public.ResourceId, gpu.TextureHandle);
-const CreatedTextureMap = std.AutoArrayHashMap(CreatedTextureKey, CreatedTextureInfo);
-const TextureList = std.ArrayList(gpu.TextureHandle);
-const PassSet = std.AutoArrayHashMap(*public.Pass, void);
-const ResourceInfoMap = std.AutoArrayHashMap(public.ResourceId, ResourceInfo);
-const LayerMap = std.AutoArrayHashMap(cetech1.strid.StrId32, gpu.ViewId);
+const PassInfoMap = cetech1.AutoArrayHashMap(*public.Pass, PassInfo);
+const ResourceSet = cetech1.AutoArrayHashMap(public.ResourceId, void);
+const TextureInfoMap = cetech1.AutoArrayHashMap(public.ResourceId, public.TextureInfo);
+const TextureMap = cetech1.AutoArrayHashMap(public.ResourceId, gpu.TextureHandle);
+const CreatedTextureMap = cetech1.AutoArrayHashMap(CreatedTextureKey, CreatedTextureInfo);
+const TextureList = cetech1.ArrayList(gpu.TextureHandle);
+const PassSet = cetech1.AutoArrayHashMap(*public.Pass, void);
+const ResourceInfoMap = cetech1.AutoArrayHashMap(public.ResourceId, ResourceInfo);
+const LayerMap = cetech1.AutoArrayHashMap(cetech1.StrId32, gpu.ViewId);
 
 const ResourceInfo = struct {
     name: []const u8,
     create: ?*public.Pass = null,
-    writes: PassSet,
-    reads: PassSet,
+    writes: PassSet = .{},
+    reads: PassSet = .{},
 
-    pub fn init(allocator: std.mem.Allocator, name: []const u8) ResourceInfo {
+    pub fn init(name: []const u8) ResourceInfo {
         return .{
             .name = name,
-            .writes = PassSet.init(allocator),
-            .reads = PassSet.init(allocator),
         };
     }
 
-    pub fn deinit(self: *ResourceInfo) void {
-        self.writes.deinit();
-        self.reads.deinit();
+    pub fn deinit(self: *ResourceInfo, allocator: std.mem.Allocator) void {
+        self.writes.deinit(allocator);
+        self.reads.deinit(allocator);
     }
 };
 
@@ -348,30 +345,22 @@ const ModuleOrPass = union(enum) {
 const PassInfo = struct {
     name: []const u8 = undefined,
 
-    write_texture: ResourceSet,
-    read_texture: ResourceSet,
-    create_texture: TextureInfoMap,
+    write_texture: ResourceSet = .{},
+    read_texture: ResourceSet = .{},
+    create_texture: TextureInfoMap = .{},
 
     viewid: gpu.ViewId = 0,
     clear_stencil: ?u8 = null,
     clear_depth: ?f32 = null,
 
-    exported_layer: ?cetech1.strid.StrId32 = null,
+    exported_layer: ?cetech1.StrId32 = null,
 
     fb: ?gpu.FrameBufferHandle = null,
 
-    pub fn init(allocator: std.mem.Allocator) PassInfo {
-        return .{
-            .write_texture = ResourceSet.init(allocator),
-            .read_texture = ResourceSet.init(allocator),
-            .create_texture = TextureInfoMap.init(allocator),
-        };
-    }
-
-    pub fn deinit(self: *PassInfo) void {
-        self.write_texture.deinit();
-        self.create_texture.deinit();
-        self.read_texture.deinit();
+    pub fn deinit(self: *PassInfo, allocator: std.mem.Allocator) void {
+        self.write_texture.deinit(allocator);
+        self.create_texture.deinit(allocator);
+        self.read_texture.deinit(allocator);
 
         if (self.fb) |fb| {
             _gpu.destroyFrameBuffer(fb);
@@ -395,66 +384,60 @@ pub fn ratioFromEnum(ratio: gpu.BackbufferRatio) f32 {
     };
 }
 
-const ViewersList = std.ArrayList(public.Viewer);
+const ViewersList = cetech1.ArrayList(public.Viewer);
 
 const GraphBuilder = struct {
     allocator: std.mem.Allocator,
     rg: *Graph,
 
-    passinfo_map: PassInfoMap,
-    texture_map: TextureMap,
+    passinfo_map: PassInfoMap = .{},
+    texture_map: TextureMap = .{},
 
-    passes: PassList,
+    passes: PassList = .{},
     viewport: public.Viewport,
-    layer_map: LayerMap,
+    layer_map: LayerMap = .{},
 
-    resource_deps: ResourceInfoMap,
+    resource_deps: ResourceInfoMap = .{},
 
     dag: dag.DAG(*public.Pass),
 
-    viewers: ViewersList,
+    viewers: ViewersList = .{},
 
     pub fn init(allocator: std.mem.Allocator, rg: *Graph, viewport: public.Viewport) GraphBuilder {
         return .{
             .allocator = allocator,
             .rg = rg,
-            .passinfo_map = PassInfoMap.init(allocator),
-            .texture_map = TextureMap.init(allocator),
-            .passes = PassList.init(allocator),
             .viewport = viewport,
             .dag = dag.DAG(*public.Pass).init(allocator),
-            .resource_deps = ResourceInfoMap.init(allocator),
-            .layer_map = LayerMap.init(allocator),
-            .viewers = ViewersList.init(allocator),
         };
     }
 
     pub fn deinit(self: *GraphBuilder) void {
         for (self.passinfo_map.values()) |*info| {
-            info.deinit();
+            info.deinit(self.allocator);
         }
 
         for (self.resource_deps.values()) |*set| {
-            set.deinit();
+            set.deinit(self.allocator);
         }
 
-        self.layer_map.deinit();
-        self.passes.deinit();
-        self.passinfo_map.deinit();
-        self.texture_map.deinit();
+        self.layer_map.deinit(self.allocator);
+        self.passes.deinit(self.allocator);
+        self.passinfo_map.deinit(self.allocator);
+        self.texture_map.deinit(self.allocator);
         self.dag.deinit();
-        self.resource_deps.deinit();
+        self.resource_deps.deinit(self.allocator);
     }
 
     pub fn addPass(self: *GraphBuilder, name: []const u8, pass: *public.Pass) !void {
         const pass_info = try self.getOrCreateInfo(pass);
         pass_info.name = name;
-        try self.passes.append(pass);
+        try self.passes.append(self.allocator, pass);
     }
 
     pub fn exportLayer(self: *GraphBuilder, pass: *public.Pass, name: []const u8) !void {
         const pass_info = try self.getOrCreateInfo(pass);
-        pass_info.exported_layer = cetech1.strid.strId32(name);
+        pass_info.exported_layer = cetech1.strId32(name);
     }
 
     pub fn getViewers(self: *GraphBuilder) []public.Viewer {
@@ -469,8 +452,8 @@ const GraphBuilder = struct {
     pub fn createTexture2D(self: *GraphBuilder, pass: *public.Pass, texture: []const u8, info: public.TextureInfo) !void {
         const pass_info = try self.getOrCreateInfo(pass);
 
-        const texture_id = cetech1.strid.strId32(texture);
-        try pass_info.create_texture.put(texture_id, info);
+        const texture_id = cetech1.strId32(texture);
+        try pass_info.create_texture.put(self.allocator, texture_id, info);
 
         if (info.clear_depth) |depth| {
             pass_info.clear_depth = depth;
@@ -485,45 +468,45 @@ const GraphBuilder = struct {
     pub fn writeTexture(self: *GraphBuilder, pass: *public.Pass, texture: []const u8) !void {
         const info = try self.getOrCreateInfo(pass);
 
-        const texture_id = cetech1.strid.strId32(texture);
+        const texture_id = cetech1.strId32(texture);
 
-        try info.write_texture.put(texture_id, {});
+        try info.write_texture.put(self.allocator, texture_id, {});
         const deps = try self.getOrCreateResourceDeps(texture);
-        try deps.writes.put(pass, {});
+        try deps.writes.put(self.allocator, pass, {});
     }
 
     pub fn readTexture(self: *GraphBuilder, pass: *public.Pass, texture: []const u8) !void {
         const info = try self.getOrCreateInfo(pass);
 
-        const texture_id = cetech1.strid.strId32(texture);
+        const texture_id = cetech1.strId32(texture);
 
-        try info.read_texture.put(texture_id, {});
+        try info.read_texture.put(self.allocator, texture_id, {});
         const deps = try self.getOrCreateResourceDeps(texture);
-        try deps.reads.put(pass, {});
+        try deps.reads.put(self.allocator, pass, {});
     }
 
     pub fn getTexture(self: *GraphBuilder, texture: []const u8) ?gpu.TextureHandle {
-        return self.texture_map.get(cetech1.strid.strId32(texture));
+        return self.texture_map.get(cetech1.strId32(texture));
     }
 
     pub fn getLayer(self: *GraphBuilder, layer: []const u8) gpu.ViewId {
-        return self.layer_map.get(cetech1.strid.strId32(layer)) orelse 256;
+        return self.layer_map.get(cetech1.strId32(layer)) orelse 256;
     }
 
-    pub fn getLayerById(self: *GraphBuilder, layer: strid.StrId32) gpu.ViewId {
+    pub fn getLayerById(self: *GraphBuilder, layer: cetech1.StrId32) gpu.ViewId {
         return self.layer_map.get(layer) orelse 256;
     }
 
     pub fn importTexture(self: *GraphBuilder, texture_name: []const u8, texture: gpu.TextureHandle) !void {
-        try self.texture_map.put(cetech1.strid.strId32(texture_name), texture);
+        try self.texture_map.put(self.allocator, cetech1.strId32(texture_name), texture);
     }
 
     fn getOrCreateResourceDeps(self: *GraphBuilder, texture_name: []const u8) !*ResourceInfo {
-        const texture_id = cetech1.strid.strId32(texture_name);
+        const texture_id = cetech1.strId32(texture_name);
 
-        const result = try self.resource_deps.getOrPut(texture_id);
+        const result = try self.resource_deps.getOrPut(self.allocator, texture_id);
         if (!result.found_existing) {
-            result.value_ptr.* = ResourceInfo.init(self.allocator, texture_name);
+            result.value_ptr.* = ResourceInfo.init(texture_name);
         }
 
         return result.value_ptr;
@@ -534,27 +517,27 @@ const GraphBuilder = struct {
         for (self.passes.items) |pass| {
             const info = self.passinfo_map.getPtr(pass) orelse return error.InvalidPass;
 
-            var depends = std.ArrayList(*public.Pass).init(self.allocator);
-            defer depends.deinit();
+            var depends = cetech1.ArrayList(*public.Pass){};
+            defer depends.deinit(self.allocator);
 
             for (info.write_texture.keys()) |texture| {
                 const texture_deps = self.resource_deps.get(texture).?;
                 if (texture_deps.create) |create_pass| {
                     if (create_pass == pass) continue;
 
-                    try depends.append(create_pass);
+                    try depends.append(self.allocator, create_pass);
                 }
             }
 
             for (info.read_texture.keys()) |texture| {
                 const texture_deps = self.resource_deps.get(texture).?;
 
-                try depends.appendSlice(texture_deps.writes.keys());
+                try depends.appendSlice(self.allocator, texture_deps.writes.keys());
 
                 if (texture_deps.create) |create_pass| {
                     if (create_pass == pass) continue;
 
-                    try depends.append(create_pass);
+                    try depends.append(self.allocator, create_pass);
                 }
             }
 
@@ -571,25 +554,25 @@ const GraphBuilder = struct {
             const viewid = _gpu.newViewId();
             info.viewid = viewid;
             if (info.exported_layer) |layer| {
-                try self.layer_map.put(layer, viewid);
+                try self.layer_map.put(self.allocator, layer, viewid);
             }
 
             if (info.needFb()) {
                 var clear_flags: gpu.ClearFlags = gpu.ClearFlags_None;
                 var clear_colors: [8]u8 = .{std.math.maxInt(u8)} ** 8;
 
-                var textures = std.ArrayList(gpu.TextureHandle).init(self.allocator);
-                defer textures.deinit();
+                var textures = cetech1.ArrayList(gpu.TextureHandle){};
+                defer textures.deinit(self.allocator);
 
                 for (info.create_texture.keys(), info.create_texture.values()) |k, v| {
                     const texture_deps = self.resource_deps.get(k).?;
 
                     const t = try self.rg.createTexture2D(self.viewport, texture_deps.name, v);
-                    try self.texture_map.put(k, t);
+                    try self.texture_map.put(self.allocator, k, t);
                 }
 
                 for (info.write_texture.keys(), 0..) |write, idx| {
-                    try textures.append(self.texture_map.get(write).?);
+                    try textures.append(self.allocator, self.texture_map.get(write).?);
 
                     // Clear only created
                     const texture = info.create_texture.get(write) orelse continue;
@@ -654,10 +637,10 @@ const GraphBuilder = struct {
     }
 
     fn getOrCreateInfo(self: *GraphBuilder, pass: *public.Pass) !*PassInfo {
-        const result = try self.passinfo_map.getOrPut(pass);
+        const result = try self.passinfo_map.getOrPut(self.allocator, pass);
 
         if (!result.found_existing) {
-            result.value_ptr.* = PassInfo.init(self.allocator);
+            result.value_ptr.* = .{};
         }
 
         return result.value_ptr;
@@ -666,12 +649,11 @@ const GraphBuilder = struct {
 
 const Module = struct {
     allocator: std.mem.Allocator,
-    passes: ModulePassList,
+    passes: ModulePassList = .{},
 
     pub fn init(allocator: std.mem.Allocator) Module {
         return .{
             .allocator = allocator,
-            .passes = ModulePassList.init(allocator),
         };
     }
 
@@ -683,15 +665,15 @@ const Module = struct {
             }
         }
 
-        self.passes.deinit();
+        self.passes.deinit(self.allocator);
     }
 
     pub fn addPass(self: *Module, pass: public.Pass) !void {
-        try self.passes.append(.{ .pass = pass });
+        try self.passes.append(self.allocator, .{ .pass = pass });
     }
 
     pub fn addModule(self: *Module, module: public.Module) !void {
-        try self.passes.append(.{ .module = @alignCast(@ptrCast(module.ptr)) });
+        try self.passes.append(self.allocator, .{ .module = @alignCast(@ptrCast(module.ptr)) });
     }
 
     pub fn setup(self: *Module, builder: public.GraphBuilder) !void {
@@ -704,8 +686,8 @@ const Module = struct {
     }
 };
 
-const ModulePool = cetech1.mem.PoolWithLock(Module);
-const BuilderPool = cetech1.mem.PoolWithLock(GraphBuilder);
+const ModulePool = cetech1.heap.PoolWithLock(Module);
+const BuilderPool = cetech1.heap.PoolWithLock(GraphBuilder);
 
 const Graph = struct {
     allocator: std.mem.Allocator,
@@ -713,7 +695,7 @@ const Graph = struct {
     builder_pool: BuilderPool,
     module: Module,
 
-    created_texture: CreatedTextureMap,
+    created_texture: CreatedTextureMap = .{},
     created_texture_lck: std.Thread.Mutex = .{},
 
     pub fn init(allocator: std.mem.Allocator) Graph {
@@ -722,7 +704,6 @@ const Graph = struct {
             .module_pool = ModulePool.init(allocator),
             .builder_pool = BuilderPool.init(allocator),
             .module = Module.init(allocator),
-            .created_texture = CreatedTextureMap.init(allocator),
         };
     }
 
@@ -734,7 +715,7 @@ const Graph = struct {
         self.module.deinit();
         self.module_pool.deinit();
         self.builder_pool.deinit();
-        self.created_texture.deinit();
+        self.created_texture.deinit(self.allocator);
     }
 
     pub fn addPass(self: *Graph, pass: public.Pass) !void {
@@ -771,7 +752,7 @@ const Graph = struct {
     }
 
     pub fn createTexture2D(self: *Graph, viewport: public.Viewport, texture_name: []const u8, info: public.TextureInfo) !gpu.TextureHandle {
-        const texture_id = cetech1.strid.strId32(texture_name);
+        const texture_id = cetech1.strId32(texture_name);
 
         const vp_size = viewport.getSize();
         const ratio = ratioFromEnum(info.ratio);
@@ -805,6 +786,7 @@ const Graph = struct {
             self.created_texture_lck.lock();
             defer self.created_texture_lck.unlock();
             try self.created_texture.put(
+                self.allocator,
                 .{ .name = texture_id, .viewport = viewport },
                 .{
                     .handler = t,
@@ -817,17 +799,17 @@ const Graph = struct {
     }
 };
 
-const GraphPool = cetech1.mem.PoolWithLock(Graph);
-const GraphSet = std.AutoArrayHashMap(*Graph, void);
+const GraphPool = cetech1.heap.PoolWithLock(Graph);
+const GraphSet = cetech1.AutoArrayHashMap(*Graph, void);
 
-const ViewportPool = cetech1.mem.PoolWithLock(Viewport);
-const ViewportSet = std.AutoArrayHashMap(*Viewport, void);
-const PalletColorMap = std.AutoArrayHashMap(u32, u8);
+const ViewportPool = cetech1.heap.PoolWithLock(Viewport);
+const ViewportSet = cetech1.AutoArrayHashMap(*Viewport, void);
+const PalletColorMap = cetech1.AutoArrayHashMap(u32, u8);
 
 var kernel_render_task = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnStore,
     "RenderFrame",
-    &[_]cetech1.strid.StrId64{},
+    &[_]cetech1.StrId64{},
     1,
     struct {
         pub fn update(kernel_tick: u64, dt: f32) !void {
@@ -860,7 +842,7 @@ fn createViewport(name: [:0]const u8, rg: public.Graph, world: ?ecs.World, camer
         .complete_render_duration = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/complete_render_duration", .{dupe_name})),
     };
 
-    try _g.viewport_set.put(new_viewport, {});
+    try _g.viewport_set.put(_allocator, new_viewport, {});
     return public.Viewport{
         .ptr = new_viewport,
         .vtable = &viewport_vt,
@@ -953,16 +935,16 @@ const RenderViewportTask = struct {
             iface: *const public.RendereableI,
         };
 
-        var viewers = ViewersList.init(allocator);
-        defer viewers.deinit();
+        var viewers = ViewersList{};
+        defer viewers.deinit(allocator);
 
         var enabled_systems = shader_system.SystemSet.initEmpty();
-        enabled_systems.set(_shader.getSystemIdx(strid.strId32("viewer_system")));
-        enabled_systems.set(_shader.getSystemIdx(strid.strId32("time_system")));
+        enabled_systems.set(_shader.getSystemIdx(cetech1.strId32("viewer_system")));
+        enabled_systems.set(_shader.getSystemIdx(cetech1.strId32("time_system")));
 
         if (s.viewport.world) |world| {
-            var renderables = std.ArrayList(Renderables).init(allocator);
-            defer renderables.deinit();
+            var renderables = cetech1.ArrayList(Renderables){};
+            defer renderables.deinit(allocator);
 
             viewers.clearRetainingCapacity();
 
@@ -1006,13 +988,13 @@ const RenderViewportTask = struct {
                             .camera = cameras[idx],
                             .mtx = zm.matToArr(zm.inverse(camera_transforms[idx].mtx)),
                             .proj = zm.matToArr(pmtx),
-                            .context = strid.strId32("viewport"),
+                            .context = cetech1.strId32("viewport"),
                         };
 
                         if (s.viewport.main_camera_entity != null and s.viewport.main_camera_entity.? == entities[idx]) {
-                            try viewers.insert(0, v);
+                            try viewers.insert(allocator, 0, v);
                         } else {
-                            try viewers.append(v);
+                            try viewers.append(allocator, v);
                         }
                     }
                 }
@@ -1050,7 +1032,7 @@ const RenderViewportTask = struct {
                 defer allocator.free(impls);
                 for (impls) |iface| {
                     const renderable = Renderables{ .iface = iface };
-                    try renderables.append(renderable);
+                    try renderables.append(allocator, renderable);
 
                     const cr = try s.viewport.culling.getRequest(iface, iface.size);
 
@@ -1114,8 +1096,8 @@ fn renderAllViewports(allocator: std.mem.Allocator, time_s: f32) !void {
     var zone_ctx = _profiler.ZoneN(@src(), "renderAllViewports");
     defer zone_ctx.End();
 
-    var tasks = std.ArrayList(cetech1.task.TaskID).init(allocator);
-    defer tasks.deinit();
+    var tasks = cetech1.ArrayList(cetech1.task.TaskID){};
+    defer tasks.deinit(allocator);
 
     _gpu.resetViewId();
 
@@ -1124,7 +1106,7 @@ fn renderAllViewports(allocator: std.mem.Allocator, time_s: f32) !void {
         const enc = _gpu.getEncoder().?;
         defer _gpu.endEncoder(enc);
 
-        try _g.time_system.uniforms.?.set(strid.strId32("time"), [4]f32{ time_s, 0, 0, 0 });
+        try _g.time_system.uniforms.?.set(cetech1.strId32("time"), [4]f32{ time_s, 0, 0, 0 });
         _shader.submitSystemUniforms(enc, _g.time_system);
     }
 
@@ -1173,7 +1155,7 @@ fn renderAllViewports(allocator: std.mem.Allocator, time_s: f32) !void {
                 },
                 .{},
             );
-            try tasks.append(task_id);
+            try tasks.append(allocator, task_id);
         }
     }
 
@@ -1288,7 +1270,7 @@ fn create() !public.Graph {
     {
         _g.rg_lock.lock();
         defer _g.rg_lock.unlock();
-        try _g.rg_set.put(new_rg, {});
+        try _g.rg_set.put(_allocator, new_rg, {});
     }
 
     return public.Graph{ .ptr = new_rg, .vtable = &rg_vt };
@@ -1318,17 +1300,17 @@ fn destroy(rg: public.Graph) void {
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
     "Renderer",
-    &[_]strid.StrId64{},
+    &[_]cetech1.StrId64{},
     struct {
         pub fn init() !void {
-            _g.viewport_set = ViewportSet.init(_allocator);
+            _g.viewport_set = .{};
             _g.viewport_pool = ViewportPool.init(_allocator);
 
-            _g.rg_set = GraphSet.init(_allocator);
+            _g.rg_set = .{};
             _g.rg_pool = GraphPool.init(_allocator);
             _g.rg_lock = std.Thread.Mutex{};
 
-            _g.time_system = try _shader.createSystemInstance(strid.strId32("time_system"));
+            _g.time_system = try _shader.createSystemInstance(cetech1.strId32("time_system"));
 
             _vertex_pos_layout = PosVertex.layoutInit();
             _vertex_col_layout = ColorVertex.layoutInit();
@@ -1349,10 +1331,10 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
         }
 
         pub fn shutdown() !void {
-            _g.viewport_set.deinit();
+            _g.viewport_set.deinit(_allocator);
             _g.viewport_pool.deinit();
 
-            _g.rg_set.deinit();
+            _g.rg_set.deinit(_allocator);
             _g.rg_pool.deinit();
 
             _shader.destroySystemInstance(&_g.time_system);
@@ -1387,7 +1369,7 @@ const gpu_geometry_value_type_i = graphvm.GraphValueTypeI.implement(
         }
 
         pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
-            return strid.strId64(value).id;
+            return cetech1.strId64(value).id;
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
@@ -1433,22 +1415,18 @@ const culling_volume_node_i = graphvm.NodeI.implement(
     struct {
         const Self = @This();
 
-        pub fn getInputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+        pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
             _ = self; // autofix
             _ = node_obj; // autofix
             _ = graph_obj; // autofix
-            return allocator.dupe(graphvm.NodePin, &.{
-                graphvm.NodePin.init("Radius", graphvm.NodePin.pinHash("radius", false), graphvm.PinTypes.F32, null),
-                graphvm.NodePin.init("Min", graphvm.NodePin.pinHash("min", false), graphvm.PinTypes.VEC3F, null),
-                graphvm.NodePin.init("Max", graphvm.NodePin.pinHash("max", false), graphvm.PinTypes.VEC3F, null),
-            });
-        }
-
-        pub fn getOutputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
-            return allocator.dupe(graphvm.NodePin, &.{});
+            return .{
+                .in = try allocator.dupe(graphvm.NodePin, &.{
+                    graphvm.NodePin.init("Radius", graphvm.NodePin.pinHash("radius", false), graphvm.PinTypes.F32, null),
+                    graphvm.NodePin.init("Min", graphvm.NodePin.pinHash("min", false), graphvm.PinTypes.VEC3F, null),
+                    graphvm.NodePin.init("Max", graphvm.NodePin.pinHash("max", false), graphvm.PinTypes.VEC3F, null),
+                }),
+                .out = try allocator.dupe(graphvm.NodePin, &.{}),
+            };
         }
 
         pub fn create(self: *const graphvm.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {
@@ -1500,24 +1478,20 @@ const draw_call_node_i = graphvm.NodeI.implement(
     struct {
         const Self = @This();
 
-        pub fn getInputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+        pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
             _ = self; // autofix
             _ = node_obj; // autofix
             _ = graph_obj; // autofix
-            return allocator.dupe(graphvm.NodePin, &.{
-                graphvm.NodePin.init("GPU shader", graphvm.NodePin.pinHash("gpu_shader", false), shader_system.PinTypes.GPU_SHADER, null),
-                graphvm.NodePin.init("GPU geometry", graphvm.NodePin.pinHash("gpu_geometry", false), public.PinTypes.GPU_GEOMETRY, null),
-                graphvm.NodePin.init("GPU index buffer", graphvm.NodePin.pinHash("gpu_index_buffer", false), public.PinTypes.GPU_INDEX_BUFFER, null),
-                graphvm.NodePin.init("Vertex count", graphvm.NodePin.pinHash("vertex_count", false), graphvm.PinTypes.U32, null),
-                graphvm.NodePin.init("Index count", graphvm.NodePin.pinHash("index_count", false), graphvm.PinTypes.U32, null),
-            });
-        }
-
-        pub fn getOutputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
-            return allocator.dupe(graphvm.NodePin, &.{});
+            return .{
+                .in = try allocator.dupe(graphvm.NodePin, &.{
+                    graphvm.NodePin.init("GPU shader", graphvm.NodePin.pinHash("gpu_shader", false), shader_system.PinTypes.GPU_SHADER, null),
+                    graphvm.NodePin.init("GPU geometry", graphvm.NodePin.pinHash("gpu_geometry", false), public.PinTypes.GPU_GEOMETRY, null),
+                    graphvm.NodePin.init("GPU index buffer", graphvm.NodePin.pinHash("gpu_index_buffer", false), public.PinTypes.GPU_INDEX_BUFFER, null),
+                    graphvm.NodePin.init("Vertex count", graphvm.NodePin.pinHash("vertex_count", false), graphvm.PinTypes.U32, null),
+                    graphvm.NodePin.init("Index count", graphvm.NodePin.pinHash("index_count", false), graphvm.PinTypes.U32, null),
+                }),
+                .out = try allocator.dupe(graphvm.NodePin, &.{}),
+            };
         }
 
         pub fn create(self: *const graphvm.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {
@@ -1573,23 +1547,19 @@ const lsd_cube_node_i = graphvm.NodeI.implement(
     struct {
         const Self = @This();
 
-        pub fn getInputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
+        pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
             _ = self; // autofix
             _ = node_obj; // autofix
             _ = graph_obj; // autofix
-            return allocator.dupe(graphvm.NodePin, &.{});
-        }
-
-        pub fn getOutputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
-            return allocator.dupe(graphvm.NodePin, &.{
-                graphvm.NodePin.init("GPU geometry", graphvm.NodePin.pinHash("gpu_geometry", true), public.PinTypes.GPU_GEOMETRY, null),
-                graphvm.NodePin.init("GPU index buffer", graphvm.NodePin.pinHash("gpu_index_buffer", true), public.PinTypes.GPU_INDEX_BUFFER, null),
-                graphvm.NodePin.init("Vertex count", graphvm.NodePin.pinHash("vertex_count", true), graphvm.PinTypes.U32, null),
-                graphvm.NodePin.init("Index count", graphvm.NodePin.pinHash("index_count", true), graphvm.PinTypes.U32, null),
-            });
+            return .{
+                .in = try allocator.dupe(graphvm.NodePin, &.{}),
+                .out = try allocator.dupe(graphvm.NodePin, &.{
+                    graphvm.NodePin.init("GPU geometry", graphvm.NodePin.pinHash("gpu_geometry", true), public.PinTypes.GPU_GEOMETRY, null),
+                    graphvm.NodePin.init("GPU index buffer", graphvm.NodePin.pinHash("gpu_index_buffer", true), public.PinTypes.GPU_INDEX_BUFFER, null),
+                    graphvm.NodePin.init("Vertex count", graphvm.NodePin.pinHash("vertex_count", true), graphvm.PinTypes.U32, null),
+                    graphvm.NodePin.init("Index count", graphvm.NodePin.pinHash("index_count", true), graphvm.PinTypes.U32, null),
+                }),
+            };
         }
 
         pub fn create(self: *const graphvm.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool) !void {
