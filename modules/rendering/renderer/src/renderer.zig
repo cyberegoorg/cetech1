@@ -27,6 +27,19 @@ pub const PinTypes = struct {
     pub const GPU_INDEX_BUFFER = cetech1.strId32("gpu_index_buffer");
 };
 
+pub const TestGeometryNodeSettings = cdb.CdbTypeDecl(
+    "ct_gpu_test_geometry_settings",
+    enum(u32) {
+        type,
+    },
+    struct {},
+);
+
+pub const TestGeometryNodeType = enum {
+    cube,
+    bunny,
+};
+
 pub const GPUGeometryCdb = cdb.CdbTypeDecl(
     "ct_gpu_geometry",
     enum(u32) {
@@ -300,11 +313,11 @@ pub const Viewport = struct {
     };
 };
 
-const GfxApi = gpu.GpuApi;
+const GpuApi = gpu.GpuApi;
 
 pub const Pass = struct {
     setup: *const fn (pass: *Pass, builder: GraphBuilder) anyerror!void,
-    render: *const fn (builder: GraphBuilder, gfx_api: *const GfxApi, viewport: Viewport, viewid: gpu.ViewId, viewers: []const Viewer) anyerror!void,
+    render: *const fn (builder: GraphBuilder, gfx_api: *const GpuApi, viewport: Viewport, viewid: gpu.ViewId, viewers: []const Viewer) anyerror!void,
 
     pub fn implement(comptime T: type) Pass {
         if (!std.meta.hasFn(T, "setup")) @compileError("implement me");

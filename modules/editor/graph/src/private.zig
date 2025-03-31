@@ -1571,8 +1571,10 @@ const input_variable_menu_aspect = editor.UiSetMenusAspect.implement(struct {
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         prop_idx: u32,
+        filter: ?[:0]const u8,
     ) !void {
         _ = prop_idx; // autofix
+        _ = filter;
 
         const db = _cdb.getDbFromObjid(obj);
         const subobj = graphvm.InterfaceInput.readSubObj(_cdb, graphvm.InterfaceInput.read(_cdb, obj).?, .value);
@@ -1613,8 +1615,10 @@ const output_variable_menu_aspect = editor.UiSetMenusAspect.implement(struct {
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         prop_idx: u32,
+        filter: ?[:0]const u8,
     ) !void {
         _ = prop_idx; // autofix
+        _ = filter;
 
         const db = _cdb.getDbFromObjid(obj);
         const subobj = graphvm.InterfaceInput.readSubObj(_cdb, graphvm.InterfaceInput.read(_cdb, obj).?, .value);
@@ -1655,9 +1659,10 @@ const data_variable_menu_aspect = editor.UiSetMenusAspect.implement(struct {
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         prop_idx: u32,
+        filter: ?[:0]const u8,
     ) !void {
         _ = prop_idx; // autofix
-
+        _ = filter;
         const db = _cdb.getDbFromObjid(obj);
         const subobj = graphvm.GraphDataType.readSubObj(_cdb, graphvm.GraphDataType.read(_cdb, obj).?, .value);
 
@@ -1696,8 +1701,10 @@ const const_value_menu_aspect = editor.UiSetMenusAspect.implement(struct {
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         prop_idx: u32,
+        filter: ?[:0]const u8,
     ) !void {
         _ = prop_idx; // autofix
+        _ = filter;
 
         const db = _cdb.getDbFromObjid(obj);
         const subobj = graphvm.ConstNodeSettings.readSubObj(_cdb, graphvm.ConstNodeSettings.read(_cdb, obj).?, .value);

@@ -684,7 +684,7 @@ var asset_ui_tree_aspect = editor_tree.UiTreeAspect.implement(struct {
             return result;
         }
 
-        if (!args.expand_object and args.only_types.idx != 0 and !asset_obj.type_idx.eql(args.only_types)) {
+        if (!args.expand_object and !editor_tree.filterOnlyTypes(args.only_types, asset_obj)) {
             return result;
         }
 

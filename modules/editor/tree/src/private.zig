@@ -218,7 +218,7 @@ fn cdbTreeView(
         return result;
     }
 
-    if (!args.expand_object and args.only_types.idx != 0 and obj.obj.type_idx.idx != args.only_types.idx) {
+    if (!args.expand_object and !public.filterOnlyTypes(args.only_types, obj.obj)) {
         return result;
     }
 
@@ -367,7 +367,7 @@ fn cdbTreeView(
                     defer if (!flaten_child) api.cdbTreePop();
 
                     // added
-                    var set: ?[]const cdb.ObjId = undefined;
+                    var set: ?[]cdb.ObjId = undefined;
                     if (prop_def.type == .REFERENCE_SET) {
                         set = _cdb.readRefSet(obj_r, prop_idx, allocator);
                     } else {
@@ -394,6 +394,11 @@ fn cdbTreeView(
 
                     if (set) |s| {
                         defer allocator.free(set.?);
+
+                        const ui_sort_aspect = _cdb.getPropertyAspect(editor.UiSetSortPropertyAspect, db, obj.obj.type_idx, prop_idx);
+                        if (ui_sort_aspect) |aspect| {
+                            try aspect.sort(allocator, s);
+                        }
 
                         for (s, 0..) |subobj, set_idx| {
                             const label = _editor.buffFormatObjLabel(allocator, &buff, subobj, true, true) orelse
@@ -439,13 +444,14 @@ fn cdbTreeView(
                     }
 
                     // removed
+                    var removed_set: ?[]const cdb.ObjId = undefined;
                     if (prop_def.type == .REFERENCE_SET) {
-                        set = _cdb.readRefSetRemoved(_cdb.readObj(obj.obj).?, prop_idx);
+                        removed_set = _cdb.readRefSetRemoved(_cdb.readObj(obj.obj).?, prop_idx);
                     } else {
-                        set = _cdb.readSubObjSetRemoved(_cdb.readObj(obj.obj).?, prop_idx);
+                        removed_set = _cdb.readSubObjSetRemoved(_cdb.readObj(obj.obj).?, prop_idx);
                     }
 
-                    if (set) |s| {
+                    if (removed_set) |s| {
                         for (s, 0..) |subobj, set_idx| {
                             _ = set_idx;
                             // _coreui.pushIntId(@truncate(set_idx));

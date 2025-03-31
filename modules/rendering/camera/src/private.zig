@@ -44,8 +44,10 @@ var _g: *G = undefined;
 
 const camera_c = ecs.ComponentI.implement(
     public.Camera,
-
-    public.CameraCdb.type_hash,
+    .{
+        .cdb_type_hash = public.CameraCdb.type_hash,
+        .category = "Renderer",
+    },
     struct {
         pub fn uiIcons(
             buff: [:0]u8,

@@ -1123,7 +1123,11 @@ const GraphVM = struct {
 
                 var it = outs.iterator();
                 while (it.next()) |vv| {
-                    const node_to_idx = self.node_idx_map.get(.{ .parent = v.graph, .node = vv.key_ptr.obj });
+                    const node_to_idx = self.node_idx_map.get(.{ .parent = vv.key_ptr.graph, .node = vv.key_ptr.obj });
+
+                    if (node_to_idx == null) {
+                        log.err("Invalid node_to_idx for node with UUID {any}", .{_assetdb.getUuid(vv.key_ptr.obj)});
+                    }
 
                     const pin_type: cetech1.StrId32 = blk: {
                         for (pin_def[node_from_idx.?].out) |pin| {

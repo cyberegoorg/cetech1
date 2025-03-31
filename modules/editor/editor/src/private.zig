@@ -263,12 +263,18 @@ fn showObjContextMenu(
             }
         } else {
             if (prop_def.type == .SUBOBJECT_SET or prop_def.type == .REFERENCE_SET) {
-                if (_coreui.beginMenu(allocator, coreui.Icons.Add ++ "  " ++ "Add to set" ++ "###AddToSet", enabled, null)) {
-                    defer _coreui.endMenu();
+                var menu_open = true;
+
+                if (_g.filter == null) {
+                    menu_open = _coreui.beginMenu(allocator, coreui.Icons.Add ++ "  " ++ "Add to set" ++ "###AddToSet", enabled, null);
+                }
+
+                if (menu_open) {
+                    defer if (_g.filter == null) _coreui.endMenu();
 
                     const set_menus_aspect = _cdb.getPropertyAspect(public.UiSetMenusAspect, db, obj.type_idx, pidx);
                     if (set_menus_aspect) |aspect| {
-                        try aspect.add_menu(allocator, obj, pidx);
+                        try aspect.add_menu(allocator, obj, pidx, _g.filter);
                     } else {
                         if (prop_def.type == .REFERENCE_SET) {
                             if (selectObjFromMenu(
@@ -302,7 +308,7 @@ fn showObjContextMenu(
 
                 const set_menus_aspect = _cdb.getPropertyAspect(public.UiSetMenusAspect, db, obj.type_idx, pidx);
                 if (set_menus_aspect) |aspect| {
-                    try aspect.add_menu(allocator, obj, pidx);
+                    try aspect.add_menu(allocator, obj, pidx, _g.filter);
                 } else if (_cdb.readSubObj(obj_r, pidx)) |subobj| {
                     const subobj_r = _cdb.readObj(subobj).?;
 

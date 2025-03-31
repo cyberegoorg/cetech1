@@ -122,7 +122,10 @@ const tick_logic_system_i = ecs.SystemI.implement(
 
 const logic_c = ecs.ComponentI.implement(
     public.EntityLogicComponent,
-    public.EntityLogicComponentCdb.type_hash,
+    .{
+        .cdb_type_hash = public.EntityLogicComponentCdb.type_hash,
+        .category = "Scripting",
+    },
     struct {
         pub fn uiIcons(
             buff: [:0]u8,
@@ -152,7 +155,7 @@ const logic_c = ecs.ComponentI.implement(
 
 const logic_instance_c = ecs.ComponentI.implement(
     public.EntityLogicComponentInstance,
-    null,
+    .{},
     struct {
         pub fn onDestroy(components: []public.EntityLogicComponentInstance) !void {
             for (components) |c| {

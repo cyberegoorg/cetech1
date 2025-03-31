@@ -45,6 +45,7 @@
         .editor_entity = .{ .path = "modules/editor/entity", .lazy = true },
         .editor_asset_preview = .{ .path = "modules/editor/asset_preview", .lazy = true },
         .editor_simulation = .{ .path = "modules/editor/simulation", .lazy = true },
+        .editor_renderer = .{ .path = "modules/editor/renderer", .lazy = true },
 
         // SCRIPTING
         .graphvm = .{ .path = "modules/scripting/graphvm", .lazy = true },

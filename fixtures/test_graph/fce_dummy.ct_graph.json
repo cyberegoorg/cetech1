@@ -69,18 +69,18 @@
     },
     {
       "__type_name": "ct_graph_connection",
-      "__uuid": "019140ac-154e-77fe-8ae9-0060d2fc29ca",
-      "from_node": "ct_graph_node:019140ab-da54-73dd-b352-1c1b654dda00",
+      "__uuid": "0195f66a-1df4-77a0-8783-2298ae7d6d41",
+      "from_node": "ct_graph_node:01905fbf-0e6c-7e5c-bb0b-7c7de16bbd53",
       "to_node": "ct_graph_node:019140ac-154e-7ae0-8daf-3efbacb04ffc",
-      "from_pin": "out:value",
+      "from_pin": "01905fbe-823d-7fbc-ba59-1c675cc01697",
       "to_pin": "in:min"
     },
     {
       "__type_name": "ct_graph_connection",
-      "__uuid": "019140ac-154e-77c4-8ce2-e3ba8bb52e24",
-      "from_node": "ct_graph_node:019140ab-f790-7e4d-b66e-2f2a03ff7cd4",
+      "__uuid": "0195f66a-2861-7dcd-9797-cdc654c9a0c9",
+      "from_node": "ct_graph_node:01905fbf-0e6c-7e5c-bb0b-7c7de16bbd53",
       "to_node": "ct_graph_node:019140ac-154e-7ae0-8daf-3efbacb04ffc",
-      "from_pin": "out:value",
+      "from_pin": "01905fbe-823d-7fbc-ba59-1c675cc01697",
       "to_pin": "in:max"
     }
   ],

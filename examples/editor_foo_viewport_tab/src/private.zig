@@ -90,7 +90,10 @@ const Velocity = struct {
 };
 const velocity_c = ecs.ComponentI.implement(
     Velocity,
-    VelocityCdb.type_hash,
+    .{
+        .cdb_type_hash = VelocityCdb.type_hash,
+        .category = "Physics",
+    },
     struct {
         pub fn uiIcons(
             buff: [:0]u8,

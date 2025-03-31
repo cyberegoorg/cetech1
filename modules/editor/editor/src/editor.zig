@@ -23,12 +23,27 @@ pub const UiSetMenusAspect = struct {
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         prop_idx: u32,
+        filter: ?[:0]const u8,
     ) anyerror!void = undefined,
 
     pub fn implement(comptime T: type) UiSetMenusAspect {
         if (!std.meta.hasFn(T, "addMenu")) @compileError("implement me");
         return UiSetMenusAspect{
             .add_menu = &T.addMenu,
+        };
+    }
+};
+
+pub const UiSetSortPropertyAspect = struct {
+    pub const c_name = "ct_ui_set_sort_property_aspect";
+    pub const name_hash = cetech1.strId32(@This().c_name);
+
+    sort: *const fn (allocator: std.mem.Allocator, objs: []cdb.ObjId) anyerror!void = undefined,
+
+    pub fn implement(comptime T: type) UiSetSortPropertyAspect {
+        if (!std.meta.hasFn(T, "sort")) @compileError("implement me");
+        return UiSetSortPropertyAspect{
+            .sort = &T.sort,
         };
     }
 };

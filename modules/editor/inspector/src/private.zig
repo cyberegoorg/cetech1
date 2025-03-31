@@ -245,7 +245,7 @@ fn uiAssetInputGeneric(
             }
 
             if (is_proto) {
-                if (!drag_obj.eql(obj)) {
+                if (!drag_obj.eql(obj) and drag_obj.type_idx.eql(obj.type_idx)) {
                     try _cdb.setPrototype(obj, drag_obj);
                 }
             } else {
@@ -582,7 +582,7 @@ fn cdbPropertiesObj(
                     _coreui.sameLine(.{});
                 }
 
-                var set: ?[]const cdb.ObjId = undefined;
+                var set: ?[]cdb.ObjId = undefined;
                 if (prop_def.type == .REFERENCE_SET) {
                     set = _cdb.readRefSet(obj_r, prop_idx, allocator);
                 } else {
@@ -602,7 +602,12 @@ fn cdbPropertiesObj(
 
                 if (open) {
                     if (set) |s| {
-                        defer allocator.free(set.?);
+                        defer allocator.free(s);
+
+                        const ui_sort_aspect = _cdb.getPropertyAspect(editor.UiSetSortPropertyAspect, db, obj.type_idx, prop_idx);
+                        if (ui_sort_aspect) |aspect| {
+                            try aspect.sort(allocator, s);
+                        }
 
                         for (s, 0..) |subobj, set_idx| {
                             _coreui.pushIntId(@truncate(set_idx));
@@ -652,6 +657,8 @@ fn uiInputProtoBtns(obj: cdb.ObjId, prop_idx: u32) !void {
     if (prop_def.type == .BLOB) return;
 
     if (_coreui.beginPopup("property_protoypes_menu", .{})) {
+        defer _coreui.endPopup();
+
         if (_coreui.menuItem(_allocator, Icons.FA_ARROW_ROTATE_LEFT ++ "  " ++ "Reset to prototype value" ++ "###ResetToPrototypeValue", .{ .enabled = is_overided }, null)) {
             const w = _cdb.writeObj(obj).?;
             _cdb.resetPropertyOveride(w, prop_idx);
@@ -718,8 +725,6 @@ fn uiInputProtoBtns(obj: cdb.ObjId, prop_idx: u32) !void {
                 try _cdb.writeCommit(w);
             }
         }
-
-        _coreui.endPopup();
     }
 
     if (_coreui.button(Icons.FA_SWATCHBOOK ++ "###PrototypeButtons", .{})) {
