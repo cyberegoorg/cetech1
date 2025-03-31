@@ -295,7 +295,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
     _zflecs_os_impl = std.mem.bytesToValue(os.api_t, std.mem.asBytes(&zflecs.os_get_api()));
 
     // Memory fce
-    if (false) {
+    if (true) {
         _zflecs_os_impl.malloc_ = &FlecsAllocator.alloc;
         _zflecs_os_impl.free_ = &FlecsAllocator.free;
         _zflecs_os_impl.realloc_ = &FlecsAllocator.realloc;
@@ -570,9 +570,23 @@ pub var api = cetech1.ecs.EcsAPI{
     .destroyWorld = destroyWorld,
     .toWorld = @ptrCast(&toWorld),
     .toIter = toIter,
+    .findCategoryById = findCategoryById,
     .findComponentIByCdbHash = findComponentIByCdbHash,
     .spawnManyFromCDB = spawnManyFromCDB,
 };
+
+fn findCategoryById(name: cetech1.StrId32) ?*const public.ComponentCategoryI {
+    // TODO: Cache it
+    const impls = apidb.api.getImpl(_allocator, public.ComponentCategoryI) catch undefined;
+    defer _allocator.free(impls);
+
+    for (impls) |iface| {
+        if (!cetech1.strId32(iface.name).eql(name)) continue;
+        return iface;
+    }
+
+    return null;
+}
 
 fn findComponentIByCdbHash(cdb_hash: cdb.TypeHash) ?*const public.ComponentI {
     // TODO: Cache it

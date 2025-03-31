@@ -7,10 +7,8 @@ pub fn build(b: *std.Build) void {
         .optimize = b.option(
             std.builtin.OptimizeMode,
             "optimize",
-            "Select optimization mode",
-        ) orelse b.standardOptimizeOption(.{
-            .preferred_optimize_mode = .ReleaseFast,
-        }),
+            "The optimization level to use for the build",
+        ) orelse .ReleaseFast,
         .enable_cross_platform_determinism = b.option(
             bool,
             "enable_cross_platform_determinism",
@@ -26,7 +24,7 @@ pub fn build(b: *std.Build) void {
     const options_module = options_step.createModule();
 
     const zmath = b.addModule("root", .{
-        .root_source_file = b.path("src/main.zig"),
+        .root_source_file = b.path("src/root.zig"),
         .imports = &.{
             .{ .name = "zmath_options", .module = options_module },
         },
@@ -36,7 +34,7 @@ pub fn build(b: *std.Build) void {
 
     const tests = b.addTest(.{
         .name = "zmath-tests",
-        .root_source_file = b.path("src/main.zig"),
+        .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = options.optimize,
     });

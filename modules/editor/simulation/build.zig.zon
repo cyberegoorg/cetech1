@@ -9,7 +9,7 @@
     .dependencies = .{
         .cetech1 = .{ .path = "../../../public/" },
         .editor = .{ .path = "../editor" },
-        .editor_entity = .{ .path = "../entity" },
+        .editor_entity = .{ .path = "../entity_editor" },
         .renderer = .{ .path = "../../rendering/renderer" },
         .camera = .{ .path = "../../rendering/camera" },
         .transform = .{ .path = "../../rendering/transform" },

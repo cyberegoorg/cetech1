@@ -20,7 +20,7 @@ pub fn build(b: *std.Build) !void {
     lib.root_module.addImport("editor_asset", b.dependency("editor_asset", .{}).module("editor_asset"));
 
     _ = b.addModule("editor_asset_browser", .{
-        .root_source_file = b.path("src/editor_asset_browser.zig"),
+        .root_source_file = b.path("src/asset_browser.zig"),
         .imports = &.{
             .{ .name = "cetech1", .module = cetech1_module },
         },

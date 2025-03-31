@@ -7,14 +7,11 @@ const coreui = cetech1.coreui;
 const node_editor = cetech1.coreui_node_editor;
 const assetdb = cetech1.assetdb;
 const cdb_types = cetech1.cdb_types;
-
-const graphvm = @import("graphvm");
-
+const Icons = coreui.CoreIcons;
+const editor = @import("editor");
 const editor_inspector = @import("editor_inspector");
 const editor_obj_buffer = @import("editor_obj_buffer");
-
-const editor = @import("editor");
-const Icons = coreui.CoreIcons;
+const graphvm = @import("graphvm");
 
 const module_name = .editor_graph;
 
@@ -118,6 +115,8 @@ const GraphEditorTab = struct {
     pindata_map: PinDataMap = .{},
     pintype_map: PinValueTypeMap = .{},
     resolved_pintype_map: PinValueTypeMap = .{},
+
+    breadcrumb: cdb.ObjIdList = .{},
 };
 
 const SaveJson = struct { group_size: struct { x: f32, y: f32 } };
@@ -215,6 +214,37 @@ fn drawIcon(drawlist: coreui.DrawList, icon_type: PinIconType, a: [2]f32, b: [2]
     }
 }
 
+// fn subgraphPath(allocator: std.mem.Allocator, root_graph: cdb.ObjId, selected_graph: cdb.ObjId, output: *cdb.ObjIdList) !bool {
+//     if (root_graph.eql(selected_graph)) {
+//         try output.append(allocator, selected_graph);
+//         return true;
+//     }
+
+//     if (graphvm.GraphType.read(_cdb, root_graph)) |graph_r| {
+//         const all_nodes = try graphvm.GraphType.readSubObjSet(_cdb, graph_r, .nodes, allocator);
+//         defer if (all_nodes) |c| allocator.free(c);
+
+//         if (all_nodes) |nodes| {
+//             for (nodes) |node| {
+//                 const node_r = _cdb.readObj(node).?;
+//                 const node_type = graphvm.NodeType.f.getNodeTypeId(_cdb, node_r);
+//                 if (!node_type.eql(graphvm.CALL_GRAPH_NODE_TYPE)) continue;
+
+//                 if (graphvm.NodeType.readSubObj(_cdb, node_r, .settings)) |settings| {
+//                     const settings_r = graphvm.CallGraphNodeSettings.read(_cdb, settings).?;
+//                     if (graphvm.CallGraphNodeSettings.readSubObj(_cdb, settings_r, .graph)) |graph| {
+//                         if (try subgraphPath(allocator, graph, selected_graph, output)) {
+//                             try output.append(allocator, root_graph);
+//                             return true;
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//     }
+//     return false;
+// }
+
 // Fill editor tab interface
 var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
@@ -279,6 +309,8 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         tab_o.inter_selection.deinit();
 
+        tab_o.breadcrumb.deinit(_allocator);
+
         _node_editor.destroyEditor(tab_o.editor);
 
         _allocator.destroy(tab_o);
@@ -294,15 +326,15 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         defer _tempalloc.destroy(allocator);
 
         var buf: [128]u8 = undefined;
-        _node_editor.setCurrentEditor(tab_o.editor);
 
+        _node_editor.setCurrentEditor(tab_o.editor);
         {
             _node_editor.begin("GraphEditor", .{ 0, 0 });
             defer _node_editor.end();
 
             _node_editor.pushStyleVar1f(.link_strength, 0);
             _node_editor.pushStyleVar1f(.node_rounding, 0);
-            defer _node_editor.popStyleVar(1);
+            defer _node_editor.popStyleVar(2);
 
             if (tab_o.selection.isEmpty()) {
                 return;
@@ -334,6 +366,10 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 tab_o.pinhash_map.clearRetainingCapacity();
                 tab_o.pindata_map.clearRetainingCapacity();
                 tab_o.pintype_map.clearRetainingCapacity();
+
+                if (tab_o.breadcrumb.items.len == 0) {
+                    try tab_o.breadcrumb.append(_allocator, graph_obj);
+                }
             }
 
             if (graph_obj.isEmpty()) return;
@@ -810,13 +846,17 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                                 node_icon = try std.fmt.bufPrintZ(&icon_buf, "{s}", .{coreui.Icons.Node});
                             }
 
-                            const name = try std.fmt.bufPrintZ(&buf, "{s}  {s}{s}{s}###{s}", .{
-                                node_icon,
-                                if (iface.category) |c| c else "",
-                                if (iface.category == null) "" else "/",
-                                iface.name,
-                                iface.type_name,
-                            });
+                            const name = try std.fmt.bufPrintZ(
+                                &buf,
+                                "{s}  {s}{s}{s}###{s}",
+                                .{
+                                    node_icon,
+                                    if (iface.category) |c| c else "",
+                                    if (iface.category == null) "" else "/",
+                                    iface.name,
+                                    iface.type_name,
+                                },
+                            );
                             if (_coreui.menuItem(_allocator, name, .{}, filter)) {
                                 const node_obj = try _graph.createCdbNode(tab_o.db, iface.type_hash, tab_o.ctxPos);
 
@@ -955,6 +995,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                                 if (graphvm.CallGraphNodeSettings.readSubObj(_cdb, settings_r, .graph)) |graph| {
                                     if (_coreui.menuItem(_allocator, coreui.Icons.Open ++ "  " ++ "Open subgraph", .{}, null)) {
                                         try _editor_obj_buffer.addToFirst(allocator, tab_o.db, .{ .top_level_obj = tab_o.selection.top_level_obj, .obj = graph });
+                                        try tab_o.breadcrumb.append(_allocator, graph);
                                     }
                                 }
                             } else {
@@ -1272,8 +1313,8 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     pub fn menu(inst: *editor.TabO) !void {
         const tab_o: *GraphEditorTab = @alignCast(@ptrCast(inst));
 
-        const alloc = try _tempalloc.create();
-        defer _tempalloc.destroy(alloc);
+        const allocator = try _tempalloc.create();
+        defer _tempalloc.destroy(allocator);
 
         if (_coreui.menuItem(_allocator, coreui.Icons.FitContent ++ "###FitAll", .{}, null)) {
             _node_editor.setCurrentEditor(tab_o.editor);
@@ -1291,7 +1332,57 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         const need_build = _graph.needCompileAny();
         if (_coreui.menuItem(_allocator, coreui.Icons.Build, .{ .enabled = need_build }, null)) {
-            try _graph.compileAllChanged(alloc);
+            try _graph.compileAllChanged(allocator);
+        }
+
+        if (true) {
+            _coreui.separator();
+            _coreui.sameLine(.{});
+
+            for (tab_o.breadcrumb.items, 0..) |value, idx| {
+                //const value = tab_o.breadcrumb.items[output.items.len - idx - 1];
+                const asset = _assetdb.getAssetForObj(value);
+                //const asset_or_obj = asset orelse value;
+
+                const uuid = _assetdb.getUuid(value).?;
+
+                const name = blk: {
+                    const graph_r = _cdb.readObj(value).?;
+
+                    if (graphvm.GraphType.readStr(_cdb, graph_r, .name)) |n| {
+                        break :blk n;
+                    }
+
+                    if (asset) |a| {
+                        const a_r = _cdb.readObj(a).?;
+
+                        if (assetdb.Asset.readStr(_cdb, a_r, .Name)) |n| {
+                            break :blk n;
+                        }
+                    }
+
+                    break :blk "Subgraph";
+                };
+                const label = try std.fmt.allocPrintZ(allocator, "{s}###{s}", .{ name, uuid });
+                defer allocator.free(label);
+
+                if (_coreui.button(label, .{})) {
+                    _editor.propagateSelection(
+                        inst,
+                        &.{
+                            .{ .top_level_obj = tab_o.selection.top_level_obj, .obj = value },
+                        },
+                    );
+                    const value_idx = std.mem.indexOf(cdb.ObjId, tab_o.breadcrumb.items, &.{value}).?;
+                    tab_o.breadcrumb.shrinkRetainingCapacity(value_idx + 1);
+                }
+
+                if (idx != tab_o.breadcrumb.items.len - 1) {
+                    _coreui.sameLine(.{});
+                    _coreui.text(Icons.FA_CHEVRON_RIGHT);
+                    _coreui.sameLine(.{});
+                }
+            }
         }
     }
 
@@ -1321,6 +1412,10 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         const selected = selection[0];
         if (selected.isEmpty()) return;
         const db = _cdb.getDbFromObjid(selected.obj);
+
+        if (selected.top_level_obj != tab_o.selection.top_level_obj) {
+            tab_o.breadcrumb.clearRetainingCapacity();
+        }
 
         if (_assetdb.isAssetObjTypeOf(selected.obj, graphvm.GraphType.typeIdx(_cdb, db))) {
             tab_o.selection = selected;
@@ -1571,8 +1666,10 @@ const input_variable_menu_aspect = editor.UiSetMenusAspect.implement(struct {
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         prop_idx: u32,
+        filter: ?[:0]const u8,
     ) !void {
         _ = prop_idx; // autofix
+        _ = filter;
 
         const db = _cdb.getDbFromObjid(obj);
         const subobj = graphvm.InterfaceInput.readSubObj(_cdb, graphvm.InterfaceInput.read(_cdb, obj).?, .value);
@@ -1613,8 +1710,10 @@ const output_variable_menu_aspect = editor.UiSetMenusAspect.implement(struct {
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         prop_idx: u32,
+        filter: ?[:0]const u8,
     ) !void {
         _ = prop_idx; // autofix
+        _ = filter;
 
         const db = _cdb.getDbFromObjid(obj);
         const subobj = graphvm.InterfaceInput.readSubObj(_cdb, graphvm.InterfaceInput.read(_cdb, obj).?, .value);
@@ -1655,9 +1754,10 @@ const data_variable_menu_aspect = editor.UiSetMenusAspect.implement(struct {
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         prop_idx: u32,
+        filter: ?[:0]const u8,
     ) !void {
         _ = prop_idx; // autofix
-
+        _ = filter;
         const db = _cdb.getDbFromObjid(obj);
         const subobj = graphvm.GraphDataType.readSubObj(_cdb, graphvm.GraphDataType.read(_cdb, obj).?, .value);
 
@@ -1696,8 +1796,10 @@ const const_value_menu_aspect = editor.UiSetMenusAspect.implement(struct {
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         prop_idx: u32,
+        filter: ?[:0]const u8,
     ) !void {
         _ = prop_idx; // autofix
+        _ = filter;
 
         const db = _cdb.getDbFromObjid(obj);
         const subobj = graphvm.ConstNodeSettings.readSubObj(_cdb, graphvm.ConstNodeSettings.read(_cdb, obj).?, .value);
@@ -1855,11 +1957,11 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _editor_obj_buffer = apidb.getZigApi(module_name, editor_obj_buffer.EditorObjBufferAPI).?;
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.test_tab_vt_ptr = try apidb.globalVarValue(editor.TabTypeI, module_name, TAB_NAME, graph_tab);
+    _g.test_tab_vt_ptr = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, TAB_NAME, graph_tab);
 
     try apidb.implOrRemove(module_name, editor.TabTypeI, &graph_tab, load);
     try apidb.implOrRemove(module_name, editor.CreateAssetI, &create_graph_i, load);
@@ -1867,17 +1969,17 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(module_name, cdb.PostCreateTypesI, &post_create_types_i, load);
 
-    _g.graph_visual_aspect = try apidb.globalVarValue(editor.UiVisualAspect, module_name, "ct_graph_visual_aspect", graph_visual_aspect);
-    _g.node_visual_aspect = try apidb.globalVarValue(editor.UiVisualAspect, module_name, "ct_graph_node_visual_aspect", node_visual_aspect);
-    _g.group_visual_aspect = try apidb.globalVarValue(editor.UiVisualAspect, module_name, "ct_graph_group_visual_aspect", group_visual_aspect);
-    _g.connection_visual_aspect = try apidb.globalVarValue(editor.UiVisualAspect, module_name, "ct_graph_connection_visual_aspect", connection_visual_aspect);
-    _g.interface_input_visual_aspect = try apidb.globalVarValue(editor.UiVisualAspect, module_name, "ct_graph_interface_input_visual_aspect", interface_input_visual_aspect);
-    _g.interface_output_visual_aspect = try apidb.globalVarValue(editor.UiVisualAspect, module_name, "ct_graph_interface_output_visual_aspect", interface_output_visual_aspect);
-    _g.ui_properties_aspect = try apidb.globalVarValue(editor_inspector.UiPropertiesAspect, module_name, "ct_graph_node_properties_aspect", node_prop_aspect);
-    _g.input_value_menu_aspect = try apidb.globalVarValue(editor.UiSetMenusAspect, module_name, "ct_graph_interface_input_menu_aspect", input_variable_menu_aspect);
-    _g.output_value_menu_aspect = try apidb.globalVarValue(editor.UiSetMenusAspect, module_name, "ct_graph_interface_output_menu_aspect", output_variable_menu_aspect);
-    _g.const_value_menu_aspect = try apidb.globalVarValue(editor.UiSetMenusAspect, module_name, "ct_graph_node_const_menu_aspect", const_value_menu_aspect);
-    _g.data_value_menu_aspect = try apidb.globalVarValue(editor.UiSetMenusAspect, module_name, "ct_graph_data_variable_menu_aspect", data_variable_menu_aspect);
+    _g.graph_visual_aspect = try apidb.setGlobalVarValue(editor.UiVisualAspect, module_name, "ct_graph_visual_aspect", graph_visual_aspect);
+    _g.node_visual_aspect = try apidb.setGlobalVarValue(editor.UiVisualAspect, module_name, "ct_graph_node_visual_aspect", node_visual_aspect);
+    _g.group_visual_aspect = try apidb.setGlobalVarValue(editor.UiVisualAspect, module_name, "ct_graph_group_visual_aspect", group_visual_aspect);
+    _g.connection_visual_aspect = try apidb.setGlobalVarValue(editor.UiVisualAspect, module_name, "ct_graph_connection_visual_aspect", connection_visual_aspect);
+    _g.interface_input_visual_aspect = try apidb.setGlobalVarValue(editor.UiVisualAspect, module_name, "ct_graph_interface_input_visual_aspect", interface_input_visual_aspect);
+    _g.interface_output_visual_aspect = try apidb.setGlobalVarValue(editor.UiVisualAspect, module_name, "ct_graph_interface_output_visual_aspect", interface_output_visual_aspect);
+    _g.ui_properties_aspect = try apidb.setGlobalVarValue(editor_inspector.UiPropertiesAspect, module_name, "ct_graph_node_properties_aspect", node_prop_aspect);
+    _g.input_value_menu_aspect = try apidb.setGlobalVarValue(editor.UiSetMenusAspect, module_name, "ct_graph_interface_input_menu_aspect", input_variable_menu_aspect);
+    _g.output_value_menu_aspect = try apidb.setGlobalVarValue(editor.UiSetMenusAspect, module_name, "ct_graph_interface_output_menu_aspect", output_variable_menu_aspect);
+    _g.const_value_menu_aspect = try apidb.setGlobalVarValue(editor.UiSetMenusAspect, module_name, "ct_graph_node_const_menu_aspect", const_value_menu_aspect);
+    _g.data_value_menu_aspect = try apidb.setGlobalVarValue(editor.UiSetMenusAspect, module_name, "ct_graph_data_variable_menu_aspect", data_variable_menu_aspect);
 
     return true;
 }

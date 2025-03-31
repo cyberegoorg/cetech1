@@ -26,7 +26,7 @@ const Icons = coreui.CoreIcons;
 
 const graphvm = @import("graphvm");
 
-const public = @import("entity.zig");
+const public = @import("entity_editor.zig");
 
 const module_name = .editor_entity;
 
@@ -423,6 +423,7 @@ const entity_value_type_i = graphvm.GraphValueTypeI.implement(
     },
 );
 
+// TODO: move out
 const get_entity_node_i = graphvm.NodeI.implement(
     .{
         .name = "Get entity",
@@ -606,11 +607,11 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _graphvm = apidb.getZigApi(module_name, graphvm.GraphVMApi).?;
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.test_tab_vt_ptr = try apidb.globalVarValue(editor.TabTypeI, module_name, TAB_NAME, foo_tab);
+    _g.test_tab_vt_ptr = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, TAB_NAME, foo_tab);
 
     try apidb.setOrRemoveZigApi(module_name, public.EditorEntityAPI, &api, load);
 

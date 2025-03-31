@@ -376,7 +376,7 @@ pub fn bigInit(static_modules: []const cetech1.modules.ModuleDesc, load_dynamic:
     try generateKernelTaskChain(_kernel_allocator);
 
     apidb.dumpApi();
-    apidb.dumpGlobalVar();
+    apidb.dumpsetGlobalVar();
 }
 
 pub fn bigDeinit() !void {
@@ -425,9 +425,8 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         const gpa_allocator, const is_debug = gpa: {
             if (builtin.os.tag == .wasi) break :gpa .{ std.heap.wasm_allocator, false };
             break :gpa switch (builtin.mode) {
-                .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true }, //TODO: FAIL on ReleaseSafe in 0.14.0
-                .ReleaseFast, .ReleaseSmall => .{ debug_allocator.allocator(), true },
-                // .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false }, //TODO: FAIL in 0.14.0
+                .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
+                .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
             };
         };
         defer if (is_debug) {

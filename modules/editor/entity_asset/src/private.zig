@@ -42,6 +42,7 @@ const G = struct {
     component_value_menu_aspect: *editor.UiSetMenusAspect = undefined,
     entity_visual_aspect: *editor.UiVisualAspect = undefined,
     component_visual_aspect: *editor.UiVisualAspect = undefined,
+    components_sort_aspect: *editor.UiSetSortPropertyAspect = undefined,
     entity_preview_aspect: *asset_preview.AssetPreviewAspectI = undefined,
     entity_children_drop_aspect: *editor.UiDropObj = undefined,
     entity_flaten_aspect: *editor_tree.UiTreeFlatenPropertyAspect = undefined,
@@ -120,7 +121,7 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
         if (_coreui.beginMenu(allocator, coreui.Icons.Add ++ "  " ++ "Add component", true, filter)) {
             defer _coreui.endMenu();
 
-            try entity_component_menu_aspect.add_menu(allocator, ent_obj, ecs.Entity.propIdx(.components));
+            try entity_component_menu_aspect.add_menu(allocator, ent_obj, ecs.Entity.propIdx(.components), filter);
         }
     }
 });
@@ -131,8 +132,10 @@ const entity_component_menu_aspect = editor.UiSetMenusAspect.implement(struct {
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         prop_idx: u32,
+        filter: ?[:0]const u8,
     ) !void {
         _ = prop_idx; // autofix
+
         const db = _cdb.getDbFromObjid(obj);
         const entity_r = ecs.Entity.read(_cdb, obj).?;
 
@@ -154,17 +157,54 @@ const entity_component_menu_aspect = editor.UiSetMenusAspect.implement(struct {
         const impls = try _apidb.getImpl(allocator, ecs.ComponentI);
         defer allocator.free(impls);
 
+        // Create category menu first
+        if (filter == null) {
+            for (impls) |iface| {
+                if (iface.cdb_type_hash.isEmpty()) continue;
+                if (components_set.contains(_cdb.getTypeIdx(db, iface.cdb_type_hash).?)) continue;
+
+                var buff: [128:0]u8 = undefined;
+                if (iface.category) |category| {
+                    const label = try std.fmt.bufPrintZ(&buff, coreui.Icons.Folder ++ "  " ++ "{s}###{s}", .{ category, category });
+
+                    if (_coreui.beginMenu(allocator, label, true, null)) {
+                        _coreui.endMenu();
+                    }
+                }
+            }
+        }
+
         for (impls) |iface| {
             if (iface.cdb_type_hash.isEmpty()) continue;
             if (components_set.contains(_cdb.getTypeIdx(db, iface.cdb_type_hash).?)) continue;
+
+            if (filter) |f| {
+                if (_coreui.uiFilterPass(allocator, f, iface.name, false) == null) continue;
+            }
+
+            var category_open = true;
+            if (filter == null) {
+                if (iface.category) |category| {
+                    var buff: [128:0]u8 = undefined;
+                    const label = try std.fmt.bufPrintZ(&buff, "###{s}", .{category});
+                    category_open = _coreui.beginMenu(allocator, label, true, null);
+                }
+            }
 
             var icon: [:0]const u8 = coreui.Icons.Component;
             if (iface.uiIcons) |ui_icons| {
                 icon = try ui_icons(&icon_buff, allocator, .{});
             }
 
-            const label = try std.fmt.bufPrintZ(&labbel_buff, "{s}  {s}", .{ icon, iface.name });
-            if (_coreui.menuItem(allocator, label, .{}, null)) {
+            const label = blk: {
+                if (filter == null or iface.category == null) {
+                    break :blk try std.fmt.bufPrintZ(&labbel_buff, "{s}  {s}", .{ icon, iface.name });
+                } else {
+                    break :blk try std.fmt.bufPrintZ(&labbel_buff, "{s}  {s}/{s}", .{ icon, iface.category.?, iface.name });
+                }
+            };
+
+            if (category_open and _coreui.menuItem(allocator, label, .{}, null)) {
                 const obj_w = ecs.Entity.write(_cdb, obj).?;
 
                 const value_obj = try _cdb.createObject(db, _cdb.getTypeIdx(db, iface.cdb_type_hash).?);
@@ -174,6 +214,10 @@ const entity_component_menu_aspect = editor.UiSetMenusAspect.implement(struct {
 
                 try _cdb.writeCommit(value_obj_w);
                 try _cdb.writeCommit(obj_w);
+            }
+
+            if (category_open and iface.category != null and filter == null) {
+                _coreui.endMenu();
             }
         }
     }
@@ -262,6 +306,31 @@ var entity_children_drop_aspect = editor.UiDropObj.implement(struct {
     }
 });
 
+fn lessThanAsset(_: void, lhs: cdb.ObjId, rhs: cdb.ObjId) bool {
+    const db = _cdb.getDbFromObjid(lhs);
+
+    const l_order = blk: {
+        const component = _ecs.findComponentIByCdbHash(_cdb.getTypeHash(db, lhs.type_idx).?) orelse break :blk std.math.inf(f32);
+        const category = _ecs.findCategoryById(cetech1.strId32(component.category orelse break :blk std.math.inf(f32))) orelse break :blk std.math.inf(f32);
+        break :blk category.order + component.category_order;
+    };
+
+    const r_order = blk: {
+        const component = _ecs.findComponentIByCdbHash(_cdb.getTypeHash(db, rhs.type_idx).?) orelse break :blk std.math.inf(f32);
+        const category = _ecs.findCategoryById(cetech1.strId32(component.category orelse break :blk std.math.inf(f32))) orelse break :blk std.math.inf(f32);
+        break :blk category.order + component.category_order;
+    };
+
+    return l_order < r_order;
+}
+
+var components_sort_aspect = editor.UiSetSortPropertyAspect.implement(struct {
+    pub fn sort(allocator: std.mem.Allocator, objs: []cdb.ObjId) !void {
+        _ = allocator;
+        std.sort.insertion(cdb.ObjId, objs, {}, lessThanAsset);
+    }
+});
+
 var entity_flaten_aspect = editor_tree.UiTreeFlatenPropertyAspect.implement();
 
 var component_visual_aspect = editor.UiVisualAspect.implement(struct {
@@ -342,6 +411,14 @@ const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
             _g.entity_flaten_aspect,
         );
 
+        try ecs.Entity.addPropertyAspect(
+            editor.UiSetSortPropertyAspect,
+            _cdb,
+            db,
+            .components,
+            _g.components_sort_aspect,
+        );
+
         // Register UI aspect for CDB component types if there any.
         const impls = try _apidb.getImpl(_allocator, ecs.ComponentI);
         defer _allocator.free(impls);
@@ -368,18 +445,19 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
     try apidb.implOrRemove(module_name, editor.CreateAssetI, &create_entity_i, load);
     try apidb.implOrRemove(module_name, cdb.PostCreateTypesI, &post_create_types_i, load);
     try apidb.implOrRemove(module_name, editor.ObjContextMenuI, &debug_context_menu_i, load);
 
-    _g.component_value_menu_aspect = try apidb.globalVarValue(editor.UiSetMenusAspect, module_name, "ct_entity_components_menu_aspect", entity_component_menu_aspect);
-    _g.entity_visual_aspect = try apidb.globalVarValue(editor.UiVisualAspect, module_name, "ct_entity_visual_aspect", entity_visual_aspect);
-    _g.component_visual_aspect = try apidb.globalVarValue(editor.UiVisualAspect, module_name, "ct_component_visual_aspect", component_visual_aspect);
-    _g.entity_preview_aspect = try apidb.globalVarValue(asset_preview.AssetPreviewAspectI, module_name, "ct_entity_preview_aspect", entity_preview_aspect);
-    _g.entity_children_drop_aspect = try apidb.globalVarValue(editor.UiDropObj, module_name, "ct_entity_children_drop_aspect", entity_children_drop_aspect);
-    _g.entity_flaten_aspect = try apidb.globalVarValue(editor_tree.UiTreeFlatenPropertyAspect, module_name, "ct_entity_flaten_aspect", entity_flaten_aspect);
+    _g.component_value_menu_aspect = try apidb.setGlobalVarValue(editor.UiSetMenusAspect, module_name, "ct_entity_components_menu_aspect", entity_component_menu_aspect);
+    _g.entity_visual_aspect = try apidb.setGlobalVarValue(editor.UiVisualAspect, module_name, "ct_entity_visual_aspect", entity_visual_aspect);
+    _g.component_visual_aspect = try apidb.setGlobalVarValue(editor.UiVisualAspect, module_name, "ct_component_visual_aspect", component_visual_aspect);
+    _g.entity_preview_aspect = try apidb.setGlobalVarValue(asset_preview.AssetPreviewAspectI, module_name, "ct_entity_preview_aspect", entity_preview_aspect);
+    _g.entity_children_drop_aspect = try apidb.setGlobalVarValue(editor.UiDropObj, module_name, "ct_entity_children_drop_aspect", entity_children_drop_aspect);
+    _g.components_sort_aspect = try apidb.setGlobalVarValue(editor.UiSetSortPropertyAspect, module_name, "ct_components_sort_aspect", components_sort_aspect);
+    _g.entity_flaten_aspect = try apidb.setGlobalVarValue(editor_tree.UiTreeFlatenPropertyAspect, module_name, "ct_entity_flaten_aspect", entity_flaten_aspect);
 
     return true;
 }

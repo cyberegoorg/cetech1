@@ -1885,7 +1885,7 @@ pub const Db = struct {
         return b.b;
     }
 
-    pub fn readSubObjSet(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const public.ObjId {
+    pub fn readSubObjSet(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]public.ObjId {
         var zone_ctx = profiler.ztracy.Zone(@src());
         defer zone_ctx.End();
 
@@ -1921,7 +1921,7 @@ pub const Db = struct {
         return self.readSetRemovedShallow(writer, prop_idx);
     }
 
-    pub fn readRefSet(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const public.ObjId {
+    pub fn readRefSet(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]public.ObjId {
         var zone_ctx = profiler.ztracy.Zone(@src());
         defer zone_ctx.End();
         return self.readSet(writer, prop_idx, allocator) catch |err| {
@@ -1951,7 +1951,7 @@ pub const Db = struct {
         return array.*.getRemovedItems();
     }
 
-    fn readSet(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ![]const public.ObjId {
+    fn readSet(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ![]public.ObjId {
         var zone_ctx = profiler.ztracy.Zone(@src());
         defer zone_ctx.End();
 
@@ -2577,7 +2577,7 @@ fn removeFromRefSetFn(writer: *public.Obj, prop_idx: u32, value: public.ObjId) !
     var db = getDbFromObj(writer);
     return db.removeFromRefSet(writer, prop_idx, value);
 }
-fn readRefSetFn(reader: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const public.ObjId {
+fn readRefSetFn(reader: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]public.ObjId {
     var db = getDbFromObj(reader);
     return db.readRefSet(reader, prop_idx, allocator);
 }
@@ -2605,7 +2605,7 @@ fn removeFromSubObjSetFn(writer: *public.Obj, prop_idx: u32, subobj_writer: *pub
     var db = getDbFromObj(writer);
     return db.removeFromSubObjSet(writer, prop_idx, subobj_writer);
 }
-fn readSubObjSetFn(reader: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const public.ObjId {
+fn readSubObjSetFn(reader: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]public.ObjId {
     var db = getDbFromObj(reader);
     return db.readSubObjSet(reader, prop_idx, allocator);
 }

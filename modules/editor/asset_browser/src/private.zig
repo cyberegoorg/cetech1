@@ -8,7 +8,7 @@ const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
 const strid = cetech1.strid;
 
-const public = @import("editor_asset_browser.zig");
+const public = @import("asset_browser.zig");
 
 const editor = @import("editor");
 const editor_tree = @import("editor_tree");
@@ -38,6 +38,8 @@ const MAIN_CONTEXTS = &.{
     editor.Contexts.debug,
 };
 
+const TypeFilter = cetech1.ArraySet(cdb.TypeIdx);
+
 var _allocator: Allocator = undefined;
 var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
 var _log: *const cetech1.log.LogAPI = undefined;
@@ -66,10 +68,11 @@ const AssetBrowserTab = struct {
     filter_buff: [256:0]u8 = std.mem.zeroes([256:0]u8),
     filter: ?[:0]const u8 = null,
     tags: cdb.ObjId,
+
+    type_filter: TypeFilter = .init(),
 };
 
 // Fill editor tab interface
-
 var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = ASSET_BROWSER_NAME,
     .tab_hash = cetech1.strId32(ASSET_BROWSER_NAME),
@@ -107,7 +110,7 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         var tab_o: *AssetBrowserTab = @alignCast(@ptrCast(tab_inst.inst));
         _cdb.destroyObject(tab_o.tags);
         tab_o.selection_obj.deinit();
-
+        tab_o.type_filter.deinit(_allocator);
         _allocator.destroy(tab_o);
     }
 
@@ -169,6 +172,7 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 .filter = tab_o.filter,
                 .multiselect = true,
                 .expand_object = false,
+                .only_types = tab_o.type_filter.unmanaged.keys(),
             },
         );
         tab_o.filter = r.filter;
@@ -186,9 +190,6 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     // }
 
     pub fn selectObjFromMenu(allocator: std.mem.Allocator, tab: *editor.TabO, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) !cdb.ObjId {
-        const tabs = _editor.getAllTabsByType(allocator, _g.tab_vt.tab_hash) catch return .{};
-        defer allocator.free(tabs);
-
         var label_buff: [1024]u8 = undefined;
 
         const tab_o: *AssetBrowserTab = @alignCast(@ptrCast(tab));
@@ -236,6 +237,44 @@ const UiAssetBrowserResult = struct {
     filter: ?[:0]const u8 = null,
 };
 
+fn filterType(allocator: std.mem.Allocator, tab: *editor.TabO, db: cdb.DbId) !void {
+    const tab_o: *AssetBrowserTab = @alignCast(@ptrCast(tab));
+
+    if (_coreui.beginPopup("asset_browser_filter_popup", .{})) {
+        defer _coreui.endPopup();
+        const impls = try _apidb.getImpl(allocator, editor.CreateAssetI);
+        defer allocator.free(impls);
+
+        const folder_type_idx = assetdb.Folder.typeIdx(_cdb, db);
+
+        for (impls) |iface| {
+            const menu_name = try iface.menu_item();
+            var buff: [256:0]u8 = undefined;
+            const type_idx = _cdb.getTypeIdx(db, iface.cdb_type).?;
+            const type_name = _cdb.getTypeName(db, type_idx).?;
+            const label = try std.fmt.bufPrintZ(&buff, "{s}###{s}", .{ menu_name, type_name });
+
+            var selected = tab_o.type_filter.contains(type_idx);
+
+            if (_coreui.menuItemPtr(allocator, label, .{ .selected = &selected }, null)) {
+                if (selected) {
+                    _ = try tab_o.type_filter.add(_allocator, type_idx);
+                    _ = try tab_o.type_filter.add(_allocator, folder_type_idx);
+                } else {
+                    _ = tab_o.type_filter.remove(type_idx);
+                    if (tab_o.type_filter.cardinality() == 1) {
+                        _ = tab_o.type_filter.remove(folder_type_idx);
+                    }
+                }
+            }
+        }
+    }
+
+    if (_coreui.button(coreui.Icons.Filter ++ "###FilterAssetByType", .{})) {
+        _coreui.openPopup("asset_browser_filter_popup", .{});
+    }
+}
+
 fn uiAssetBrowser(
     allocator: std.mem.Allocator,
     tab: *editor.TabO,
@@ -252,6 +291,8 @@ fn uiAssetBrowser(
     const filter = args.filter;
 
     const new_filter = _coreui.uiFilter(filter_buff, filter);
+    try filterType(allocator, tab, root_folder.db);
+    _coreui.sameLine(.{});
     const tag_filter_used = try _tags.tagsInput(allocator, tags_filter, assetdb.Tags.propIdx(.Tags), false, null);
 
     var buff: [128]u8 = undefined;
@@ -448,9 +489,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _editor_asset = apidb.getZigApi(module_name, editor_asset.EditorAssetAPI).?;
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
-    _g.tab_vt = try apidb.globalVarValue(editor.TabTypeI, module_name, ASSET_BROWSER_NAME, asset_browser_tab);
+    _g.tab_vt = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, ASSET_BROWSER_NAME, asset_browser_tab);
 
     try apidb.implOrRemove(module_name, editor.TabTypeI, &asset_browser_tab, load);
     try apidb.implOrRemove(module_name, coreui.RegisterTestsI, &register_tests_i, load);

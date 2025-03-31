@@ -684,7 +684,7 @@ var asset_ui_tree_aspect = editor_tree.UiTreeAspect.implement(struct {
             return result;
         }
 
-        if (!args.expand_object and args.only_types.idx != 0 and !asset_obj.type_idx.eql(args.only_types)) {
+        if (!args.expand_object and !editor_tree.filterOnlyTypes(args.only_types, asset_obj)) {
             return result;
         }
 
@@ -1235,7 +1235,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _platform = apidb.getZigApi(module_name, cetech1.platform.PlatformApi).?;
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
     try apidb.setOrRemoveZigApi(module_name, public.EditorAssetAPI, &api, load);
 
@@ -1251,7 +1251,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, editor.CreateAssetI, &create_folder_i, load);
     try apidb.implOrRemove(module_name, coreui.RegisterTestsI, &register_tests_i, load);
 
-    _g.asset_tree_aspect = try apidb.globalVarValue(editor_tree.UiTreeAspect, module_name, ASSET_TREE_ASPECT_NAME, asset_ui_tree_aspect);
+    _g.asset_tree_aspect = try apidb.setGlobalVarValue(editor_tree.UiTreeAspect, module_name, ASSET_TREE_ASPECT_NAME, asset_ui_tree_aspect);
 
     return true;
 }

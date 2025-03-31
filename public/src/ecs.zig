@@ -137,10 +137,13 @@ pub const ComponentI = struct {
     pub const c_name = "ct_ecs_component_i";
     pub const name_hash = cetech1.strId64(@This().c_name);
 
-    name: [:0]const u8,
-    id: cetech1.StrId32,
-    size: usize,
-    aligment: usize,
+    name: [:0]const u8 = undefined,
+    id: cetech1.StrId32 = undefined,
+    size: usize = undefined,
+    aligment: usize = undefined,
+
+    category: ?[:0]const u8 = null,
+    category_order: f32 = 0,
 
     cdb_type_hash: cdb.TypeHash = .{},
 
@@ -165,7 +168,7 @@ pub const ComponentI = struct {
         data: []u8,
     ) anyerror!void = null,
 
-    pub fn implement(comptime T: type, cdb_type_hash: ?cdb.TypeHash, comptime Hooks: type) Self {
+    pub fn implement(comptime T: type, args: ComponentI, comptime Hooks: type) Self {
         var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
         const name = name_iter.first();
         const cname = name[0..name.len :0];
@@ -173,11 +176,13 @@ pub const ComponentI = struct {
         return Self{
             .name = cname,
             .id = cetech1.strId32(name),
+            .cdb_type_hash = args.cdb_type_hash,
 
             .size = @sizeOf(T),
             .aligment = @alignOf(T),
 
-            .cdb_type_hash = cdb_type_hash orelse .{},
+            .category = args.category,
+            .category_order = args.category_order,
 
             .onAdd = if (std.meta.hasFn(Hooks, "onAdd")) struct {
                 fn f(iter: *IterO) callconv(.C) void {
@@ -256,6 +261,21 @@ pub const ComponentI = struct {
             .uiIcons = if (std.meta.hasFn(Hooks, "uiIcons")) Hooks.uiIcons else null,
 
             .fromCdb = if (std.meta.hasFn(Hooks, "fromCdb")) Hooks.fromCdb else null,
+        };
+    }
+};
+
+pub const ComponentCategoryI = struct {
+    pub const c_name = "ct_ecs_component_category_i";
+    pub const name_hash = cetech1.strId64(@This().c_name);
+
+    name: [:0]const u8 = undefined,
+    order: f32 = std.math.inf(f32),
+
+    pub fn implement(args: ComponentCategoryI) ComponentCategoryI {
+        return ComponentCategoryI{
+            .name = args.name,
+            .order = args.order,
         };
     }
 };
@@ -557,6 +577,7 @@ pub const EcsAPI = struct {
     toIter: *const fn (iter: *IterO) Iter,
 
     findComponentIByCdbHash: *const fn (cdb_hash: cdb.TypeHash) ?*const ComponentI,
+    findCategoryById: *const fn (name: cetech1.StrId32) ?*const ComponentCategoryI,
 
     spawnManyFromCDB: *const fn (allocator: std.mem.Allocator, world: World, obj: cdb.ObjId, count: usize) anyerror![]EntityId,
 };

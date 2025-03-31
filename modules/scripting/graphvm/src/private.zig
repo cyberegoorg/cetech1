@@ -1123,7 +1123,11 @@ const GraphVM = struct {
 
                 var it = outs.iterator();
                 while (it.next()) |vv| {
-                    const node_to_idx = self.node_idx_map.get(.{ .parent = v.graph, .node = vv.key_ptr.obj });
+                    const node_to_idx = self.node_idx_map.get(.{ .parent = vv.key_ptr.graph, .node = vv.key_ptr.obj });
+
+                    if (node_to_idx == null) {
+                        log.err("Invalid node_to_idx for node with UUID {any}", .{_assetdb.getUuid(vv.key_ptr.obj)});
+                    }
 
                     const pin_type: cetech1.StrId32 = blk: {
                         for (pin_def[node_from_idx.?].out) |pin| {
@@ -2937,9 +2941,7 @@ const call_graph_node_i = public.NodeI.implement(
                 if (public.CallGraphNodeSettings.readSubObj(_cdb, settings_r, .graph)) |graph| {
                     const graph_r = public.GraphType.read(_cdb, graph).?;
 
-                    const graph_name = public.GraphType.readStr(_cdb, graph_r, .name);
-
-                    if (graph_name) |name| {
+                    if (public.GraphType.readStr(_cdb, graph_r, .name)) |name| {
                         if (name.len != 0) {
                             return allocator.dupeZ(u8, name);
                         }
@@ -3151,7 +3153,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, public.NodeI, &call_graph_node_i, load);
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
     return true;
 }

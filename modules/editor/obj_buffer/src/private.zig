@@ -401,9 +401,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _editortree = apidb.getZigApi(module_name, editor_tree.TreeAPI).?;
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
-    _g.tab_vt = try apidb.globalVarValue(editor.TabTypeI, module_name, TAB_NAME, obj_buffer_tab);
+    _g.tab_vt = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, TAB_NAME, obj_buffer_tab);
 
     try apidb.implOrRemove(module_name, editor.TabTypeI, &obj_buffer_tab, load);
     try apidb.implOrRemove(module_name, editor.ObjContextMenuI, &buffer_context_menu_i, load);

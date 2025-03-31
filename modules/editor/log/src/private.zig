@@ -253,12 +253,12 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _apidb = apidb;
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
     if (_g.log_buffer == null) _g.log_buffer = .{};
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.log_tab_vt_ptr = try apidb.globalVarValue(editor.TabTypeI, module_name, TAB_NAME, log_tab);
+    _g.log_tab_vt_ptr = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, TAB_NAME, log_tab);
 
     try apidb.implOrRemove(module_name, editor.TabTypeI, &log_tab, load);
     try apidb.implOrRemove(module_name, cetech1.log.LogHandlerI, &handler, load);

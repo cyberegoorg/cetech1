@@ -12,6 +12,6 @@
         .renderer = .{ .path = "../../rendering/renderer" },
         .camera = .{ .path = "../../rendering/camera" },
         .transform = .{ .path = "../../rendering/transform" },
-        .editor_entity = .{ .path = "../entity" },
+        .editor_entity = .{ .path = "../entity_editor" },
     },
 }

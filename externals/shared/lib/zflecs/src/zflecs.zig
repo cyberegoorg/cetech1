@@ -5,7 +5,7 @@ const builtin = @import("builtin");
 pub const flecs_version = std.SemanticVersion{
     .major = 4,
     .minor = 0,
-    .patch = 4,
+    .patch = 5,
 };
 
 // TODO: flecs_is_sanitize should come from flecs build flags.
@@ -47,6 +47,46 @@ pub const WorldMeasureFrameTime = 1 << 5;
 pub const WorldMeasureSystemTime = 1 << 6;
 pub const WorldMultiThreaded = 1 << 7;
 pub const WorldFrameInProgress = 1 << 8;
+
+// Entity flags (set in upper bits of ecs_record_t::row)
+pub const EcsEntityIsId = 1 << 31;
+pub const EcsEntityIsTarget = 1 << 30;
+pub const EcsEntityIsTraversable = 1 << 29;
+
+// Id flags (used by ecs_component_record_t::flags)
+pub const EcsIdOnDeleteRemove = 1 << 0;
+pub const EcsIdOnDeleteDelete = 1 << 1;
+pub const EcsIdOnDeletePanic = 1 << 2;
+pub const EcsIdOnDeleteMask = (EcsIdOnDeletePanic | EcsIdOnDeleteRemove | EcsIdOnDeleteDelete);
+
+pub const EcsIdOnDeleteObjectRemove = 1 << 3;
+pub const EcsIdOnDeleteObjectDelete = 1 << 4;
+pub const EcsIdOnDeleteObjectPanic = 1 << 5;
+pub const EcsIdOnDeleteObjectMask = (EcsIdOnDeleteObjectPanic | EcsIdOnDeleteObjectRemove | EcsIdOnDeleteObjectDelete);
+
+pub const EcsIdOnInstantiateOverride = 1 << 6;
+pub const EcsIdOnInstantiateInherit = 1 << 7;
+pub const EcsIdOnInstantiateDontInherit = 1 << 8;
+pub const EcsIdOnInstantiateMask = (EcsIdOnInstantiateOverride | EcsIdOnInstantiateInherit | EcsIdOnInstantiateDontInherit);
+
+pub const EcsIdExclusive = 1 << 9;
+pub const EcsIdTraversable = 1 << 10;
+pub const EcsIdTag = 1 << 11;
+pub const EcsIdWith = 1 << 12;
+pub const EcsIdCanToggle = 1 << 13;
+pub const EcsIdIsTransitive = 1 << 14;
+pub const EcsIdIsInheritable = 1 << 15;
+
+pub const EcsIdHasOnAdd = 1 << 16;
+pub const EcsIdHasOnRemove = 1 << 17;
+pub const EcsIdHasOnSet = 1 << 18;
+pub const EcsIdHasOnTableCreate = 1 << 21;
+pub const EcsIdHasOnTableDelete = 1 << 22;
+pub const EcsIdIsSparse = 1 << 23;
+pub const EcsIdIsUnion = 1 << 24;
+pub const EcsIdEventMask = (EcsIdHasOnAdd | EcsIdHasOnRemove | EcsIdHasOnSet | EcsIdHasOnTableCreate | EcsIdHasOnTableDelete | EcsIdIsSparse | EcsIdIsUnion);
+
+pub const EcsIdMarkedForDelete = 1 << 30;
 
 // Iterator flags
 pub const EcsIterIsValid = 1 << 0;
@@ -179,6 +219,7 @@ extern const EcsVariable: entity_t;
 extern const EcsTransitive: entity_t;
 extern const EcsReflexive: entity_t;
 extern const EcsFinal: entity_t;
+extern const EcsInheritable: entity_t;
 extern const EcsOnInstantiate: entity_t;
 extern const EcsOverride: entity_t;
 extern const EcsInherit: entity_t;
@@ -239,6 +280,8 @@ extern const EcsOnStore: entity_t;
 extern const EcsPostFrame: entity_t;
 extern const EcsPhase: entity_t;
 
+extern const EcsConstant: entity_t;
+
 pub const EcsDefaultChildComponent = extern struct {
     component: id_t,
 };
@@ -256,6 +299,7 @@ pub var Variable: entity_t = undefined;
 pub var Transitive: entity_t = undefined;
 pub var Reflexive: entity_t = undefined;
 pub var Final: entity_t = undefined;
+pub var Inheritable: entity_t = undefined;
 pub var OnInstantiate: entity_t = undefined;
 pub var Override: entity_t = undefined;
 pub var Inherit: entity_t = undefined;
@@ -316,6 +360,8 @@ pub var OnStore: entity_t = undefined;
 pub var PostFrame: entity_t = undefined;
 pub var Phase: entity_t = undefined;
 
+pub var Constant: entity_t = undefined;
+
 // pub var DefaultChildComponent: EcsDefaultChildComponent = undefined;
 
 //--------------------------------------------------------------------------------------------------
@@ -339,7 +385,7 @@ pub const query_cache_table_match_t = opaque {};
 pub const data_t = opaque {};
 
 pub const table_cache_t = opaque {};
-pub const id_record_t = opaque {};
+pub const component_record_t = opaque {};
 
 pub const poly_t = anyopaque;
 
@@ -352,25 +398,9 @@ pub const header_t = extern struct {
     mixins: ?*mixins_t = null,
 };
 
-pub const record_t = extern struct {
-    idr: *id_record_t,
-    table: *table_t,
-    row: u32,
-    dense: i32,
-};
-
-pub const table_cache_hdr_t = extern struct {
-    cache: *table_cache_t,
-    table: *table_t,
-    prev: *table_cache_hdr_t,
-};
-
-pub const table_record_t = extern struct {
-    hdr: table_cache_hdr_t,
-    index: i16,
-    count: i16,
-    column: i16,
-};
+pub const record_t = opaque {};
+pub const table_cache_hdr_t = opaque {};
+pub const table_record_t = anyopaque;
 
 //--------------------------------------------------------------------------------------------------
 //
@@ -455,6 +485,18 @@ pub const move_t = *const fn (
     count: i32,
     type_info: *const type_info_t,
 ) callconv(.C) void;
+
+pub const cmp_t = *const fn (
+    a_ptr: *const anyopaque,
+    b_ptr: *const anyopaque,
+    type_info: *const type_info_t,
+) callconv(.C) c_int;
+
+pub const equals_t = *const fn (
+    a_ptr: *const anyopaque,
+    b_ptr: *const anyopaque,
+    type_info: *const type_info_t,
+) callconv(.C) bool;
 
 pub const poly_dtor_t = *const fn (poly: *poly_t) callconv(.C) void;
 
@@ -637,26 +679,30 @@ pub const observer_t = extern struct {
 };
 //--------------------------------------------------------------------------------------------------
 
-pub const ECS_TYPE_HOOK_CTOR = (1 << 0);
-pub const ECS_TYPE_HOOK_DTOR = (1 << 1);
-pub const ECS_TYPE_HOOK_COPY = (1 << 2);
-pub const ECS_TYPE_HOOK_MOVE = (1 << 3);
-pub const ECS_TYPE_HOOK_COPY_CTOR = (1 << 4);
-pub const ECS_TYPE_HOOK_MOVE_CTOR = (1 << 5);
-pub const ECS_TYPE_HOOK_CTOR_MOVE_DTOR = (1 << 6);
-pub const ECS_TYPE_HOOK_MOVE_DTOR = (1 << 7);
+pub const ECS_TYPE_HOOK_CTOR: flags32_t = 1 << 0;
+pub const ECS_TYPE_HOOK_DTOR: flags32_t = 1 << 1;
+pub const ECS_TYPE_HOOK_COPY: flags32_t = 1 << 2;
+pub const ECS_TYPE_HOOK_MOVE: flags32_t = 1 << 3;
+pub const ECS_TYPE_HOOK_COPY_CTOR: flags32_t = 1 << 4;
+pub const ECS_TYPE_HOOK_MOVE_CTOR: flags32_t = 1 << 5;
+pub const ECS_TYPE_HOOK_CTOR_MOVE_DTOR: flags32_t = 1 << 6;
+pub const ECS_TYPE_HOOK_MOVE_DTOR: flags32_t = 1 << 7;
+pub const ECS_TYPE_HOOK_CMP: flags32_t = 1 << 8;
+pub const ECS_TYPE_HOOK_EQUALS: flags32_t = 1 << 9;
 
-pub const ECS_TYPE_HOOK_CTOR_ILLEGAL = (1 << 8);
-pub const ECS_TYPE_HOOK_DTOR_ILLEGAL = (1 << 9);
-pub const ECS_TYPE_HOOK_COPY_ILLEGAL = (1 << 10);
-pub const ECS_TYPE_HOOK_MOVE_ILLEGAL = (1 << 11);
-pub const ECS_TYPE_HOOK_COPY_CTOR_ILLEGAL = (1 << 12);
-pub const ECS_TYPE_HOOK_MOVE_CTOR_ILLEGAL = (1 << 13);
-pub const ECS_TYPE_HOOK_CTOR_MOVE_DTOR_ILLEGAL = (1 << 14);
-pub const ECS_TYPE_HOOK_MOVE_DTOR_ILLEGAL = (1 << 15);
+pub const ECS_TYPE_HOOK_CTOR_ILLEGAL: flags32_t = 1 << 10;
+pub const ECS_TYPE_HOOK_DTOR_ILLEGAL: flags32_t = 1 << 12;
+pub const ECS_TYPE_HOOK_COPY_ILLEGAL: flags32_t = 1 << 13;
+pub const ECS_TYPE_HOOK_MOVE_ILLEGAL: flags32_t = 1 << 14;
+pub const ECS_TYPE_HOOK_COPY_CTOR_ILLEGAL: flags32_t = 1 << 15;
+pub const ECS_TYPE_HOOK_MOVE_CTOR_ILLEGAL: flags32_t = 1 << 16;
+pub const ECS_TYPE_HOOK_CTOR_MOVE_DTOR_ILLEGAL: flags32_t = 1 << 17;
+pub const ECS_TYPE_HOOK_MOVE_DTOR_ILLEGAL: flags32_t = 1 << 18;
+pub const ECS_TYPE_HOOK_CMP_ILLEGAL: flags32_t = 1 << 19;
+pub const ECS_TYPE_HOOK_EQUALS_ILLEGAL: flags32_t = 1 << 20;
 
-pub const ECS_TYPE_HOOKS = (ECS_TYPE_HOOK_CTOR | ECS_TYPE_HOOK_DTOR | ECS_TYPE_HOOK_COPY | ECS_TYPE_HOOK_MOVE | ECS_TYPE_HOOK_COPY_CTOR | ECS_TYPE_HOOK_MOVE_CTOR | ECS_TYPE_HOOK_CTOR_MOVE_DTOR | ECS_TYPE_HOOK_MOVE_DTOR);
-pub const ECS_TYPE_HOOKS_ILLEGAL = (ECS_TYPE_HOOK_CTOR_ILLEGAL | ECS_TYPE_HOOK_DTOR_ILLEGAL | ECS_TYPE_HOOK_COPY_ILLEGAL | ECS_TYPE_HOOK_MOVE_ILLEGAL | ECS_TYPE_HOOK_COPY_CTOR_ILLEGAL | ECS_TYPE_HOOK_MOVE_CTOR_ILLEGAL | ECS_TYPE_HOOK_CTOR_MOVE_DTOR_ILLEGAL | ECS_TYPE_HOOK_MOVE_DTOR_ILLEGAL);
+pub const ECS_TYPE_HOOKS: flags32_t = (ECS_TYPE_HOOK_CTOR | ECS_TYPE_HOOK_DTOR | ECS_TYPE_HOOK_COPY | ECS_TYPE_HOOK_MOVE | ECS_TYPE_HOOK_COPY_CTOR | ECS_TYPE_HOOK_MOVE_CTOR | ECS_TYPE_HOOK_CTOR_MOVE_DTOR | ECS_TYPE_HOOK_MOVE_DTOR | ECS_TYPE_HOOK_CMP | ECS_TYPE_HOOK_EQUALS);
+pub const ECS_TYPE_HOOKS_ILLEGAL: flags32_t = (ECS_TYPE_HOOK_CTOR_ILLEGAL | ECS_TYPE_HOOK_DTOR_ILLEGAL | ECS_TYPE_HOOK_COPY_ILLEGAL | ECS_TYPE_HOOK_MOVE_ILLEGAL | ECS_TYPE_HOOK_COPY_CTOR_ILLEGAL | ECS_TYPE_HOOK_MOVE_CTOR_ILLEGAL | ECS_TYPE_HOOK_CTOR_MOVE_DTOR_ILLEGAL | ECS_TYPE_HOOK_MOVE_DTOR_ILLEGAL | ECS_TYPE_HOOK_CMP_ILLEGAL | ECS_TYPE_HOOK_EQUALS_ILLEGAL);
 
 pub const type_hooks_t = extern struct {
     ctor: ?xtor_t = null,
@@ -668,6 +714,8 @@ pub const type_hooks_t = extern struct {
     move_ctor: ?move_t = null,
     ctor_move_dtor: ?move_t = null,
     move_dtor: ?move_t = null,
+    cmp: ?cmp_t = null,
+    equals: ?equals_t = null,
 
     flags: flags32_t = 0,
     on_add: ?iter_action_t = null,
@@ -693,22 +741,24 @@ pub const type_info_t = extern struct {
 
 pub const event_id_record_t = opaque {};
 
-pub const event_record_t = extern struct {
-    any: ?*event_id_record_t,
-    wildcard: ?*event_id_record_t,
-    wildcard_pair: ?*event_id_record_t,
-    event_ids: map_t,
-    event: entity_t,
-};
+pub const event_record_t = anyopaque;
+// pub const event_record_t = extern struct {
+//     any: ?*event_id_record_t,
+//     wildcard: ?*event_id_record_t,
+//     wildcard_pair: ?*event_id_record_t,
+//     event_ids: map_t,
+//     event: entity_t,
+// };
 
-pub const observable_t = extern struct {
-    on_add: event_record_t,
-    on_remove: event_record_t,
-    on_set: event_record_t,
-    on_wildcard: event_record_t,
-    events: sparse_t,
-    last_observer_id: u64,
-};
+pub const observable_t = anyopaque;
+// pub const observable_t = extern struct {
+//     on_add: event_record_t,
+//     on_remove: event_record_t,
+//     on_set: event_record_t,
+//     on_wildcard: event_record_t,
+//     events: sparse_t,
+//     last_observer_id: u64,
+// };
 
 pub const table_range_t = extern struct {
     table: ?*table_t,
@@ -725,8 +775,9 @@ pub const ref_t = extern struct {
     entity: entity_t,
     id: entity_t,
     table_id: u64,
-    tr: *table_record_t,
+    table_version: u32,
     record: *record_t,
+    ptr: ?*anyopaque,
 };
 
 pub const stack_page_t = opaque {}; // TODO: Complete binding
@@ -752,8 +803,8 @@ pub const worker_iter_t = extern struct {
 };
 
 pub const table_cache_iter_t = extern struct {
-    cur: ?*table_cache_hdr_t,
-    next: ?*table_cache_hdr_t,
+    cur: ?*const table_cache_hdr_t,
+    next: ?*const table_cache_hdr_t,
     iter_fill: bool,
     iter_empty: bool,
 };
@@ -765,7 +816,7 @@ pub const each_iter_t = extern struct {
     sources: entity_t,
     sizes: size_t,
     columns: i32,
-    trs: ?[*]table_record_t,
+    trs: ?*table_record_t,
 };
 
 pub const query_var_t = opaque {};
@@ -810,6 +861,12 @@ pub const iter_private_t = extern struct {
     cache: iter_cache_t,
 };
 
+pub const commands_t = extern struct {
+    queue: vec_t,
+    stack: stack_t,
+    entries: sparse_t,
+};
+
 //--------------------------------------------------------------------------------------------------
 //
 // allocator_t, vec_t, map_t, switch_node
@@ -820,7 +877,7 @@ pub const vec_t = extern struct {
     count: i32,
     size: i32,
     elem_size: if (flecs_is_sanitize) size_t else void,
-    type_name: if (flecs_is_sanitize) [:*0]const u8 else void,
+    type_name: if (flecs_is_sanitize) [*:0]const u8 else void,
 };
 
 pub const sparse_t = extern struct {
@@ -845,7 +902,6 @@ pub const block_allocator_block_t = extern struct {
 pub const block_allocator_t = extern struct {
     head: ?*block_allocator_chunk_header_t,
     block_head: ?*block_allocator_block_t,
-    block_tail: ?*block_allocator_block_t,
     chunk_size: i32,
     data_size: i32,
     chunks_per_block: i32,
@@ -873,15 +929,16 @@ pub const bucket_t = extern struct {
     first: [*c]bucket_entry_t,
 };
 
-pub const map_t = extern struct {
-    bucket_shift: u8,
-    shared_allocator: bool,
-    buckets: [*c]bucket_t,
-    bucket_count: i32,
-    count: i32,
-    entry_allocator: [*c]block_allocator_t,
-    allocator: [*c]allocator_t,
-};
+pub const map_t = anyopaque;
+// pub const map_t = extern struct {
+//     buckets: [*]bucket_t,
+//     bucket_count: i32,
+//     x: packed struct {
+//         count: u26,
+//         bucket_shift: u6,
+//     },
+//     allocator: *allocator_t,
+// };
 
 pub const map_iter_t = extern struct {
     map: [*c]const map_t,
@@ -903,11 +960,6 @@ pub const switch_node_t = extern struct {
 pub const switch_page_t = extern struct {
     nodes: vec_t,
     values: vec_t,
-};
-
-pub const switch_t = extern struct {
-    hdrs: map_t,
-    pages: vec_t,
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -1284,6 +1336,7 @@ pub fn init() *world_t {
     Transitive = EcsTransitive;
     Reflexive = EcsReflexive;
     Final = EcsFinal;
+    Inheritable = EcsInheritable;
     OnInstantiate = EcsOnInstantiate;
     Override = EcsOverride;
     Inherit = EcsInherit;
@@ -1342,6 +1395,7 @@ pub fn init() *world_t {
     OnStore = EcsOnStore;
     PostFrame = EcsPostFrame;
     Phase = EcsPhase;
+    Constant = EcsConstant;
 
     // TODO DefaultChildComponent = EcsDefaultChildComponent;
 
@@ -1512,6 +1566,10 @@ extern fn ecs_get_world_info(world: *const world_t) *const world_info_t;
 pub const dim = ecs_dim;
 extern fn ecs_dim(world: *world_t, entity_count: i32) void;
 
+/// `pub fn shrink(world: *world_t, entity_count: i32) void`
+pub const shrink = ecs_shrink;
+extern fn ecs_shrink(world: *world_t) void;
+
 /// `pub fn set_entity_range(world: *world_t, id_start: entity_t, id_end: entity_t) void`
 pub const set_entity_range = ecs_set_entity_range;
 extern fn ecs_set_entity_range(world: *world_t, id_start: entity_t, id_end: entity_t) void;
@@ -1529,10 +1587,8 @@ pub const run_aperiodic = ecs_run_aperiodic;
 extern fn ecs_run_aperiodic(world: *world_t, flags: flags32_t) void;
 
 pub const delete_empty_tables_desc_t = struct {
-    id: id_t,
     clear_generation: u16,
     delete_generation: u16,
-    min_id_count: i32,
     time_budget_seconds: f64,
 };
 
@@ -2686,8 +2742,14 @@ fn SystemImpl(comptime fn_system: anytype) type {
                 args_tuple[i] = field(it, @typeInfo(p.type.?).pointer.child, i - start_index).?;
             }
 
-            //NOTE: .always_inline seems ok, but unsure. Replace to .auto if it breaks
-            _ = @call(.always_inline, fn_system, args_tuple);
+            // NOTE: In theory there is no reason not to use .always_inline
+            // here, but in practice it results in a worse debugging experience
+            // as of Zig 0.14.0.
+            //
+            // For example, on Windows crashes inside fn_system are attributed
+            // to this @call, and it is not possible to set breakpoints on code
+            // inside fn_system.
+            _ = @call(.auto, fn_system, args_tuple);
         }
     };
 }
@@ -3090,12 +3152,6 @@ pub const os = struct {
     }
 };
 
-//--------------------------------------------------------------------------------------------------
-//
-// ADDONS
-//
-//--------------------------------------------------------------------------------------------------
-
 // ecs_new_w_pair
 pub fn new_w_pair(world: *world_t, first: entity_t, second: entity_t) entity_t {
     const pair_id = make_pair(first, second);
@@ -3107,6 +3163,13 @@ pub fn delete_children(world: *world_t, parent: entity_t) void {
     delete_with(world, make_pair(ChildOf, parent));
 }
 
+
+//--------------------------------------------------------------------------------------------------
+//
+// ADDONS
+//
+//--------------------------------------------------------------------------------------------------
+
 //--------------------------------------------------------------------------------------------------
 //
 // FLECS_MODULE
@@ -3117,6 +3180,173 @@ pub fn delete_children(world: *world_t, parent: entity_t) void {
 pub const import_c = ecs_import_c;
 extern fn ecs_import_c(world: *world_t, module: module_action_t, module_name_c: [*:0]const u8) entity_t;
 
+/// `pub fn module_init(world: *world_t, c_name: [*:0]const u8, desc: *component_desc_t) entity_t`
+pub const module_init = ecs_module_init;
+extern fn ecs_module_init(world: *world_t, c_name: [*:0]const u8, desc: *component_desc_t) entity_t;
+
+//--------------------------------------------------------------------------------------------------
+//
+// FLECS_META
+//
+//--------------------------------------------------------------------------------------------------
+
+pub extern fn FlecsMetaImport(world: *world_t) void;
+
+pub const ecs_bool_t = bool;
+pub const ecs_char_t = i8;
+pub const ecs_byte_t = u8;
+pub const ecs_u8_t = u8;
+pub const ecs_u16_t = u16;
+pub const ecs_u32_t = u32;
+pub const ecs_u64_t = u64;
+pub const ecs_uptr_t = usize;
+pub const ecs_i8_t = i8;
+pub const ecs_i16_t = i16;
+pub const ecs_i32_t = i32;
+pub const ecs_i64_t = i64;
+pub const ecs_iptr_t = isize;
+pub const ecs_f32_t = f32;
+pub const ecs_f64_t = f64;
+pub const ecs_string_t = [*:0]u8;
+
+pub extern const FLECS_IDecs_bool_tID_: entity_t;
+pub extern const FLECS_IDecs_char_tID_: entity_t;
+pub extern const FLECS_IDecs_byte_tID_: entity_t;
+pub extern const FLECS_IDecs_u8_tID_: entity_t;
+pub extern const FLECS_IDecs_u16_tID_: entity_t;
+pub extern const FLECS_IDecs_u32_tID_: entity_t;
+pub extern const FLECS_IDecs_u64_tID_: entity_t;
+pub extern const FLECS_IDecs_uptr_tID_: entity_t;
+pub extern const FLECS_IDecs_i8_tID_: entity_t;
+pub extern const FLECS_IDecs_i16_tID_: entity_t;
+pub extern const FLECS_IDecs_i32_tID_: entity_t;
+pub extern const FLECS_IDecs_i64_tID_: entity_t;
+pub extern const FLECS_IDecs_iptr_tID_: entity_t;
+pub extern const FLECS_IDecs_f32_tID_: entity_t;
+pub extern const FLECS_IDecs_f64_tID_: entity_t;
+pub extern const FLECS_IDecs_string_tID_: entity_t;
+pub extern const FLECS_IDecs_entity_tID_: entity_t;
+pub extern const FLECS_IDecs_id_tID_: entity_t;
+
+pub const ECS_MEMBER_DESC_CACHE_SIZE = 32;
+
+pub const member_value_range_t = extern struct {
+    min: f64 = 0,
+    max: f64 = 0,
+};
+
+pub const member_t = extern struct {
+    name: [*:0]const u8 = "",
+    type: entity_t = 0,
+    count: i32 = 0,
+    offset: i32 = 0,
+    unit: entity_t = 0,
+    use_offset: bool = false,
+    range: member_value_range_t = .{},
+    error_range: member_value_range_t = .{},
+    warning_range: member_value_range_t = .{},
+    size: size_t = 0,
+    member: entity_t = 0,
+};
+
+pub const struct_desc_t = extern struct {
+    entity: entity_t,
+    members: [ECS_MEMBER_DESC_CACHE_SIZE]member_t,
+};
+
+pub const struct_init = ecs_struct_init;
+extern fn ecs_struct_init(world: *world_t, desc: struct_desc_t) entity_t;
+
+//--------------------------------------------------------------------------------------------------
+//
+// FLECS_SCRIPT
+//
+//--------------------------------------------------------------------------------------------------
+
+pub extern fn FlecsScriptImport(world: *world_t) void;
+
+pub const script_t = extern struct {
+    world: *world_t,
+    name: [*:0]const u8,
+    code: [*:0]const u8,
+};
+
+pub const script_var_t = extern struct {
+    name: [*:0]const u8,
+    value: value_t,
+    type_info: *const type_info_t,
+    sp: i32,
+    is_const: bool,
+};
+
+pub const script_vars_t = anyopaque;
+// pub const script_vars_t = extern struct {
+//     parent: ?*script_vars_t,
+//     sp: i32,
+
+//     var_index: hashmap_t,
+//     vars: vec_t,
+
+//     world: *const world_t,
+//     stack: *stack_t,
+//     cursor: *stack_cursor_t,
+//     allocator: *allocator_t,
+// };
+
+pub const script_runtime_t = anyopaque;
+
+pub const script_eval_desc_t = extern struct {
+    vars: *script_vars_t,
+    runtime: ?*script_runtime_t = null,
+};
+
+pub const script_parse = ecs_script_parse;
+extern fn ecs_script_parse(world: *world_t, name: [*:0]const u8, code: [*:0]const u8, desc: ?*const script_eval_desc_t) ?*script_t;
+
+pub const script_eval = ecs_script_eval;
+extern fn ecs_script_eval(script: *const script_t, desc: ?*const script_eval_desc_t) c_int;
+
+pub const script_free = ecs_script_free;
+extern fn ecs_script_free(script: *script_t) void;
+
+pub const script_run = ecs_script_run;
+extern fn ecs_script_run(world: *world_t, name: [*:0]const u8, code: [*:0]const u8, desc: ?*const script_eval_desc_t) c_int;
+
+pub const script_runtime_new = ecs_script_runtime_new;
+extern fn ecs_script_runtime_new() *script_runtime_t;
+
+pub const script_runtime_free = ecs_script_runtime_free;
+extern fn ecs_script_runtime_free(runtime: *script_runtime_t) void;
+
+pub const script_ast_to_buf = ecs_script_ast_to_buf;
+extern fn ecs_script_ast_to_buf(script: *script_t, buf: *strbuf_t, colors: bool) void;
+
+pub const script_ast_to_str = ecs_script_ast_to_str;
+extern fn ecs_script_ast_to_str(script: *script_t, colors: bool) void;
+
+// Vars
+
+pub const script_vars_init = ecs_script_vars_init;
+extern fn ecs_script_vars_init(world: *world_t) *script_vars_t;
+
+pub const script_vars_fini = ecs_script_vars_fini;
+extern fn ecs_script_vars_fini(vars: *script_vars_t) void;
+
+pub const script_vars_push = ecs_script_vars_push;
+extern fn ecs_script_vars_push(vars: ?*script_vars_t) *script_vars_t;
+
+pub const script_vars_pop = ecs_script_vars_pop;
+extern fn ecs_script_vars_pop(vars: *script_vars_t) *script_vars_t;
+
+pub const script_vars_declare = ecs_script_vars_declare;
+extern fn ecs_script_vars_declare(vars: *script_vars_t, name: [*:0]const u8) ?*script_var_t;
+
+pub const script_vars_define_id = ecs_script_vars_define_id;
+extern fn ecs_script_vars_define_id(vars: *script_vars_t, name: [*:0]const u8, @"type": entity_t) ?*script_var_t;
+pub fn script_vars_define(vars: *script_vars_t, name: [*:0]const u8, T: type) ?*script_var_t {
+    return script_vars_define_id(vars, name, id(T));
+}
+
 //--------------------------------------------------------------------------------------------------
 //
 // FLECS_STATS
@@ -3124,6 +3354,7 @@ extern fn ecs_import_c(world: *world_t, module: module_action_t, module_name_c: 
 //--------------------------------------------------------------------------------------------------
 
 pub extern fn FlecsStatsImport(world: *world_t) void;
+
 //--------------------------------------------------------------------------------------------------
 //
 // FLECS_REST

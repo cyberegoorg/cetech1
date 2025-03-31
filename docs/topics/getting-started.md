@@ -104,16 +104,14 @@ CETech provide ZLS as submodule, but you must build it.
 <tabs>
     <tab title="MacOS/Linux">
         <code-block lang="bash">
-            git submodule update --init externals/shared/repo
-            git -C externals/shared/repo submodule update --init zls
+            git submodule update --init externals/shared/repo/zls
             cd externals/shared/repo/zls
             zig build -Doptimize=ReleaseFast
         </code-block>
     </tab>
     <tab title="Windows">
         <code-block lang="bash">
-            git submodule update --init externals/shared/repo
-            git -C externals/shared/repo submodule update --init zls
+            git submodule update --init externals/shared/repo/zls
             cd externals/shared/repo/zls
             zig.exe build -Doptimize=ReleaseFast
         </code-block>

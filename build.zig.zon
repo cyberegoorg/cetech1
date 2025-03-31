@@ -1,7 +1,7 @@
 .{
     .name = .cetech1_kernel,
     .version = "0.1.0",
-    .minimum_zig_version = "0.14.0",
+    .minimum_zig_version = "0.14.1",
     .fingerprint = 0x999557f3ebfaa97a,
     .paths = .{
         "docs",
@@ -42,9 +42,10 @@
         .editor_graph = .{ .path = "modules/editor/graph", .lazy = true },
         .editor_metrics = .{ .path = "modules/editor/metrics", .lazy = true },
         .editor_entity_asset = .{ .path = "modules/editor/entity_asset", .lazy = true },
-        .editor_entity = .{ .path = "modules/editor/entity", .lazy = true },
+        .editor_entity = .{ .path = "modules/editor/entity_editor", .lazy = true },
         .editor_asset_preview = .{ .path = "modules/editor/asset_preview", .lazy = true },
         .editor_simulation = .{ .path = "modules/editor/simulation", .lazy = true },
+        .editor_renderer = .{ .path = "modules/editor/renderer", .lazy = true },
 
         // SCRIPTING
         .graphvm = .{ .path = "modules/scripting/graphvm", .lazy = true },

@@ -135,7 +135,10 @@ const init_render_graph_system_i = ecs.SystemI.implement(
 
 const render_component_c = ecs.ComponentI.implement(
     public.RenderComponent,
-    public.RenderComponentCdb.type_hash,
+    .{
+        .cdb_type_hash = public.RenderComponentCdb.type_hash,
+        .category = "Renderer",
+    },
     struct {
         pub fn uiIcons(
             buff: [:0]u8,
@@ -166,8 +169,7 @@ const render_component_c = ecs.ComponentI.implement(
 
 const rc_initialized_c = ecs.ComponentI.implement(
     public.RenderComponentInstance,
-
-    null,
+    .{},
     struct {
         pub fn onDestroy(components: []public.RenderComponentInstance) !void {
             for (components) |c| {
@@ -472,7 +474,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, renderer.RendereableI, &render_component_renderer_i, load);
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
     return true;
 }

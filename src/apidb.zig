@@ -29,7 +29,7 @@ const InterfaceImplList = cetech1.ArrayList(*const anyopaque);
 const InterfaceHashMap = cetech1.AutoArrayHashMap(cetech1.StrId64, InterfaceImplList);
 const InterfaceGen = cetech1.AutoArrayHashMap(cetech1.StrId64, u64);
 
-const GlobalVarMap = cetech1.AutoArrayHashMap(cetech1.StrId64, []u8);
+const setGlobalVarMap = cetech1.AutoArrayHashMap(cetech1.StrId64, []u8);
 const Api2Modules = cetech1.AutoArrayHashMap(cetech1.StrId64, []const u8);
 const ModuleInfoMap = cetech1.AutoArrayHashMap(cetech1.StrId64, ModuleInfo);
 
@@ -70,7 +70,7 @@ const ModuleInfo = struct {
 };
 
 pub var api = public.ApiDbAPI{
-    .globalVarFn = globalVar,
+    .setGlobalVarFn = setGlobalVar,
     .setApiOpaqueueFn = setApiOpaqueue,
     .getApiOpaaqueFn = getApiOpaque,
     .removeApiFn = removeApi,
@@ -87,7 +87,7 @@ var _api_map_pool: ApiHashMapPool = undefined;
 
 var _interafce_gen: InterfaceGen = undefined;
 var _interafce_map: InterfaceHashMap = undefined;
-var _global_var_map: GlobalVarMap = undefined;
+var _global_var_map: setGlobalVarMap = undefined;
 
 var _module_info_map: ModuleInfoMap = undefined;
 var _api2module: Api2Modules = undefined;
@@ -159,7 +159,7 @@ fn getOrCreateModuleInfo(module: []const u8) !*ModuleInfo {
     return _module_info_map.getPtr(module_hash).?;
 }
 
-fn globalVar(module: []const u8, var_name: []const u8, size: usize, default: []const u8) !*anyopaque {
+fn setGlobalVar(module: []const u8, var_name: []const u8, size: usize, default: []const u8) !*anyopaque {
     var buff: [256]u8 = undefined;
     const combine_name = try std.fmt.bufPrint(&buff, "{s}:{s}", .{ module, var_name });
     const combine_hash = cetech1.strId64(combine_name);
@@ -269,7 +269,7 @@ fn getInterafcesVersion(interface_name: cetech1.StrId64) u64 {
     return iface_gen.?.*;
 }
 
-pub fn dumpGlobalVar() void {
+pub fn dumpsetGlobalVar() void {
     // log.info("GLOBAL APIDB VARIABLES", .{});
 
     // var it = _global_var_map.iterator();

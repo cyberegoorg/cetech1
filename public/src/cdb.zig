@@ -501,7 +501,7 @@ pub const CdbAPI = struct {
     /// Read reference set.
     /// This make new array for result set.
     /// Caller own the memory.
-    pub inline fn readRefSet(self: Self, reader: *Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const ObjId {
+    pub inline fn readRefSet(self: Self, reader: *Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]ObjId {
         return self.readRefSetFn(reader, prop_idx, allocator);
     }
 
@@ -532,7 +532,7 @@ pub const CdbAPI = struct {
     /// Read subibj set.
     /// This make new array for result set.
     /// Caller own the memory.
-    pub inline fn readSubObjSet(self: Self, reader: *Obj, prop_idx: u32, allocator: std.mem.Allocator) !?[]const ObjId {
+    pub inline fn readSubObjSet(self: Self, reader: *Obj, prop_idx: u32, allocator: std.mem.Allocator) !?[]ObjId {
         return self.readSubObjSetFn(reader, prop_idx, allocator);
     }
 
@@ -757,12 +757,12 @@ pub const CdbAPI = struct {
     readSubObjFn: *const fn (reader: *Obj, prop_idx: u32) ?ObjId,
     isInSetFn: *const fn (reader: *Obj, prop_idx: u32, item_ibj: ObjId) bool,
     readRefFn: *const fn (reader: *Obj, prop_idx: u32) ?ObjId,
-    readRefSetFn: *const fn (reader: *Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const ObjId,
+    readRefSetFn: *const fn (reader: *Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]ObjId,
     readRefSetAddedFn: *const fn (reader: *Obj, prop_idx: u32) []const ObjId,
     readRefSetRemovedFn: *const fn (reader: *Obj, prop_idx: u32) []const ObjId,
     readSubObjSetAddedFn: *const fn (reader: *Obj, prop_idx: u32) []const ObjId,
     readSubObjSetRemovedFn: *const fn (reader: *Obj, prop_idx: u32) []const ObjId,
-    readSubObjSetFn: *const fn (reader: *Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]const ObjId,
+    readSubObjSetFn: *const fn (reader: *Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]ObjId,
     readBlobFn: *const fn (reader: *Obj, prop_idx: u32) []u8,
     getPrototypeFn: *const fn (obj: *Obj) ObjId,
 

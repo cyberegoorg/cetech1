@@ -186,10 +186,10 @@
     },
     {
       "__type_name": "ct_graph_node",
-      "__uuid": "01928585-4938-7a56-ad38-9ddbf3a5ffb6",
-      "node_type": "lsd_cube",
-      "pos_x": 2.368e3,
-      "pos_y": 6.98e2
+      "__uuid": "01931c00-9c18-7a35-a39b-05564524f980",
+      "node_type": "gpu_shader_exported_var_foo",
+      "pos_x": 1.074e3,
+      "pos_y": 7.98e2
     },
     {
       "__type_name": "ct_graph_node",
@@ -355,10 +355,14 @@
     },
     {
       "__type_name": "ct_graph_node",
-      "__uuid": "01931c00-9c18-7a35-a39b-05564524f980",
-      "node_type": "gpu_shader_exported_var_foo",
-      "pos_x": 1.074e3,
-      "pos_y": 7.98e2
+      "__uuid": "01960624-babc-703e-8733-b0064f7ebd8c",
+      "node_type": "simple_mesh",
+      "settings": {
+        "__type_name": "ct_gpu_simple_mesh_settings",
+        "__uuid": "01960624-bab1-7f3a-8b90-0546f65c8a78"
+      },
+      "pos_x": 2.365e3,
+      "pos_y": 6.98e2
     }
   ],
   "groups": [
@@ -412,19 +416,19 @@
     },
     {
       "__type_name": "ct_graph_connection",
-      "__uuid": "01928585-5328-78b5-acd5-c7649f683671",
-      "from_node": "ct_graph_node:01928585-4938-7a56-ad38-9ddbf3a5ffb6",
-      "to_node": "ct_graph_node:01928585-3f44-7288-be3d-8ea2f04cdc4c",
-      "from_pin": "out:gpu_geometry",
-      "to_pin": "in:gpu_geometry"
+      "__uuid": "01932648-b8d6-7bc8-96a2-a00a63501363",
+      "from_node": "ct_graph_node:0193079b-44d7-738f-b1f7-f5acbdf54ab2",
+      "to_node": "ct_graph_node:0192dc52-e771-7bc8-a384-dcd81f348212",
+      "from_pin": "out:output",
+      "to_pin": "in:b"
     },
     {
       "__type_name": "ct_graph_connection",
-      "__uuid": "01928585-5670-791d-af56-ae03bc167818",
-      "from_node": "ct_graph_node:01928585-4938-7a56-ad38-9ddbf3a5ffb6",
-      "to_node": "ct_graph_node:01928585-3f44-7288-be3d-8ea2f04cdc4c",
-      "from_pin": "out:gpu_index_buffer",
-      "to_pin": "in:gpu_index_buffer"
+      "__uuid": "01932648-c21a-74ee-8bd3-ebcb114a6797",
+      "from_node": "ct_graph_node:0192dc52-e771-7bc8-a384-dcd81f348212",
+      "to_node": "ct_graph_node:01932637-adc3-783a-9093-305947ed534f",
+      "from_pin": "out:result",
+      "to_pin": "in:a"
     },
     {
       "__type_name": "ct_graph_connection",
@@ -564,32 +568,32 @@
     },
     {
       "__type_name": "ct_graph_connection",
-      "__uuid": "01932648-b8d6-7bc8-96a2-a00a63501363",
-      "from_node": "ct_graph_node:0193079b-44d7-738f-b1f7-f5acbdf54ab2",
-      "to_node": "ct_graph_node:0192dc52-e771-7bc8-a384-dcd81f348212",
-      "from_pin": "out:output",
-      "to_pin": "in:b"
+      "__uuid": "01960624-c381-725b-b2a1-0da9490a244f",
+      "from_node": "ct_graph_node:01960624-babc-703e-8733-b0064f7ebd8c",
+      "to_node": "ct_graph_node:01928585-3f44-7288-be3d-8ea2f04cdc4c",
+      "from_pin": "out:gpu_geometry",
+      "to_pin": "in:gpu_geometry"
     },
     {
       "__type_name": "ct_graph_connection",
-      "__uuid": "01932648-c21a-74ee-8bd3-ebcb114a6797",
-      "from_node": "ct_graph_node:0192dc52-e771-7bc8-a384-dcd81f348212",
-      "to_node": "ct_graph_node:01932637-adc3-783a-9093-305947ed534f",
-      "from_pin": "out:result",
-      "to_pin": "in:a"
+      "__uuid": "01960624-ccd6-7eeb-9af0-08fa0da3c69c",
+      "from_node": "ct_graph_node:01960624-babc-703e-8733-b0064f7ebd8c",
+      "to_node": "ct_graph_node:01928585-3f44-7288-be3d-8ea2f04cdc4c",
+      "from_pin": "out:gpu_index_buffer",
+      "to_pin": "in:gpu_index_buffer"
     },
     {
       "__type_name": "ct_graph_connection",
-      "__uuid": "0195d171-1d7e-7d4e-8247-989e247aeaa5",
-      "from_node": "ct_graph_node:01928585-4938-7a56-ad38-9ddbf3a5ffb6",
+      "__uuid": "01960624-d1ab-7494-bdd7-1ac976a36f04",
+      "from_node": "ct_graph_node:01960624-babc-703e-8733-b0064f7ebd8c",
       "to_node": "ct_graph_node:01928585-3f44-7288-be3d-8ea2f04cdc4c",
       "from_pin": "out:vertex_count",
       "to_pin": "in:vertex_count"
     },
     {
       "__type_name": "ct_graph_connection",
-      "__uuid": "0195d171-23d1-76a6-a0a0-2a53f6caeda8",
-      "from_node": "ct_graph_node:01928585-4938-7a56-ad38-9ddbf3a5ffb6",
+      "__uuid": "01960624-d5f8-7f3e-b598-34f5750672b7",
+      "from_node": "ct_graph_node:01960624-babc-703e-8733-b0064f7ebd8c",
       "to_node": "ct_graph_node:01928585-3f44-7288-be3d-8ea2f04cdc4c",
       "from_pin": "out:index_count",
       "to_pin": "in:index_count"

@@ -48,10 +48,23 @@ pub const UiTreeFlatenPropertyAspect = struct {
     }
 };
 
+pub fn filterOnlyTypes(only_types: ?[]const cdb.TypeIdx, obj: cdb.ObjId) bool {
+    if (only_types) |ot| {
+        if (ot.len != 0) {
+            for (ot) |o| {
+                if (obj.type_idx.eql(o)) return true;
+            }
+            return false;
+        }
+    }
+
+    return true;
+}
+
 pub const CdbTreeViewArgs = struct {
     expand_object: bool = true,
     ignored_object: cdb.ObjId = .{},
-    only_types: cdb.TypeIdx = .{},
+    only_types: ?[]const cdb.TypeIdx = null,
     opened_obj: cdb.ObjId = .{},
     filter: ?[:0]const u8 = null,
     multiselect: bool = false,

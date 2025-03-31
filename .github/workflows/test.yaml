@@ -36,7 +36,7 @@ jobs:
         with:
           path: ./.zigversion
       - name: Install Zig
-        uses: mlugg/setup-zig@v1
+        uses: mlugg/setup-zig@v2
         with:
           version: ${{ steps.zigversion.outputs.content }}
       
@@ -51,8 +51,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: true
 
       - name: Prepare
         # uses: awalsh128/cache-apt-pkgs-action@latest
@@ -64,15 +62,18 @@ jobs:
       # TODO: https://github.com/SimonKagstrom/kcov/issues/471
       - name: Install kcov
         run: |
-          # wget https://github.com/SimonKagstrom/kcov/releases/download/v43/kcov-amd64.tar.gz
-          # sudo tar xf kcov-amd64.tar.gz -C /
+          sudo ln -s /usr/lib/x86_64-linux-gnu/libbfd-2.42-system.so /usr/lib/x86_64-linux-gnu/libbfd-2.38-system.so
+          sudo ln -s /usr/lib/x86_64-linux-gnu/libopcodes-2.42-system.so /usr/lib/x86_64-linux-gnu/libopcodes-2.38-system.so
+          wget https://github.com/SimonKagstrom/kcov/releases/download/v42/kcov-amd64.tar.gz
+          sudo tar xf kcov-amd64.tar.gz -C /
 
-          KCOV_VERSION=v43 && \
-          sudo apt install -y git cmake g++ libcurl4-openssl-dev zlib1g-dev libdw-dev libiberty-dev binutils-dev && \
-          git clone https://github.com/SimonKagstrom/kcov.git && \
-          cd kcov && git checkout ${KCOV_VERSION} && mkdir build && cd build && \
-          cmake .. && make && sudo make install && \
-          kcov --version
+
+          # KCOV_VERSION=v43 && \
+          # sudo apt install -y git cmake g++ libcurl4-openssl-dev zlib1g-dev libdw-dev libiberty-dev binutils-dev && \
+          # git clone https://github.com/SimonKagstrom/kcov.git && \
+          # cd kcov && git checkout ${KCOV_VERSION} && mkdir build && cd build && \
+          # cmake .. && make && sudo make install && \
+          # kcov --version
 
       #- uses: Schleifner/github-coredump@v1
       
@@ -82,21 +83,9 @@ jobs:
         with:
           path: ./.zigversion
       - name: Install Zig
-        uses: mlugg/setup-zig@v1
+        uses: mlugg/setup-zig@v2
         with:
           version: ${{ steps.zigversion.outputs.content }}
-
-      - name: Zig cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.cache/zig/
-          key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
-
-      # - name: Zig build cache
-      #   uses: actions/cache/restore@v4
-      #   with:
-      #     path: .zig-cache
-      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
 
       - name: Build
         run: .ci/build.sh x86_64-linux Debug
@@ -108,18 +97,6 @@ jobs:
           path: zig-out/
           overwrite: true
           retention-days: 1
-
-      - name: Zig cache
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.cache/zig/
-          key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
-
-      # - name: Zig build cache
-      #   uses: actions/cache/save@v4
-      #   with:
-      #     path: .zig-cache
-      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
 
       - name: Test unit
         run: kcov --include-pattern=/cetech1/src/,/cetech/public/ kcov-output zig-out/bin/cetech1_test
@@ -164,8 +141,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: true
 
       # - name: Prepare`
       #   run: |
@@ -178,21 +153,9 @@ jobs:
         with:
           path: ./.zigversion
       - name: Install Zig
-        uses: mlugg/setup-zig@v1
+        uses: mlugg/setup-zig@v2
         with:
           version: ${{ steps.zigversion.outputs.content }}
-
-      # - name: Zig cache
-      #   uses: actions/cache/restore@v4
-      #   with:
-      #     path: ~/.cache/zig/
-      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
-
-      # - name: Zig build cache
-      #   uses: actions/cache/restore@v4
-      #   with:
-      #     path: .zig-cache
-      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
 
       - name: Build
         run: .ci/build.sh x86_64-macos Debug
@@ -204,18 +167,6 @@ jobs:
           path: zig-out/
           overwrite: true
           retention-days: 1
-
-      # - name: Zig cache
-      #   uses: actions/cache/save@v4
-      #   with:
-      #     path: ~/.cache/zig/
-      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
-
-      # - name: Zig build cache
-      #   uses: actions/cache/save@v4
-      #   with:
-      #     path: .zig-cache
-      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
 
       - name: Test unit
         run: TRACY_NO_INVARIANT_CHECK=1 zig-out/bin/cetech1_test
@@ -248,8 +199,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: true
 
       - name: Read .zig-version
         id: zigversion
@@ -257,21 +206,9 @@ jobs:
         with:
           path: ./.zigversion
       - name: Install Zig
-        uses: mlugg/setup-zig@v1
+        uses: mlugg/setup-zig@v2
         with:
           version: ${{ steps.zigversion.outputs.content }}
-
-      - name: Zig cache
-        uses: actions/cache/restore@v4
-        with:
-          path: C:\Users\runneradmin\AppData\Local\zig
-          key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
-
-      # - name: Zig build cache
-      #   uses: actions/cache/restore@v4
-      #   with:
-      #     path: .zig-cache
-      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
 
       - name: Build
         shell: bash
@@ -285,18 +222,6 @@ jobs:
           overwrite: true
           retention-days: 1
 
-      - name: Zig cache
-        uses: actions/cache/save@v4
-        with:
-          path: C:\Users\runneradmin\AppData\Local\zig
-          key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
-
-      # - name: Zig build cache
-      #   uses: actions/cache/save@v4
-      #   with:
-      #     path: .zig-cache
-      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
-          
       # - name: configure Pagefile
       #   uses: al-cheb/configure-pagefile-action@v1.4
       #   with:

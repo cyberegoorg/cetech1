@@ -555,6 +555,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                                     try common_writer.print("  {s} {s};\n", .{ @tagName(tt), input.name });
                                 }
                             }
+
                             if (shader_def.vertex_block) |vb| {
                                 if (vb.exports) |exports| {
                                     for (exports) |ex| {
@@ -575,6 +576,15 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                             }
                             try common_writer.print("}};\n", .{});
 
+                            // Graph structure init
+                            try common_writer.print(
+                                \\
+                                \\void ct_graph_init(out ct_graph graph) {{
+                                \\      graph = (ct_graph)0; 
+                                \\}}
+                                \\
+                            , .{});
+
                             for (real_state.context_result_map.keys(), real_state.context_result_map.values()) |ctx, v| {
                                 for (v.keys(), v.values()) |stage_id, data| {
                                     const w = if (stage_id.eql(public.TranspileStages.Fragment)) fs_common_w else vs_common_w;
@@ -585,8 +595,8 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                                         if (!is_default) ctx else "",
                                     });
 
-                                    if (real_state.context_map.get(ctx)) |coomon_ctx| {
-                                        if (coomon_ctx.get(stage_id)) |d| {
+                                    if (real_state.context_map.get(ctx)) |common_ctx| {
+                                        if (common_ctx.get(stage_id)) |d| {
                                             try w.writeAll(d.items);
                                         }
                                     }
@@ -817,7 +827,7 @@ fn createExportedNode(alloc: std.mem.Allocator, graph_node: public.DefGraphNode,
         defer alloc.free(name);
 
         const display_name = try std.fmt.allocPrintZ(alloc, "Shader export: {s}", .{export_def.name});
-        defer alloc.free(name);
+        defer alloc.free(display_name);
 
         const type_hash = cetech1.strId32(name);
         try _g.exported_map.put(_allocator, type_hash, export_def);
@@ -954,7 +964,13 @@ fn compileShader(allocator: std.mem.Allocator, use_definitions: []const cetech1.
     };
 }
 
-fn compileShaderVariant(allocator: std.mem.Allocator, use_definitions: []const cetech1.StrId32, definition: ?public.ShaderDefinition, layer: ?cetech1.StrId32, systems: []const cetech1.StrId32) !public.ShaderVariant {
+fn compileShaderVariant(
+    allocator: std.mem.Allocator,
+    use_definitions: []const cetech1.StrId32,
+    definition: ?public.ShaderDefinition,
+    layer: ?cetech1.StrId32,
+    systems: []const cetech1.StrId32,
+) !public.ShaderVariant {
     //TODO: BRAINDUMP SHIT DETECTED
     //TODO: merge defs rules
 
@@ -1071,7 +1087,7 @@ fn compileShaderVariant(allocator: std.mem.Allocator, use_definitions: []const c
     try fs_output_struct_w.print("  vec4 color0;\n", .{});
     try fs_fill_ouput_struct_w.print("  gl_FragData[0] = output.color0;\n", .{});
 
-    var vs_export_semantic_counter: usize = 0;
+    var vs_export_semantic_counter: usize = 1;
 
     for (all_definitions.items) |shader_def| {
         state |= shader_def.state;
@@ -1114,7 +1130,7 @@ fn compileShaderVariant(allocator: std.mem.Allocator, use_definitions: []const c
                         vertexInputsToVariableName(value),
                     });
 
-                    try vs_fill_input_struct_w.print("input.{s} = {s};\n", .{ vertexInputsToVariableName(value), vertexInputsToVariableName(value) });
+                    try vs_fill_input_struct_w.print("  input.{s} = {s};\n", .{ vertexInputsToVariableName(value), vertexInputsToVariableName(value) });
 
                     try var_def_w.print(
                         "{s} {s}  :   {s};\n",
@@ -1154,7 +1170,7 @@ fn compileShaderVariant(allocator: std.mem.Allocator, use_definitions: []const c
                         value.name,
                     });
 
-                    try vs_fill_ouput_struct_w.print("v_{s} = output.{s};\n", .{
+                    try vs_fill_ouput_struct_w.print("  v_{s} = output.{s};\n", .{
                         value.name,
                         value.name,
                     });
@@ -1231,12 +1247,15 @@ fn compileShaderVariant(allocator: std.mem.Allocator, use_definitions: []const c
         \\{s}
         \\
         \\void main() {{
+        \\  // Input and Outputs
         \\  ct_input input;
         \\  ct_output output;
         \\{s}
         \\
+        \\  // Main
         \\{s}
         \\
+        \\  // Write
         \\{s}
         \\
         \\}}
@@ -1261,7 +1280,7 @@ fn compileShaderVariant(allocator: std.mem.Allocator, use_definitions: []const c
         },
     );
     defer allocator.free(vs_source);
-    //std.debug.print("VS:\n{s}\n", .{vs_source});
+    // std.debug.print("VS:\n{s}\n", .{vs_source});
 
     //
     // Compile fs shader
@@ -1297,12 +1316,15 @@ fn compileShaderVariant(allocator: std.mem.Allocator, use_definitions: []const c
         \\{s}
         \\
         \\void main() {{
+        \\  // Input and Outputs
         \\  ct_input input;
         \\  ct_output output;
         \\{s}
         \\
+        \\  // Main
         \\{s}
         \\
+        \\  // Write
         \\{s}
         \\
         \\}}
@@ -1626,6 +1648,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                     },
                     .code =
                     \\  ct_graph graph;
+                    \\  ct_graph_init(graph);
                     \\  ct_graph_eval(graph, input);
                     \\
                     \\  output.position = graph.position;
@@ -1638,7 +1661,8 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                     },
                     .code =
                     \\  ct_graph graph;
-                    \\  
+                    \\  ct_graph_init(graph);
+                    \\
                     \\  graph.foo = vec4(0,1,0,1);
                     \\
                     \\  ct_graph_eval(graph, input);
@@ -2870,11 +2894,11 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &gpu_float_value_type_i, load);
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
-    _g.make_node_result_type_aspec = try apidb.globalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_construct_node_result_type_aspec", construct_node_result_type_aspec);
-    _g.uniform_node_result_type_aspec = try apidb.globalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_uniform_node_result_type_aspec", uniform_node_result_type_aspec);
-    _g.const_node_result_type_aspec = try apidb.globalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_const_node_result_type_aspec", const_node_result_type_aspec);
+    _g.make_node_result_type_aspec = try apidb.setGlobalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_construct_node_result_type_aspec", construct_node_result_type_aspec);
+    _g.uniform_node_result_type_aspec = try apidb.setGlobalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_uniform_node_result_type_aspec", uniform_node_result_type_aspec);
+    _g.const_node_result_type_aspec = try apidb.setGlobalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_const_node_result_type_aspec", const_node_result_type_aspec);
 
     return true;
 }

@@ -245,7 +245,7 @@ fn uiAssetInputGeneric(
             }
 
             if (is_proto) {
-                if (!drag_obj.eql(obj)) {
+                if (!drag_obj.eql(obj) and drag_obj.type_idx.eql(obj.type_idx)) {
                     try _cdb.setPrototype(obj, drag_obj);
                 }
             } else {
@@ -582,7 +582,7 @@ fn cdbPropertiesObj(
                     _coreui.sameLine(.{});
                 }
 
-                var set: ?[]const cdb.ObjId = undefined;
+                var set: ?[]cdb.ObjId = undefined;
                 if (prop_def.type == .REFERENCE_SET) {
                     set = _cdb.readRefSet(obj_r, prop_idx, allocator);
                 } else {
@@ -602,7 +602,12 @@ fn cdbPropertiesObj(
 
                 if (open) {
                     if (set) |s| {
-                        defer allocator.free(set.?);
+                        defer allocator.free(s);
+
+                        const ui_sort_aspect = _cdb.getPropertyAspect(editor.UiSetSortPropertyAspect, db, obj.type_idx, prop_idx);
+                        if (ui_sort_aspect) |aspect| {
+                            try aspect.sort(allocator, s);
+                        }
 
                         for (s, 0..) |subobj, set_idx| {
                             _coreui.pushIntId(@truncate(set_idx));
@@ -652,6 +657,8 @@ fn uiInputProtoBtns(obj: cdb.ObjId, prop_idx: u32) !void {
     if (prop_def.type == .BLOB) return;
 
     if (_coreui.beginPopup("property_protoypes_menu", .{})) {
+        defer _coreui.endPopup();
+
         if (_coreui.menuItem(_allocator, Icons.FA_ARROW_ROTATE_LEFT ++ "  " ++ "Reset to prototype value" ++ "###ResetToPrototypeValue", .{ .enabled = is_overided }, null)) {
             const w = _cdb.writeObj(obj).?;
             _cdb.resetPropertyOveride(w, prop_idx);
@@ -718,8 +725,6 @@ fn uiInputProtoBtns(obj: cdb.ObjId, prop_idx: u32) !void {
                 try _cdb.writeCommit(w);
             }
         }
-
-        _coreui.endPopup();
     }
 
     if (_coreui.button(Icons.FA_SWATCHBOOK ++ "###PrototypeButtons", .{})) {
@@ -1812,13 +1817,13 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _profiler = apidb.getZigApi(module_name, profiler.ProfilerAPI).?;
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
-    _g.tab_vt = try apidb.globalVarValue(editor.TabTypeI, module_name, INSPECTOR_TAB_NAME, inspector_tab);
+    _g.tab_vt = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, INSPECTOR_TAB_NAME, inspector_tab);
 
-    _g.asset_prop_aspect = try apidb.globalVarValue(public.UiPropertiesAspect, module_name, ASSET_PROPERTIES_ASPECT_NAME, asset_properties_aspec);
-    _g.color4f_properties_aspec = try apidb.globalVarValue(public.UiEmbedPropertiesAspect, module_name, COLOR4F_PROPERTY_ASPECT_NAME, color4f_properties_aspec);
-    _g.hide_proto_property_config_aspect = try apidb.globalVarValue(public.UiPropertiesConfigAspect, module_name, FOLDER_PROPERTY_CONFIG_ASPECT_NAME, folder_properties_config_aspect);
+    _g.asset_prop_aspect = try apidb.setGlobalVarValue(public.UiPropertiesAspect, module_name, ASSET_PROPERTIES_ASPECT_NAME, asset_properties_aspec);
+    _g.color4f_properties_aspec = try apidb.setGlobalVarValue(public.UiEmbedPropertiesAspect, module_name, COLOR4F_PROPERTY_ASPECT_NAME, color4f_properties_aspec);
+    _g.hide_proto_property_config_aspect = try apidb.setGlobalVarValue(public.UiPropertiesConfigAspect, module_name, FOLDER_PROPERTY_CONFIG_ASPECT_NAME, folder_properties_config_aspect);
 
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(module_name, cdb.PostCreateTypesI, &post_create_types_i, load);

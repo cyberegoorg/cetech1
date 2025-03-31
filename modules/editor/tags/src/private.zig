@@ -298,11 +298,11 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _tempalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
-    _g.noproto_config_aspect = try apidb.globalVarValue(editor_inspector.UiPropertiesConfigAspect, module_name, FOLDER_PROPERTY_CONFIG_ASPECT_NAME, folder_properties_config_aspect);
-    _g.tag_prop_aspect = try apidb.globalVarValue(editor_inspector.UiEmbedPropertyAspect, module_name, TAGS_ASPECT_NAME, tag_prop_aspect);
-    _g.tag_visual_aspect = try apidb.globalVarValue(editor.UiVisualAspect, module_name, TAG_VISUAL_ASPECT_NAME, tag_visual_aspect);
+    _g.noproto_config_aspect = try apidb.setGlobalVarValue(editor_inspector.UiPropertiesConfigAspect, module_name, FOLDER_PROPERTY_CONFIG_ASPECT_NAME, folder_properties_config_aspect);
+    _g.tag_prop_aspect = try apidb.setGlobalVarValue(editor_inspector.UiEmbedPropertyAspect, module_name, TAGS_ASPECT_NAME, tag_prop_aspect);
+    _g.tag_visual_aspect = try apidb.setGlobalVarValue(editor.UiVisualAspect, module_name, TAG_VISUAL_ASPECT_NAME, tag_visual_aspect);
 
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(module_name, editor.CreateAssetI, &create_tag_asset_i, load);
