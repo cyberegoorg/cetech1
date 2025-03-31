@@ -44,8 +44,10 @@ var _g: *G = undefined;
 
 const camera_c = ecs.ComponentI.implement(
     public.Camera,
-
-    public.CameraCdb.type_hash,
+    .{
+        .cdb_type_hash = public.CameraCdb.type_hash,
+        .category = "Renderer",
+    },
     struct {
         pub fn uiIcons(
             buff: [:0]u8,
@@ -211,9 +213,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, ecs.ComponentI, &camera_c, load);
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
-    _g.camera_type_properties_aspec = try apidb.globalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_camera_type_embed_prop_aspect", camera_type_aspec);
+    _g.camera_type_properties_aspec = try apidb.setGlobalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_camera_type_embed_prop_aspect", camera_type_aspec);
 
     return true;
 }

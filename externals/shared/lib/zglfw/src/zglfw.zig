@@ -169,10 +169,10 @@ extern fn glfwSwapInterval(interval: c_int) void;
 
 pub const GlProc = *const anyopaque;
 
-pub fn getProcAddress(procname: [*:0]const u8) ?GlProc {
+pub fn getProcAddress(procname: [*:0]const u8) callconv(.c) ?GlProc {
     return glfwGetProcAddress(procname);
 }
-extern fn glfwGetProcAddress(procname: [*:0]const u8) ?GlProc;
+extern fn glfwGetProcAddress(procname: [*:0]const u8) callconv(.c) ?GlProc;
 
 //--------------------------------------------------------------------------------------------------
 //
@@ -545,6 +545,7 @@ pub const Monitor = opaque {
     pub const getName = zglfw.getMonitorName;
     pub const getVideoMode = zglfw.getVideoMode;
     pub const getVideoModes = zglfw.getVideoModes;
+    pub const getPhysicalSize = zglfw.getMonitorPhysicalSize;
 
     pub fn getPos(self: *Monitor) [2]c_int {
         var xpos: c_int = 0;
@@ -565,6 +566,15 @@ pub fn getMonitors() []*Monitor {
     return @as([*]*Monitor, undefined)[0..0];
 }
 extern fn glfwGetMonitors(count: *c_int) ?[*]*Monitor;
+
+pub fn getMonitorPhysicalSize(monitor: *Monitor) Error![2]i32 {
+    var width_mm: c_int = undefined;
+    var height_mm: c_int = undefined;
+    glfwGetMonitorPhysicalSize(monitor, &width_mm, &height_mm);
+    try maybeError();
+    return .{ width_mm, height_mm };
+}
+extern fn glfwGetMonitorPhysicalSize(*Monitor, width_mm: ?*c_int, height_mm: ?*c_int) void;
 
 pub const getMonitorPos = glfwGetMonitorPos;
 extern fn glfwGetMonitorPos(*Monitor, xpos: ?*c_int, ypos: ?*c_int) void;
@@ -691,6 +701,7 @@ pub const Window = opaque {
     pub const setScrollCallback = zglfw.setScrollCallback;
     pub const setCursorPosCallback = zglfw.setCursorPosCallback;
     pub const setCursorEnterCallback = zglfw.setCursorEnterCallback;
+    pub const getMonitor = zglfw.getWindowMonitor;
     pub const setMonitor = zglfw.setWindowMonitor;
     pub const show = zglfw.showWindow;
     pub const focus = zglfw.focusWindow;
@@ -793,7 +804,7 @@ extern fn glfwSetWindowAttrib(window: *Window, attrib: Window.Attribute, value: 
 pub fn getWindowUserPointer(window: *Window, comptime T: type) ?*T {
     return @ptrCast(@alignCast(glfwGetWindowUserPointer(window)));
 }
-extern fn glfwGetWindowUserPointer(window: *Window) ?*anyopaque;
+extern fn glfwGetWindowUserPointer(window: *Window) callconv(.c) ?*anyopaque;
 
 pub fn setWindowUserPointer(window: *Window, pointer: ?*anyopaque) void {
     glfwSetWindowUserPointer(window, pointer);
@@ -852,6 +863,9 @@ pub const MouseButtonFn = *const fn (
     action: Action,
     mods: Mods,
 ) callconv(.C) void;
+
+pub const getWindowMonitor = glfwGetWindowMonitor;
+extern fn glfwGetWindowMonitor(window: *Window) ?*Monitor;
 
 pub const setCursorPosCallback = glfwSetCursorPosCallback;
 extern fn glfwSetCursorPosCallback(window: *Window, callback: ?CursorPosFn) ?CursorPosFn;
@@ -1136,50 +1150,50 @@ pub const ContextCreationApi = enum(c_int) {
 //
 //--------------------------------------------------------------------------------------------------
 pub const getWin32Adapter = if (builtin.target.os.tag == .windows) glfwGetWin32Adapter else _getWin32Adapter;
-extern fn glfwGetWin32Adapter(*Monitor) ?[*:0]const u8;
+extern fn glfwGetWin32Adapter(*Monitor) callconv(.c) ?[*:0]const u8;
 fn _getWin32Adapter(_: *Monitor) ?[*:0]const u8 {
     return null;
 }
 
 pub const getWin32Window = if (builtin.target.os.tag == .windows) glfwGetWin32Window else _getWin32Window;
-extern fn glfwGetWin32Window(*Window) ?std.os.windows.HWND;
+extern fn glfwGetWin32Window(*Window) callconv(.c) ?std.os.windows.HWND;
 fn _getWin32Window(_: *Window) ?std.os.windows.HWND {
     return null;
 }
 
 pub const getX11Adapter = if (_isLinuxDesktopLike() and options.enable_x11) glfwGetX11Adapter else _getX11Adapter;
-extern fn glfwGetX11Adapter(*Monitor) u32;
+extern fn glfwGetX11Adapter(*Monitor) callconv(.c) u32;
 fn _getX11Adapter(_: *Monitor) u32 {
     return 0;
 }
 
 pub const getX11Display = if (_isLinuxDesktopLike() and options.enable_x11) glfwGetX11Display else _getX11Display;
-extern fn glfwGetX11Display() ?*anyopaque;
-fn _getX11Display() ?*anyopaque {
+extern fn glfwGetX11Display() callconv(.c) ?*anyopaque;
+fn _getX11Display() callconv(.c) ?*anyopaque {
     return null;
 }
 
 pub const getX11Window = if (_isLinuxDesktopLike() and options.enable_x11) glfwGetX11Window else _getX11Window;
-extern fn glfwGetX11Window(window: *Window) u32;
+extern fn glfwGetX11Window(window: *Window) callconv(.c) u32;
 fn _getX11Window(_: *Window) u32 {
     return 0;
 }
 
 pub const getWaylandDisplay = if (_isLinuxDesktopLike() and options.enable_wayland) glfwGetWaylandDisplay else _getWaylandDisplay;
-extern fn glfwGetWaylandDisplay() ?*anyopaque;
-fn _getWaylandDisplay() ?*anyopaque {
+extern fn glfwGetWaylandDisplay() callconv(.c) ?*anyopaque;
+fn _getWaylandDisplay() callconv(.c) ?*anyopaque {
     return null;
 }
 
 pub const getWaylandWindow = if (_isLinuxDesktopLike() and options.enable_wayland) glfwGetWaylandWindow else _getWaylandWindow;
-extern fn glfwGetWaylandWindow(window: *Window) ?*anyopaque;
-fn _getWaylandWindow(_: *Window) ?*anyopaque {
+extern fn glfwGetWaylandWindow(window: *Window) callconv(.c) ?*anyopaque;
+fn _getWaylandWindow(_: *Window) callconv(.c) ?*anyopaque {
     return null;
 }
 
 pub const getCocoaWindow = if (builtin.target.os.tag == .macos) glfwGetCocoaWindow else _getCocoaWindow;
-extern fn glfwGetCocoaWindow(window: *Window) ?*anyopaque;
-fn _getCocoaWindow(_: *Window) ?*anyopaque {
+extern fn glfwGetCocoaWindow(window: *Window) callconv(.c) ?*anyopaque;
+fn _getCocoaWindow(_: *Window) callconv(.c) ?*anyopaque {
     return null;
 }
 

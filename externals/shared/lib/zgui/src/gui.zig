@@ -16,9 +16,11 @@ pub const backend = switch (@import("zgui_options").backend) {
     .glfw_vulkan => @import("backend_glfw_vulkan.zig"),
     .glfw => @import("backend_glfw.zig"),
     .win32_dx12 => @import("backend_win32_dx12.zig"),
-    .sdl2_opengl3 => @import("backend_sdl2_opengl.zig"),
     .osx_metal => @import("backend_osx_metal.zig"),
     .sdl2 => @import("backend_sdl2.zig"),
+    .sdl2_opengl3 => @import("backend_sdl2_opengl.zig"),
+    .sdl3 => @import("backend_sdl3.zig"),
+    .sdl3_opengl3 => @import("backend_sdl3_opengl.zig"),
     .sdl3_gpu => @import("backend_sdl3_gpu.zig"),
     .no_backend => .{},
 };
@@ -127,9 +129,11 @@ fn zguiMemFree(maybe_ptr: ?*anyopaque, _: ?*anyopaque) callconv(.C) void {
         defer mem_mutex.unlock();
 
         if (mem_allocations != null) {
-            const size = mem_allocations.?.fetchRemove(@intFromPtr(ptr)).?.value;
-            const mem = @as([*]align(mem_alignment) u8, @ptrCast(@alignCast(ptr)))[0..size];
-            mem_allocator.?.free(mem);
+            if (mem_allocations.?.fetchRemove(@intFromPtr(ptr))) |kv| {
+                const size = kv.value;
+                const mem = @as([*]align(mem_alignment) u8, @ptrCast(@alignCast(ptr)))[0..size];
+                mem_allocator.?.free(mem);
+            }
         }
     }
 }
@@ -697,6 +701,9 @@ pub fn setNextWindowSize(args: SetNextWindowSize) void {
 }
 extern fn zguiSetNextWindowSize(w: f32, h: f32, cond: Condition) void;
 //--------------------------------------------------------------------------------------------------
+extern fn zguiSetNextWindowContentSize(w: f32, h: f32) void;
+pub const setNextWindowContentSize = zguiSetNextWindowContentSize;
+//--------------------------------------------------------------------------------------------------
 const SetNextWindowCollapsed = struct {
     collapsed: bool,
     cond: Condition = .none,
@@ -709,6 +716,9 @@ extern fn zguiSetNextWindowCollapsed(collapsed: bool, cond: Condition) void;
 /// `pub fn setNextWindowFocus() void`
 pub const setNextWindowFocus = zguiSetNextWindowFocus;
 extern fn zguiSetNextWindowFocus() void;
+//--------------------------------------------------------------------------------------------------
+extern fn zguiSetNextWindowScroll(scroll_x: f32, scroll_y: f32) void;
+pub const setNextWindowScroll = zguiSetNextWindowScroll;
 //--------------------------------------------------------------------------------------------------
 const SetNextWindowBgAlpha = struct {
     alpha: f32,
@@ -723,11 +733,19 @@ pub fn setWindowFocus(name: ?[:0]const u8) void {
 }
 extern fn zguiSetWindowFocus(name: ?[*:0]const u8) void;
 //-------------------------------------------------------------------------------------------------
+extern fn zguiSetWindowFontScale(scale: f32) void;
+pub const setWindowFontScale = zguiSetWindowFontScale;
+//-------------------------------------------------------------------------------------------------
 pub fn setKeyboardFocusHere(offset: i32) void {
     zguiSetKeyboardFocusHere(offset);
 }
 extern fn zguiSetKeyboardFocusHere(offset: c_int) void;
 
+extern fn zguiSetNavCursorVisible(visible: bool) void;
+pub const setNavCursorVisible = zguiSetNavCursorVisible;
+
+extern fn zguiSetNextItemAllowOverlap() void;
+pub const setNextItemAllowOverlap = zguiSetNextItemAllowOverlap;
 //--------------------------------------------------------------------------------------------------
 const Begin = struct {
     popen: ?*bool = null,
@@ -1455,6 +1473,9 @@ pub const getMouseCursor = zguiGetMouseCursor;
 pub const setMouseCursor = zguiSetMouseCursor;
 extern fn zguiGetMouseCursor() Cursor;
 extern fn zguiSetMouseCursor(cursor: Cursor) void;
+
+extern fn zguiSetNextFrameWantCaptureMouse(want_capture_mouse: bool) void;
+pub const setNextFrameWantCaptureMouse = zguiSetNextFrameWantCaptureMouse;
 //--------------------------------------------------------------------------------------------------
 pub fn getMousePos() [2]f32 {
     var pos: [2]f32 = undefined;
@@ -1744,6 +1765,13 @@ pub fn progressBar(args: ProgressBar) void {
     zguiProgressBar(args.fraction, args.w, args.h, if (args.overlay) |o| o else null);
 }
 extern fn zguiProgressBar(fraction: f32, w: f32, h: f32, overlay: ?[*:0]const u8) void;
+//--------------------------------------------------------------------------------------------------
+extern fn zguiTextLink(label: [*:0]const u8) bool;
+pub const textLink = zguiTextLink;
+
+extern fn zguiTextLinkOpenURL(label: [*:0]const u8, url: ?[*:0]const u8) void;
+pub const textLinkOpenURL = zguiTextLinkOpenURL;
+
 //--------------------------------------------------------------------------------------------------
 //
 // Widgets: Combo Box
@@ -2993,6 +3021,9 @@ extern fn zguiTreePushPtrId(ptr_id: *const anyopaque) void;
 pub const treePop = zguiTreePop;
 extern fn zguiTreePop() void;
 //--------------------------------------------------------------------------------------------------
+extern fn zguiGetTreeNodeToLabelSpacing() f32;
+pub const getTreeNodeToLabelSpacing = zguiGetTreeNodeToLabelSpacing;
+//--------------------------------------------------------------------------------------------------
 const CollapsingHeaderStatePtr = struct {
     pvisible: *bool,
     flags: TreeNodeFlags = .{},
@@ -3078,6 +3109,15 @@ pub fn beginListBox(label: [:0]const u8, args: BeginListBox) bool {
 pub const endListBox = zguiEndListBox;
 extern fn zguiBeginListBox(label: [*:0]const u8, w: f32, h: f32) bool;
 extern fn zguiEndListBox() void;
+extern fn zguiListBox(label: [*:0]const u8, current_item: *i32, items: [*]const [*:0]const u8, item_count: i32, height_in_items: i32) bool;
+pub const ListBox = struct {
+    current_item: *i32,
+    items: []const [*:0]const u8,
+    height_in_items: i32 = -1,
+};
+pub fn listBox(label: [*:0]const u8, args: ListBox) bool {
+    return zguiListBox(label, args.current_item, args.items.ptr, @intCast(args.items.len), args.height_in_items);
+}
 //--------------------------------------------------------------------------------------------------
 //
 // Widgets: Tables
@@ -3311,6 +3351,9 @@ extern fn zguiTableGetColumnFlags(column_n: i32) TableColumnFlags;
 pub const tableSetColumnEnabled = zguiTableSetColumnEnabled;
 extern fn zguiTableSetColumnEnabled(column_n: i32, v: bool) void;
 
+extern fn zguiTableGetHoveredColumn() i32;
+pub const tableGetHoveredColumn = zguiTableGetHoveredColumn;
+
 pub fn tableSetBgColor(args: struct {
     target: TableBgTarget,
     color: u32,
@@ -3319,6 +3362,37 @@ pub fn tableSetBgColor(args: struct {
     zguiTableSetBgColor(args.target, args.color, args.column_n);
 }
 extern fn zguiTableSetBgColor(target: TableBgTarget, color: c_uint, column_n: c_int) void;
+
+pub const Columns = struct {
+    count: i32 = 1,
+    id: ?[*:0]const u8 = null,
+    borders: bool = true,
+};
+extern fn zguiColumns(count: i32, id: ?[*:0]const u8, borders: bool) void;
+pub fn columns(args: Columns) void {
+    zguiColumns(args.count, args.id, args.borders);
+}
+
+extern fn zguiNextColumn() void;
+pub const nextColumn = zguiNextColumn;
+
+extern fn zguiGetColumnIndex() i32;
+pub const getColumnIndex = zguiGetColumnIndex;
+
+extern fn zguiGetColumnWidth(column_index: i32) f32;
+pub const getColumnWidth = zguiGetColumnWidth;
+
+extern fn zguiSetColumnWidth(column_index: i32, width: f32) void;
+pub const setColumnWidth = zguiSetColumnWidth;
+
+extern fn zguiGetColumnOffset(column_index: i32) f32;
+pub const getColumnOffset = zguiGetColumnOffset;
+
+extern fn zguiSetColumnOffset(column_index: i32, offset_x: f32) void;
+pub const setColumnOffset = zguiSetColumnOffset;
+
+extern fn zguiGetColumnsCount() i32;
+pub const getColumnsCount = zguiGetColumnsCount;
 
 //--------------------------------------------------------------------------------------------------
 //
@@ -3348,6 +3422,7 @@ pub const isMouseReleased = zguiIsMouseReleased;
 pub const isMouseDoubleClicked = zguiIsMouseDoubleClicked;
 /// `pub fn getMouseClickedCount(mouse_button: MouseButton) bool`
 pub const getMouseClickedCount = zguiGetMouseClickedCount;
+pub const isAnyMouseDown = zguiIsAnyMouseDown;
 /// `pub fn isMouseDragging(mouse_button: MouseButton, lock_threshold: f32) bool`
 pub const isMouseDragging = zguiIsMouseDragging;
 /// `pub fn isItemClicked(mouse_button: MouseButton) bool`
@@ -3375,6 +3450,7 @@ extern fn zguiIsMouseClicked(mouse_button: MouseButton) bool;
 extern fn zguiIsMouseReleased(mouse_button: MouseButton) bool;
 extern fn zguiIsMouseDoubleClicked(mouse_button: MouseButton) bool;
 extern fn zguiGetMouseClickedCount(mouse_button: MouseButton) u32;
+extern fn zguiIsAnyMouseDown() bool;
 extern fn zguiIsMouseDragging(mouse_button: MouseButton, lock_threshold: f32) bool;
 extern fn zguiIsItemHovered(flags: HoveredFlags) bool;
 extern fn zguiIsItemActive() bool;
@@ -3441,8 +3517,25 @@ extern fn zguiColorConvertHSVtoRGB(h: f32, s: f32, v: f32, out_r: *f32, out_g: *
 pub fn isKeyDown(key: Key) bool {
     return zguiIsKeyDown(key);
 }
+pub fn isKeyPressed(key: Key, repeat: bool) bool {
+    return zguiIsKeyPressed(key, repeat);
+}
+pub fn isKeyReleased(key: Key) bool {
+    return zguiIsKeyReleased(key);
+}
+pub fn setNextFrameWantCaptureKeyboard(want_capture_keyboard: bool) void {
+    zguiSetNextFrameWantCaptureKeyboard(want_capture_keyboard);
+}
+extern fn zguiGetKeyPressedAmount(key: Key, repeat_delay: f32, rate: f32) i32;
+pub const getKeyPressedAmount = zguiGetKeyPressedAmount;
+
+extern fn zguiSetItemKeyOwner(key: Key) void;
+pub const setItemKeyOwner = zguiSetItemKeyOwner;
 
 extern fn zguiIsKeyDown(key: Key) bool;
+extern fn zguiIsKeyPressed(key: Key, repeat: bool) bool;
+extern fn zguiIsKeyReleased(key: Key) bool;
+extern fn zguiSetNextFrameWantCaptureKeyboard(want_capture_keyboard: bool) void;
 //--------------------------------------------------------------------------------------------------
 //
 // Helpers
@@ -3638,6 +3731,10 @@ extern fn zguiBeginTabItem(label: [*:0]const u8, p_open: ?*bool, flags: TabItemF
 extern fn zguiEndTabItem() void;
 extern fn zguiEndTabBar() void;
 extern fn zguiSetTabItemClosed(tab_or_docked_window_label: [*:0]const u8) void;
+
+extern fn zguiTabItemButton(label: [*:0]const u8, flags: TabItemFlags) bool;
+pub const tabItemButton = zguiTabItemButton;
+
 //--------------------------------------------------------------------------------------------------
 //
 // Viewport
@@ -3745,7 +3842,7 @@ pub const DragDropFlags = packed struct(c_int) {
     pub const accept_peek_only = @This(){ .accept_before_delivery = true, .accept_no_draw_default_rect = true };
 };
 
-const Payload = extern struct {
+pub const Payload = extern struct {
     data: ?*anyopaque = null,
     data_size: c_int = 0,
     source_id: c_uint = 0,
@@ -3870,6 +3967,9 @@ pub const DrawCallback = *const fn (*const anyopaque, *const DrawCmd) callconv(.
 pub const getWindowDrawList = zguiGetWindowDrawList;
 pub const getBackgroundDrawList = zguiGetBackgroundDrawList;
 pub const getForegroundDrawList = zguiGetForegroundDrawList;
+
+extern fn zguiGetWindowDpiScale() f32;
+pub const getWindowDpiScale = zguiGetWindowDpiScale;
 
 pub const createDrawList = zguiCreateDrawList;
 pub fn destroyDrawList(draw_list: DrawList) void {
@@ -4226,6 +4326,59 @@ pub const DrawList = *opaque {
         num_segments: c_int,
     ) void;
     //----------------------------------------------------------------------------------------------
+    pub fn addEllipse(draw_list: DrawList, args: struct {
+        p: [2]f32,
+        r: [2]f32,
+        col: u32,
+        rot: f32 = 0,
+        num_segments: i32 = 0,
+        thickness: f32 = 1.0,
+    }) void {
+        zguiDrawList_AddEllipse(
+            draw_list,
+            &args.p,
+            &args.r,
+            args.col,
+            args.rot,
+            args.num_segments,
+            args.thickness,
+        );
+    }
+    extern fn zguiDrawList_AddEllipse(
+        draw_list: DrawList,
+        center: *const [2]f32,
+        radius: *const [2]f32,
+        col: u32,
+        rot: f32,
+        num_segments: c_int,
+        thickness: f32,
+    ) void;
+    //----------------------------------------------------------------------------------------------
+    pub fn addEllipseFilled(draw_list: DrawList, args: struct {
+        p: [2]f32,
+        r: [2]f32,
+        col: u32,
+        rot: f32 = 0,
+        num_segments: u16 = 0,
+    }) void {
+        zguiDrawList_AddEllipseFilled(
+            draw_list,
+            &args.p,
+            &args.r,
+            args.col,
+            args.rot,
+            args.num_segments,
+        );
+    }
+    extern fn zguiDrawList_AddEllipseFilled(
+        draw_list: DrawList,
+        center: *const [2]f32,
+        radius: *const [2]f32,
+        col: u32,
+        rot: f32,
+        num_segments: c_int,
+    ) void;
+    //----------------------------------------------------------------------------------------------
     pub fn addNgon(draw_list: DrawList, args: struct {
         p: [2]f32,
         r: f32,
@@ -4318,6 +4471,25 @@ pub const DrawList = *opaque {
         );
     }
     extern fn zguiDrawList_AddConvexPolyFilled(
+        draw_list: DrawList,
+        points: [*]const [2]f32,
+        num_points: c_int,
+        col: u32,
+    ) void;
+    //----------------------------------------------------------------------------------------------
+    pub fn addConcavePolyFilled(
+        draw_list: DrawList,
+        points: []const [2]f32,
+        col: u32,
+    ) void {
+        zguiDrawList_AddConcavePolyFilled(
+            draw_list,
+            points.ptr,
+            @intCast(points.len),
+            col,
+        );
+    }
+    extern fn zguiDrawList_AddConcavePolyFilled(
         draw_list: DrawList,
         points: [*]const [2]f32,
         num_points: c_int,
@@ -4500,6 +4672,11 @@ pub const DrawList = *opaque {
     }
     extern fn zguiDrawList_PathFillConvex(draw_list: DrawList, col: c_uint) void;
     //----------------------------------------------------------------------------------------------
+    pub fn pathFillConcave(draw_list: DrawList, col: u32) void {
+        return zguiDrawList_PathFillConcave(draw_list, col);
+    }
+    extern fn zguiDrawList_PathFillConcave(draw_list: DrawList, col: c_uint) void;
+    //----------------------------------------------------------------------------------------------
     pub fn pathStroke(draw_list: DrawList, args: struct {
         col: u32,
         flags: DrawFlags = .{},
@@ -4548,6 +4725,34 @@ pub const DrawList = *opaque {
         radius: f32,
         a_min_of_12: c_int,
         a_max_of_12: c_int,
+    ) void;
+    //----------------------------------------------------------------------------------------------
+    pub fn pathEllipticalArcTo(draw_list: DrawList, args: struct {
+        p: [2]f32,
+        r: [2]f32,
+        rot: f32,
+        amin: f32,
+        amax: f32,
+        num_segments: u16 = 0,
+    }) void {
+        zguiDrawList_PathEllipticalArcTo(
+            draw_list,
+            &args.p,
+            &args.r,
+            args.rot,
+            args.amin,
+            args.amax,
+            args.num_segments,
+        );
+    }
+    extern fn zguiDrawList_PathEllipticalArcTo(
+        draw_list: DrawList,
+        center: *const [2]f32,
+        radius: *const [2]f32,
+        rot: f32,
+        amin: f32,
+        amax: f32,
+        num_segments: c_int,
     ) void;
     //----------------------------------------------------------------------------------------------
     pub fn pathBezierCubicCurveTo(draw_list: DrawList, args: struct {

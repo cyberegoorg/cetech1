@@ -12,6 +12,6 @@
         .renderer = .{ .path = "../../modules/rendering/renderer" },
         .transform = .{ .path = "../../modules/rendering/transform" },
         .camera = .{ .path = "../../modules/rendering/camera" },
-        .editor_entity = .{ .path = "../../modules/editor/entity" },
+        .editor_entity = .{ .path = "../../modules/editor/entity_editor" },
     },
 }

@@ -2,8 +2,6 @@
 
 const std = @import("std");
 
-//const cdb = cetech1.cdb;
-
 const cetech1 = @import("root.zig");
 const cdb = @import("cdb.zig");
 const modules = @import("modules.zig");

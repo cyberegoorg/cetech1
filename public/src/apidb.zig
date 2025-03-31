@@ -23,14 +23,14 @@ pub const ApiDbAPI = struct {
     pub const lang_zig = "zig";
 
     /// Crete variable that can survive reload.
-    pub inline fn globalVar(self: Self, comptime T: type, comptime module: @Type(.enum_literal), var_name: []const u8, default: T) !*T {
-        const ptr: *T = @ptrFromInt(@intFromPtr(try self.globalVarFn(@tagName(module), var_name, @sizeOf(T), &std.mem.toBytes(default))));
+    pub inline fn setGlobalVar(self: Self, comptime T: type, comptime module: @Type(.enum_literal), var_name: []const u8, default: T) !*T {
+        const ptr: *T = @ptrFromInt(@intFromPtr(try self.setGlobalVarFn(@tagName(module), var_name, @sizeOf(T), &std.mem.toBytes(default))));
         return ptr;
     }
 
     /// Crete variable that can survive reload + always set value
-    pub inline fn globalVarValue(self: Self, comptime T: type, comptime module: @Type(.enum_literal), var_name: []const u8, value: T) !*T {
-        const ptr: *T = @ptrFromInt(@intFromPtr(try self.globalVarFn(@tagName(module), var_name, @sizeOf(T), &.{})));
+    pub inline fn setGlobalVarValue(self: Self, comptime T: type, comptime module: @Type(.enum_literal), var_name: []const u8, value: T) !*T {
+        const ptr: *T = @ptrFromInt(@intFromPtr(try self.setGlobalVarFn(@tagName(module), var_name, @sizeOf(T), &.{})));
         ptr.* = value;
         return ptr;
     }
@@ -122,7 +122,7 @@ pub const ApiDbAPI = struct {
     }
 
     //#region Pointers to implementation.
-    globalVarFn: *const fn (module: []const u8, var_name: []const u8, size: usize, default: []const u8) anyerror!*anyopaque,
+    setGlobalVarFn: *const fn (module: []const u8, var_name: []const u8, size: usize, default: []const u8) anyerror!*anyopaque,
 
     setApiOpaqueueFn: *const fn (module: []const u8, language: []const u8, api_name: []const u8, api_ptr: *const anyopaque, api_size: usize) anyerror!void,
     getApiOpaaqueFn: *const fn (module: []const u8, language: []const u8, api_name: []const u8, api_size: usize) ?*anyopaque,

@@ -3,8 +3,8 @@ const builtin = @import("builtin");
 
 pub const generate_ide = @import("src/tools/generate_ide.zig");
 
-const min_zig_version = std.SemanticVersion.parse("0.14.0-dev.1911") catch @panic("Where is .zigversion?");
-const version = std.SemanticVersion.parse(@embedFile(".version")) catch @panic("Where is .version?");
+const min_zig_version = std.SemanticVersion.parse("0.14.0") catch @panic("Where is .zigversion?");
+const cetech1_version = std.SemanticVersion.parse(@embedFile(".version")) catch @panic("Where is .version?");
 
 pub fn useSystemSDK(b: *std.Build, target: std.Build.ResolvedTarget, e: *std.Build.Step.Compile) void {
     switch (target.result.os.tag) {
@@ -116,6 +116,33 @@ pub fn updateCectechStep(
     step.dependOn(&sync_remote_submodules.step);
 }
 
+pub fn createKernelExe(
+    b: *std.Build,
+    comptime bin_name: []const u8,
+    runner_main: std.Build.LazyPath,
+    cetech1_kernel: *std.Build.Module,
+    cetech1_kernel_lib: *std.Build.Step.Compile,
+    versionn: std.SemanticVersion,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) *std.Build.Step.Compile {
+    const exe = b.addExecutable(.{
+        .name = bin_name,
+        .version = versionn,
+        .root_source_file = runner_main,
+        .target = target,
+        .optimize = optimize,
+    });
+    exe.linkLibC();
+    exe.root_module.addImport("kernel", cetech1_kernel);
+    exe.linkLibrary(cetech1_kernel_lib);
+    b.installArtifact(exe);
+    useSystemSDK(b, target, exe);
+    createRunStep(b, exe);
+
+    return exe;
+}
+
 pub fn build(b: *std.Build) !void {
     try ensureZigVersion();
 
@@ -156,7 +183,7 @@ pub fn build(b: *std.Build) !void {
     const authors = b.option(std.Build.LazyPath, "authors", "Path to AUTHORS.");
 
     const options_step = b.addOptions();
-    options_step.addOption(std.SemanticVersion, "version", version);
+    options_step.addOption(std.SemanticVersion, "version", cetech1_version);
 
     // add build args
     inline for (std.meta.fields(@TypeOf(options))) |field| {
@@ -375,97 +402,6 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
-    // cetech1 kernel
-    const lib = b.addStaticLibrary(.{
-        .name = "cetech1_static",
-        .version = version,
-        .root_source_file = b.path("src/private.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    b.installArtifact(lib);
-    lib.linkLibC();
-
-    const kernel_module = b.addModule("kernel", .{
-        .root_source_file = b.path("src/private.zig"),
-        .imports = &.{
-            .{ .name = "cetech1", .module = cetech1.module("cetech1") },
-            .{ .name = "cetech1_options", .module = options_module },
-            .{ .name = "ztracy", .module = ztracy.module("root") },
-            .{ .name = "zglfw", .module = zglfw.module("root") },
-            .{ .name = "zgui", .module = zgui.module("root") },
-            .{ .name = "zflecs", .module = zflecs.module("root") },
-            .{ .name = "zf", .module = zf.module("zf") },
-            .{ .name = "Uuid", .module = uuid.module("Uuid") },
-            .{ .name = "zbgfx", .module = zbgfx.module("zbgfx") },
-            .{ .name = "znfde", .module = znfde.module("root") },
-            .{ .name = "static_module", .module = static_module_module },
-        },
-    });
-    kernel_module.addAnonymousImport("authors", .{
-        .root_source_file = authors orelse b.path("AUTHORS.md"),
-    });
-    kernel_module.addAnonymousImport("externals_credit", .{
-        .root_source_file = external_credits_file,
-    });
-    kernel_module.addAnonymousImport("gamecontrollerdb", .{
-        .root_source_file = b.path("externals/shared/lib/SDL_GameControllerDB/gamecontrollerdb.txt"),
-    });
-    kernel_module.addAnonymousImport("fa-solid-900", .{
-        .root_source_file = b.path("externals/shared/fonts/fa-solid-900.ttf"),
-    });
-    kernel_module.addAnonymousImport("Roboto-Medium", .{
-        .root_source_file = b.path("externals/shared/fonts/Roboto-Medium.ttf"),
-    });
-
-    // cetech1 standalone exe
-    const exe = b.addExecutable(.{
-        .name = "cetech1",
-        .version = version,
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    b.installArtifact(exe);
-    exe.linkLibC();
-    exe.linkLibrary(lib);
-    exe.root_module.addImport("kernel", kernel_module);
-    useSystemSDK(b, target, exe);
-    createRunStep(b, exe);
-
-    // cetech1 standalone test
-    const tests = b.addTest(.{
-        .name = "cetech1_test",
-        .version = version,
-        .root_source_file = b.path("src/tests.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    b.installArtifact(tests);
-    tests.linkLibC();
-    tests.linkLibrary(lib);
-    tests.root_module.addImport("cetech1", cetech1.module("cetech1"));
-    tests.root_module.addImport("cetech1_options", options_module);
-    tests.root_module.addImport("ztracy", ztracy.module("root"));
-    tests.root_module.addImport("zglfw", zglfw.module("root"));
-    tests.root_module.addImport("zgui", zgui.module("root"));
-    tests.root_module.addImport("zflecs", zflecs.module("root"));
-    tests.root_module.addImport("zf", zf.module("zf"));
-    tests.root_module.addImport("Uuid", uuid.module("Uuid"));
-    tests.root_module.addImport("zbgfx", zbgfx.module("zbgfx"));
-    tests.root_module.addImport("static_module", static_module_module);
-
-    const run_unit_tests = b.addRunArtifact(tests);
-    run_unit_tests.step.dependOn(b.getInstallStep());
-    const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_unit_tests.step);
-
-    const run_tests_ui = b.addRunArtifact(exe);
-    run_tests_ui.addArgs(&.{ "--test-ui", "--headless" });
-    run_tests_ui.step.dependOn(b.getInstallStep());
-    const testui_step = b.step("test-ui", "Run UI headless test");
-    testui_step.dependOn(&run_tests_ui.step);
-
     if (options.enable_shaderc) {
         b.installArtifact(zbgfx.artifact("shaderc"));
     }
@@ -487,44 +423,127 @@ pub fn build(b: *std.Build) !void {
         }
     }
 
-    // Libs, moduels etc..
-    inline for (.{ tests, lib }) |e| {
-        useSystemSDK(b, target, e);
+    const imports = [_]std.Build.Module.Import{
+        .{ .name = "cetech1", .module = cetech1.module("cetech1") },
 
-        // Make exe depends on generated files.
-        e.step.dependOn(&generated_files.step);
+        .{ .name = "cetech1_options", .module = options_module },
+        .{ .name = "static_module", .module = static_module_module },
 
-        e.root_module.addAnonymousImport("authors", .{
-            .root_source_file = authors orelse b.path("AUTHORS.md"),
-        });
+        // Deps
+        .{ .name = "ztracy", .module = ztracy.module("root") },
+        .{ .name = "zglfw", .module = zglfw.module("root") },
+        .{ .name = "zgui", .module = zgui.module("root") },
+        .{ .name = "zflecs", .module = zflecs.module("root") },
+        .{ .name = "zf", .module = zf.module("zf") },
+        .{ .name = "Uuid", .module = uuid.module("Uuid") },
+        .{ .name = "zbgfx", .module = zbgfx.module("zbgfx") },
+        .{ .name = "znfde", .module = znfde.module("root") },
 
-        e.root_module.addAnonymousImport("externals_credit", .{
-            .root_source_file = external_credits_file,
-        });
+        // Generated stuff
+        .{
+            .name = "externals_credit",
+            .module = b.createModule(.{ .root_source_file = external_credits_file }),
+        },
+        .{
+            .name = "authors",
+            .module = b.createModule(.{ .root_source_file = authors orelse b.path("AUTHORS.md") }),
+        },
+        .{
+            .name = "gamecontrollerdb",
+            .module = b.createModule(.{ .root_source_file = b.path("externals/shared/lib/SDL_GameControllerDB/gamecontrollerdb.txt") }),
+        },
+        .{ .name = "authors", .module = b.createModule(.{ .root_source_file = b.path("externals/shared/lib/SDL_GameControllerDB/gamecontrollerdb.txt") }) },
+        .{
+            .name = "fa-solid-900",
+            .module = b.createModule(.{ .root_source_file = b.path("externals/shared/fonts/fa-solid-900.ttf") }),
+        },
+        .{
+            .name = "Roboto-Medium",
+            .module = b.createModule(.{ .root_source_file = b.path("externals/shared/fonts/Roboto-Medium.ttf") }),
+        },
+    };
 
-        e.root_module.addAnonymousImport("gamecontrollerdb", .{
-            .root_source_file = b.path("externals/shared/lib/SDL_GameControllerDB/gamecontrollerdb.txt"),
-        });
+    //
+    // CETech1 kernel lib
+    //
+    const kernel_lib = b.addStaticLibrary(.{
+        .name = "cetech1_kernel",
+        .version = cetech1_version,
+        .root_source_file = b.path("src/private.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    useSystemSDK(b, target, kernel_lib);
+    b.installArtifact(kernel_lib);
+    kernel_lib.linkLibC();
+    kernel_lib.linkLibrary(ztracy.artifact("tracy"));
+    kernel_lib.linkLibrary(zglfw.artifact("glfw"));
+    kernel_lib.linkLibrary(zgui.artifact("imgui"));
+    kernel_lib.linkLibrary(zbgfx.artifact("bgfx"));
+    kernel_lib.linkLibrary(zflecs.artifact("flecs"));
 
-        e.root_module.addAnonymousImport("fa-solid-900", .{
-            .root_source_file = b.path("externals/shared/fonts/fa-solid-900.ttf"),
-        });
+    if (options.enable_nfd) {
+        kernel_lib.root_module.addImport("znfde", znfde.module("root"));
+        kernel_lib.linkLibrary(znfde.artifact("nfde"));
+    }
 
-        e.root_module.addAnonymousImport("Roboto-Medium", .{
-            .root_source_file = b.path("externals/shared/fonts/Roboto-Medium.ttf"),
-        });
+    const kernel_module = b.addModule("kernel", .{
+        .root_source_file = b.path("src/private.zig"),
+        .imports = &imports,
+    });
 
-        e.linkLibrary(ztracy.artifact("tracy"));
-        e.linkLibrary(zglfw.artifact("glfw"));
-        e.linkLibrary(zgui.artifact("imgui"));
-        e.linkLibrary(zbgfx.artifact("bgfx"));
-        e.linkLibrary(zflecs.artifact("flecs"));
+    //
+    // CETech1 kernel standalone exe
+    //
+    const exe = createKernelExe(
+        b,
+        "cetech1",
+        b.path("src/main.zig"),
+        kernel_module,
+        kernel_lib,
+        cetech1_version,
+        target,
+        optimize,
+    );
+    // Make exe depends on generated files.
+    exe.step.dependOn(&generated_files.step);
 
-        if (options.enable_nfd) {
-            e.root_module.addImport("znfde", znfde.module("root"));
-            e.linkLibrary(znfde.artifact("nfde"));
-        }
+    //
+    // CETech1 kernel standalone tests
+    //
+    const tests = b.addTest(.{
+        .name = "cetech1_test",
+        .version = cetech1_version,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tests.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &imports,
+        }),
+        .target = target,
+        .optimize = optimize,
+    });
+    useSystemSDK(b, target, tests);
+    b.installArtifact(tests);
+    tests.linkLibC();
+    tests.linkLibrary(kernel_lib);
+    tests.step.dependOn(&generated_files.step);
 
+    const run_unit_tests = b.addRunArtifact(tests);
+    run_unit_tests.step.dependOn(b.getInstallStep());
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&run_unit_tests.step);
+
+    const run_tests_ui = b.addRunArtifact(exe);
+    run_tests_ui.addArgs(&.{ "--test-ui", "--headless" });
+    run_tests_ui.step.dependOn(b.getInstallStep());
+    const testui_step = b.step("test-ui", "Run UI headless test");
+    testui_step.dependOn(&run_tests_ui.step);
+
+    //
+    // Static modules linking
+    //
+    inline for (.{ tests, kernel_lib }) |e| {
         if (options.static_modules) {
             var buff: [256:0]u8 = undefined;
             for (enabled_modules.items) |m| {
@@ -581,17 +600,18 @@ pub const editor_modules = [_][]const u8{
     "editor_entity",
     "editor_asset_preview",
     "editor_simulation",
+    "editor_renderer",
 };
 
 pub const core_modules = [_][]const u8{
+    "graphvm",
+    "renderer",
+    "default_rg",
+    "shader_system",
     "render_component",
     "entity_logic_component",
-    "graphvm",
-    "default_rg",
-    "renderer",
     "transform",
     "camera",
-    "shader_system",
 };
 
 pub const samples_modules = [_][]const u8{

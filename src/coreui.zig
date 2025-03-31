@@ -1311,8 +1311,13 @@ fn pushObjUUID(obj: cdb.ObjId) void {
 
 fn uiFilterPass(allocator: std.mem.Allocator, filter: [:0]const u8, value: [:0]const u8, is_path: bool) ?f64 {
     // Collect token for filter
-    var tokens = cetech1.ArrayList([]const u8){};
-    defer tokens.deinit(allocator);
+    var tokens = cetech1.ArrayList([]u8){};
+    defer {
+        for (tokens.items) |v| {
+            allocator.free(v);
+        }
+        tokens.deinit(allocator);
+    }
 
     var split = std.mem.splitAny(u8, filter, " ");
     const first = split.first();
@@ -1320,14 +1325,13 @@ fn uiFilterPass(allocator: std.mem.Allocator, filter: [:0]const u8, value: [:0]c
     while (it) |word| : (it = split.next()) {
         if (word.len == 0) continue;
 
-        var buff: [128]u8 = undefined;
-        const lower_token = std.ascii.lowerString(&buff, word);
+        const lower_token = std.ascii.allocLowerString(allocator, word) catch return null;
 
         tokens.append(allocator, lower_token) catch return null;
     }
     //return 0;
 
-    return zf.rank(value, tokens.items, .{ .to_lower = false, .plain = !is_path });
+    return zf.rank(value, tokens.items, .{ .to_lower = true, .plain = !is_path });
 }
 
 fn uiFilter(buf: []u8, filter: ?[:0]const u8) ?[:0]const u8 {

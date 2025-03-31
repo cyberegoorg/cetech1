@@ -18,7 +18,7 @@ permissions:
 env:
   INSTANCE: docs/cetech1
   ARTIFACT: webHelpCETECH12-all.zip
-  DOCKER_VERSION: "2025.03.8312"
+  DOCKER_VERSION: "2025.04.8412"
 
 jobs:
   build:

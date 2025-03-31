@@ -1,13 +1,13 @@
 diff --git a/externals/shared/lib/zgui/build.zig.zon b/externals/shared/lib/zgui/build.zig.zon
-index 278d708b..52e9ef0c 100644
+index 11dc5a86..9fb22b52 100644
 --- a/externals/shared/lib/zgui/build.zig.zon
 +++ b/externals/shared/lib/zgui/build.zig.zon
-@@ -17,8 +17,7 @@
+@@ -18,8 +18,7 @@
              .lazy = true,
          },
          .zglfw = .{
--            .url = "https://github.com/zig-gamedev/zglfw/archive/dcb1dae7d4a90f88b70dbae73300ab9b19fb250c.tar.gz",
--            .hash = "zglfw-0.10.0-dev-zgVDNJmZIQCIiO_94Sp5jqrPtz4Eumk3bDcxS7dSZfIj",
+-            .url = "https://github.com/zig-gamedev/zglfw/archive/c337cb3d3f984468ea7a386335937a5d555fc024.tar.gz",
+-            .hash = "zglfw-0.10.0-dev-zgVDNMacIQA-k7kNSfwUc9Lfzx-bb_wklVm25K-p8Tr7",
 +            .path = "../zglfw",
              .lazy = true,
          },

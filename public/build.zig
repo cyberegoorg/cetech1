@@ -51,7 +51,7 @@ pub fn build(b: *std.Build) !void {
         "zmath",
         .{
             .target = target,
-            .optimize = optimize,
+            //.optimize = optimize, // TODO: why?
         },
     );
 

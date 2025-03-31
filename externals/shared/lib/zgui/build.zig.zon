@@ -2,6 +2,7 @@
     .name = .zgui,
     .fingerprint = 0xe78160e64acbef8,
     .version = "0.6.0-dev",
+    .minimum_zig_version = "0.14.0",
     .paths = .{
         "build.zig",
         "build.zig.zon",
@@ -21,13 +22,13 @@
             .lazy = true,
         },
         .zgpu = .{
-            .url = "https://github.com/zig-gamedev/zgpu/archive/6fb357d934b08a1e811a13dc40742dc0a6bfa646.tar.gz",
-            .hash = "zgpu-0.12.0-dev-nqFT5NOfCAAHQsgOThL33YiPW71WQ6s9tbqHGw9nNmYw",
+            .url = "https://github.com/zig-gamedev/zgpu/archive/d860e2b4a333cacffb168fab49a233c5d2f1bca2.tar.gz",
+            .hash = "zgpu-0.12.0-dev-nqFT5EKgCADkhwAf97_pfSOmPWEguKmljSECs9ihpFS7",
             .lazy = true,
         },
         .zsdl = .{
-            .url = "https://github.com/zig-gamedev/zsdl/archive/cd29a0b441e070e0ef38c02ba3e322ef19004a34.tar.gz",
-            .hash = "zsdl-0.4.0-dev-AAAAAABXWQDfNLmT5yuYIunIkrWPRtuY4bQdUvjFHbut",
+            .url = "https://github.com/zig-gamedev/zsdl/archive/89c1fe2d7ef5020c68e71ac574195f09fc949cce.tar.gz",
+            .hash = "zsdl-0.4.0-dev-rFpjE5FXWQAHcbsSHDjFtbTkruSgvRVYOae6x8RXCnoM",
             .lazy = true,
         },
         .freetype = .{
