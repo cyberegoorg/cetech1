@@ -1,6 +1,5 @@
 .{
-    .name = .editor_simulation,
-    .fingerprint = 0x46bff202ecfa6b0d,
+    .name = .editor_renderer,
     .version = "0.1.0",
     .paths = .{
         "build.zig",
@@ -9,9 +8,7 @@
     .dependencies = .{
         .cetech1 = .{ .path = "../../../public/" },
         .editor = .{ .path = "../editor" },
-        .editor_entity = .{ .path = "../entity_editor" },
+        .editor_inspector = .{ .path = "../inspector" },
         .renderer = .{ .path = "../../rendering/renderer" },
-        .camera = .{ .path = "../../rendering/camera" },
-        .transform = .{ .path = "../../rendering/transform" },
     },
 }

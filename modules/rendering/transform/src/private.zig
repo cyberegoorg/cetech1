@@ -41,8 +41,11 @@ var _g: *G = undefined;
 
 const position_c = ecs.ComponentI.implement(
     public.Position,
-
-    public.PositionCdb.type_hash,
+    .{
+        .cdb_type_hash = public.PositionCdb.type_hash,
+        .category = "Transform",
+        .category_order = 0.1,
+    },
     struct {
         pub fn uiIcons(
             buff: [:0]u8,
@@ -75,8 +78,11 @@ const position_c = ecs.ComponentI.implement(
 
 const rotation_c = ecs.ComponentI.implement(
     public.Rotation,
-
-    public.RotationCdb.type_hash,
+    .{
+        .cdb_type_hash = public.RotationCdb.type_hash,
+        .category = "Transform",
+        .category_order = 0.2,
+    },
     struct {
         pub fn uiIcons(
             buff: [:0]u8,
@@ -111,8 +117,11 @@ const rotation_c = ecs.ComponentI.implement(
 
 const scale_c = ecs.ComponentI.implement(
     public.Scale,
-
-    public.ScaleCdb.type_hash,
+    .{
+        .cdb_type_hash = public.ScaleCdb.type_hash,
+        .category = "Transform",
+        .category_order = 0.3,
+    },
     struct {
         pub fn uiIcons(
             buff: [:0]u8,
@@ -143,7 +152,7 @@ const scale_c = ecs.ComponentI.implement(
     },
 );
 
-const world_tranform_c = cetech1.ecs.ComponentI.implement(public.WorldTransform, null, struct {});
+const world_tranform_c = cetech1.ecs.ComponentI.implement(public.WorldTransform, .{}, struct {});
 
 const transform_system_i = ecs.SystemI.implement(
     .{
@@ -304,6 +313,8 @@ const set_position_node_i = graphvm.NodeI.implement(
     },
 );
 
+const transform_ecs_category_i = ecs.ComponentCategoryI.implement(.{ .name = "Transform", .order = 10 });
+
 // CDB
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.DbId) !void {
@@ -383,6 +394,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // impl interface
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
 
+    try apidb.implOrRemove(module_name, ecs.ComponentCategoryI, &transform_ecs_category_i, load);
     try apidb.implOrRemove(module_name, ecs.ComponentI, &world_tranform_c, load);
     try apidb.implOrRemove(module_name, ecs.ComponentI, &position_c, load);
     try apidb.implOrRemove(module_name, ecs.ComponentI, &rotation_c, load);
@@ -393,7 +405,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, graphvm.NodeI, &set_position_node_i, true);
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
     return true;
 }

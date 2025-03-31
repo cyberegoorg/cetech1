@@ -570,9 +570,23 @@ pub var api = cetech1.ecs.EcsAPI{
     .destroyWorld = destroyWorld,
     .toWorld = @ptrCast(&toWorld),
     .toIter = toIter,
+    .findCategoryById = findCategoryById,
     .findComponentIByCdbHash = findComponentIByCdbHash,
     .spawnManyFromCDB = spawnManyFromCDB,
 };
+
+fn findCategoryById(name: cetech1.StrId32) ?*const public.ComponentCategoryI {
+    // TODO: Cache it
+    const impls = apidb.api.getImpl(_allocator, public.ComponentCategoryI) catch undefined;
+    defer _allocator.free(impls);
+
+    for (impls) |iface| {
+        if (!cetech1.strId32(iface.name).eql(name)) continue;
+        return iface;
+    }
+
+    return null;
+}
 
 fn findComponentIByCdbHash(cdb_hash: cdb.TypeHash) ?*const public.ComponentI {
     // TODO: Cache it

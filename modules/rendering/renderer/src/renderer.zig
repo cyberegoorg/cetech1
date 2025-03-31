@@ -3,10 +3,8 @@ const std = @import("std");
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const gpu = cetech1.gpu;
-
-const zm = cetech1.math.zmath;
-const strid = cetech1.strid;
 const ecs = cetech1.ecs;
+const zm = cetech1.math.zmath;
 
 const transform = @import("transform");
 const camera = @import("camera");
@@ -19,12 +17,27 @@ pub const CULLING_VOLUME_NODE_TYPE = cetech1.strId32(CULLING_VOLUME_NODE_TYPE_ST
 pub const DRAW_CALL_NODE_TYPE_STR = "draw_call";
 pub const DRAW_CALL_NODE_TYPE = cetech1.strId32(DRAW_CALL_NODE_TYPE_STR);
 
-pub const LSD_CUBE_NODE_TYPE_STR = "lsd_cube";
-pub const LSD_CUBE_NODE_TYPE = cetech1.strId32(LSD_CUBE_NODE_TYPE_STR);
+pub const SIMPLE_MESH_NODE_TYPE_STR = "simple_mesh";
+pub const SIMPLE_MESH_NODE_TYPE = cetech1.strId32(SIMPLE_MESH_NODE_TYPE_STR);
 
 pub const PinTypes = struct {
     pub const GPU_GEOMETRY = cetech1.strId32("gpu_geometry");
     pub const GPU_INDEX_BUFFER = cetech1.strId32("gpu_index_buffer");
+};
+
+// TODO: move
+pub const SimpleMeshNodeSettings = cdb.CdbTypeDecl(
+    "ct_gpu_simple_mesh_settings",
+    enum(u32) {
+        type,
+    },
+    struct {},
+);
+
+// TODO: move
+pub const SimpleMeshNodeType = enum {
+    cube,
+    bunny,
 };
 
 pub const GPUGeometryCdb = cdb.CdbTypeDecl(
@@ -300,11 +313,11 @@ pub const Viewport = struct {
     };
 };
 
-const GfxApi = gpu.GpuApi;
+const GpuApi = gpu.GpuApi;
 
 pub const Pass = struct {
     setup: *const fn (pass: *Pass, builder: GraphBuilder) anyerror!void,
-    render: *const fn (builder: GraphBuilder, gfx_api: *const GfxApi, viewport: Viewport, viewid: gpu.ViewId, viewers: []const Viewer) anyerror!void,
+    render: *const fn (builder: GraphBuilder, gfx_api: *const GpuApi, viewport: Viewport, viewid: gpu.ViewId, viewers: []const Viewer) anyerror!void,
 
     pub fn implement(comptime T: type) Pass {
         if (!std.meta.hasFn(T, "setup")) @compileError("implement me");

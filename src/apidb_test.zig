@@ -10,9 +10,9 @@ test "Can create global var" {
     try apidb.init(std.testing.allocator);
     defer apidb.deinit();
 
-    const v1 = try apidb.api.globalVar(u32, .TestModule, "v1", 1);
+    const v1 = try apidb.api.setGlobalVar(u32, .TestModule, "v1", 1);
 
-    const v1_1 = try apidb.api.globalVar(u32, .TestModule, "v1", 10);
+    const v1_1 = try apidb.api.setGlobalVar(u32, .TestModule, "v1", 10);
 
     try std.testing.expect(v1 == v1_1);
     try std.testing.expect(v1.* == v1_1.*);

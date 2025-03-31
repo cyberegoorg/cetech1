@@ -122,7 +122,10 @@ const tick_logic_system_i = ecs.SystemI.implement(
 
 const logic_c = ecs.ComponentI.implement(
     public.EntityLogicComponent,
-    public.EntityLogicComponentCdb.type_hash,
+    .{
+        .cdb_type_hash = public.EntityLogicComponentCdb.type_hash,
+        .category = "Scripting",
+    },
     struct {
         pub fn uiIcons(
             buff: [:0]u8,
@@ -152,7 +155,7 @@ const logic_c = ecs.ComponentI.implement(
 
 const logic_instance_c = ecs.ComponentI.implement(
     public.EntityLogicComponentInstance,
-    null,
+    .{},
     struct {
         pub fn onDestroy(components: []public.EntityLogicComponentInstance) !void {
             for (components) |c| {
@@ -230,7 +233,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, ecs.SystemI, &tick_logic_system_i, true);
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
     return true;
 }

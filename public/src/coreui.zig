@@ -209,6 +209,8 @@ pub const Icons = struct {
 
     pub const Camera = CoreIcons.FA_CAMERA;
     pub const Draw = CoreIcons.FA_BRUSH;
+
+    pub const Filter = CoreIcons.FA_FILTER;
 };
 
 pub const CoreUII = struct {

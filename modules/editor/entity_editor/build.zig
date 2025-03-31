@@ -23,7 +23,7 @@ pub fn build(b: *std.Build) !void {
     lib.root_module.addImport("graphvm", b.dependency("graphvm", .{}).module("graphvm"));
 
     _ = b.addModule("editor_entity", .{
-        .root_source_file = b.path("src/entity.zig"),
+        .root_source_file = b.path("src/entity_editor.zig"),
         .imports = &.{
             .{ .name = "cetech1", .module = cetech1_module },
         },

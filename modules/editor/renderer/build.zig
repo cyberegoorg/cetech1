@@ -8,19 +8,18 @@ pub fn build(b: *std.Build) !void {
 
     const lib, const cetech1_module = cetech1_build.addCetechModule(
         b,
-        "editor_asset_browser",
+        "editor_renderer",
         .{ .major = 0, .minor = 1, .patch = 0 },
         target,
         optimize,
     );
 
     lib.root_module.addImport("editor", b.dependency("editor", .{}).module("editor"));
-    lib.root_module.addImport("editor_tree", b.dependency("editor_tree", .{}).module("editor_tree"));
-    lib.root_module.addImport("editor_tags", b.dependency("editor_tags", .{}).module("editor_tags"));
-    lib.root_module.addImport("editor_asset", b.dependency("editor_asset", .{}).module("editor_asset"));
+    lib.root_module.addImport("editor_inspector", b.dependency("editor_inspector", .{}).module("editor_inspector"));
+    lib.root_module.addImport("renderer", b.dependency("renderer", .{}).module("renderer"));
 
-    _ = b.addModule("editor_asset_browser", .{
-        .root_source_file = b.path("src/asset_browser.zig"),
+    _ = b.addModule("editor_fixtures", .{
+        .root_source_file = b.path("src/editor_renderer.zig"),
         .imports = &.{
             .{ .name = "cetech1", .module = cetech1_module },
         },

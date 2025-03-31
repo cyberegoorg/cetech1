@@ -2870,11 +2870,11 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &gpu_float_value_type_i, load);
 
     // create global variable that can survive reload
-    _g = try apidb.globalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
-    _g.make_node_result_type_aspec = try apidb.globalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_construct_node_result_type_aspec", construct_node_result_type_aspec);
-    _g.uniform_node_result_type_aspec = try apidb.globalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_uniform_node_result_type_aspec", uniform_node_result_type_aspec);
-    _g.const_node_result_type_aspec = try apidb.globalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_const_node_result_type_aspec", const_node_result_type_aspec);
+    _g.make_node_result_type_aspec = try apidb.setGlobalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_construct_node_result_type_aspec", construct_node_result_type_aspec);
+    _g.uniform_node_result_type_aspec = try apidb.setGlobalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_uniform_node_result_type_aspec", uniform_node_result_type_aspec);
+    _g.const_node_result_type_aspec = try apidb.setGlobalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_const_node_result_type_aspec", const_node_result_type_aspec);
 
     return true;
 }

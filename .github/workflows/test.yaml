@@ -51,8 +51,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: true
 
       - name: Prepare
         # uses: awalsh128/cache-apt-pkgs-action@latest
@@ -86,18 +84,6 @@ jobs:
         with:
           version: ${{ steps.zigversion.outputs.content }}
 
-      - name: Zig cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.cache/zig/
-          key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
-
-      # - name: Zig build cache
-      #   uses: actions/cache/restore@v4
-      #   with:
-      #     path: .zig-cache
-      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
-
       - name: Build
         run: .ci/build.sh x86_64-linux Debug
 
@@ -108,18 +94,6 @@ jobs:
           path: zig-out/
           overwrite: true
           retention-days: 1
-
-      - name: Zig cache
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.cache/zig/
-          key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
-
-      # - name: Zig build cache
-      #   uses: actions/cache/save@v4
-      #   with:
-      #     path: .zig-cache
-      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
 
       - name: Test unit
         run: kcov --include-pattern=/cetech1/src/,/cetech/public/ kcov-output zig-out/bin/cetech1_test
@@ -164,8 +138,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: true
 
       # - name: Prepare`
       #   run: |
@@ -182,18 +154,6 @@ jobs:
         with:
           version: ${{ steps.zigversion.outputs.content }}
 
-      # - name: Zig cache
-      #   uses: actions/cache/restore@v4
-      #   with:
-      #     path: ~/.cache/zig/
-      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
-
-      # - name: Zig build cache
-      #   uses: actions/cache/restore@v4
-      #   with:
-      #     path: .zig-cache
-      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
-
       - name: Build
         run: .ci/build.sh x86_64-macos Debug
 
@@ -204,18 +164,6 @@ jobs:
           path: zig-out/
           overwrite: true
           retention-days: 1
-
-      # - name: Zig cache
-      #   uses: actions/cache/save@v4
-      #   with:
-      #     path: ~/.cache/zig/
-      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
-
-      # - name: Zig build cache
-      #   uses: actions/cache/save@v4
-      #   with:
-      #     path: .zig-cache
-      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
 
       - name: Test unit
         run: TRACY_NO_INVARIANT_CHECK=1 zig-out/bin/cetech1_test
@@ -248,8 +196,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: true
 
       - name: Read .zig-version
         id: zigversion
@@ -260,18 +206,6 @@ jobs:
         uses: mlugg/setup-zig@v1
         with:
           version: ${{ steps.zigversion.outputs.content }}
-
-      - name: Zig cache
-        uses: actions/cache/restore@v4
-        with:
-          path: C:\Users\runneradmin\AppData\Local\zig
-          key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
-
-      # - name: Zig build cache
-      #   uses: actions/cache/restore@v4
-      #   with:
-      #     path: .zig-cache
-      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
 
       - name: Build
         shell: bash
@@ -285,18 +219,6 @@ jobs:
           overwrite: true
           retention-days: 1
 
-      - name: Zig cache
-        uses: actions/cache/save@v4
-        with:
-          path: C:\Users\runneradmin\AppData\Local\zig
-          key: ${{ runner.arch }}-${{ runner.os }}-zig-cache
-
-      # - name: Zig build cache
-      #   uses: actions/cache/save@v4
-      #   with:
-      #     path: .zig-cache
-      #     key: ${{ runner.arch }}-${{ runner.os }}-zig-build-cache
-          
       # - name: configure Pagefile
       #   uses: al-cheb/configure-pagefile-action@v1.4
       #   with:

@@ -376,7 +376,7 @@ pub fn bigInit(static_modules: []const cetech1.modules.ModuleDesc, load_dynamic:
     try generateKernelTaskChain(_kernel_allocator);
 
     apidb.dumpApi();
-    apidb.dumpGlobalVar();
+    apidb.dumpsetGlobalVar();
 }
 
 pub fn bigDeinit() !void {
