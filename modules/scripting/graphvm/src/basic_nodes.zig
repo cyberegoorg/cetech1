@@ -5,7 +5,6 @@ const cetech1 = @import("cetech1");
 
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
-const strid = cetech1.strid;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
@@ -646,6 +645,7 @@ const const_node_i = public.NodeI.implement(
             _ = in_pins;
             const real_state: *ConstNodeState = @alignCast(@ptrCast(args.state));
 
+            // TODO: SHIT
             var value: [2048]u8 = undefined;
             try real_state.value_type.valueFromCdb(args.allocator, real_state.value_obj, value[0..real_state.value_type.size]);
             const vh = try real_state.value_type.calcValidityHash(value[0..real_state.value_type.size]);

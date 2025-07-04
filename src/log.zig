@@ -57,7 +57,7 @@ pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]cons
         cfg.setColor(stderr, .reset) catch return;
     }
 
-    {
+    if (apidb.isInit()) {
         var buff: [@sizeOf(*anyopaque) * MAX_HANDLERS]u8 = undefined;
         var fba = std.heap.FixedBufferAllocator.init(&buff);
         const a = fba.allocator();

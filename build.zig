@@ -605,13 +605,17 @@ pub const editor_modules = [_][]const u8{
 
 pub const core_modules = [_][]const u8{
     "graphvm",
-    "renderer",
-    "default_rg",
+    "render_viewport",
+    "render_graph",
+    "renderer_nodes",
+    "render_pipeline",
+    "default_render_pipeline",
     "shader_system",
     "render_component",
     "entity_logic_component",
     "transform",
     "camera",
+    "vertex_system",
 };
 
 pub const samples_modules = [_][]const u8{

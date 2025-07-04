@@ -7,7 +7,8 @@ const cdb = cetech1.cdb;
 
 const editor = @import("editor");
 const editor_inspector = @import("editor_inspector");
-const renderer = @import("renderer");
+const render_viewport = @import("render_viewport");
+const renderer_nodes = @import("renderer_nodes");
 
 const Icons = cetech1.coreui.CoreIcons;
 
@@ -43,18 +44,18 @@ const test_geometry_type_aspec = editor_inspector.UiPropertyAspect.implement(str
     ) !void {
         _ = allocator; // autofix
         _ = args; // autofix
-        const r = renderer.SimpleMeshNodeSettings.read(_cdb, obj).?;
-        const type_str = renderer.SimpleMeshNodeSettings.readStr(_cdb, r, .type) orelse "cube";
-        var type_enum = std.meta.stringToEnum(renderer.SimpleMeshNodeType, type_str).?;
+        const r = renderer_nodes.SimpleMeshNodeSettings.read(_cdb, obj).?;
+        const type_str = renderer_nodes.SimpleMeshNodeSettings.readStr(_cdb, r, .type) orelse "cube";
+        var type_enum = std.meta.stringToEnum(renderer_nodes.SimpleMeshNodeType, type_str).?;
 
         try _inspector.uiPropInputBegin(obj, prop_idx, true);
         defer _inspector.uiPropInputEnd();
 
         if (_coreui.comboFromEnum("", &type_enum)) {
-            const w = renderer.SimpleMeshNodeSettings.write(_cdb, obj).?;
+            const w = renderer_nodes.SimpleMeshNodeSettings.write(_cdb, obj).?;
 
-            try renderer.SimpleMeshNodeSettings.setStr(_cdb, w, .type, @tagName(type_enum));
-            try renderer.SimpleMeshNodeSettings.commit(_cdb, w);
+            try renderer_nodes.SimpleMeshNodeSettings.setStr(_cdb, w, .type, @tagName(type_enum));
+            try renderer_nodes.SimpleMeshNodeSettings.commit(_cdb, w);
         }
     }
 });
@@ -68,7 +69,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
 const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
     pub fn postCreateTypes(db: cdb.DbId) !void {
-        try renderer.SimpleMeshNodeSettings.addPropertyAspect(
+        try renderer_nodes.SimpleMeshNodeSettings.addPropertyAspect(
             editor_inspector.UiPropertyAspect,
             _cdb,
             db,

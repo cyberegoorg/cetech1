@@ -171,8 +171,8 @@ pub const TaskAPI = struct {
         return self.isDoneFn(task);
     }
 
-    pub inline fn doOneTask(self: Self) void {
-        self.doOneTaskFn();
+    pub inline fn doOneTask(self: Self, only_prio: bool) void {
+        self.doOneTaskFn(only_prio);
     }
 
     //#region Pointers to implementation
@@ -183,6 +183,6 @@ pub const TaskAPI = struct {
     combineFn: *const fn (tasks: []const TaskID) anyerror!TaskID,
     getThreadNumFn: *const fn () u64,
     getWorkerIdFn: *const fn () usize,
-    doOneTaskFn: *const fn () void,
+    doOneTaskFn: *const fn (only_prio: bool) void,
     //#endregions
 };
