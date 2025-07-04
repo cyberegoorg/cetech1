@@ -23,7 +23,7 @@ const metrics = @import("metrics.zig");
 const cetech1 = @import("cetech1");
 const public = cetech1.kernel;
 const profiler = cetech1.profiler;
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 
 const cetech1_options = @import("cetech1_options");

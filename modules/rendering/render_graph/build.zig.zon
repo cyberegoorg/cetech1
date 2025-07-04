@@ -1,6 +1,6 @@
 .{
-    .name = .camera,
-    .fingerprint = 0x3b1cee051d759f08,
+    .name = .render_graph,
+    .fingerprint = 0x8dc5202bc4437a1d,
     .version = "0.1.0",
     .paths = .{
         "build.zig",
@@ -8,7 +8,6 @@
     },
     .dependencies = .{
         .cetech1 = .{ .path = "../../../public/" },
-        .editor_inspector = .{ .path = "../../editor/inspector" },
-        .transform = .{ .path = "../transform" },
+        .camera = .{ .path = "../camera" },
     },
 }

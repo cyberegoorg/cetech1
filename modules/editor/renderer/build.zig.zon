@@ -10,5 +10,6 @@
         .editor = .{ .path = "../editor" },
         .editor_inspector = .{ .path = "../inspector" },
         .renderer = .{ .path = "../../rendering/renderer" },
+        .renderer_nodes = .{ .path = "../../rendering/renderer_nodes" },
     },
 }

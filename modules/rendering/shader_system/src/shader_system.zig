@@ -2,7 +2,7 @@ const std = @import("std");
 
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
-const strid = cetech1.strid;
+
 const math = cetech1.math.zmath;
 const gpu = cetech1.gpu;
 
@@ -301,7 +301,6 @@ pub const UniformMap = struct {
     }
 
     pub fn set(self: *UniformMap, name: cetech1.StrId32, value: anytype) !void {
-        // TODO: prealocate on create
         const result = self.data.getOrPutAssumeCapacity(name);
         if (!result.found_existing) {
             result.value_ptr.* = try self.allocator.dupe(u8, std.mem.asBytes(&value));
@@ -467,4 +466,5 @@ pub const ShaderSystemAPI = struct {
     submitSystemUniforms: *const fn (encoder: gpu.Encoder, system_instance: SystemInstance) void,
 
     getSystemIdx: *const fn (system: cetech1.StrId32) usize,
+    getSystemSet: *const fn (systems: []*SystemInstance) SystemSet,
 };

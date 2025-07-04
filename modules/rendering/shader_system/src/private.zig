@@ -3,7 +3,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
 const ecs = cetech1.ecs;
@@ -149,6 +149,7 @@ const api = public.ShaderSystemAPI{
 
     .selectShaderVariant = selectShaderVariant,
     .getSystemIdx = getSystemIdx,
+    .getSystemSet = getSystemSet,
 };
 
 inline fn nodeInputToType(input_type: public.DefGraphNodeInputType) cetech1.StrId32 {
@@ -817,6 +818,14 @@ fn getSystemIdx(system: cetech1.StrId32) usize {
     return _g.system_to_idx.get(system).?;
 }
 
+fn getSystemSet(systems: []*public.SystemInstance) public.SystemSet {
+    var set = public.SystemSet.initEmpty();
+    for (systems) |system| {
+        set.set(system.system_idx);
+    }
+    return set;
+}
+
 fn createExportedNode(alloc: std.mem.Allocator, graph_node: public.DefGraphNode, export_def: public.DefExport) !void {
     const get_or_put = try _g.exported_node_iface_map.getOrPut(_allocator, cetech1.strId32(export_def.name));
     if (!get_or_put.found_existing) {
@@ -1109,7 +1118,7 @@ fn compileShaderVariant(
                 if (!get_or_put.found_existing) {
                     try main_imports_w.print("uniform {s} {s};\n", .{ @tagName(import.type), import.name });
                     try main_imports_w.print(
-                        \\ {s} load_{s}() {{
+                        \\{s} load_{s}() {{
                         \\  return {s};
                         \\}}
                         \\
@@ -1348,6 +1357,7 @@ fn compileShaderVariant(
     );
     defer allocator.free(fs_source);
     //std.debug.print("FS:\n{s}\n", .{fs_source});
+    //std.debug.print("FS:\n{s}\n", .{main_imports.items});
 
     var h = std.hash.Wyhash.init(0);
     h.update(vs_source);
@@ -1435,7 +1445,7 @@ fn submitUniforms(encoder: gpu.Encoder, variant: *const public.ShaderVariant, sh
     }
 }
 
-// fn submit(shader_instance: public.ShaderInstance, context: ?cetech1.StrId32, systems: []const cetech1.StrId32, builder: renderer.GraphBuilder, encoder: gpu.Encoder) void {
+// fn submit(shader_instance: public.ShaderInstance, context: ?cetech1.StrId32, systems: []const cetech1.StrId32, builder: render_graph.GraphBuilder, encoder: gpu.Encoder) void {
 //     const inst = _g.shader_pool.get(shader_instance.idx);
 
 //     if (selectShaderVariant(inst, context.?, systems)) |variant| {
@@ -1485,12 +1495,9 @@ fn destroyShader(shader_instance: public.Shader) void {
     _g.shader_pool.destroy(inst) catch undefined;
 }
 
-var shit_lock = std.Thread.Mutex{};
 fn createShaderInstance(shader: public.Shader) !public.ShaderInstance {
     const inst = _g.shader_pool.get(shader.idx);
 
-    // shit_lock.lock();
-    // defer shit_lock.unlock();
     var max_u: usize = 0;
     for (inst.variants.values()) |variants| {
         for (variants.items) |variant| {
@@ -1503,9 +1510,6 @@ fn createShaderInstance(shader: public.Shader) !public.ShaderInstance {
     return .{ .idx = shader.idx, .uniforms = umap };
 }
 fn destroyShaderInstance(shader: *public.ShaderInstance) void {
-    // shit_lock.lock();
-    // defer shit_lock.unlock();
-
     if (shader.uniforms) |*u| {
         u.deinit();
     }

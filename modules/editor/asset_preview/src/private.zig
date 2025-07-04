@@ -18,6 +18,7 @@ const transform = @import("transform");
 const editor_entity = @import("editor_entity");
 
 const renderer = @import("renderer");
+const render_graph = @import("render_graph");
 const Viewport = renderer.Viewport;
 
 const editor = @import("editor");
@@ -43,7 +44,7 @@ var _log: *const cetech1.log.LogAPI = undefined;
 var _cdb: *const cdb.CdbAPI = undefined;
 var _coreui: *const coreui.CoreUIApi = undefined;
 var _gpu: *const gpu.GpuApi = undefined;
-var _render_graph: *const renderer.RenderGraphApi = undefined;
+var _render_graph: *const render_graph.RenderGraphApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _ecs: *const ecs.EcsAPI = undefined;
 var _tempalloc: *const tempalloc.TempAllocApi = undefined;
@@ -75,7 +76,7 @@ const AssetPreviewTab = struct {
     root_entity_obj: cdb.ObjId = .{},
     root_entity: ?ecs.EntityId = null,
 
-    rg: renderer.Graph = undefined,
+    render_module: render_graph.Module = undefined,
 
     camera: camera.SimpleFPSCamera = camera.SimpleFPSCamera.init(.{
         .position = .{ 0, 2, 12 },
@@ -112,8 +113,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         const w = try _ecs.createWorld();
         w.setSimulate(false);
 
-        const rg = try _render_graph.create();
-        try _render_graph.createDefault(_allocator, rg);
+        const rg = try _render_graph.createModule();
 
         var buf: [128]u8 = undefined;
         const name = try std.fmt.bufPrintZ(&buf, "Asset preview {d}", .{tab_id});
@@ -125,10 +125,10 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         var tab_inst = _allocator.create(AssetPreviewTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _renderer.createViewport(name, rg, w, camera_ent),
+            .viewport = try _renderer.createViewport(name, w, camera_ent),
             .world = w,
             .camera_ent = camera_ent,
-            .rg = rg,
+            .render_module = rg,
             .tab_i = .{
                 .vt = _g.test_tab_vt_ptr,
                 .inst = @ptrCast(tab_inst),
@@ -144,7 +144,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     pub fn destroy(tab_inst: *editor.TabI) !void {
         const tab_o: *AssetPreviewTab = @alignCast(@ptrCast(tab_inst.inst));
         _renderer.destroyViewport(tab_o.viewport);
-        _render_graph.destroy(tab_o.rg);
+        _render_graph.destroyModule(tab_o.render_module);
         _ecs.destroyWorld(tab_o.world);
         _allocator.destroy(tab_o);
     }
@@ -227,7 +227,9 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 .q = zm.matToQuat(zm.mul(zm.rotationX(tab_o.camera.pitch), zm.rotationY(tab_o.camera.yaw))),
             });
 
-            tab_o.viewport.renderMe();
+            try tab_o.render_module.cleanup();
+            try _render_graph.createDefault(_allocator, tab_o.render_module);
+            tab_o.viewport.renderMe(tab_o.render_module);
         } else {
             const db = _cdb.getDbFromObjid(selected_obj);
             if (_cdb.getAspect(public.AssetPreviewAspectI, db, selected_obj.type_idx)) |iface| {
@@ -396,7 +398,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
     _coreui = apidb.getZigApi(module_name, coreui.CoreUIApi).?;
     _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
-    _render_graph = apidb.getZigApi(module_name, renderer.RenderGraphApi).?;
+    _render_graph = apidb.getZigApi(module_name, render_graph.RenderGraphApi).?;
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
     _tempalloc = apidb.getZigApi(module_name, tempalloc.TempAllocApi).?;

@@ -2,7 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 
@@ -13,6 +13,7 @@ const zm = cetech1.math.zmath;
 
 const public = @import("camera.zig");
 const editor_inspector = @import("editor_inspector");
+const transform = @import("transform");
 
 const module_name = .camera;
 
@@ -77,6 +78,37 @@ const camera_c = ecs.ComponentI.implement(
                 .near = public.CameraCdb.readValue(f32, _cdb, r, .Near),
                 .far = public.CameraCdb.readValue(f32, _cdb, r, .Far),
             };
+        }
+
+        pub fn debugdraw(dd: gpu.DDEncoder, world: ecs.World, entites: []const ecs.EntityId, data: []const u8, size: [2]f32) !void {
+            const aspect_ratio = size[0] / size[1];
+
+            var cameras: []const public.Camera = undefined;
+            cameras.ptr = @alignCast(@ptrCast(data.ptr));
+            cameras.len = data.len / @sizeOf(public.Camera);
+
+            for (entites, cameras) |ent, camera| {
+                const wt = world.getComponent(transform.WorldTransform, ent) orelse continue;
+
+                const pmtx = switch (camera.type) {
+                    .perspective => zm.perspectiveFovRh(
+                        std.math.degreesToRadians(camera.fov),
+                        aspect_ratio,
+                        camera.near,
+                        camera.far,
+                    ),
+                    .ortho => zm.orthographicRh(
+                        size[0],
+                        size[1],
+                        camera.near,
+                        camera.far,
+                    ),
+                };
+
+                const m = zm.mul(zm.inverse(wt.mtx), pmtx);
+                const mm = zm.matToArr(m);
+                dd.drawFrustum(mm);
+            }
         }
     },
 );

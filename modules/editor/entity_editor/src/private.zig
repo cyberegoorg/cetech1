@@ -19,6 +19,7 @@ const camera = @import("camera");
 const transform = @import("transform");
 
 const renderer = @import("renderer");
+const render_graph = @import("render_graph");
 const Viewport = renderer.Viewport;
 
 const editor = @import("editor");
@@ -46,7 +47,7 @@ var _log: *const cetech1.log.LogAPI = undefined;
 var _cdb: *const cdb.CdbAPI = undefined;
 var _coreui: *const coreui.CoreUIApi = undefined;
 var _gpu: *const gpu.GpuApi = undefined;
-var _render_graph: *const renderer.RenderGraphApi = undefined;
+var _render_graph: *const render_graph.RenderGraphApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _ecs: *const ecs.EcsAPI = undefined;
 var _tempalloc: *const tempalloc.TempAllocApi = undefined;
@@ -63,7 +64,7 @@ var _graphvm: *const graphvm.GraphVMApi = undefined;
 // Global state that can surive hot-reload
 const G = struct {
     test_tab_vt_ptr: *editor.TabTypeI = undefined,
-    rg: renderer.Graph = undefined,
+    render_module: render_graph.Module = undefined,
 };
 var _g: *G = undefined;
 
@@ -128,7 +129,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         var tab_inst = _allocator.create(EntityEditorTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _renderer.createViewport(name, _g.rg, w, camera_ent),
+            .viewport = try _renderer.createViewport(name, w, camera_ent),
             .world = w,
             .camera_ent = camera_ent,
             .tab_i = .{
@@ -309,7 +310,9 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             .q = zm.matToQuat(zm.mul(zm.rotationX(tab_o.camera.pitch), zm.rotationY(tab_o.camera.yaw))),
         });
 
-        tab_o.viewport.renderMe();
+        try _g.render_module.cleanup();
+        try _render_graph.createDefault(_allocator, _g.render_module);
+        tab_o.viewport.renderMe(_g.render_module);
     }
 
     // Draw tab menu
@@ -480,8 +483,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
     &[_]cetech1.StrId64{renderer.RENDERER_KERNEL_TASK},
     struct {
         pub fn init() !void {
-            _g.rg = try _render_graph.create();
-            try _render_graph.createDefault(_allocator, _g.rg);
+            _g.render_module = try _render_graph.createModule();
 
             try _actions.createActionSet(ViewportActionSet);
             try _actions.addActions(ViewportActionSet, &.{
@@ -533,7 +535,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
         }
 
         pub fn shutdown() !void {
-            _render_graph.destroy(_g.rg);
+            _render_graph.destroyModule(_g.render_module);
         }
     },
 );
@@ -592,7 +594,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
     _coreui = apidb.getZigApi(module_name, coreui.CoreUIApi).?;
     _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
-    _render_graph = apidb.getZigApi(module_name, renderer.RenderGraphApi).?;
+    _render_graph = apidb.getZigApi(module_name, render_graph.RenderGraphApi).?;
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
     _tempalloc = apidb.getZigApi(module_name, tempalloc.TempAllocApi).?;

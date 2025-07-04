@@ -4,7 +4,6 @@ const mem = std.mem;
 const Allocator = mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const strid = cetech1.strid;
 
 const public = cetech1.apidb;
 

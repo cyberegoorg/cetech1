@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const cetech1 = @import("root.zig");
 
 const cdb = @import("cdb.zig");
+const gpu = @import("gpu.zig");
 
 const log = std.log.scoped(.ecs);
 
@@ -168,14 +169,27 @@ pub const ComponentI = struct {
         data: []u8,
     ) anyerror!void = null,
 
-    pub fn implement(comptime T: type, args: ComponentI, comptime Hooks: type) Self {
+    debugdraw: ?*const fn (
+        dd: gpu.DDEncoder,
+        world: World,
+        entites: []const EntityId,
+        data: []const u8,
+        size: [2]f32,
+    ) anyerror!void = null,
+
+    pub fn nameFromType(
+        comptime T: type,
+    ) [:0]const u8 {
         var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
         const name = name_iter.first();
         const cname = name[0..name.len :0];
+        return cname;
+    }
 
+    pub fn implement(comptime T: type, args: ComponentI, comptime Hooks: type) Self {
         return Self{
-            .name = cname,
-            .id = cetech1.strId32(name),
+            .name = nameFromType(T),
+            .id = id(T),
             .cdb_type_hash = args.cdb_type_hash,
 
             .size = @sizeOf(T),
@@ -261,6 +275,7 @@ pub const ComponentI = struct {
             .uiIcons = if (std.meta.hasFn(Hooks, "uiIcons")) Hooks.uiIcons else null,
 
             .fromCdb = if (std.meta.hasFn(Hooks, "fromCdb")) Hooks.fromCdb else null,
+            .debugdraw = if (std.meta.hasFn(Hooks, "debugdraw")) Hooks.debugdraw else null,
         };
     }
 };
@@ -339,6 +354,13 @@ pub const QueryCacheKind = enum(i32) {
     QueryCacheNone,
 };
 
+pub const QueryCount = struct {
+    results: i32,
+    entities: i32,
+    tables: i32,
+    empty_tables: i32,
+};
+
 pub const Query = struct {
     world: World,
     ptr: *anyopaque,
@@ -346,6 +368,10 @@ pub const Query = struct {
 
     pub inline fn destroy(self: *Query) void {
         self.vtable.destroy(self.ptr);
+    }
+
+    pub inline fn count(self: *Query) QueryCount {
+        return self.vtable.count(self.ptr);
     }
 
     pub inline fn iter(self: *Query) !Iter {
@@ -358,6 +384,7 @@ pub const Query = struct {
 
     pub const VTable = struct {
         destroy: *const fn (query: *anyopaque) void,
+        count: *const fn (query: *anyopaque) QueryCount,
         iter: *const fn (query: *anyopaque, world: World) anyerror!Iter,
         next: *const fn (query: *anyopaque, it: *Iter) bool,
 
@@ -365,11 +392,13 @@ pub const Query = struct {
             if (!std.meta.hasFn(T, "destroy")) @compileError("implement me");
             if (!std.meta.hasFn(T, "iter")) @compileError("implement me");
             if (!std.meta.hasFn(T, "next")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "count")) @compileError("implement me");
 
             return VTable{
                 .destroy = T.destroy,
                 .iter = T.iter,
                 .next = T.next,
+                .count = T.count,
             };
         }
     };
@@ -394,6 +423,11 @@ pub const World = struct {
 
     pub inline fn getMutComponent(self: World, comptime T: type, entity: EntityId) ?*T {
         const ptr = self.vtable.getMutComponent(self.ptr, entity, id(T));
+        return @alignCast(@ptrCast(ptr));
+    }
+
+    pub inline fn getComponent(self: World, comptime T: type, entity: EntityId) ?*const T {
+        const ptr = self.vtable.getComponent(self.ptr, entity, id(T));
         return @alignCast(@ptrCast(ptr));
     }
 
@@ -451,6 +485,7 @@ pub const World = struct {
 
         setComponent: *const fn (world: *anyopaque, entity: EntityId, id: cetech1.StrId32, size: usize, ptr: ?*const anyopaque) EntityId,
         getMutComponent: *const fn (world: *anyopaque, entity: EntityId, id: cetech1.StrId32) ?*anyopaque,
+        getComponent: *const fn (world: *anyopaque, entity: EntityId, id: cetech1.StrId32) ?*const anyopaque,
 
         createQuery: *const fn (world: *anyopaque, query: []const QueryTerm) anyerror!Query,
 
@@ -482,6 +517,14 @@ pub const Iter = struct {
         if (self.vtable.field(&self.data, @sizeOf(T), index)) |anyptr| {
             const ptr = @as([*]T, @ptrCast(@alignCast(anyptr)));
             return ptr[0..self.count()];
+        }
+        return null;
+    }
+
+    pub inline fn fieldRaw(self: *Iter, size: usize, index: i8) ?[]u8 {
+        if (self.vtable.field(&self.data, size, index)) |anyptr| {
+            const ptr = @as([*]u8, @ptrCast(@alignCast(anyptr)));
+            return ptr[0 .. self.count() * size];
         }
         return null;
     }
@@ -576,7 +619,9 @@ pub const EcsAPI = struct {
     toWorld: *const fn (world: *anyopaque) World,
     toIter: *const fn (iter: *IterO) Iter,
 
+    findComponentIById: *const fn (name: cetech1.StrId32) ?*const ComponentI,
     findComponentIByCdbHash: *const fn (cdb_hash: cdb.TypeHash) ?*const ComponentI,
+
     findCategoryById: *const fn (name: cetech1.StrId32) ?*const ComponentCategoryI,
 
     spawnManyFromCDB: *const fn (allocator: std.mem.Allocator, world: World, obj: cdb.ObjId, count: usize) anyerror![]EntityId,

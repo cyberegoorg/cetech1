@@ -2,11 +2,12 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 
 const renderer = @import("renderer");
+const render_graph = @import("render_graph");
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
 const zm = cetech1.math.zmath;
@@ -14,6 +15,7 @@ const zm = cetech1.math.zmath;
 const graphvm = @import("graphvm");
 const transform = @import("transform");
 const shader_system = @import("shader_system");
+const renderer_nodes = @import("renderer_nodes");
 
 const public = @import("render_component.zig");
 
@@ -42,53 +44,8 @@ var _dd: *const gpu.GpuDDApi = undefined;
 var _shader_system: *const shader_system.ShaderSystemAPI = undefined;
 
 // Global state that can surive hot-reload
-const G = struct {
-    world2query: ?World2CullingQuery = null,
-};
+const G = struct {};
 var _g: *G = undefined;
-
-var kernel_task = cetech1.kernel.KernelTaskI.implement(
-    "RenderComponentInit",
-    &[_]cetech1.StrId64{cetech1.strId64("ShaderSystem")},
-    struct {
-        pub fn init() !void {}
-
-        pub fn shutdown() !void {
-            if (_g.world2query) |*wq| {
-                for (wq.values()) |*q| {
-                    q.destroy();
-                }
-
-                wq.deinit(_allocator);
-                _g.world2query = null;
-            }
-        }
-    },
-);
-
-const World2CullingQuery = cetech1.AutoArrayHashMap(ecs.World, ecs.Query);
-
-const query_onworld_i = ecs.OnWorldI.implement(struct {
-    pub fn onCreate(world: ecs.World) !void {
-        const q = try world.createQuery(&.{
-            .{ .id = ecs.id(transform.WorldTransform), .inout = .In },
-            .{ .id = ecs.id(public.RenderComponentInstance), .inout = .In },
-        });
-
-        if (_g.world2query == null) {
-            _g.world2query = World2CullingQuery{};
-        }
-
-        try _g.world2query.?.put(_allocator, world, q);
-    }
-    pub fn onDestroy(world: ecs.World) !void {
-        if (_g.world2query) |*wq| {
-            var q = wq.get(world).?;
-            q.destroy();
-            _ = wq.swapRemove(world);
-        }
-    }
-});
 
 const init_render_graph_system_i = ecs.SystemI.implement(
     .{
@@ -201,26 +158,32 @@ const rc_initialized_c = ecs.ComponentI.implement(
 
 const RenderComponentTask = struct {
     transforms: []const transform.WorldTransform,
+    entities_idx: []const usize,
     draw_calls: []const ?*renderer.DrawCall,
-    viewport: renderer.Viewport,
-    viewers: []const renderer.Viewer,
-    systems: shader_system.SystemSet,
-    builder: renderer.GraphBuilder,
+    viewers: []const render_graph.Viewer,
+    systems: []*shader_system.SystemInstance,
+    builder: render_graph.GraphBuilder,
+    visibility: []const renderer.VisibilityBitField,
 
     pub fn exec(self: *@This()) !void {
         var zone = _profiler.ZoneN(@src(), "RenderComponentTask");
         defer zone.End();
 
-        // const task_allocator = try _tmpalloc.create();
-        // defer _tmpalloc.destroy(task_allocator);
+        const system_set = _shader_system.getSystemSet(self.systems);
 
         if (_gpu.getEncoder()) |e| {
             defer _gpu.endEncoder(e);
 
-            for (self.draw_calls, self.transforms) |draw_call, mtx| {
+            for (self.draw_calls, self.entities_idx, 0..) |draw_call, ent_idx, renderable_idx| {
+                // _ = renderable_idx;
+                const mtx = self.transforms[ent_idx];
+
+                // const draw_call = self.draw_calls[ent_idx];
+                // const mtx = self.transforms[ent_idx];
+
                 if (draw_call) |dc| {
-                    var zzz = _profiler.ZoneN(@src(), "draw");
-                    defer zzz.End();
+                    // var zzz = _profiler.ZoneN(@src(), "draw");
+                    // defer zzz.End();
 
                     if (dc.gpu_geometry != null and dc.gpu_index_buffer != null and dc.gpu_shader != null) {
                         _ = e.setTransform(&zm.matToArr(mtx.mtx), 1);
@@ -230,14 +193,15 @@ const RenderComponentTask = struct {
                                 e.setVertexBuffer(@truncate(idx), vb, 0, dc.vertex_count);
                             }
                         }
-
                         e.setIndexBuffer(dc.gpu_index_buffer.?, 0, dc.index_count);
 
-                        for (self.viewers) |viewver| {
+                        for (self.viewers, 0..) |viewer, viewer_idx| {
+                            if (!self.visibility[renderable_idx].isSet(viewer_idx)) continue;
+
                             if (_shader_system.selectShaderVariant(
                                 dc.gpu_shader.?,
-                                viewver.context,
-                                self.systems,
+                                viewer.context,
+                                system_set,
                             )) |variant| {
                                 if (variant.prg) |prg| {
                                     _shader_system.submitShaderUniforms(e, variant, dc.gpu_shader.?);
@@ -266,129 +230,154 @@ pub fn toInstanceSlice(from: anytype) []const graphvm.GraphInstance {
     return containers;
 }
 
-const render_component_renderer_i = renderer.RendereableI.implement(public.RenderComponentInstance, struct {
-    pub fn culling(allocator: std.mem.Allocator, builder: renderer.GraphBuilder, world: ecs.World, viewers: []const renderer.Viewer, rq: *renderer.CullingRequest) !void {
-        var zz = _profiler.ZoneN(@src(), "RenderComponent - Culling calback");
+const render_component_renderer_i = renderer.RendereableComponentI.implement(public.RenderComponentInstance, struct {
+    pub fn init(
+        allocator: std.mem.Allocator,
+        data: []*anyopaque,
+    ) !void {
+        var zz = _profiler.ZoneN(@src(), "RenderComponent - Init calback");
         defer zz.End();
 
-        _ = viewers; // autofix
-        _ = builder;
+        var containers = cetech1.ArrayList(graphvm.GraphInstance){};
+        defer containers.deinit(allocator);
+        try containers.resize(allocator, data.len);
 
-        var q = _g.world2query.?.get(world).?;
-        var it = try q.iter();
-
-        var all_transforms = cetech1.ArrayList(transform.WorldTransform){};
-        defer all_transforms.deinit(allocator);
-
-        var all_render_components = cetech1.ArrayList(graphvm.GraphInstance){};
-        defer all_render_components.deinit(allocator);
-
-        while (q.next(&it)) {
-            const t = it.field(transform.WorldTransform, 0).?;
-            const rc = it.field(public.RenderComponentInstance, 1).?;
-
-            try all_transforms.appendSlice(allocator, t);
-
-            const containers = toInstanceSlice(rc);
-            try all_render_components.appendSlice(allocator, containers);
+        for (data, 0..) |d, idx| {
+            const gi: *graphvm.GraphInstance = @alignCast(@ptrCast(d));
+            containers.items[idx] = gi.*;
         }
 
         try _graphvm.executeNode(
             allocator,
-            all_render_components.items,
-            renderer.CULLING_VOLUME_NODE_TYPE,
+            containers.items,
+            renderer_nodes.CULLING_VOLUME_NODE_TYPE,
             .{},
         );
+    }
+
+    pub fn prepare_bounding_volumes(
+        allocator: std.mem.Allocator,
+        entites_idx: ?[]const usize,
+        transforms: []const transform.WorldTransform,
+        data: []*anyopaque,
+        volume_type: renderer.BoundingVolumeType,
+        volumes: []u8,
+    ) !void {
+        var zz = _profiler.ZoneN(@src(), "RenderComponent - Culling calback");
+        defer zz.End();
+
+        var containers = cetech1.ArrayList(graphvm.GraphInstance){};
+        defer containers.deinit(allocator);
+        try containers.resize(allocator, if (entites_idx) |eidxs| eidxs.len else transforms.len);
+
+        if (entites_idx) |idxs| {
+            for (idxs, 0..) |ent_idx, idx| {
+                const gi: *graphvm.GraphInstance = @alignCast(@ptrCast(data[ent_idx]));
+                containers.items[idx] = gi.*;
+            }
+        } else {
+            for (data, 0..) |d, idx| {
+                const gi: *graphvm.GraphInstance = @alignCast(@ptrCast(d));
+                containers.items[idx] = gi.*;
+            }
+        }
 
         const states = try _graphvm.getNodeState(
             renderer.CullingVolume,
             allocator,
-            all_render_components.items,
-            renderer.CULLING_VOLUME_NODE_TYPE,
+            containers.items,
+            renderer_nodes.CULLING_VOLUME_NODE_TYPE,
         );
         defer allocator.free(states);
 
-        if (states.len == 0) return;
+        switch (volume_type) {
+            .sphere => {
+                var sphere_out_volumes = std.mem.bytesAsSlice(renderer.SphereBoudingVolume, volumes);
 
-        var volumes = cetech1.ArrayList(renderer.CullingVolume){};
-        defer volumes.deinit(allocator);
+                for (states, 0..) |volume, idx| {
+                    if (volume) |v| {
+                        const mat = if (entites_idx) |idxs| transforms[idxs[idx]].mtx else transforms[idx].mtx;
 
-        var transforms_with_volumes = cetech1.ArrayList(transform.WorldTransform){};
-        defer transforms_with_volumes.deinit(allocator);
+                        const origin = zm.util.getTranslationVec(mat);
+                        var center = [3]f32{ 0, 0, 0 };
+                        zm.storeArr3(&center, origin);
 
-        var render_components_with_volumes = cetech1.ArrayList(graphvm.GraphInstance){};
-        defer render_components_with_volumes.deinit(allocator);
+                        sphere_out_volumes[idx] = .{
+                            .center = center,
+                            .radius = v.radius,
+                        };
+                    } else {
+                        sphere_out_volumes[idx] = .{};
+                    }
+                }
+            },
+            .box => {
+                var box_out_volumes = std.mem.bytesAsSlice(renderer.BoxBoudingVolume, volumes);
 
-        var transforms_without_volumes = cetech1.ArrayList(transform.WorldTransform){};
-        defer transforms_without_volumes.deinit(allocator);
+                for (states, 0..) |volume, idx| {
+                    if (volume) |v| {
+                        const t = if (entites_idx) |idxs| transforms[idxs[idx]] else transforms[idx];
 
-        var render_components_without_volumes = cetech1.ArrayList(graphvm.GraphInstance){};
-        defer render_components_without_volumes.deinit(allocator);
-
-        volumes.clearRetainingCapacity();
-        try volumes.ensureTotalCapacity(allocator, states.len);
-        for (states, 0..) |volume, idx| {
-            if (volume) |v| {
-                const culling_volume: *renderer.CullingVolume = @alignCast(@ptrCast(v));
-                volumes.appendAssumeCapacity(culling_volume.*);
-
-                try transforms_with_volumes.append(allocator, all_transforms.items[idx]);
-                try render_components_with_volumes.append(allocator, all_render_components.items[idx]);
-            } else {
-                try transforms_without_volumes.append(allocator, all_transforms.items[idx]);
-                try render_components_without_volumes.append(allocator, all_render_components.items[idx]);
-            }
-        }
-
-        if (volumes.items.len != 0) {
-            try rq.append(transforms_with_volumes.items, volumes.items, std.mem.sliceAsBytes(render_components_with_volumes.items));
-        }
-
-        if (transforms_without_volumes.items.len != 0) {
-            try rq.appendNoCulling(transforms_without_volumes.items, std.mem.sliceAsBytes(render_components_without_volumes.items));
+                        box_out_volumes[idx] = .{
+                            .t = t,
+                            .min = v.min,
+                            .max = v.max,
+                        };
+                    } else {
+                        box_out_volumes[idx] = .{};
+                    }
+                }
+            },
+            else => |v| {
+                log.err("Invalid bounding volume {d}", .{v});
+            },
         }
     }
 
     pub fn render(
         allocator: std.mem.Allocator,
-        builder: renderer.GraphBuilder,
+        builder: render_graph.GraphBuilder,
         world: ecs.World,
         viewport: renderer.Viewport,
-        viewers: []const renderer.Viewer,
-        systems: shader_system.SystemSet,
-        mtx: []const transform.WorldTransform,
-        renderables: []const u8,
+        viewers: []const render_graph.Viewer,
+        systems: []*shader_system.SystemInstance,
+        entites_idx: []const usize,
+        transforms: []transform.WorldTransform,
+        render_components: []*anyopaque,
+        visibility: []const renderer.VisibilityBitField,
     ) !void {
         var zz = _profiler.ZoneN(@src(), "RenderComponent - Render calback");
         defer zz.End();
         _ = world;
 
-        var ci: []const graphvm.GraphInstance = undefined;
-        ci.ptr = @alignCast(@ptrCast(renderables.ptr));
-        ci.len = renderables.len / @sizeOf(graphvm.GraphInstance);
+        var containers = cetech1.ArrayList(graphvm.GraphInstance){};
+        defer containers.deinit(allocator);
+        try containers.resize(allocator, entites_idx.len);
+        for (entites_idx, 0..) |ent_idx, idx| {
+            const gi: *graphvm.GraphInstance = @alignCast(@ptrCast(render_components[ent_idx]));
+            containers.items[idx] = gi.*;
+        }
 
-        const volumes = try _graphvm.getNodeState(renderer.CullingVolume, allocator, ci, renderer.CULLING_VOLUME_NODE_TYPE);
-        defer allocator.free(volumes);
-
-        try _graphvm.executeNode(allocator, ci, renderer.DRAW_CALL_NODE_TYPE, .{});
-        const draw_calls = try _graphvm.getNodeState(renderer.DrawCall, allocator, ci, renderer.DRAW_CALL_NODE_TYPE);
+        const draw_calls = try _graphvm.executeNodeAndGetState(renderer.DrawCall, allocator, containers.items, renderer_nodes.DRAW_CALL_NODE_TYPE, .{});
         defer allocator.free(draw_calls);
 
         const ARGS = struct {
             viewport: renderer.Viewport,
-            viewers: []const renderer.Viewer,
-            systems: shader_system.SystemSet,
-            builder: renderer.GraphBuilder,
+            viewers: []const render_graph.Viewer,
+            systems: []*shader_system.SystemInstance,
+            builder: render_graph.GraphBuilder,
 
-            transforms: []const transform.WorldTransform,
+            entities_idx: []const usize,
+            transforms: []transform.WorldTransform,
             draw_calls: []const ?*renderer.DrawCall,
+            visibility: []const renderer.VisibilityBitField,
         };
         if (try cetech1.task.batchWorkloadTask(
             .{
                 .allocator = allocator,
                 .task_api = _task,
                 .profiler_api = _profiler,
-                .count = draw_calls.len,
+                .count = entites_idx.len,
             },
 
             ARGS{
@@ -397,19 +386,23 @@ const render_component_renderer_i = renderer.RendereableI.implement(public.Rende
                 .systems = systems,
                 .builder = builder,
 
-                .transforms = mtx,
+                .entities_idx = entites_idx,
+                .transforms = transforms,
                 .draw_calls = draw_calls,
+                .visibility = visibility,
             },
 
             struct {
                 pub fn createTask(create_args: ARGS, batch_id: usize, args: cetech1.task.BatchWorkloadArgs, count: usize) RenderComponentTask {
                     return RenderComponentTask{
-                        .viewport = create_args.viewport,
                         .viewers = create_args.viewers,
                         .systems = create_args.systems,
                         .builder = create_args.builder,
 
-                        .transforms = create_args.transforms[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
+                        .entities_idx = create_args.entities_idx[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
+                        .transforms = create_args.transforms,
+
+                        .visibility = create_args.visibility[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
                         .draw_calls = create_args.draw_calls[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
                     };
                 }
@@ -420,10 +413,7 @@ const render_component_renderer_i = renderer.RendereableI.implement(public.Rende
     }
 });
 
-// Foo cdb type decl
-
 // Register all cdb stuff in this method
-
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.DbId) !void {
         // RenderComponentCdb
@@ -464,14 +454,13 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _shader_system = apidb.getZigApi(module_name, shader_system.ShaderSystemAPI).?;
 
     // impl interface
-    try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
 
     try apidb.implOrRemove(module_name, ecs.ComponentI, &render_component_c, load);
     try apidb.implOrRemove(module_name, ecs.ComponentI, &rc_initialized_c, load);
     try apidb.implOrRemove(module_name, ecs.SystemI, &init_render_graph_system_i, load);
-    try apidb.implOrRemove(module_name, ecs.OnWorldI, &query_onworld_i, load);
-    try apidb.implOrRemove(module_name, renderer.RendereableI, &render_component_renderer_i, load);
+
+    try apidb.implOrRemove(module_name, renderer.RendereableComponentI, &render_component_renderer_i, load);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});

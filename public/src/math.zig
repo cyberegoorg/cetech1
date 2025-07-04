@@ -8,9 +8,9 @@ pub const Plane = struct {
     dist: f32 = 0,
 };
 
-pub const FrustrumPlanes = [6]Plane;
+pub const FrustumPlanes = [6]Plane;
 
-pub fn frustumPlanesVsSphere(planes: FrustrumPlanes, center: [3]f32, radius: f32) bool {
+pub fn frustumPlanesVsSphereNaive(planes: FrustumPlanes, center: [3]f32, radius: f32) bool {
     for (0..6) |idx| {
         const world_space_point = zm.loadArr3(center);
         const plane_normal = zm.loadArr3(planes[idx].normal);
@@ -18,11 +18,48 @@ pub fn frustumPlanesVsSphere(planes: FrustrumPlanes, center: [3]f32, radius: f32
         const dist = dot[0] + planes[idx].dist + radius;
         if (dist < 0) return false;
     }
+    return true;
+}
+
+pub fn frustumPlanesVsOBBNaive(
+    planes: FrustumPlanes,
+    transform: zm.Mat,
+    min: [3]f32,
+    max: [3]f32,
+) bool {
+    var points: [8]zm.Vec = .{
+        zm.loadArr3(.{ min[0], min[1], min[2] }),
+        zm.loadArr3(.{ max[0], min[1], min[2] }),
+        zm.loadArr3(.{ max[0], max[1], min[2] }),
+        zm.loadArr3(.{ min[0], max[1], min[2] }),
+        zm.loadArr3(.{ min[0], min[1], max[2] }),
+        zm.loadArr3(.{ max[0], min[1], max[2] }),
+        zm.loadArr3(.{ max[0], max[1], max[2] }),
+        zm.loadArr3(.{ min[0], max[1], max[2] }),
+    };
+
+    for (&points) |*p| {
+        p.* = zm.mul(transform, p.*);
+    }
+
+    for (0..6) |idx| {
+        var inside = false;
+
+        const plane_normal = zm.loadArr3(planes[idx].normal);
+
+        for (points) |point| {
+            if (zm.dot3(point, plane_normal)[0] > 0) {
+                inside = true;
+                break;
+            }
+        }
+        if (!inside) return false;
+    }
 
     return true;
 }
 
-pub fn buildFrustumPlanes(mtx: [16]f32) FrustrumPlanes {
+pub fn buildFrustumPlanes(mtx: [16]f32) FrustumPlanes {
     const xw = mtx[3];
     const yw = mtx[7];
     const zw = mtx[11];

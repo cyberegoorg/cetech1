@@ -15,9 +15,9 @@ pub fn build(b: *std.Build) !void {
     );
 
     lib.root_module.addImport("transform", b.dependency("transform", .{}).module("transform"));
-    lib.root_module.addImport("graphvm", b.dependency("graphvm", .{}).module("graphvm"));
     lib.root_module.addImport("camera", b.dependency("camera", .{}).module("camera"));
     lib.root_module.addImport("shader_system", b.dependency("shader_system", .{}).module("shader_system"));
+    lib.root_module.addImport("render_graph", b.dependency("render_graph", .{}).module("render_graph"));
 
     _ = b.addModule(
         "renderer",
@@ -28,6 +28,7 @@ pub fn build(b: *std.Build) !void {
                 .{ .name = "transform", .module = b.dependency("transform", .{}).module("transform") },
                 .{ .name = "camera", .module = b.dependency("camera", .{}).module("camera") },
                 .{ .name = "shader_system", .module = b.dependency("shader_system", .{}).module("shader_system") },
+                .{ .name = "render_graph", .module = b.dependency("render_graph", .{}).module("render_graph") },
             },
         },
     );

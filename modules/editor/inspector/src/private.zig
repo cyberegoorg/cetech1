@@ -5,7 +5,7 @@ const public = @import("editor_inspector.zig");
 
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
-const strid = cetech1.strid;
+
 const assetdb = cetech1.assetdb;
 const coreui = cetech1.coreui;
 const coreui_icons = cetech1.coreui;
