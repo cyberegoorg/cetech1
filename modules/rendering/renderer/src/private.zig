@@ -50,9 +50,12 @@ var _shader: *const shader_system.ShaderSystemAPI = undefined;
 const G = struct {
     viewport_set: ViewportSet = undefined,
     viewport_pool: ViewportPool = undefined,
-    rg_lock: std.Thread.Mutex = undefined,
-    rg_set: GraphSet = undefined,
-    rg_pool: GraphPool = undefined,
+
+    created_texture: CreatedTextureMap = .{},
+    created_texture_lck: std.Thread.Mutex = .{},
+
+    builder_pool: BuilderPool = undefined,
+    module_pool: ModulePool = undefined,
 
     cube_pos_vb: gpu.VertexBufferHandle = .{},
     cube_col_vb: gpu.VertexBufferHandle = .{},
@@ -217,13 +220,13 @@ const Viewport = struct {
     fb: gpu.FrameBufferHandle = .{},
     size: [2]f32 = .{ 0, 0 },
     new_size: [2]f32 = .{ 0, 0 },
-    rg: public.Graph,
 
     world: ?ecs.World,
     main_camera_entity: ?ecs.EntityId = null,
     culling: CullingSystem,
 
     renderMe: bool,
+    rg: public.Module = undefined,
 
     // Stats
     all_renderables_counter: *f64 = undefined,
@@ -397,7 +400,6 @@ const ViewersList = cetech1.ArrayList(public.Viewer);
 
 const GraphBuilder = struct {
     allocator: std.mem.Allocator,
-    rg: *Graph,
 
     passinfo_map: PassInfoMap = .{},
     texture_map: TextureMap = .{},
@@ -412,10 +414,10 @@ const GraphBuilder = struct {
 
     viewers: ViewersList = .{},
 
-    pub fn init(allocator: std.mem.Allocator, rg: *Graph, viewport: public.Viewport) GraphBuilder {
+    pub fn init(allocator: std.mem.Allocator, viewport: public.Viewport) GraphBuilder {
         return .{
             .allocator = allocator,
-            .rg = rg,
+
             .viewport = viewport,
             .dag = dag.DAG(*public.Pass).init(allocator),
         };
@@ -522,6 +524,9 @@ const GraphBuilder = struct {
     }
 
     pub fn compile(self: *GraphBuilder) !void {
+        var z = _profiler.ZoneN(@src(), "RenderGraph - Compile");
+        defer z.End();
+
         // Create DAG for pass
         for (self.passes.items) |pass| {
             const info = self.passinfo_map.getPtr(pass) orelse return error.InvalidPass;
@@ -576,7 +581,7 @@ const GraphBuilder = struct {
                 for (info.create_texture.keys(), info.create_texture.values()) |k, v| {
                     const texture_deps = self.resource_deps.get(k).?;
 
-                    const t = try self.rg.createTexture2D(self.viewport, texture_deps.name, v);
+                    const t = try _createTexture2D(self.viewport, texture_deps.name, v);
                     try self.texture_map.put(self.allocator, k, t);
                 }
 
@@ -635,13 +640,15 @@ const GraphBuilder = struct {
         }
     }
 
-    pub fn execute(self: *GraphBuilder, viewers: []const public.Viewer) !void {
-        //
+    pub fn execute(self: *GraphBuilder, world: ecs.World, viewers: []const public.Viewer) !void {
+        var z = _profiler.ZoneN(@src(), "RenderGraph - Execute");
+        defer z.End();
+
         for (self.passes.items) |pass| {
             const info = self.passinfo_map.get(pass) orelse return error.InvalidPass;
 
             const builder = public.GraphBuilder{ .ptr = self, .vtable = &builder_vt };
-            try pass.render(builder, _gpu, self.viewport, info.viewid, viewers);
+            try pass.render(builder, _gpu, world, self.viewport, info.viewid, viewers);
         }
     }
 
@@ -685,131 +692,98 @@ const Module = struct {
         try self.passes.append(self.allocator, .{ .module = @alignCast(@ptrCast(module.ptr)) });
     }
 
-    pub fn setup(self: *Module, builder: public.GraphBuilder) !void {
+    pub fn setupBuilder(self: *Module, builder: public.GraphBuilder) !void {
         for (self.passes.items) |*pass_or_module| {
             switch (pass_or_module.*) {
-                .module => |module| try module.setup(builder),
+                .module => |module| try module.setupBuilder(builder),
                 .pass => |*pass| try pass.setup(pass, builder),
             }
         }
+    }
+
+    pub fn cleanup(self: *Module) !void {
+        self.passes.clearRetainingCapacity();
     }
 };
 
 const ModulePool = cetech1.heap.PoolWithLock(Module);
 const BuilderPool = cetech1.heap.PoolWithLock(GraphBuilder);
 
-const Graph = struct {
-    allocator: std.mem.Allocator,
-    module_pool: ModulePool,
-    builder_pool: BuilderPool,
-    module: Module,
+pub fn createModule() !public.Module {
+    const new_module = try _g.module_pool.create();
+    new_module.* = Module.init(_allocator);
+    return public.Module{
+        .ptr = new_module,
+        .vtable = &module_vt,
+    };
+}
 
-    created_texture: CreatedTextureMap = .{},
-    created_texture_lck: std.Thread.Mutex = .{},
+pub fn destroyModule(module: public.Module) void {
+    var real_module: *Module = @alignCast(@ptrCast(module.ptr));
+    real_module.deinit();
+    _g.module_pool.destroy(real_module);
+}
 
-    pub fn init(allocator: std.mem.Allocator) Graph {
-        return .{
-            .allocator = allocator,
-            .module_pool = ModulePool.init(allocator),
-            .builder_pool = BuilderPool.init(allocator),
-            .module = Module.init(allocator),
-        };
+pub fn createBuilder(allocator: std.mem.Allocator, viewport: public.Viewport) !public.GraphBuilder {
+    const new_builder = try _g.builder_pool.create();
+    new_builder.* = GraphBuilder.init(allocator, viewport);
+    return .{ .ptr = new_builder, .vtable = &builder_vt };
+}
+
+pub fn destroyBuilder(builder: public.GraphBuilder) void {
+    const true_builder: *GraphBuilder = @alignCast(@ptrCast(builder.ptr));
+    true_builder.deinit();
+    _g.builder_pool.destroy(true_builder);
+}
+
+pub fn _createTexture2D(viewport: public.Viewport, texture_name: []const u8, info: public.TextureInfo) !gpu.TextureHandle {
+    const texture_id = cetech1.strId32(texture_name);
+
+    const vp_size = viewport.getSize();
+    const ratio = ratioFromEnum(info.ratio);
+    const size = [2]f32{ vp_size[0] * ratio, vp_size[1] * ratio };
+
+    _g.created_texture_lck.lock();
+    defer _g.created_texture_lck.unlock();
+
+    const exist_texture = _g.created_texture.get(.{ .name = texture_id, .viewport = viewport });
+
+    if (exist_texture) |t| {
+        // it's a match
+        if (t.info.eql(info) and t.size[0] == vp_size[0] and t.size[1] == vp_size[1]) return t.handler;
+
+        _gpu.destroyTexture(t.handler);
     }
 
-    pub fn deinit(self: *Graph) void {
-        for (self.created_texture.values()) |texture| {
-            _gpu.destroyTexture(texture.handler);
-        }
+    // Create new
+    const t = _gpu.createTexture2D(
+        @intFromFloat(size[0]),
+        @intFromFloat(size[1]),
+        info.has_mip,
+        info.num_layers,
+        info.format,
+        info.flags,
+        null,
+    );
 
-        self.module.deinit();
-        self.module_pool.deinit();
-        self.builder_pool.deinit();
-        self.created_texture.deinit(self.allocator);
+    if (!t.isValid()) {
+        return error.InvalidTexture;
     }
 
-    pub fn addPass(self: *Graph, pass: public.Pass) !void {
-        try self.module.addPass(pass);
-    }
-
-    pub fn addModule(self: *Graph, module: public.Module) !void {
-        try self.module.addModule(module);
-    }
-
-    pub fn createModule(self: *Graph) !public.Module {
-        const new_module = try self.module_pool.create();
-        new_module.* = Module.init(self.allocator);
-        return public.Module{
-            .ptr = new_module,
-            .vtable = &module_vt,
-        };
-    }
-
-    pub fn createBuilder(self: *Graph, allocator: std.mem.Allocator, viewport: public.Viewport) !public.GraphBuilder {
-        const new_builder = try self.builder_pool.create();
-        new_builder.* = GraphBuilder.init(allocator, self, viewport);
-        return .{ .ptr = new_builder, .vtable = &builder_vt };
-    }
-
-    pub fn destroyBuilder(self: *Graph, builder: public.GraphBuilder) void {
-        const true_builder: *GraphBuilder = @alignCast(@ptrCast(builder.ptr));
-        true_builder.deinit();
-        self.builder_pool.destroy(true_builder);
-    }
-
-    pub fn setupBuilder(self: *Graph, builder: public.GraphBuilder) !void {
-        try self.module.setup(builder);
-    }
-
-    pub fn createTexture2D(self: *Graph, viewport: public.Viewport, texture_name: []const u8, info: public.TextureInfo) !gpu.TextureHandle {
-        const texture_id = cetech1.strId32(texture_name);
-
-        const vp_size = viewport.getSize();
-        const ratio = ratioFromEnum(info.ratio);
-        const size = [2]f32{ vp_size[0] * ratio, vp_size[1] * ratio };
-        const exist_texture = self.created_texture.get(.{ .name = texture_id, .viewport = viewport });
-
-        if (exist_texture) |t| {
-            // it's a match
-            if (t.info.eql(info) and t.size[0] == vp_size[0] and t.size[1] == vp_size[1]) return t.handler;
-
-            _gpu.destroyTexture(t.handler);
-        }
-
-        // Create new
-        const t = _gpu.createTexture2D(
-            @intFromFloat(size[0]),
-            @intFromFloat(size[1]),
-            info.has_mip,
-            info.num_layers,
-            info.format,
-            info.flags,
-            null,
+    _gpu.setTextureName(t, texture_name.ptr, @intCast(texture_name.len));
+    {
+        try _g.created_texture.put(
+            _allocator,
+            .{ .name = texture_id, .viewport = viewport },
+            .{
+                .handler = t,
+                .info = info,
+                .size = size,
+            },
         );
-
-        if (!t.isValid()) {
-            return error.InvalidTexture;
-        }
-
-        _gpu.setTextureName(t, texture_name.ptr, @intCast(texture_name.len));
-        {
-            self.created_texture_lck.lock();
-            defer self.created_texture_lck.unlock();
-            try self.created_texture.put(
-                self.allocator,
-                .{ .name = texture_id, .viewport = viewport },
-                .{
-                    .handler = t,
-                    .info = info,
-                    .size = size,
-                },
-            );
-        }
-        return t;
     }
-};
-
-const GraphPool = cetech1.heap.PoolWithLock(Graph);
-const GraphSet = cetech1.AutoArrayHashMap(*Graph, void);
+    return t;
+}
 
 const ViewportPool = cetech1.heap.PoolWithLock(Viewport);
 const ViewportSet = cetech1.AutoArrayHashMap(*Viewport, void);
@@ -829,7 +803,7 @@ var kernel_render_task = cetech1.kernel.KernelTaskUpdateI.implment(
     },
 );
 
-fn createViewport(name: [:0]const u8, rg: public.Graph, world: ?ecs.World, camera_ent: ecs.EntityId) !public.Viewport {
+fn createViewport(name: [:0]const u8, world: ?ecs.World, camera_ent: ecs.EntityId) !public.Viewport {
     const new_viewport = try _g.viewport_pool.create();
 
     const dupe_name = try _allocator.dupeZ(u8, name);
@@ -838,7 +812,6 @@ fn createViewport(name: [:0]const u8, rg: public.Graph, world: ?ecs.World, camer
 
     new_viewport.* = .{
         .name = dupe_name,
-        .rg = rg,
         .world = world,
         .main_camera_entity = camera_ent,
         .renderMe = false,
@@ -889,10 +862,15 @@ fn uiDebugMenuItems(allocator: std.mem.Allocator, viewport: public.Viewport) voi
     }
 }
 
+fn createRendererPass() public.Pass {
+    return renderer_pass;
+}
+
 pub const api = public.RendererApi{
     .createViewport = createViewport,
     .destroyViewport = destroyViewport,
     .uiDebugMenuItems = uiDebugMenuItems,
+    .createRendererPass = createRendererPass,
 };
 
 pub const viewport_vt = public.Viewport.VTable.implement(struct {
@@ -921,9 +899,10 @@ pub const viewport_vt = public.Viewport.VTable.implement(struct {
         return true_viewport.size;
     }
 
-    pub fn renderMe(viewport: *anyopaque) void {
+    pub fn renderMe(viewport: *anyopaque, module: public.Module) void {
         const true_viewport: *Viewport = @alignCast(@ptrCast(viewport));
         true_viewport.renderMe = true;
+        true_viewport.rg = module;
     }
 
     pub fn setMainCamera(viewport: *anyopaque, camera_ent: ?ecs.EntityId) void {
@@ -946,11 +925,15 @@ pub const viewport_vt = public.Viewport.VTable.implement(struct {
     }
 });
 
+const Renderables = struct {
+    iface: *const public.RendereableI,
+};
+
 const RenderViewportTask = struct {
     viewport: *Viewport,
     now_s: f32,
-    pub fn exec(s: *@This()) !void {
-        const complete_counter = cetech1.metrics.MetricScopedDuration.begin(s.viewport.complete_render_duration);
+    pub fn exec(self: *@This()) !void {
+        const complete_counter = cetech1.metrics.MetricScopedDuration.begin(self.viewport.complete_render_duration);
         defer complete_counter.end();
 
         var zone = _profiler.ZoneN(@src(), "RenderViewport");
@@ -959,33 +942,22 @@ const RenderViewportTask = struct {
         const allocator = try _tmpalloc.create();
         defer _tmpalloc.destroy(allocator);
 
-        const fb = s.viewport.fb;
+        const fb = self.viewport.fb;
         if (!fb.isValid()) return;
 
-        const rg = s.viewport.rg;
+        const rg = self.viewport.rg;
         if (@intFromPtr(rg.ptr) == 0) return;
 
-        const vp = public.Viewport{ .ptr = s.viewport, .vtable = &viewport_vt };
-
-        const Renderables = struct {
-            iface: *const public.RendereableI,
-        };
+        const vp = public.Viewport{ .ptr = self.viewport, .vtable = &viewport_vt };
 
         var viewers = ViewersList{};
         defer viewers.deinit(allocator);
 
-        var enabled_systems = shader_system.SystemSet.initEmpty();
-        enabled_systems.set(_shader.getSystemIdx(cetech1.strId32("viewer_system")));
-        enabled_systems.set(_shader.getSystemIdx(cetech1.strId32("time_system")));
-
-        if (s.viewport.world) |world| {
-            var renderables = cetech1.ArrayList(Renderables){};
-            defer renderables.deinit(allocator);
-
+        if (self.viewport.world) |world| {
             viewers.clearRetainingCapacity();
 
             // Main vieewr
-            const fb_size = s.viewport.size;
+            const fb_size = self.viewport.size;
             const aspect_ratio = fb_size[0] / fb_size[1];
 
             // TODO: shader components
@@ -1027,7 +999,7 @@ const RenderViewportTask = struct {
                             .context = cetech1.strId32("viewport"),
                         };
 
-                        if (s.viewport.main_camera_entity != null and s.viewport.main_camera_entity.? == entities[idx]) {
+                        if (self.viewport.main_camera_entity != null and self.viewport.main_camera_entity.? == entities[idx]) {
                             try viewers.insert(allocator, 0, v);
                         } else {
                             try viewers.append(allocator, v);
@@ -1038,11 +1010,10 @@ const RenderViewportTask = struct {
 
             if (viewers.items.len == 0) return;
 
-            const builder = try rg.createBuilder(allocator, vp);
-            defer rg.destroyBuilder(builder);
+            // Build and execute graph
             {
-                var z = _profiler.ZoneN(@src(), "RenderViewport - Render graph");
-                defer z.End();
+                const builder = try createBuilder(allocator, vp);
+                defer destroyBuilder(builder);
 
                 const color_output = _gpu.getTexture(fb, 0);
                 try builder.importTexture(public.ViewportColorResource, color_output);
@@ -1050,83 +1021,106 @@ const RenderViewportTask = struct {
                 try rg.setupBuilder(builder);
 
                 try builder.compile();
-                try builder.execute(viewers.items);
-            }
-
-            // TODO: Collect renderables that is not cullable
-            {}
-
-            // Collect  renderables to culling
-            {
-                var z = _profiler.ZoneN(@src(), "RenderViewport - Culling collect phase");
-                defer z.End();
-
-                const counter = cetech1.metrics.MetricScopedDuration.begin(s.viewport.culling_collect_duration);
-                defer counter.end();
-
-                const impls = try _apidb.getImpl(allocator, public.RendereableI);
-                defer allocator.free(impls);
-                for (impls) |iface| {
-                    const renderable = Renderables{ .iface = iface };
-                    try renderables.append(allocator, renderable);
-
-                    const cr = try s.viewport.culling.getRequest(iface, iface.size);
-
-                    if (iface.culling) |culling| {
-                        var zz = _profiler.ZoneN(@src(), "RenderViewport - Culling calback");
-                        defer zz.End();
-
-                        _ = try culling(allocator, builder, world, viewers.items, cr);
-                    }
-
-                    s.viewport.all_renderables_counter.* += @floatFromInt(cr.mtx.items.len);
-                }
-            }
-
-            // Culling
-            {
-                var z = _profiler.ZoneN(@src(), "RenderViewport - Culling phase");
-                defer z.End();
-
-                const counter = cetech1.metrics.MetricScopedDuration.begin(s.viewport.culling_duration);
-                defer counter.end();
-
-                try s.viewport.culling.doCulling(allocator, builder, viewers.items);
-            }
-
-            // Render
-            {
-                var z = _profiler.ZoneN(@src(), "RenderViewport - Render phase");
-                defer z.End();
-
-                const counter = cetech1.metrics.MetricScopedDuration.begin(s.viewport.render_duration);
-                defer counter.end();
-
-                for (renderables.items) |renderable| {
-                    var zz = _profiler.ZoneN(@src(), "RenderViewport - Render calback");
-                    defer zz.End();
-
-                    const result = s.viewport.culling.getResult(renderable.iface);
-
-                    s.viewport.rendered_counter.* += @floatFromInt(result.mtx.items.len);
-
-                    if (result.renderables.items.len > 0) {
-                        try renderable.iface.render(
-                            allocator,
-                            builder,
-                            world,
-                            vp,
-                            viewers.items,
-                            enabled_systems,
-                            result.mtx.items,
-                            result.renderables.items,
-                        );
-                    }
-                }
+                try builder.execute(world, viewers.items);
             }
         }
     }
 };
+
+const renderer_pass = public.Pass.implement(struct {
+    pub fn setup(pass: *public.Pass, builder: public.GraphBuilder) !void {
+        try builder.addPass("render", pass);
+    }
+
+    pub fn render(builder: public.GraphBuilder, gfx_api: *const gpu.GpuApi, world: ecs.World, viewport: public.Viewport, viewid: gpu.ViewId, viewers: []const public.Viewer) !void {
+        _ = gfx_api;
+        _ = viewid;
+
+        const true_viewport: *Viewport = @alignCast(@ptrCast(viewport.ptr));
+
+        const allocator = try _tmpalloc.create();
+        defer _tmpalloc.destroy(allocator);
+
+        var renderables = cetech1.ArrayList(Renderables){};
+        defer renderables.deinit(allocator);
+
+        // TODO: Collect renderables that is not cullable
+        {}
+
+        // Collect  renderables to culling
+        {
+            var z = _profiler.ZoneN(@src(), "Render - Culling collect phase");
+            defer z.End();
+
+            const counter = cetech1.metrics.MetricScopedDuration.begin(true_viewport.culling_collect_duration);
+            defer counter.end();
+
+            const impls = try _apidb.getImpl(allocator, public.RendereableI);
+            defer allocator.free(impls);
+            for (impls) |iface| {
+                const renderable = Renderables{ .iface = iface };
+                try renderables.append(allocator, renderable);
+
+                const cr = try true_viewport.culling.getRequest(iface, iface.size);
+
+                if (iface.culling) |culling| {
+                    var zz = _profiler.ZoneN(@src(), "Render - Culling calback");
+                    defer zz.End();
+
+                    _ = try culling(allocator, builder, world, viewers, cr);
+                }
+
+                true_viewport.all_renderables_counter.* += @floatFromInt(cr.mtx.items.len);
+            }
+        }
+
+        // Culling
+        {
+            var z = _profiler.ZoneN(@src(), "Render - Culling phase");
+            defer z.End();
+
+            const counter = cetech1.metrics.MetricScopedDuration.begin(true_viewport.culling_duration);
+            defer counter.end();
+
+            try true_viewport.culling.doCulling(allocator, builder, viewers);
+        }
+
+        // Render
+        {
+            var z = _profiler.ZoneN(@src(), "Render - Render phase");
+            defer z.End();
+
+            const counter = cetech1.metrics.MetricScopedDuration.begin(true_viewport.render_duration);
+            defer counter.end();
+
+            var enabled_systems = shader_system.SystemSet.initEmpty();
+            enabled_systems.set(_shader.getSystemIdx(cetech1.strId32("viewer_system")));
+            enabled_systems.set(_shader.getSystemIdx(cetech1.strId32("time_system")));
+
+            for (renderables.items) |renderable| {
+                var zz = _profiler.ZoneN(@src(), "Render - Render calback");
+                defer zz.End();
+
+                const result = true_viewport.culling.getResult(renderable.iface);
+
+                true_viewport.rendered_counter.* += @floatFromInt(result.mtx.items.len);
+
+                if (result.renderables.items.len > 0) {
+                    try renderable.iface.render(
+                        allocator,
+                        builder,
+                        world,
+                        viewport,
+                        viewers,
+                        enabled_systems,
+                        result.mtx.items,
+                        result.renderables.items,
+                    );
+                }
+            }
+        }
+    }
+});
 
 fn renderAllViewports(allocator: std.mem.Allocator, time_s: f32) !void {
     var zone_ctx = _profiler.ZoneN(@src(), "renderAllViewports");
@@ -1238,7 +1232,6 @@ fn renderAll(ctx: *gpu.GpuContext, kernel_tick: u64, dt: f32, vsync: bool) !void
         defer _gpu.endEncoder(encoder);
         encoder.touch(0);
     }
-
     _gpu.dbgTextClear(0, false);
 
     const allocator = try _tmpalloc.create();
@@ -1261,18 +1254,11 @@ fn renderAll(ctx: *gpu.GpuContext, kernel_tick: u64, dt: f32, vsync: bool) !void
     // profiler.ztracy.FrameImage( , width: u16, height: u16, offset: u8, flip: c_int);
 }
 
-pub const rg_vt = public.Graph.VTable{
-    .addPass = @ptrCast(&Graph.addPass),
-    .addModule = @ptrCast(&Graph.addModule),
-    .createModule = @ptrCast(&Graph.createModule),
-    .createBuilder = @ptrCast(&Graph.createBuilder),
-    .destroyBuilder = @ptrCast(&Graph.destroyBuilder),
-    .setupBuilder = @ptrCast(&Graph.setupBuilder),
-};
-
 pub const module_vt = public.Module.VTable{
-    .addPassToModule = @ptrCast(&Module.addPass),
-    .addModuleToModule = @ptrCast(&Module.addModule),
+    .addPass = @ptrCast(&Module.addPass),
+    .addModule = @ptrCast(&Module.addModule),
+    .setupBuilder = @ptrCast(&Module.setupBuilder),
+    .cleanup = @ptrCast(&Module.cleanup),
 };
 
 pub const builder_vt = public.GraphBuilder.VTable{
@@ -1294,44 +1280,21 @@ pub const builder_vt = public.GraphBuilder.VTable{
 };
 
 pub const graph_api = public.RenderGraphApi{
-    .create = create,
     .createDefault = createDefault,
-    .destroy = destroy,
+
+    .createBuilder = @ptrCast(&createBuilder),
+    .destroyBuilder = @ptrCast(&destroyBuilder),
+    .createModule = createModule,
+    .destroyModule = destroyModule,
 };
 
-fn create() !public.Graph {
-    const new_rg = try _g.rg_pool.create();
-    new_rg.* = Graph.init(_allocator);
-
-    {
-        _g.rg_lock.lock();
-        defer _g.rg_lock.unlock();
-        try _g.rg_set.put(_allocator, new_rg, {});
-    }
-
-    return public.Graph{ .ptr = new_rg, .vtable = &rg_vt };
-}
-
-fn createDefault(allocator: std.mem.Allocator, graph: public.Graph) !void {
+fn createDefault(allocator: std.mem.Allocator, module: public.Module) !void {
     const impls = try _apidb.getImpl(allocator, public.DefaultRenderGraphI);
     defer allocator.free(impls);
     if (impls.len == 0) return;
 
     const iface = impls[impls.len - 1];
-    return try iface.create(allocator, &graph_api, graph);
-}
-
-fn destroy(rg: public.Graph) void {
-    const true_rg: *Graph = @alignCast(@ptrCast(rg.ptr));
-    true_rg.deinit();
-
-    {
-        _g.rg_lock.lock();
-        defer _g.rg_lock.unlock();
-        _ = _g.rg_set.swapRemove(true_rg);
-    }
-
-    _g.rg_pool.destroy(true_rg);
+    try iface.create(allocator, &graph_api, module);
 }
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
@@ -1342,9 +1305,8 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             _g.viewport_set = .{};
             _g.viewport_pool = ViewportPool.init(_allocator);
 
-            _g.rg_set = .{};
-            _g.rg_pool = GraphPool.init(_allocator);
-            _g.rg_lock = std.Thread.Mutex{};
+            _g.builder_pool = BuilderPool.init(_allocator);
+            _g.module_pool = ModulePool.init(_allocator);
 
             _g.time_system = try _shader.createSystemInstance(cetech1.strId32("time_system"));
 
@@ -1388,8 +1350,13 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             _g.viewport_set.deinit(_allocator);
             _g.viewport_pool.deinit();
 
-            _g.rg_set.deinit(_allocator);
-            _g.rg_pool.deinit();
+            _g.builder_pool.deinit();
+            _g.module_pool.deinit();
+
+            for (_g.created_texture.values()) |texture| {
+                _gpu.destroyTexture(texture.handler);
+            }
+            _g.created_texture.deinit(_allocator);
 
             _shader.destroySystemInstance(&_g.time_system);
 

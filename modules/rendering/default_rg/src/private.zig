@@ -29,6 +29,7 @@ var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 var _ecs: *const ecs.EcsAPI = undefined;
 var _gpu: *const gpu.GpuApi = undefined;
 var _dd: *const gpu.GpuDDApi = undefined;
+var _renderer: *const renderer.RendererApi = undefined;
 
 const simple_pass = renderer.Pass.implement(struct {
     pub fn setup(pass: *renderer.Pass, builder: renderer.GraphBuilder) !void {
@@ -71,9 +72,10 @@ const simple_pass = renderer.Pass.implement(struct {
         try builder.addPass("simple_pass", pass);
     }
 
-    pub fn render(builder: renderer.GraphBuilder, gfx_api: *const gpu.GpuApi, viewport: renderer.Viewport, viewid: gpu.ViewId, viewers: []const renderer.Viewer) !void {
+    pub fn render(builder: renderer.GraphBuilder, gfx_api: *const gpu.GpuApi, world: ecs.World, viewport: renderer.Viewport, viewid: gpu.ViewId, viewers: []const renderer.Viewer) !void {
         _ = builder;
         _ = viewport;
+        _ = world;
 
         const projMtx = viewers[0].proj;
         const viewMtx = viewers[0].mtx;
@@ -111,8 +113,10 @@ const blit_pass = renderer.Pass.implement(struct {
         try builder.addPass("blit", pass);
     }
 
-    pub fn render(builder: renderer.GraphBuilder, gfx_api: *const gpu.GpuApi, viewport: renderer.Viewport, viewid: gpu.ViewId, viewers: []const renderer.Viewer) !void {
+    pub fn render(builder: renderer.GraphBuilder, gfx_api: *const gpu.GpuApi, world: ecs.World, viewport: renderer.Viewport, viewid: gpu.ViewId, viewers: []const renderer.Viewer) !void {
         _ = viewers; // autofix
+        _ = world; // autofix
+
         const fb_size = viewport.getSize();
 
         if (gfx_api.getEncoder()) |e| {
@@ -141,11 +145,12 @@ const blit_pass = renderer.Pass.implement(struct {
 });
 
 const rg_i = renderer.DefaultRenderGraphI.implement(struct {
-    pub fn create(allocator: std.mem.Allocator, rg_api: *const renderer.RenderGraphApi, graph: renderer.Graph) !void {
+    pub fn create(allocator: std.mem.Allocator, rg_api: *const renderer.RenderGraphApi, module: renderer.Module) !void {
         _ = allocator; // autofix
         _ = rg_api; // autofix
-        try graph.addPass(simple_pass);
-        try graph.addPass(blit_pass);
+        try module.addPass(simple_pass);
+        try module.addPass(blit_pass);
+        try module.addPass(_renderer.createRendererPass());
     }
 });
 
@@ -163,6 +168,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
     _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
     _dd = apidb.getZigApi(module_name, gpu.GpuDDApi).?;
+    _renderer = apidb.getZigApi(module_name, renderer.RendererApi).?;
 
     try apidb.implOrRemove(module_name, renderer.DefaultRenderGraphI, &rg_i, load);
 

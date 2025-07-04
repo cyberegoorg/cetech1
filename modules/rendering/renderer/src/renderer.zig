@@ -218,7 +218,7 @@ pub const DefaultRenderGraphI = struct {
     create: *const fn (
         allocator: std.mem.Allocator,
         rg_api: *const RenderGraphApi,
-        graph: Graph,
+        module: Module,
     ) anyerror!void = undefined,
 
     pub fn implement(comptime T: type) DefaultRenderGraphI {
@@ -261,8 +261,8 @@ pub const Viewport = struct {
         return self.vtable.getMainCamera(self.ptr);
     }
 
-    pub inline fn renderMe(self: Viewport) void {
-        return self.vtable.renderMe(self.ptr);
+    pub inline fn renderMe(self: Viewport, module: Module) void {
+        return self.vtable.renderMe(self.ptr, module);
     }
 
     pub inline fn setDebugCulling(self: Viewport, enable: bool) void {
@@ -285,7 +285,7 @@ pub const Viewport = struct {
         getMainCamera: *const fn (viewport: *anyopaque) ?ecs.EntityId,
         setMainCamera: *const fn (viewport: *anyopaque, camera_ent: ?ecs.EntityId) void,
 
-        renderMe: *const fn (viewport: *anyopaque) void,
+        renderMe: *const fn (viewport: *anyopaque, module: Module) void,
 
         getDebugCulling: *const fn (viewport: *anyopaque) bool,
         setDebugCulling: *const fn (viewport: *anyopaque, enable: bool) void,
@@ -317,7 +317,7 @@ const GpuApi = gpu.GpuApi;
 
 pub const Pass = struct {
     setup: *const fn (pass: *Pass, builder: GraphBuilder) anyerror!void,
-    render: *const fn (builder: GraphBuilder, gfx_api: *const GpuApi, viewport: Viewport, viewid: gpu.ViewId, viewers: []const Viewer) anyerror!void,
+    render: *const fn (builder: GraphBuilder, gfx_api: *const GpuApi, world: ecs.World, viewport: Viewport, viewid: gpu.ViewId, viewers: []const Viewer) anyerror!void,
 
     pub fn implement(comptime T: type) Pass {
         if (!std.meta.hasFn(T, "setup")) @compileError("implement me");
@@ -333,27 +333,39 @@ pub const Pass = struct {
 };
 
 pub const Module = struct {
-    pub fn addPassToModule(self: Module, pass: Pass) !void {
-        self.vtable.addPassToModule(self.ptr, pass);
+    pub fn addPass(self: Module, pass: Pass) !void {
+        return self.vtable.addPass(self.ptr, pass);
     }
-    pub fn addModuleToModule(self: Module, module: Module) !void {
-        self.vtable.addModuleToModule(self.ptr, module);
+    pub fn addModule(self: Module, module: Module) !void {
+        return self.vtable.addModule(self.ptr, module);
+    }
+    pub fn setupBuilder(self: Module, builder: GraphBuilder) !void {
+        return self.vtable.setupBuilder(self.ptr, builder);
+    }
+    pub fn cleanup(self: Module) !void {
+        return self.vtable.cleanup(self.ptr);
     }
 
     ptr: *anyopaque,
     vtable: *const VTable,
 
     pub const VTable = struct {
-        addPassToModule: *const fn (self: *anyopaque, pass: Pass) anyerror!void,
-        addModuleToModule: *const fn (self: *anyopaque, module: Module) anyerror!void,
+        addPass: *const fn (self: *anyopaque, pass: Pass) anyerror!void,
+        addModule: *const fn (self: *anyopaque, module: Module) anyerror!void,
+        setupBuilder: *const fn (self: *anyopaque, builder: GraphBuilder) anyerror!void,
+        cleanup: *const fn (self: *anyopaque) anyerror!void,
 
         pub fn implement(comptime T: type) VTable {
-            if (!std.meta.hasFn(T, "addPassToModule")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "addModuleToModule")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "addPass")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "addModule")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "setupBuilder")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "cleanup")) @compileError("implement me");
 
             return VTable{
-                .addPassToModule = &T.addPassToModule,
-                .addModuleToModule = &T.addModuleToModule,
+                .addPass = &T.addPass,
+                .addModule = &T.addModule,
+                .setupBuilder = &T.setupBuilder,
+                .cleanup = &T.cleanup,
             };
         }
     };
@@ -432,8 +444,8 @@ pub const GraphBuilder = struct {
     pub inline fn compile(builder: GraphBuilder) !void {
         return builder.vtable.compile(builder.ptr);
     }
-    pub inline fn execute(builder: GraphBuilder, viewers: []const Viewer) !void {
-        return builder.vtable.execute(builder.ptr, viewers);
+    pub inline fn execute(builder: GraphBuilder, world: ecs.World, viewers: []const Viewer) !void {
+        return builder.vtable.execute(builder.ptr, world, viewers);
     }
 
     pub inline fn getViewers(builder: GraphBuilder) []Viewer {
@@ -458,70 +470,26 @@ pub const GraphBuilder = struct {
         getViewers: *const fn (builder: *anyopaque) []Viewer,
 
         compile: *const fn (builder: *anyopaque) anyerror!void,
-        execute: *const fn (builder: *anyopaque, viewers: []const Viewer) anyerror!void,
-    };
-};
-
-pub const Graph = struct {
-    pub inline fn addPass(self: Graph, pass: Pass) !void {
-        return self.vtable.addPass(self.ptr, pass);
-    }
-    pub inline fn addModule(self: Graph, module: Module) !void {
-        self.vtable.addModule(self.ptr, module);
-    }
-    pub inline fn createModule(self: Graph) !Module {
-        return self.vtable.createModule(self.ptr);
-    }
-    pub inline fn createBuilder(self: Graph, allocator: std.mem.Allocator, viewport: Viewport) !GraphBuilder {
-        return self.vtable.createBuilder(self.ptr, allocator, viewport);
-    }
-    pub inline fn destroyBuilder(self: Graph, builder: GraphBuilder) void {
-        self.vtable.destroyBuilder(self.ptr, builder);
-    }
-    pub inline fn setupBuilder(self: Graph, builder: GraphBuilder) !void {
-        return self.vtable.setupBuilder(self.ptr, builder);
-    }
-
-    ptr: *anyopaque,
-    vtable: *const VTable,
-
-    pub const VTable = struct {
-        addPass: *const fn (self: *anyopaque, pass: Pass) anyerror!void,
-        addModule: *const fn (self: *anyopaque, module: Module) anyerror!void,
-        createModule: *const fn (self: *anyopaque) anyerror!Module,
-        createBuilder: *const fn (self: *anyopaque, allocator: std.mem.Allocator, viewport: Viewport) anyerror!GraphBuilder,
-        destroyBuilder: *const fn (self: *anyopaque, builder: GraphBuilder) void,
-        setupBuilder: *const fn (self: *anyopaque, builder: GraphBuilder) anyerror!void,
-
-        pub fn implement(comptime T: type) VTable {
-            if (!std.meta.hasFn(T, "addPass")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "addModule")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "createModule")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "createBuilder")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "destroyBuilder")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "setupBuilder")) @compileError("implement me");
-
-            return VTable{
-                .addPass = &T.addPass,
-                .addModule = &T.addModule,
-                .createModule = &T.createModule,
-                .createBuilder = &T.createBuilder,
-                .destroyBuilder = &T.destroyBuilder,
-                .setupBuilder = &T.setupBuilder,
-            };
-        }
+        execute: *const fn (builder: *anyopaque, world: ecs.World, viewers: []const Viewer) anyerror!void,
     };
 };
 
 pub const RenderGraphApi = struct {
-    create: *const fn () anyerror!Graph,
-    createDefault: *const fn (allocator: std.mem.Allocator, graph: Graph) anyerror!void,
-    destroy: *const fn (rg: Graph) void,
+    createDefault: *const fn (allocator: std.mem.Allocator, module: Module) anyerror!void,
+
+    createBuilder: *const fn (allocator: std.mem.Allocator, viewport: Viewport) anyerror!GraphBuilder,
+    destroyBuilder: *const fn (builder: GraphBuilder) void,
+
+    createModule: *const fn () anyerror!Module,
+    destroyModule: *const fn (module: Module) void,
 };
 
 pub const RendererApi = struct {
-    createViewport: *const fn (name: [:0]const u8, rg: Graph, world: ?ecs.World, camera_ent: ecs.EntityId) anyerror!Viewport,
+    createViewport: *const fn (name: [:0]const u8, world: ?ecs.World, camera_ent: ecs.EntityId) anyerror!Viewport,
     destroyViewport: *const fn (viewport: Viewport) void,
 
     uiDebugMenuItems: *const fn (allocator: std.mem.Allocator, viewport: Viewport) void,
+
+    // TODO: tmp shit
+    createRendererPass: *const fn () Pass,
 };

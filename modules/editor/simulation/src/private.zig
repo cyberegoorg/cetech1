@@ -60,7 +60,7 @@ var _editor_entity: *const editor_entity.EditorEntityAPI = undefined;
 // Global state that can surive hot-reload
 const G = struct {
     test_tab_vt_ptr: *editor.TabTypeI = undefined,
-    rg: renderer.Graph = undefined,
+    render_module: renderer.Module = undefined,
 };
 var _g: *G = undefined;
 
@@ -124,7 +124,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         var tab_inst = _allocator.create(SimulationTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _renderer.createViewport(name, _g.rg, w, camera_ent),
+            .viewport = try _renderer.createViewport(name, w, camera_ent),
             .world = w,
             .camera_ent = camera_ent,
             .tab_i = .{
@@ -212,7 +212,9 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             .q = zm.matToQuat(zm.mul(zm.rotationX(tab_o.camera.pitch), zm.rotationY(tab_o.camera.yaw))),
         });
 
-        tab_o.viewport.renderMe();
+        try _g.render_module.cleanup();
+        try _render_graph.createDefault(_allocator, _g.render_module);
+        tab_o.viewport.renderMe(_g.render_module);
     }
 
     // Draw tab menu
@@ -308,12 +310,11 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
     &[_]cetech1.StrId64{renderer.RENDERER_KERNEL_TASK},
     struct {
         pub fn init() !void {
-            _g.rg = try _render_graph.create();
-            try _render_graph.createDefault(_allocator, _g.rg);
+            _g.render_module = try _render_graph.createModule();
         }
 
         pub fn shutdown() !void {
-            _render_graph.destroy(_g.rg);
+            _render_graph.destroyModule(_g.render_module);
         }
     },
 );
