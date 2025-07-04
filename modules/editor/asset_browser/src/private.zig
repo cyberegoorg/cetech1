@@ -6,7 +6,6 @@ const coreui = cetech1.coreui;
 const assetdb = cetech1.assetdb;
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
-const strid = cetech1.strid;
 
 const public = @import("asset_browser.zig");
 

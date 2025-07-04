@@ -146,6 +146,7 @@ fn tagsInput(
 
 //
 // Create tag asset
+//
 
 var create_tag_asset_i = editor.CreateAssetI.implement(
     assetdb.Tag.type_hash,

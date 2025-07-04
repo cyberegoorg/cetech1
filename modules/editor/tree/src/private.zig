@@ -5,7 +5,7 @@ const public = @import("editor_tree.zig");
 
 const cetech1 = @import("cetech1");
 const coreui = cetech1.coreui;
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 
 const editor = @import("editor");

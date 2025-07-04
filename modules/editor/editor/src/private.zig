@@ -8,7 +8,7 @@ const apidb = cetech1.apidb;
 const coreui = cetech1.coreui;
 const assetdb = cetech1.assetdb;
 const cdb = cetech1.cdb;
-const strid = cetech1.strid;
+
 const task = cetech1.task;
 
 const Icons = coreui.CoreIcons;
@@ -489,6 +489,9 @@ fn dealocateTabId(tab_hash: cetech1.StrId32, tabid: u32) !void {
 }
 
 fn createNewTab(tab_hash: cetech1.StrId32) ?*public.TabI {
+    var zone_ctx = _profiler.ZoneN(@src(), "Editor: create new tab");
+    defer zone_ctx.End();
+
     const impls = _apidb.getImpl(_allocator, public.TabTypeI) catch undefined;
     defer _allocator.free(impls);
     for (impls) |iface| {
@@ -899,7 +902,7 @@ var coreui_ui_i = coreui.CoreUII.implement(struct {
 
 var editor_kernel_task = cetech1.kernel.KernelTaskI.implement(
     "Editor",
-    &[_]cetech1.StrId64{cetech1.strId64("Renderer")},
+    &[_]cetech1.StrId64{ cetech1.strId64("RenderViewport"), cetech1.strId64("GraphVMInit") }, // TODO: =(
     struct {
         pub fn init() !void {
             _g.main_db = _kernel.getDb();
