@@ -82,6 +82,7 @@ pub fn pushFrames() !void {
             m.offset = frame_idx;
         }
 
+        // TODO: dynamic on/off per metric, metric group?
         profiler_private.api.plotF64(m.name, m.current_value);
 
         m.current_value = 0;

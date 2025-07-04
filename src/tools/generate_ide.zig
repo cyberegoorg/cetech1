@@ -285,9 +285,7 @@ pub fn createOrUpdateSettingsJsonVSCode(allocator: std.mem.Allocator, project_di
     // files.associations
     {
         var files_map = std.json.Value{ .object = std.json.ObjectMap.init(parsed.arena.allocator()) };
-        try files_map.object.put("vs_*.sc", std.json.Value{ .string = "glsl" });
-        try files_map.object.put("fs_*.sc", std.json.Value{ .string = "glsl" });
-        try files_map.object.put("cs_*.sc", std.json.Value{ .string = "glsl" });
+        try files_map.object.put("*.sc", std.json.Value{ .string = "glsl" });
         try files_map.object.put("bgfx_*.sh", std.json.Value{ .string = "glsl" });
         try files_map.object.put("shaderlib.sh", std.json.Value{ .string = "glsl" });
 

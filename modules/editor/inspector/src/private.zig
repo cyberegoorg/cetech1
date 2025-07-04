@@ -5,7 +5,7 @@ const public = @import("editor_inspector.zig");
 
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
-const strid = cetech1.strid;
+
 const assetdb = cetech1.assetdb;
 const coreui = cetech1.coreui;
 const coreui_icons = cetech1.coreui;
@@ -48,7 +48,10 @@ var _profiler: *const profiler.ProfilerAPI = undefined;
 const G = struct {
     tab_vt: *editor.TabTypeI = undefined,
     asset_prop_aspect: *public.UiPropertiesAspect = undefined,
+
     color4f_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+    color3f_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+
     hide_proto_property_config_aspect: *public.UiPropertiesConfigAspect = undefined,
 };
 var _g: *G = undefined;
@@ -1031,6 +1034,29 @@ var color4f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
     }
 });
 
+var color3f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+    pub fn ui(
+        allocator: std.mem.Allocator,
+        obj: cdb.ObjId,
+        args: public.cdbPropertiesViewArgs,
+    ) !void {
+        _ = allocator;
+        _ = args;
+
+        _coreui.pushObjUUID(obj);
+        defer _coreui.popId();
+
+        const color = cetech1.cdb_types.Color3f.f.toSlice(_cdb, obj);
+        var c = [4]f32{ color[0], color[1], color[2], 1.0 };
+        _coreui.setNextItemWidth(-1);
+        if (_coreui.colorEdit4("", .{ .col = &c, .flags = .{ .no_alpha = true } })) {
+            const w = _cdb.writeObj(obj).?;
+            cetech1.cdb_types.Color3f.f.fromSlice(_cdb, w, .{ c[0], c[1], c[2] });
+            try _cdb.writeCommit(w);
+        }
+    }
+});
+
 //
 
 const PropertyTab = struct {
@@ -1167,6 +1193,13 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
             _cdb,
             db,
             _g.color4f_properties_aspec,
+        );
+
+        try cetech1.cdb_types.Color3f.addAspect(
+            public.UiEmbedPropertiesAspect,
+            _cdb,
+            db,
+            _g.color3f_properties_aspec,
         );
     }
 });
@@ -1822,8 +1855,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _g.tab_vt = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, INSPECTOR_TAB_NAME, inspector_tab);
 
     _g.asset_prop_aspect = try apidb.setGlobalVarValue(public.UiPropertiesAspect, module_name, ASSET_PROPERTIES_ASPECT_NAME, asset_properties_aspec);
-    _g.color4f_properties_aspec = try apidb.setGlobalVarValue(public.UiEmbedPropertiesAspect, module_name, COLOR4F_PROPERTY_ASPECT_NAME, color4f_properties_aspec);
     _g.hide_proto_property_config_aspect = try apidb.setGlobalVarValue(public.UiPropertiesConfigAspect, module_name, FOLDER_PROPERTY_CONFIG_ASPECT_NAME, folder_properties_config_aspect);
+    _g.color4f_properties_aspec = try apidb.setGlobalVarValue(public.UiEmbedPropertiesAspect, module_name, COLOR4F_PROPERTY_ASPECT_NAME, color4f_properties_aspec);
+    _g.color3f_properties_aspec = try apidb.setGlobalVarValue(public.UiEmbedPropertiesAspect, module_name, COLOR4F_PROPERTY_ASPECT_NAME, color3f_properties_aspec);
 
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(module_name, cdb.PostCreateTypesI, &post_create_types_i, load);

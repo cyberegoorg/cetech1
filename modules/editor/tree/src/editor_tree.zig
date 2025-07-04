@@ -1,7 +1,7 @@
 const std = @import("std");
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
-const strid = cetech1.strid;
+
 const coreui = cetech1.coreui;
 
 const log = std.log.scoped(.editor_tree);
