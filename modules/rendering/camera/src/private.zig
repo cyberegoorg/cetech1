@@ -2,17 +2,18 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 
-const renderer = @import("renderer");
+const render_viewport = @import("render_viewport");
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
 const zm = cetech1.math.zmath;
 
 const public = @import("camera.zig");
 const editor_inspector = @import("editor_inspector");
+const transform = @import("transform");
 
 const module_name = .camera;
 
@@ -31,6 +32,7 @@ var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
+var _gpu: *const cetech1.gpu.GpuApi = undefined;
 
 var _inspector: *const editor_inspector.InspectorAPI = undefined;
 
@@ -77,6 +79,47 @@ const camera_c = ecs.ComponentI.implement(
                 .near = public.CameraCdb.readValue(f32, _cdb, r, .Near),
                 .far = public.CameraCdb.readValue(f32, _cdb, r, .Far),
             };
+        }
+
+        pub fn debugdraw(dd: gpu.DDEncoder, world: ecs.World, entites: []const ecs.EntityId, data: []const u8, size: [2]f32) !void {
+            const aspect_ratio = size[0] / size[1];
+
+            var cameras: []const public.Camera = undefined;
+            cameras.ptr = @alignCast(@ptrCast(data.ptr));
+            cameras.len = data.len / @sizeOf(public.Camera);
+
+            for (entites, cameras) |ent, camera| {
+                const wt = world.getComponent(transform.WorldTransform, ent) orelse continue;
+
+                const pmtx = switch (camera.type) {
+                    .perspective => if (_gpu.isHomogenousDepth()) zm.perspectiveFovLhGl(
+                        std.math.degreesToRadians(camera.fov),
+                        aspect_ratio,
+                        camera.near,
+                        camera.far,
+                    ) else zm.perspectiveFovLh(
+                        std.math.degreesToRadians(camera.fov),
+                        aspect_ratio,
+                        camera.near,
+                        camera.far,
+                    ),
+                    .ortho => if (_gpu.isHomogenousDepth()) zm.orthographicLh(
+                        size[0],
+                        size[1],
+                        camera.near,
+                        camera.far,
+                    ) else zm.orthographicLhGl(
+                        size[0],
+                        size[1],
+                        camera.near,
+                        camera.far,
+                    ),
+                };
+
+                const m = zm.mul(zm.inverse(wt.mtx), pmtx);
+                const mm = zm.matToArr(m);
+                dd.drawFrustum(mm);
+            }
         }
     },
 );
@@ -201,6 +244,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
+    _gpu = apidb.getZigApi(module_name, cetech1.gpu.GpuApi).?;
 
     _inspector = apidb.getZigApi(module_name, editor_inspector.InspectorAPI).?;
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;

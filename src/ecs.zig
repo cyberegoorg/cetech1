@@ -150,6 +150,10 @@ const World = struct {
         return zflecs.get_mut_id(self.w, entity, self.id_map.find(id).?);
     }
 
+    pub fn getComponent(self: *World, entity: public.EntityId, id: cetech1.StrId32) ?*const anyopaque {
+        return zflecs.get_id(self.w, entity, self.id_map.find(id).?);
+    }
+
     pub fn progress(self: *World, dt: f32) bool {
         var zone_ctx = profiler_private.ztracy.ZoneN(@src(), "ECS: World progress");
         defer zone_ctx.End();
@@ -572,6 +576,7 @@ pub var api = cetech1.ecs.EcsAPI{
     .toIter = toIter,
     .findCategoryById = findCategoryById,
     .findComponentIByCdbHash = findComponentIByCdbHash,
+    .findComponentIById = findComponentIById,
     .spawnManyFromCDB = spawnManyFromCDB,
 };
 
@@ -596,6 +601,18 @@ fn findComponentIByCdbHash(cdb_hash: cdb.TypeHash) ?*const public.ComponentI {
     for (impls) |iface| {
         if (iface.cdb_type_hash.isEmpty()) continue;
         if (iface.cdb_type_hash.eql(cdb_hash)) return iface;
+    }
+
+    return null;
+}
+
+fn findComponentIById(name: cetech1.StrId32) ?*const public.ComponentI {
+    // TODO: Cache it
+    const impls = apidb.api.getImpl(_allocator, public.ComponentI) catch undefined;
+    defer _allocator.free(impls);
+
+    for (impls) |iface| {
+        if (iface.id.eql(name)) return iface;
     }
 
     return null;
@@ -666,6 +683,7 @@ const world_vt = public.World.VTable{
     .destroyEntities = @ptrCast(&World.destroyEntities),
     .setComponent = @ptrCast(&World.setComponent),
     .getMutComponent = @ptrCast(&World.getMutComponent),
+    .getComponent = @ptrCast(&World.getComponent),
     .progress = @ptrCast(&World.progress),
     .createQuery = @ptrCast(&World.createQuery),
     .deferBegin = @ptrCast(&World.deferBegin),
@@ -741,6 +759,14 @@ const iter_vt = public.Iter.VTable.implement(struct {
     }
 });
 
+pub const query_count_t = extern struct {
+    results: i32,
+    entities: i32,
+    tables: i32,
+    empty_tables: i32,
+};
+extern fn ecs_query_count(query: *const zflecs.query_t) query_count_t;
+
 const query_vt = public.Query.VTable.implement(struct {
     pub fn destroy(self: *anyopaque) void {
         zflecs.query_fini(@alignCast(@ptrCast(self)));
@@ -758,6 +784,17 @@ const query_vt = public.Query.VTable.implement(struct {
         _ = self;
         const it: *zflecs.iter_t = @alignCast(@ptrCast(&iter_.data));
         return zflecs.query_next(it);
+    }
+
+    pub fn count(self: *anyopaque) public.QueryCount {
+        const q: *zflecs.query_t = @alignCast(@ptrCast(self));
+        const qc = ecs_query_count(q);
+        return .{
+            .results = qc.results,
+            .entities = qc.entities,
+            .tables = qc.tables,
+            .empty_tables = qc.empty_tables,
+        };
     }
 });
 

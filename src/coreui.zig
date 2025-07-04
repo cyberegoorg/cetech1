@@ -50,23 +50,6 @@ var _junit_filename: ?[:0]const u8 = null;
 var _scale_factor: ?f32 = null;
 var _new_scale_factor: ?f32 = null;
 
-// const KernelTask = struct {
-//     pub fn update(kernel_tick: u64, dt: f32) !void {
-//         const tmp = try tempalloc.api.create();
-//         defer tempalloc.api.destroy(tmp);
-//         const ctx = kernel.api.getGpuCtx();
-//         if (_enabled_ui and ctx != null) {
-//             try coreUI(tmp, kernel_tick, dt);
-//         }
-//     }
-// };
-// var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
-//     cetech1.kernel.PreStore,
-//     "CoreUI",
-//     &[_]cetech1.StrId64{},
-//     KernelTask.update,
-// );
-
 var ui_being_task = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.PreUpdate,
     "CoreUI: begin",
@@ -106,19 +89,21 @@ var ui_being_task = cetech1.kernel.KernelTaskUpdateI.implment(
     },
 );
 
-var ui_draw_task = cetech1.kernel.KernelTaskUpdateI.implment(
-    cetech1.kernel.PostUpdate,
-    "CoreUI: draw",
-    &[_]cetech1.StrId64{},
-    1,
-    struct {
-        pub fn update(kernel_tick: u64, dt: f32) !void {
-            const tmp = try tempalloc.api.create();
-            defer tempalloc.api.destroy(tmp);
-            try coreUI(tmp, kernel_tick, dt);
-        }
-    },
-);
+// var ui_draw_task = cetech1.kernel.KernelTaskUpdateI.implment(
+//     cetech1.kernel.PostUpdate,
+//     "CoreUI: draw",
+//     &[_]cetech1.StrId64{},
+//     1,
+//     struct {
+//         pub fn update(kernel_tick: u64, dt: f32) !void {
+//             const tmp = try tempalloc.api.create();
+//             defer tempalloc.api.destroy(tmp);
+//             _ = kernel_tick;
+//             _ = dt;
+//             //try coreUI(tmp, kernel_tick, dt);
+//         }
+//     },
+// );
 
 var ui_end_task = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.PreStore,
@@ -188,7 +173,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
     if (cetech1_options.enable_nfd) try znfde.init();
 
     try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &ui_being_task, true);
-    try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &ui_draw_task, true);
+    // try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &ui_draw_task, true);
     try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &ui_end_task, true);
     try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTestingI, &kernel_testing, true);
     //try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task, true);
@@ -208,6 +193,7 @@ pub fn deinit() void {
 }
 
 pub var api = public.CoreUIApi{
+    .draw = drawUI,
     .showDemoWindow = showDemoWindow,
     .showMetricsWindow = showMetricsWindow,
     .begin = @ptrCast(&zgui.begin),
@@ -1366,8 +1352,8 @@ pub fn labelText(label: [:0]const u8, text: [:0]const u8) void {
     zgui.labelText(label, "{s}", .{text});
 }
 
-pub fn coreUI(allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
-    var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "CoreUI");
+pub fn drawUI(allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
+    var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "CoreUI: Draw UI");
     defer update_zone_ctx.End();
 
     const impls = try apidb.api.getImpl(allocator, cetech1.coreui.CoreUII);

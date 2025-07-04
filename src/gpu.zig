@@ -6,7 +6,6 @@ const zbgfx = @import("zbgfx");
 
 // TODO: fix some invalid type in original bgfx generator
 //const bgfx = zbgfx.bgfx;
-
 const bgfx = @import("bgfx.zig");
 
 const apidb = @import("apidb.zig");
@@ -17,7 +16,6 @@ const tempalloc = @import("tempalloc.zig");
 const cetech1 = @import("cetech1");
 const public = cetech1.gpu;
 
-const render_graph = cetech1.render_graph;
 const zm = cetech1.math.zmath;
 
 const log = std.log.scoped(.gpu);
@@ -75,9 +73,6 @@ pub const api = public.GpuApi{
     .getResolution = getResolution,
     .addPaletteColor = addPaletteColor,
     .endAllUsedEncoders = endAllUsedEncoders,
-
-    .newViewId = newViewId,
-    .resetViewId = resetViewId,
 
     .vertexPack = @ptrCast(&bgfx.vertexPack),
     .vertexUnpack = @ptrCast(&bgfx.vertexUnpack),
@@ -226,14 +221,12 @@ pub const api = public.GpuApi{
     .compileShader = compileShader,
     .createDefaultOptionsForRenderer = @ptrCast(&zbgfx.shaderc.createDefaultOptionsForRenderer),
     .getBackendType = @ptrCast(&bgfx.getRendererType),
+    .isHomogenousDepth = isHomogenousDepth,
 };
 
-var _view_id: AtomicViewId = AtomicViewId.init(1);
-fn newViewId() public.ViewId {
-    return _view_id.fetchAdd(1, .monotonic);
-}
-fn resetViewId() void {
-    _view_id.store(1, .monotonic);
+fn isHomogenousDepth() bool {
+    const caps = bgfx.getCaps().*;
+    return caps.homogeneousDepth;
 }
 
 pub fn compileShader(
@@ -278,15 +271,15 @@ var bgfx_clbs = zbgfx.callbacks.CCallbackInterfaceT{
 };
 var bgfx_alloc: zbgfx.callbacks.ZigAllocator = undefined;
 
-fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless: bool) !void {
+fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless: bool, debug: bool, profile: bool) !void {
     bgfx.initCtor(&bgfxInit);
 
     bgfxInit.type = @enumFromInt(@intFromEnum(backend));
 
     const cpu_count: u16 = @intCast(task.api.getThreadNum());
 
-    bgfxInit.debug = true;
-    bgfxInit.profile = true;
+    bgfxInit.debug = debug;
+    bgfxInit.profile = profile;
     bgfxInit.limits.maxEncoders = cpu_count;
 
     // TODO: read note in zbgfx.ZigAllocator
@@ -301,7 +294,7 @@ fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless
         bgfxInit.resolution.height = @intCast(framebufferSize[1]);
 
         if (vsync) {
-            bgfxInit.resolution.reset |= bgfx.ResetFlags_Vsync; // | bgfx.ResetFlags_FlipAfterRender;
+            bgfxInit.resolution.reset |= bgfx.ResetFlags_Vsync;
         }
 
         bgfxInit.platformData.nwh = context.window.?.getOsWindowHandler();
@@ -326,7 +319,36 @@ fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless
         _encoders.appendAssumeCapacity(null);
     }
 
-    log.info("Renderer backend: {}", .{backend});
+    log.info("Backend: {}", .{api.getBackendType()});
+
+    const caps = bgfx.getCaps().*;
+    const limits = caps.limits;
+
+    log.debug("Limits:", .{});
+    log.debug("\t- maxDrawCalls: {d}", .{limits.maxDrawCalls});
+    log.debug("\t- maxBlits: {d}", .{limits.maxBlits});
+    log.debug("\t- maxTextureSize: {d}", .{limits.maxTextureSize});
+    log.debug("\t- maxTextureLayers: {d}", .{limits.maxTextureLayers});
+    log.debug("\t- maxViews: {d}", .{limits.maxViews});
+    log.debug("\t- maxFrameBuffers: {d}", .{limits.maxFrameBuffers});
+    log.debug("\t- maxFBAttachments: {d}", .{limits.maxFBAttachments});
+    log.debug("\t- maxPrograms: {d}", .{limits.maxPrograms});
+    log.debug("\t- maxShaders: {d}", .{limits.maxShaders});
+    log.debug("\t- maxTextures: {d}", .{limits.maxTextures});
+    log.debug("\t- maxTextureSamplers: {d}", .{limits.maxTextureSamplers});
+    log.debug("\t- maxComputeBindings: {d}", .{limits.maxComputeBindings});
+    log.debug("\t- maxVertexLayouts: {d}", .{limits.maxVertexLayouts});
+    log.debug("\t- maxVertexStreams: {d}", .{limits.maxVertexStreams});
+    log.debug("\t- maxIndexBuffers: {d}", .{limits.maxIndexBuffers});
+    log.debug("\t- maxVertexBuffers: {d}", .{limits.maxVertexBuffers});
+    log.debug("\t- maxDynamicIndexBuffers: {d}", .{limits.maxDynamicIndexBuffers});
+    log.debug("\t- maxDynamicVertexBuffers: {d}", .{limits.maxDynamicVertexBuffers});
+    log.debug("\t- maxUniforms: {d}", .{limits.maxUniforms});
+    log.debug("\t- maxOcclusionQueries: {d}", .{limits.maxOcclusionQueries});
+    log.debug("\t- maxEncoders: {d}", .{limits.maxEncoders});
+    log.debug("\t- minResourceCbSize: {d}", .{limits.minResourceCbSize});
+    log.debug("\t- transientVbSize: {d}", .{limits.transientVbSize});
+    log.debug("\t- transientIbSize: {d}", .{limits.transientIbSize});
 }
 
 const GpuContext = struct {
@@ -334,7 +356,14 @@ const GpuContext = struct {
     headless: bool = false,
 };
 
-fn createContext(window: ?cetech1.platform.Window, backend: ?public.Backend, vsync: bool, headles: bool) !*public.GpuContext {
+fn createContext(
+    window: ?cetech1.platform.Window,
+    backend: ?public.Backend,
+    vsync: bool,
+    headles: bool,
+    debug: bool,
+    profile: bool,
+) !*public.GpuContext {
     var context = try _allocator.create(GpuContext);
     context.* = .{};
 
@@ -351,10 +380,19 @@ fn createContext(window: ?cetech1.platform.Window, backend: ?public.Backend, vsy
         backend: ?public.Backend,
         vsync: bool,
         headles: bool,
+        debug: bool,
+        profile: bool,
 
         pub fn exec(s: *@This()) !void {
             const default_backend = if (s.headles) public.Backend.noop else public.Backend.auto;
-            try initBgfx(s.context, s.backend orelse default_backend, s.vsync, s.headles);
+            try initBgfx(
+                s.context,
+                s.backend orelse default_backend,
+                s.vsync,
+                s.headles,
+                s.debug,
+                s.profile,
+            );
         }
     };
     const task_id = try task.api.schedule(
@@ -364,6 +402,8 @@ fn createContext(window: ?cetech1.platform.Window, backend: ?public.Backend, vsy
             .backend = backend,
             .vsync = vsync,
             .headles = headles,
+            .debug = debug,
+            .profile = profile,
         },
         .{ .affinity = 1 },
     );
@@ -478,8 +518,8 @@ pub const dd_api = public.GpuDDApi{
 pub fn ddBegin(dde: *anyopaque, _viewId: u16, _depthTestLess: bool, _encoder: ?*bgfx.Encoder) void {
     zbgfx.debugdraw.Encoder.begin(@alignCast(@ptrCast(dde)), _viewId, _depthTestLess, @alignCast(@ptrCast(_encoder)));
 
-    // TODO: litle hack, cetech use opengl coordinates +x left, +y up, +z to screen
-    zbgfx.debugdraw.Encoder.setState(@alignCast(@ptrCast(dde)), true, true, false);
+    // // TODO: litle hack, cetech use opengl coordinates +x left, +y up, +z to screen
+    // zbgfx.debugdraw.Encoder.setState(@alignCast(@ptrCast(dde)), true, true, false);
 }
 
 pub fn getResolution() public.Resolution {
@@ -520,7 +560,9 @@ fn getEncoder() ?public.Encoder {
 pub fn endEncoder(encoder: public.Encoder) void {
     var zone_ctx = profiler.ztracy.ZoneN(@src(), "endEncoder");
     defer zone_ctx.End();
-    _ = encoder;
+
+    encoder.discard(public.DiscardFlags_All);
+
     // bgfx.encoderEnd(@ptrCast(encoder.ptr));
     // const wid = task.api.getWorkerId();
 

@@ -49,7 +49,14 @@ pub const Backend = enum(c_int) {
 };
 
 pub const GpuApi = struct {
-    createContext: *const fn (window: ?platform.Window, backend: ?Backend, vsync: bool, headles: bool) anyerror!*GpuContext,
+    createContext: *const fn (
+        window: ?platform.Window,
+        backend: ?Backend,
+        vsync: bool,
+        headles: bool,
+        debug: bool,
+        profile: bool,
+    ) anyerror!*GpuContext,
     destroyContext: *const fn (ctx: *GpuContext) void,
     getWindow: *const fn (ctx: *GpuContext) ?platform.Window,
 
@@ -57,9 +64,6 @@ pub const GpuApi = struct {
 
     addPaletteColor: *const fn (color: u32) u8,
     endAllUsedEncoders: *const fn () void,
-
-    newViewId: *const fn () ViewId,
-    resetViewId: *const fn () void,
 
     getBackendType: *const fn () Backend,
 
@@ -71,6 +75,8 @@ pub const GpuApi = struct {
     ) anyerror![]u8,
 
     createDefaultOptionsForRenderer: *const fn (renderer: Backend) ShadercOptions,
+
+    isHomogenousDepth: *const fn () bool,
 
     vertexPack: *const fn (_input: [4]f32, _inputNormalized: bool, _attr: Attrib, _layout: [*c]const VertexLayout, _data: ?*anyopaque, _index: u32) void,
     vertexUnpack: *const fn (_output: [4]f32, _attr: Attrib, _layout: [*c]const VertexLayout, _data: ?*const anyopaque, _index: u32) void,

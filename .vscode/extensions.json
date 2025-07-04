@@ -5,6 +5,7 @@
         "Gruntfuggly.todo-tree", // Todo viewer
         "kdheepak.d2-markdown-preview", // D2 preview
         "oderwat.indent-rainbow", // Bring colors to life
-        "MalcolmMielle.semantic-highlighting" // More colors to life
+        "MalcolmMielle.semantic-highlighting", // More colors to life
+        "filippofracascia.glsl-language-support", // GLSL
     ]
 }
