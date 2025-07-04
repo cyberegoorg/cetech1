@@ -1,0 +1,15 @@
+.{
+    .name = .render_graph,
+    .fingerprint = 0x8dc5202bc4437a1d,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .camera = .{ .path = "../camera" },
+        .shader_system = .{ .path = "../shader_system" },
+        .visibility_flags = .{ .path = "../visibility_flags" },
+    },
+}

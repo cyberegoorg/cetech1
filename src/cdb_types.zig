@@ -36,6 +36,27 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
             _cdb.setDefaultObject(default_color);
         }
 
+        // Color3f
+        {
+            const color_idx = try _cdb.addType(
+                db,
+                public.Color3f.name,
+                &[_]cdb.PropDef{
+                    .{ .prop_idx = public.Color3f.propIdx(.R), .name = "r", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Color3f.propIdx(.G), .name = "g", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Color3f.propIdx(.B), .name = "b", .type = cdb.PropType.F32 },
+                },
+            );
+
+            const default_color = try _cdb.createObject(db, color_idx);
+            const default_color_w = _cdb.writeObj(default_color).?;
+            public.Color3f.setValue(f32, _cdb, default_color_w, .R, 1.0);
+            public.Color3f.setValue(f32, _cdb, default_color_w, .G, 1.0);
+            public.Color3f.setValue(f32, _cdb, default_color_w, .B, 1.0);
+            try _cdb.writeCommit(default_color_w);
+            _cdb.setDefaultObject(default_color);
+        }
+
         // value vec2
         {
             _ = try _cdb.addType(
