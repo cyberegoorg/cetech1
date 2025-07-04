@@ -211,6 +211,10 @@ pub const Icons = struct {
     pub const Draw = CoreIcons.FA_BRUSH;
 
     pub const Filter = CoreIcons.FA_FILTER;
+
+    pub const Light = CoreIcons.FA_LIGHTBULB;
+
+    pub const RenderPipeline = CoreIcons.FA_PHOTO_FILM;
 };
 
 pub const CoreUII = struct {
@@ -445,6 +449,8 @@ pub const CoreUIApi = struct {
 
         return result;
     }
+
+    draw: *const fn (allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) anyerror!void,
 
     showDemoWindow: *const fn () void,
     showMetricsWindow: *const fn () void,

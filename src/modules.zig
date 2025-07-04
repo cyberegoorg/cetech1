@@ -232,6 +232,7 @@ pub fn loadDynModules() !void {
     }
 
     std.sort.insertion([:0]const u8, modules.items, {}, lessThanStr);
+
     for (modules.items) |full_path| {
         log.warn("Loading dynamic module from {s}", .{full_path});
 

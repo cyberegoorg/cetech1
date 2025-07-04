@@ -16,6 +16,7 @@ pub fn build(b: *std.Build) !void {
 
     lib.root_module.addImport("cetech1", cetech1_module);
     lib.root_module.addImport("editor_inspector", b.dependency("editor_inspector", .{}).module("editor_inspector"));
+    lib.root_module.addImport("transform", b.dependency("transform", .{}).module("transform"));
 
     _ = b.addModule(
         "camera",

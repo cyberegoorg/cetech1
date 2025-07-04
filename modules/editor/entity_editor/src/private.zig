@@ -18,8 +18,10 @@ const task = cetech1.task;
 const camera = @import("camera");
 const transform = @import("transform");
 
-const renderer = @import("renderer");
-const Viewport = renderer.Viewport;
+const render_viewport = @import("render_viewport");
+const render_graph = @import("render_graph");
+const render_pipeline = @import("render_pipeline");
+const Viewport = render_viewport.Viewport;
 
 const editor = @import("editor");
 const Icons = coreui.CoreIcons;
@@ -46,7 +48,7 @@ var _log: *const cetech1.log.LogAPI = undefined;
 var _cdb: *const cdb.CdbAPI = undefined;
 var _coreui: *const coreui.CoreUIApi = undefined;
 var _gpu: *const gpu.GpuApi = undefined;
-var _render_graph: *const renderer.RenderGraphApi = undefined;
+var _render_graph: *const render_graph.RenderGraphApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _ecs: *const ecs.EcsAPI = undefined;
 var _tempalloc: *const tempalloc.TempAllocApi = undefined;
@@ -54,16 +56,16 @@ var _actions: *const actions.ActionsAPI = undefined;
 var _assetdb: *const assetdb.AssetDBAPI = undefined;
 var _uuid: *const uuid.UuidAPI = undefined;
 var _task: *const task.TaskAPI = undefined;
-var _renderer: *const renderer.RendererApi = undefined;
+var _render_viewport: *const render_viewport.RenderViewportApi = undefined;
 var _platform: *const cetech1.platform.PlatformApi = undefined;
 var _editor: *const editor.EditorAPI = undefined;
 var _camera: *const camera.CameraAPI = undefined;
 var _graphvm: *const graphvm.GraphVMApi = undefined;
+var _render_pipeline: *const render_pipeline.RenderPipelineApi = undefined;
 
 // Global state that can surive hot-reload
 const G = struct {
     test_tab_vt_ptr: *editor.TabTypeI = undefined,
-    rg: renderer.Graph = undefined,
 };
 var _g: *G = undefined;
 
@@ -75,6 +77,8 @@ const EntityEditorTab = struct {
     world: ecs.World,
     camera_look_activated: bool = false,
     camera_ent: ecs.EntityId,
+
+    render_pipeline: render_pipeline.RenderPipeline,
 
     selection: coreui.SelectionItem = coreui.SelectionItem.empty(),
     root_entity_obj: cdb.ObjId = .{},
@@ -128,16 +132,17 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         var tab_inst = _allocator.create(EntityEditorTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _renderer.createViewport(name, _g.rg, w, camera_ent),
+            .viewport = try _render_viewport.createViewport(name, w, camera_ent),
             .world = w,
             .camera_ent = camera_ent,
+            .render_pipeline = try _render_pipeline.createDefault(_allocator, w),
             .tab_i = .{
                 .vt = _g.test_tab_vt_ptr,
                 .inst = @ptrCast(tab_inst),
             },
         };
 
-        tab_inst.viewport.setDebugCulling(true);
+        // tab_inst.viewport.setDebugCulling(true);
 
         return &tab_inst.tab_i;
     }
@@ -145,7 +150,8 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     // Destroy tab instantce
     pub fn destroy(tab_inst: *editor.TabI) !void {
         const tab_o: *EntityEditorTab = @alignCast(@ptrCast(tab_inst.inst));
-        _renderer.destroyViewport(tab_o.viewport);
+        _render_viewport.destroyViewport(tab_o.viewport);
+        tab_o.render_pipeline.deinit();
         _ecs.destroyWorld(tab_o.world);
         _allocator.destroy(tab_o);
     }
@@ -181,6 +187,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         if (new_entity) {
             if (tab_o.root_entity) |root_ent| {
                 tab_o.world.destroyEntities(&.{root_ent});
+                tab_o.world.clear();
             }
 
             const ents = try _ecs.spawnManyFromCDB(allocator, tab_o.world, entiy_obj, 1);
@@ -188,7 +195,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             tab_o.root_entity = ents[0];
 
             tab_o.camera = camera.SimpleFPSCamera.init(.{
-                .position = .{ 0, 2, 12 },
+                .position = .{ 0, 2, -12 },
             });
         }
 
@@ -251,7 +258,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         //         _coreui.gizmoSetRect(wpos[0] + cpos[0], wpos[1] + cpos[1], size[0], size[1]);
 
         //         const view = tab_o.camera.calcViewMtx();
-        //         const projection = zm.matToArr(zm.perspectiveFovRhGl(
+        //         const projection = zm.matToArr(zm.perspectiveFovLhGl(
         //             0.25 * std.math.pi,
         //             size[0] / size[1],
         //             0.1,
@@ -309,7 +316,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             .q = zm.matToQuat(zm.mul(zm.rotationX(tab_o.camera.pitch), zm.rotationY(tab_o.camera.yaw))),
         });
 
-        tab_o.viewport.renderMe();
+        tab_o.viewport.requestRender(tab_o.render_pipeline);
     }
 
     // Draw tab menu
@@ -344,7 +351,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         if (_coreui.beginMenu(allocator, cetech1.coreui.Icons.Debug, true, null)) {
             defer _coreui.endMenu();
-            _renderer.uiDebugMenuItems(allocator, tab_o.viewport);
+            _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
             tab_o.flecs_port = uiRemoteDebugMenuItems(&tab_o.world, allocator, tab_o.flecs_port);
         }
     }
@@ -445,7 +452,7 @@ const get_entity_node_i = graphvm.NodeI.implement(
             };
         }
 
-        pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: graphvm.OutPins) !void {
+        pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
             _ = in_pins; // autofix
             _ = self; // autofix
             if (_graphvm.getContext(anyopaque, args.instance, ecs.ECS_ENTITY_CONTEXT)) |ent| {
@@ -477,12 +484,9 @@ const LookActivationAction = cetech1.strId32("look_activation");
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
     "EditorEntityTab",
-    &[_]cetech1.StrId64{renderer.RENDERER_KERNEL_TASK},
+    &[_]cetech1.StrId64{render_viewport.VIEWPORT_KERNEL_TASK},
     struct {
         pub fn init() !void {
-            _g.rg = try _render_graph.create();
-            try _render_graph.createDefault(_allocator, _g.rg);
-
             try _actions.createActionSet(ViewportActionSet);
             try _actions.addActions(ViewportActionSet, &.{
                 .{ .name = LookActivationAction, .action = .{ .button = actions.ButtonAction{} } },
@@ -532,9 +536,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             });
         }
 
-        pub fn shutdown() !void {
-            _render_graph.destroy(_g.rg);
-        }
+        pub fn shutdown() !void {}
     },
 );
 
@@ -592,7 +594,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
     _coreui = apidb.getZigApi(module_name, coreui.CoreUIApi).?;
     _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
-    _render_graph = apidb.getZigApi(module_name, renderer.RenderGraphApi).?;
+    _render_graph = apidb.getZigApi(module_name, render_graph.RenderGraphApi).?;
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
     _tempalloc = apidb.getZigApi(module_name, tempalloc.TempAllocApi).?;
@@ -600,11 +602,12 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _assetdb = apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
     _uuid = apidb.getZigApi(module_name, uuid.UuidAPI).?;
     _task = apidb.getZigApi(module_name, task.TaskAPI).?;
-    _renderer = apidb.getZigApi(module_name, renderer.RendererApi).?;
+    _render_viewport = apidb.getZigApi(module_name, render_viewport.RenderViewportApi).?;
     _platform = apidb.getZigApi(module_name, cetech1.platform.PlatformApi).?;
     _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
     _camera = apidb.getZigApi(module_name, camera.CameraAPI).?;
     _graphvm = apidb.getZigApi(module_name, graphvm.GraphVMApi).?;
+    _render_pipeline = apidb.getZigApi(module_name, render_pipeline.RenderPipelineApi).?;
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});

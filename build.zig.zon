@@ -52,12 +52,21 @@
         .entity_logic_component = .{ .path = "modules/scripting/entity_logic_component", .lazy = true },
 
         // RENDERING
-        .default_rg = .{ .path = "modules/rendering/default_rg", .lazy = true },
-        .renderer = .{ .path = "modules/rendering/renderer", .lazy = true },
+        .default_render_pipeline = .{ .path = "modules/rendering/default_render_pipeline", .lazy = true },
+        .render_pipeline = .{ .path = "modules/rendering/render_pipeline", .lazy = true },
+        .render_viewport = .{ .path = "modules/rendering/render_viewport", .lazy = true },
+        .render_graph = .{ .path = "modules/rendering/render_graph", .lazy = true },
         .shader_system = .{ .path = "modules/rendering/shader_system", .lazy = true },
         .transform = .{ .path = "modules/rendering/transform", .lazy = true },
         .camera = .{ .path = "modules/rendering/camera", .lazy = true },
         .render_component = .{ .path = "modules/rendering/render_component", .lazy = true },
+        .vertex_system = .{ .path = "modules/rendering/vertex_system", .lazy = true },
+        .instance_system = .{ .path = "modules/rendering/instance_system", .lazy = true },
+        .renderer_nodes = .{ .path = "modules/rendering/renderer_nodes", .lazy = true },
+        .renderer = .{ .path = "modules/rendering/renderer", .lazy = true },
+        .visibility_flags = .{ .path = "modules/rendering/visibility_flags", .lazy = true },
+        .light_component = .{ .path = "modules/rendering/light_component", .lazy = true },
+        .light_system = .{ .path = "modules/rendering/light_system", .lazy = true },
 
         //
         // Externals

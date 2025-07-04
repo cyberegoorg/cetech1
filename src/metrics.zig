@@ -56,7 +56,7 @@ pub fn getCounter(name: []const u8) !*f64 {
         return &_metrics[idx].current_value;
     } else {
         const new_name = try _allocator.dupeZ(u8, name);
-        const idx = _last_idx.fetchAdd(1, .release);
+        const idx = _last_idx.fetchAdd(1, .monotonic);
         _metrics[idx] = Metric{
             .name = new_name,
             .values = try .initCapacity(_allocator, MAX_FRAMES),
@@ -82,6 +82,7 @@ pub fn pushFrames() !void {
             m.offset = frame_idx;
         }
 
+        // TODO: dynamic on/off per metric, metric group?
         profiler_private.api.plotF64(m.name, m.current_value);
 
         m.current_value = 0;

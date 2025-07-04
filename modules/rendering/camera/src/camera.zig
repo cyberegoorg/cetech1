@@ -48,8 +48,8 @@ pub const SimpleFPSCamera = struct {
 
         // Look handle
         {
-            self.pitch += self.look_speed * dt * mouse_delta[1];
-            self.yaw += self.look_speed * dt * mouse_delta[0] * -1;
+            self.pitch += self.look_speed * dt * mouse_delta[1] * -1;
+            self.yaw += self.look_speed * dt * mouse_delta[0];
             self.pitch = @min(self.pitch, 0.48 * std.math.pi);
             self.pitch = @max(self.pitch, -0.48 * std.math.pi);
             self.yaw = zm.modAngle(self.yaw);
@@ -64,7 +64,7 @@ pub const SimpleFPSCamera = struct {
             forward = speed * delta_time * forward;
 
             var cam_pos = zm.loadArr3(self.position);
-            cam_pos += forward * zm.f32x4s(-move[1]);
+            cam_pos += forward * zm.f32x4s(move[1]);
             cam_pos += right * zm.f32x4s(move[0]);
             zm.storeArr3(&self.position, cam_pos);
         }
@@ -80,4 +80,7 @@ pub const SimpleFPSCamera = struct {
 pub const CameraAPI = struct {
     cameraSetingsMenu: *const fn (world: ecs.World, camera_ent: ecs.EntityId) void,
     selectMainCameraMenu: *const fn (allocator: std.mem.Allocator, world: ecs.World, camera_ent: ecs.EntityId, current_main_camera: ?ecs.EntityId) anyerror!?ecs.EntityId,
+
+    perspectiveFov: *const fn (fovy: f32, aspect: f32, near: f32, far: f32) zm.Mat,
+    orthographic: *const fn (w: f32, h: f32, near: f32, far: f32) zm.Mat,
 };

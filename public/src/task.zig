@@ -55,14 +55,14 @@ pub const TaskStub = struct {
     task_fn: Main,
 };
 
-pub const default_bacth_size = 32;
+pub const default_batch_size = 32;
 
 pub const BatchWorkloadArgs = struct {
     allocator: std.mem.Allocator,
     task_api: *const TaskAPI,
     profiler_api: *const profiler.ProfilerAPI,
 
-    batch_size: usize = default_bacth_size,
+    batch_size: usize = default_batch_size,
     count: usize,
 };
 
@@ -76,8 +76,11 @@ pub fn batchWorkloadTask(
 
     if (args.count == 0) return null;
     const items_count = args.count;
+    const batch_size_by_workers = args.batch_size; //items_count / @max(1, args.task_api.getThreadNum() - 1);
+    const batch_size = if (batch_size_by_workers == 0) items_count else batch_size_by_workers;
+    // std.log.debug("dddd {d}", .{batch_size});
 
-    if (items_count <= args.batch_size) {
+    if (items_count <= batch_size) {
         var a = args;
         a.batch_size = a.count;
 
@@ -89,31 +92,33 @@ pub fn batchWorkloadTask(
         );
     }
 
-    const batch_count = items_count / args.batch_size;
-    const batch_rest = items_count - (batch_count * args.batch_size);
+    const batch_count = items_count / batch_size;
+    const batch_rest = items_count - (batch_count * batch_size);
 
     var tasks = try TaskIdList.initCapacity(args.allocator, if (batch_rest == 0) batch_count else batch_count + 1);
     defer tasks.deinit(args.allocator);
 
-    for (0..batch_count) |batch_id| {
-        const task = CREATE_TASK_FCE.createTask(create_args, batch_id, args, args.batch_size);
-        const task_id = try args.task_api.schedule(
-            TaskID.none,
-            task,
-            .{},
-        );
-        tasks.appendAssumeCapacity(task_id);
-    }
+    const aargs = args;
+    // aargs.batch_size = batch_size;
 
-    if (batch_rest > 0) {
-        const last_batch_id = batch_count;
-        const task = CREATE_TASK_FCE.createTask(create_args, last_batch_id, args, batch_rest);
-        const task_id = try args.task_api.schedule(
-            TaskID.none,
-            task,
-            .{},
-        );
-        tasks.appendAssumeCapacity(task_id);
+    for (0..batch_count) |batch_id| {
+        if (batch_rest > 0 and (batch_id == batch_count - 1)) {
+            const task = CREATE_TASK_FCE.createTask(create_args, batch_id, aargs, batch_size + batch_rest);
+            const task_id = try args.task_api.schedule(
+                TaskID.none,
+                task,
+                .{},
+            );
+            tasks.appendAssumeCapacity(task_id);
+        } else {
+            const task = CREATE_TASK_FCE.createTask(create_args, batch_id, aargs, batch_size);
+            const task_id = try args.task_api.schedule(
+                TaskID.none,
+                task,
+                .{},
+            );
+            tasks.appendAssumeCapacity(task_id);
+        }
     }
 
     return if (tasks.items.len == 0) null else try args.task_api.combine(tasks.items);
@@ -171,8 +176,8 @@ pub const TaskAPI = struct {
         return self.isDoneFn(task);
     }
 
-    pub inline fn doOneTask(self: Self) void {
-        self.doOneTaskFn();
+    pub inline fn doOneTask(self: Self, only_prio: bool) void {
+        self.doOneTaskFn(only_prio);
     }
 
     //#region Pointers to implementation
@@ -183,6 +188,6 @@ pub const TaskAPI = struct {
     combineFn: *const fn (tasks: []const TaskID) anyerror!TaskID,
     getThreadNumFn: *const fn () u64,
     getWorkerIdFn: *const fn () usize,
-    doOneTaskFn: *const fn () void,
+    doOneTaskFn: *const fn (only_prio: bool) void,
     //#endregions
 };

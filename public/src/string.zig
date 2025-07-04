@@ -18,6 +18,10 @@ pub const StrId32 = extern struct {
     pub fn eql(a: StrId32, b: StrId32) bool {
         return a.id == b.id;
     }
+
+    pub fn fromStr(str: []const u8) StrId32 {
+        return strId32(str);
+    }
 };
 
 pub const StrId64 = extern struct {
@@ -37,6 +41,10 @@ pub const StrId64 = extern struct {
 
     pub inline fn from(comptime T: type, obj: T) StrId64 {
         return .{ .id = obj.id };
+    }
+
+    pub fn fromStr(str: []const u8) StrId64 {
+        return strId64(str);
     }
 };
 

@@ -114,14 +114,14 @@ fn destroyWindow(window: public.Window) void {
 }
 
 fn poolEvents() void {
-    var zone_ctx = profiler.ztracy.Zone(@src());
-    defer zone_ctx.End();
+    // var zone_ctx = profiler.ztracy.Zone(@src());
+    // defer zone_ctx.End();
     backend.poolEvents();
 }
 
 fn poolEventsWithTimeout(timeout: f64) void {
-    var zone_ctx = profiler.ztracy.Zone(@src());
-    defer zone_ctx.End();
+    // var zone_ctx = profiler.ztracy.Zone(@src());
+    // defer zone_ctx.End();
     backend.poolEventsWithTimeout(timeout);
 }
 

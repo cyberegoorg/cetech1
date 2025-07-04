@@ -9,8 +9,13 @@
     .dependencies = .{
         .cetech1 = .{ .path = "../../../public/" },
         .graphvm = .{ .path = "../../scripting/graphvm" },
-        .renderer = .{ .path = "../renderer" },
+        .render_viewport = .{ .path = "../render_viewport" },
         .transform = .{ .path = "../transform" },
         .shader_system = .{ .path = "../shader_system" },
+        .render_graph = .{ .path = "../render_graph" },
+        .renderer_nodes = .{ .path = "../renderer_nodes" },
+        .renderer = .{ .path = "../renderer" },
+        .visibility_flags = .{ .path = "../visibility_flags" },
+        .instance_system = .{ .path = "../instance_system" },
     },
 }

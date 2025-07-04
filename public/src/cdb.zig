@@ -624,9 +624,14 @@ pub const CdbAPI = struct {
         return try self.gcFn(db, allocator);
     }
 
-    /// Create object for type hash
+    /// Create object for type hash (create default object if exist)
     pub inline fn createObject(self: Self, db: DbId, type_idx: TypeIdx) anyerror!ObjId {
         return self.createObjectFn(db, type_idx);
+    }
+
+    /// Create object for type hash (ignore empty object if exist)
+    pub inline fn createEmptyObject(self: Self, db: DbId, type_idx: TypeIdx) anyerror!ObjId {
+        return self.createEmptyObjectFn(db, type_idx);
     }
 
     // For performance reason cache typeidx
@@ -781,6 +786,8 @@ pub const CdbAPI = struct {
     destroyObjectFn: *const fn (obj: ObjId) void,
 
     createObjectFn: *const fn (db: DbId, type_idx: TypeIdx) anyerror!ObjId,
+    createEmptyObjectFn: *const fn (db: DbId, type_idx: TypeIdx) anyerror!ObjId,
+
     getTypeIdxFn: *const fn (db: DbId, type_hash: TypeHash) ?TypeIdx,
 
     // Aspects

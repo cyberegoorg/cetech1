@@ -14,10 +14,11 @@ pub fn build(b: *std.Build) !void {
         optimize,
     );
 
-    lib.root_module.addImport("transform", b.dependency("transform", .{}).module("transform"));
     lib.root_module.addImport("graphvm", b.dependency("graphvm", .{}).module("graphvm"));
-    lib.root_module.addImport("camera", b.dependency("camera", .{}).module("camera"));
     lib.root_module.addImport("shader_system", b.dependency("shader_system", .{}).module("shader_system"));
+    lib.root_module.addImport("render_graph", b.dependency("render_graph", .{}).module("render_graph"));
+    lib.root_module.addImport("render_viewport", b.dependency("render_viewport", .{}).module("render_viewport"));
+    lib.root_module.addImport("vertex_system", b.dependency("vertex_system", .{}).module("vertex_system"));
 
     _ = b.addModule(
         "renderer",
@@ -25,9 +26,10 @@ pub fn build(b: *std.Build) !void {
             .root_source_file = b.path("src/renderer.zig"),
             .imports = &.{
                 .{ .name = "cetech1", .module = cetech1_module },
-                .{ .name = "transform", .module = b.dependency("transform", .{}).module("transform") },
-                .{ .name = "camera", .module = b.dependency("camera", .{}).module("camera") },
                 .{ .name = "shader_system", .module = b.dependency("shader_system", .{}).module("shader_system") },
+                .{ .name = "render_graph", .module = b.dependency("render_graph", .{}).module("render_graph") },
+                .{ .name = "vertex_system", .module = b.dependency("vertex_system", .{}).module("vertex_system") },
+                .{ .name = "visibility_flags", .module = b.dependency("visibility_flags", .{}).module("visibility_flags") },
             },
         },
     );

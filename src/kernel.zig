@@ -23,7 +23,7 @@ const metrics = @import("metrics.zig");
 const cetech1 = @import("cetech1");
 const public = cetech1.kernel;
 const profiler = cetech1.profiler;
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 
 const cetech1_options = @import("cetech1_options");
@@ -79,7 +79,7 @@ var _main_profiler_allocator: profiler.AllocatorProfiler = undefined;
 var _apidb_allocator: profiler.AllocatorProfiler = undefined;
 var _modules_allocator: profiler.AllocatorProfiler = undefined;
 var _task_allocator: profiler.AllocatorProfiler = undefined;
-var _profiler_profiler_allocator: profiler.AllocatorProfiler = undefined;
+var _profiler_allocator: profiler.AllocatorProfiler = undefined;
 var _cdb_allocator: profiler.AllocatorProfiler = undefined;
 var _assetdb_allocator: profiler.AllocatorProfiler = undefined;
 var _platform_allocator: profiler.AllocatorProfiler = undefined;
@@ -190,8 +190,8 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     _main_profiler_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, allocator, null);
     _kernel_allocator = _main_profiler_allocator.allocator();
 
-    _profiler_profiler_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "profiler");
-    profiler_private.init(_profiler_profiler_allocator.allocator());
+    _profiler_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "profiler");
+    profiler_private.init(_profiler_allocator.allocator());
 
     _apidb_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "apidb");
     _modules_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "modules");
@@ -262,15 +262,14 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     log.info("version: {}", .{cetech1_options.version});
 }
 
-pub fn deinit(
-    allocator: std.mem.Allocator,
-) !void {
+pub fn deinit(allocator: std.mem.Allocator) !void {
     try shutdownKernelTasks();
+
+    // Before modules deinit because ImGUI test engine need test love for export result.xml
+    coreui.deinit();
     try modules.unloadAll();
 
     ecs.deinit();
-
-    coreui.deinit();
     //renderer.deinit();
     if (gpu_context) |ctx| gpu.api.destroyContext(ctx);
     gpu.deinit();
@@ -367,7 +366,8 @@ pub fn bigInit(static_modules: []const cetech1.modules.ModuleDesc, load_dynamic:
 
     modules.dumpModules();
 
-    try task.start();
+    const worker_count = getIntArgs("--worker-count");
+    try task.start(worker_count);
 
     try ecs.init(_ecs_allocator.allocator());
 
@@ -421,7 +421,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         _restart = false;
 
         // Main Allocator
-        var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+        var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 15 }) = .init;
         const gpa_allocator, const is_debug = gpa: {
             if (builtin.os.tag == .wasi) break :gpa .{ std.heap.wasm_allocator, false };
             break :gpa switch (builtin.mode) {
@@ -430,7 +430,9 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             };
         };
         defer if (is_debug) {
-            _ = debug_allocator.deinit();
+            if (debug_allocator.deinit() == .leak) {
+                log.err("Memory LEAK!!!", .{});
+            }
         };
 
         try initProgramArgs(gpa_allocator);
@@ -438,11 +440,17 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         // Boot ARGS aka. command line args
         const max_kernel_tick = getIntArgs("--max-kernel-tick") orelse boot_args.max_kernel_tick;
         _max_tick_rate = getIntArgs("--max-kernel-tick-rate") orelse 60;
+
         const load_dynamic = 1 == getIntArgs("--load-dynamic") orelse @intFromBool(boot_args.load_dynamic);
         const asset_root = getStrArgs("--asset-root") orelse "";
+
         _headless = 1 == getIntArgs("--headless") orelse @intFromBool(boot_args.headless);
         const fullscreen = 1 == getIntArgs("--fullscreen") orelse 0;
+        const vsync = 1 == getIntArgs("--vsync") orelse 1;
+
         const renderer_type = getStrArgs("--renderer");
+        const renderer_debug = 1 == getIntArgs("--renderer-debug") orelse @intFromBool(is_debug);
+        const renderer_profile = 1 == getIntArgs("--renderer-profile") orelse @intFromBool(is_debug);
 
         // Init Kernel
         try init(gpa_allocator, _headless);
@@ -518,8 +526,10 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         gpu_context = try gpu.api.createContext(
             main_window,
             if (renderer_type) |r| cetech1.gpu.Backend.fromString(r) else null,
-            !_headless,
+            !_headless and vsync,
             _headless,
+            renderer_debug,
+            renderer_profile,
         );
 
         try initKernelTasks();
@@ -533,10 +543,13 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
         var game_tick: usize = 0;
 
+        var frame_arena = std.heap.ArenaAllocator.init(_main_profiler_allocator.allocator());
+        defer frame_arena.deinit();
+
         profiler_private.api.frameMark();
         while (_running and !_quit and !_restart) : (kernel_tick +%= 1) {
-            var update_zone_ctx = profiler_private.ztracy.ZoneN(@src(), "kernelUpdate");
-            defer update_zone_ctx.End();
+            // var update_zone_ctx = profiler_private.ztracy.ZoneN(@src(), "kernelUpdate");
+            // defer update_zone_ctx.End();
 
             //const tick_duration = cetech1.metrics.MetricScopedDuration.begin(tick_duration_counter);
             const tick_duration = cetech1.metrics.MetricScopedDuration.begin(tick_duration_counter);
@@ -550,8 +563,8 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
             checkfs_timer += kernel_dt_ms;
 
-            const tmp_frame_alloc = try tempalloc.api.create();
-            defer tempalloc.api.destroy(tmp_frame_alloc);
+            _ = frame_arena.reset(.retain_capacity);
+            const tmp_frame_alloc = frame_arena.allocator();
 
             // Any dynamic modules changed?
             // TODO: Watch
@@ -561,8 +574,6 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                 const reloaded_modules = try modules.reloadAllIfNeeded(tmp_frame_alloc);
                 if (reloaded_modules) {}
             }
-
-            platform.api.poolEvents();
 
             // Any public.KernelTaskI iface changed? (add/remove)?
             const new_kernel_gen = apidb.api.getInterafcesVersion(public.KernelTaskI);
@@ -612,34 +623,36 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                 }
             };
 
+            platform.api.poolEvents();
+
             if (task.api.isDone(last_game_tick_task)) {
-                const noww = std.time.milliTimestamp();
-                const game_dt_ms = noww - game_tick_last_call;
-                const game_dt_s: f32 = @as(f32, @floatFromInt(game_dt_ms)) / std.time.ms_per_s;
-                game_tick_last_call = noww;
+                if (_next_asset_root != null) {
+                    try assetdb.api.openAssetRootFolder(
+                        if (_next_asset_root) |root| root else asset_root,
+                        _assetdb_allocator.allocator(),
+                    );
+                    _next_asset_root = null;
+                } else {
+                    const noww = std.time.milliTimestamp();
+                    const game_dt_ms = noww - game_tick_last_call;
+                    const game_dt_s: f32 = @as(f32, @floatFromInt(game_dt_ms)) / std.time.ms_per_s;
+                    game_tick_last_call = noww;
 
-                const t = try task.api.schedule(
-                    .none,
-                    GameTickTask{
-                        .dt_s = game_dt_s,
-                        .kernel_tick = kernel_tick,
-                        .fast_mode = fast_mode,
-                    },
-                    .{},
-                );
-                last_game_tick_task = t;
-                // task.api.wait(t);
-                game_tick +%= 1;
+                    const t = try task.api.schedule(
+                        .none,
+                        GameTickTask{
+                            .dt_s = game_dt_s,
+                            .kernel_tick = kernel_tick,
+                            .fast_mode = fast_mode,
+                        },
+                        .{},
+                    );
+                    last_game_tick_task = t;
+                    // task.api.wait(t);
+                    game_tick +%= 1;
+                }
             } else {
-                task.api.doOneTask();
-            }
-
-            if (_next_asset_root != null) {
-                try assetdb.api.openAssetRootFolder(
-                    if (_next_asset_root) |root| root else asset_root,
-                    _assetdb_allocator.allocator(),
-                );
-                _next_asset_root = null;
+                task.api.doOneTask(true);
             }
 
             // Check window close request
@@ -672,6 +685,13 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             }
         }
 
+        // wait for last game tick
+        // without this deadlock shit
+        // TODO: quit loop only after last_game_tick_task
+        while (!task.api.isDone(last_game_tick_task)) {
+            _ = gpu.api.renderFrame(2);
+            task.api.doOneTask(false);
+        }
         task.api.wait(last_game_tick_task);
 
         if (test_ui) {
@@ -684,7 +704,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                 const result = iface.getResult();
 
                 if (result.count_success != result.count_tested) {
-                    @panic("Why are you break my app?");
+                    return error.TestFailed;
                 }
             }
         }

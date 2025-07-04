@@ -3,7 +3,6 @@ const cetech1 = @import("cetech1");
 
 const cdb = cetech1.cdb;
 const modules = cetech1.modules;
-const strid = cetech1.strid;
 
 // TODO: MOVE
 pub const EVENT_INIT_NODE_TYPE_STR = "event_init";
@@ -274,13 +273,13 @@ pub const NodeI = struct {
     create: ?*const fn (self: *const NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) anyerror!void = null,
     destroy: ?*const fn (self: *const NodeI, state: *anyopaque, reload: bool) anyerror!void = null,
 
-    execute: *const fn (self: *const NodeI, args: ExecuteArgs, in_pins: InPins, out_pins: OutPins) anyerror!void = undefined,
+    execute: *const fn (self: *const NodeI, args: ExecuteArgs, in_pins: InPins, out_pins: *OutPins) anyerror!void = undefined,
 
     // TODO: Clean transpile API and ARGS
     createTranspileState: ?*const fn (self: *const NodeI, allocator: std.mem.Allocator) anyerror![]u8 = null,
     destroyTranspileState: ?*const fn (self: *const NodeI, state: []u8) void = null,
     getTranspileStages: ?*const fn (self: *const NodeI, allocator: std.mem.Allocator) anyerror![]const TranspileStage = undefined,
-    transpile: ?*const fn (self: *const NodeI, args: ExecuteArgs, state: []u8, stage: ?cetech1.StrId32, context: ?[]const u8, in_pins: InPins, out_pins: OutPins) anyerror!void = undefined,
+    transpile: ?*const fn (self: *const NodeI, args: ExecuteArgs, state: []u8, stage: ?cetech1.StrId32, context: ?[]const u8, in_pins: InPins, out_pins: *OutPins) anyerror!void = undefined,
 
     title: ?*const fn (
         self: *const NodeI,
@@ -323,49 +322,52 @@ pub const NodeI = struct {
 pub const PinDataIdxMap = cetech1.AutoArrayHashMap(cetech1.StrId32, u32);
 pub const ValidityHash = u64;
 
+pub const MAX_INPUT_PINS = 32;
+pub const MAX_OUTPUT_PINS = 32;
+
 pub const InPins = struct {
     const Self = @This();
 
-    data: ?[]?[*]u8 = undefined,
-    validity_hash: ?[]?*ValidityHash = null,
-    types: ?[]?cetech1.StrId32 = null,
+    data: []const ?[*]u8 = &.{},
+    validity_hash: []const ?*ValidityHash = &.{},
+    types: []const ?cetech1.StrId32 = &.{},
 
     pub fn read(self: Self, comptime T: type, pin_idx: usize) ?struct { ValidityHash, T } {
-        if (self.data == null) return null;
-        if (self.data.?[pin_idx] == null) return null;
+        // if (self.data == null) return null;
+        if (self.data[pin_idx] == null) return null;
 
-        const vh = self.validity_hash.?[pin_idx].?;
-        const v = std.mem.bytesAsValue(T, self.data.?[pin_idx].?);
+        const vh = self.validity_hash[pin_idx].?;
+        const v = std.mem.bytesAsValue(T, self.data[pin_idx].?);
         return .{ vh.*, v.* };
     }
 
     pub fn getPinType(self: Self, pin_idx: usize) ?cetech1.StrId32 {
-        return self.types.?[pin_idx];
+        return self.types[pin_idx];
     }
 };
 
 pub const OutPins = struct {
     const Self = @This();
 
-    data: ?[][*]u8 = undefined,
-    validity_hash: ?[]ValidityHash = null,
-    types: ?[]cetech1.StrId32 = null,
+    data: []const [*]u8 = &.{},
+    validity_hash: []ValidityHash = &.{},
+    types: []const cetech1.StrId32 = &.{},
 
-    pub fn writeTyped(self: Self, comptime T: type, pin_idx: usize, validity_hash: ValidityHash, value: T) !void {
+    pub fn writeTyped(self: *Self, comptime T: type, pin_idx: usize, validity_hash: ValidityHash, value: T) !void {
         try self.write(pin_idx, validity_hash, std.mem.asBytes(&value));
     }
 
-    pub fn write(self: Self, pin_idx: usize, validity_hash: ValidityHash, value: []const u8) !void {
-        if (self.data == null) return;
+    pub fn write(self: *Self, pin_idx: usize, validity_hash: ValidityHash, value: []const u8) !void {
+        //if (self.data == null) return;
 
-        self.validity_hash.?[pin_idx] = validity_hash;
+        self.validity_hash[pin_idx] = validity_hash;
 
-        const v = self.data.?[pin_idx];
+        const v = self.data[pin_idx];
         @memcpy(v, value);
     }
 
     pub fn getPinType(self: Self, pin_idx: usize) cetech1.StrId32 {
-        return self.types.?[pin_idx];
+        return self.types[pin_idx];
     }
 };
 
@@ -422,11 +424,22 @@ pub const CALL_GRAPH_NODE_TYPE = cetech1.strId32(CALL_GRAPH_NODE_TYPE_STR);
 
 pub const ExecuteConfig = struct {
     use_tasks: bool = true,
+    out_states: ?[]?*anyopaque = null,
 };
 
 pub const GraphVMApi = struct {
     pub inline fn getNodeState(self: *const GraphVMApi, comptime T: type, allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32) ![]?*T {
         const result = try self.getNodeStateFn(allocator, instances, node_type);
+
+        var r: []?*T = undefined;
+        r.ptr = @alignCast(@ptrCast(result.ptr));
+        r.len = result.len;
+
+        return r;
+    }
+
+    pub inline fn executeNodeAndGetState(self: *const GraphVMApi, comptime T: type, allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32, cfg: ExecuteConfig) ![]?*T {
+        const result = try self.executeNodeAndGetStateFn(allocator, instances, node_type, cfg);
 
         var r: []?*T = undefined;
         r.ptr = @alignCast(@ptrCast(result.ptr));
@@ -460,17 +473,21 @@ pub const GraphVMApi = struct {
     needCompileAny: *const fn () bool,
     compileAllChanged: *const fn (allocator: std.mem.Allocator) anyerror!void,
 
+    getPrototypeNode: *const fn (graph: cdb.ObjId, node: cdb.ObjId) ?cdb.ObjId,
+
     createInstance: *const fn (allocator: std.mem.Allocator, graph: cdb.ObjId) anyerror!GraphInstance,
     createInstances: *const fn (allocator: std.mem.Allocator, graph: cdb.ObjId, instances: []GraphInstance) anyerror!void,
     destroyInstance: *const fn (instance: GraphInstance) void,
-    executeNode: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32, cfg: ExecuteConfig) anyerror!void,
     buildInstances: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance) anyerror!void,
 
     setInstanceContext: *const fn (instance: GraphInstance, context_name: cetech1.StrId32, context: *anyopaque) anyerror!void,
     getContextFn: *const fn (instance: GraphInstance, context_name: cetech1.StrId32) ?*anyopaque,
     removeContext: *const fn (instance: GraphInstance, context_name: cetech1.StrId32) void,
+
     getInputPins: *const fn (instance: GraphInstance) OutPins,
     getOutputPins: *const fn (instance: GraphInstance) OutPins,
 
-    getNodeStateFn: *const fn (allocator: std.mem.Allocator, containers: []const GraphInstance, node_type: cetech1.StrId32) anyerror![]?*anyopaque,
+    executeNode: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32, cfg: ExecuteConfig) anyerror!void,
+    getNodeStateFn: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32) anyerror![]?*anyopaque,
+    executeNodeAndGetStateFn: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32, cfg: ExecuteConfig) anyerror![]?*anyopaque,
 };

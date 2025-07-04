@@ -10,5 +10,6 @@
         .cetech1 = .{ .path = "../../../public/" },
         .graphvm = .{ .path = "../../scripting/graphvm" },
         .editor_inspector = .{ .path = "../../editor/inspector" },
+        .visibility_flags = .{ .path = "../visibility_flags" },
     },
 }

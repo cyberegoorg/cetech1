@@ -6,7 +6,6 @@ const profiler = @import("profiler.zig");
 const platform = @import("platform.zig");
 const kernel = @import("kernel.zig");
 
-const strid = cetech1.strid;
 const public = cetech1.actions;
 const zm = cetech1.math.zmath;
 

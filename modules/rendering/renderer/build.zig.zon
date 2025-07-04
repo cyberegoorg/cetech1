@@ -1,6 +1,6 @@
 .{
     .name = .renderer,
-    .fingerprint = 0xf199a19ccee012ea,
+    .fingerprint = 0xf199a19c4a165536,
     .version = "0.1.0",
     .paths = .{
         "build.zig",
@@ -12,5 +12,9 @@
         .graphvm = .{ .path = "../../scripting/graphvm" },
         .camera = .{ .path = "../camera" },
         .shader_system = .{ .path = "../shader_system" },
+        .render_graph = .{ .path = "../render_graph" },
+        .render_viewport = .{ .path = "../render_viewport" },
+        .vertex_system = .{ .path = "../vertex_system" },
+        .visibility_flags = .{ .path = "../visibility_flags" },
     },
 }

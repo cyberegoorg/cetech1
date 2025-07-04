@@ -16,6 +16,7 @@ pub fn build(b: *std.Build) !void {
 
     lib.root_module.addImport("graphvm", b.dependency("graphvm", .{}).module("graphvm"));
     lib.root_module.addImport("editor_inspector", b.dependency("editor_inspector", .{}).module("editor_inspector"));
+    lib.root_module.addImport("visibility_flags", b.dependency("visibility_flags", .{}).module("visibility_flags"));
 
     _ = b.addModule(
         "shader_system",
@@ -23,6 +24,7 @@ pub fn build(b: *std.Build) !void {
             .root_source_file = b.path("src/shader_system.zig"),
             .imports = &.{
                 .{ .name = "cetech1", .module = cetech1_module },
+                .{ .name = "visibility_flags", .module = b.dependency("visibility_flags", .{}).module("visibility_flags") },
             },
         },
     );

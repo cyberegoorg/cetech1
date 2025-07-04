@@ -1,9 +1,6 @@
 const std = @import("std");
 const platform = @import("platform.zig");
 const cetech1 = @import("root.zig");
-const cdb = @import("cdb.zig");
-
-const ecs = @import("ecs.zig");
 
 const log = std.log.scoped(.gpu);
 
@@ -49,7 +46,14 @@ pub const Backend = enum(c_int) {
 };
 
 pub const GpuApi = struct {
-    createContext: *const fn (window: ?platform.Window, backend: ?Backend, vsync: bool, headles: bool) anyerror!*GpuContext,
+    createContext: *const fn (
+        window: ?platform.Window,
+        backend: ?Backend,
+        vsync: bool,
+        headles: bool,
+        debug: bool,
+        profile: bool,
+    ) anyerror!*GpuContext,
     destroyContext: *const fn (ctx: *GpuContext) void,
     getWindow: *const fn (ctx: *GpuContext) ?platform.Window,
 
@@ -57,9 +61,6 @@ pub const GpuApi = struct {
 
     addPaletteColor: *const fn (color: u32) u8,
     endAllUsedEncoders: *const fn () void,
-
-    newViewId: *const fn () ViewId,
-    resetViewId: *const fn () void,
 
     getBackendType: *const fn () Backend,
 
@@ -71,6 +72,10 @@ pub const GpuApi = struct {
     ) anyerror![]u8,
 
     createDefaultOptionsForRenderer: *const fn (renderer: Backend) ShadercOptions,
+
+    isHomogenousDepth: *const fn () bool,
+    getNullVb: *const fn () VertexBufferHandle,
+    getFloatBufferLayout: *const fn () *const VertexLayout,
 
     vertexPack: *const fn (_input: [4]f32, _inputNormalized: bool, _attr: Attrib, _layout: [*c]const VertexLayout, _data: ?*anyopaque, _index: u32) void,
     vertexUnpack: *const fn (_output: [4]f32, _attr: Attrib, _layout: [*c]const VertexLayout, _data: ?*const anyopaque, _index: u32) void,
@@ -187,9 +192,9 @@ pub const GpuApi = struct {
     setTransientVertexBuffer: *const fn (_stream: u8, _tvb: [*c]const TransientVertexBuffer, _startVertex: u32, _numVertices: u32) void,
     setTransientVertexBufferWithLayout: *const fn (_stream: u8, _tvb: [*c]const TransientVertexBuffer, _startVertex: u32, _numVertices: u32, _layoutHandle: VertexLayoutHandle) void,
     setVertexCount: *const fn (_numVertices: u32) void,
-    setInstanceDataBuffer: *const fn (_idb: [*c]const InstanceDataBuffer, _start: u32, _num: u32) void,
-    setInstanceDataFromVertexBuffer: *const fn (_handle: VertexBufferHandle, _startVertex: u32, _num: u32) void,
-    setInstanceDataFromDynamicVertexBuffer: *const fn (_handle: DynamicVertexBufferHandle, _startVertex: u32, _num: u32) void,
+    // setInstanceDataBuffer: *const fn (_idb: [*c]const InstanceDataBuffer, _start: u32, _num: u32) void,
+    // setInstanceDataFromVertexBuffer: *const fn (_handle: VertexBufferHandle, _startVertex: u32, _num: u32) void,
+    // setInstanceDataFromDynamicVertexBuffer: *const fn (_handle: DynamicVertexBufferHandle, _startVertex: u32, _num: u32) void,
     setInstanceCount: *const fn (_numInstances: u32) void,
     setTexture: *const fn (_stage: u8, _sampler: UniformHandle, _handle: TextureHandle, _flags: u32) void,
     touch: *const fn (_id: ViewId) void,

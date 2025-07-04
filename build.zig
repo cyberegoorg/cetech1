@@ -169,7 +169,7 @@ pub fn build(b: *std.Build) !void {
         .enable_nfd = b.option(bool, "with_nfd", "build with NFD (Native File Dialog).") orelse true,
         .nfd_portal = b.option(bool, "nfd_portal", "build NFD with xdg-desktop-portal instead of GTK. ( Linux, nice for steamdeck;) )") orelse true,
 
-        .with_freetype = b.option(bool, "with_freetype", "build coreui with freetype support") orelse true,
+        .with_freetype = b.option(bool, "with_freetype", "build coreui with freetype support") orelse false,
 
         .externals_optimize = b.option(std.builtin.OptimizeMode, "externals_optimize", "Optimize for externals libs") orelse .ReleaseFast,
 
@@ -605,13 +605,21 @@ pub const editor_modules = [_][]const u8{
 
 pub const core_modules = [_][]const u8{
     "graphvm",
-    "renderer",
-    "default_rg",
+    "render_viewport",
+    "render_graph",
+    "renderer_nodes",
+    "render_pipeline",
+    "default_render_pipeline",
     "shader_system",
     "render_component",
     "entity_logic_component",
     "transform",
     "camera",
+    "vertex_system",
+    "instance_system",
+    "visibility_flags",
+    "light_component",
+    "light_system",
 };
 
 pub const samples_modules = [_][]const u8{

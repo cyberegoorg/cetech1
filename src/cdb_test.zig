@@ -24,7 +24,7 @@ pub fn testInit() !void {
     try apidb.init(std.testing.allocator);
     try metrics.init(std.testing.allocator);
     try cdb_private.init(std.testing.allocator);
-    try task.start();
+    try task.start(null);
 }
 
 pub fn testDeinit() void {

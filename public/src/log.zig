@@ -4,7 +4,6 @@ const std = @import("std");
 const builtin = @import("builtin");
 const cetech1 = @import("root.zig");
 
-pub const MAX_LOG_ENTRY_SIZE = 1024 * 8; //TODO SHIT
 const LogFn = fn (comptime std.log.Level, comptime @TypeOf(.enum_literal), comptime []const u8, anytype) void;
 
 pub const LogHandlerI = struct {
@@ -65,7 +64,8 @@ pub const LogAPI = struct {
     //#endregion
 };
 
-pub fn zigLogFnGen(comptime log_api: **const LogAPI) LogFn {
+pub const MAX_LOG_ENTRY_SIZE = 1024 * 6;
+pub fn zigLogFnGen(comptime log_api: *const *const LogAPI) LogFn {
     return struct {
         pub fn f(
             comptime level: std.log.Level,
@@ -73,10 +73,12 @@ pub fn zigLogFnGen(comptime log_api: **const LogAPI) LogFn {
             comptime format: []const u8,
             args: anytype,
         ) void {
-            //var msg: [std.fmt.count(format, args)]u8 = undefined; //TODO: WHY?
+            // const msg2: [std.fmt.count(format, args)]u8 = undefined; //TODO: WHY?
+            // _ = msg2;
+
             var msg: [MAX_LOG_ENTRY_SIZE]u8 = undefined; // TODO: SHIIIIIIIIIIIIITTTTTTTT
             const formated_msg = std.fmt.bufPrintZ(&msg, format, args) catch |e| {
-                std.debug.print("caught err writing to buffer {any}", .{e});
+                std.debug.print("caught err writing to buffer {any}\n", .{e});
                 return;
             };
 

@@ -5,7 +5,6 @@ const cetech1 = @import("cetech1");
 
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
-const strid = cetech1.strid;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
@@ -400,7 +399,7 @@ const event_node_i = public.NodeI.implement(
             };
         }
 
-        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: public.OutPins) !void {
+        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
             _ = self; // autofix
             _ = args;
             _ = in_pins;
@@ -445,7 +444,7 @@ const event_shutdown_node_i = public.NodeI.implement(
             };
         }
 
-        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: public.OutPins) !void {
+        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
             _ = self; // autofix
             _ = args;
             _ = in_pins;
@@ -490,7 +489,7 @@ const event_tick_node_i = public.NodeI.implement(
             };
         }
 
-        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: public.OutPins) !void {
+        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
             _ = self; // autofix
             _ = args;
             _ = in_pins;
@@ -547,7 +546,7 @@ const print_node_i = public.NodeI.implement(
             real_state.* = .{};
         }
 
-        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: public.OutPins) !void {
+        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
             _ = self; // autofix
             _ = args; // autofix
             _ = out_pins;
@@ -559,7 +558,7 @@ const print_node_i = public.NodeI.implement(
             var fba = std.heap.FixedBufferAllocator.init(&buffer);
             const allocator = fba.allocator();
 
-            const str_value = try iface.valueToString(allocator, in_pins.data.?[1].?[0..iface.size]);
+            const str_value = try iface.valueToString(allocator, in_pins.data[1].?[0..iface.size]);
             log.debug("{s}", .{str_value});
         }
 
@@ -641,11 +640,12 @@ const const_node_i = public.NodeI.implement(
             }
         }
 
-        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: public.OutPins) !void {
+        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
             _ = self; // autofix
             _ = in_pins;
             const real_state: *ConstNodeState = @alignCast(@ptrCast(args.state));
 
+            // TODO: SHIT
             var value: [2048]u8 = undefined;
             try real_state.value_type.valueFromCdb(args.allocator, real_state.value_obj, value[0..real_state.value_type.size]);
             const vh = try real_state.value_type.calcValidityHash(value[0..real_state.value_type.size]);
@@ -709,7 +709,7 @@ const random_f32_node_i = public.NodeI.implement(
             real_state.* = .{};
         }
 
-        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: public.OutPins) !void {
+        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
             _ = self; // autofix
             const real_state: *RandomF32NodeState = @alignCast(@ptrCast(args.state));
 

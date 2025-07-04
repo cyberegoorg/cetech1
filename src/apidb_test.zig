@@ -2,7 +2,6 @@ const std = @import("std");
 const mem = std.mem;
 
 const cetech1 = @import("cetech1");
-const strid = cetech1.strid;
 
 const apidb = @import("apidb.zig");
 

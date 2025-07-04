@@ -57,7 +57,7 @@ fn testInit() !void {
     try metrics.init(std.testing.allocator);
     try cdb_private.init(std.testing.allocator);
     try private.registerToApi();
-    try task.start();
+    try task.start(null);
     try cdb_types.registerToApi();
 }
 

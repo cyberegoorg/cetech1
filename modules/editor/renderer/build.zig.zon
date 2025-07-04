@@ -9,6 +9,7 @@
         .cetech1 = .{ .path = "../../../public/" },
         .editor = .{ .path = "../editor" },
         .editor_inspector = .{ .path = "../inspector" },
-        .renderer = .{ .path = "../../rendering/renderer" },
+        .render_viewport = .{ .path = "../../rendering/render_viewport" },
+        .renderer_nodes = .{ .path = "../../rendering/renderer_nodes" },
     },
 }

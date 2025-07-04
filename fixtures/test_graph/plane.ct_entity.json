@@ -1,0 +1,195 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "01990060-e3ac-74ce-9f26-e182964c9011",
+  "__type_name": "ct_entity",
+  "__uuid": "01990060-eb2c-724d-a353-bc93abe3e7c0",
+  "components": [
+    {
+      "__type_name": "ct_position",
+      "__uuid": "01990061-225c-7069-b02a-5eafa6df56cb"
+    },
+    {
+      "__type_name": "ct_scale",
+      "__uuid": "01990061-3c17-7dc7-9d08-a1443edfde9f",
+      "x": 1e0,
+      "y": 1e0,
+      "z": 1e0
+    },
+    {
+      "__type_name": "ct_render_component",
+      "__uuid": "01990061-4c0a-78a6-a3a5-63f14092e940",
+      "graph": {
+        "__type_name": "ct_graph",
+        "__uuid": "01990061-5a43-7b3c-9761-81b3cdac4a18",
+        "nodes": [
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "01990062-a8a6-7ff5-ac67-3ccc9a50725c",
+            "node_type": "node_pbr_lit",
+            "pos_x": 7.02e2,
+            "pos_y": 1.24e2
+          },
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "01990062-a8a6-7cae-960d-be4bf65aa806",
+            "node_type": "culling_volume",
+            "pos_x": 1.104e3,
+            "pos_y": 2.86e2
+          },
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "01990062-a8a6-7bbd-b940-c3e77fa6052b",
+            "node_type": "simple_mesh",
+            "settings": {
+              "__type_name": "ct_gpu_simple_mesh_settings",
+              "__uuid": "01990061-9f8d-778f-a1ce-877b12a81cd4",
+              "type": "plane"
+            },
+            "pos_x": 8.96e2,
+            "pos_y": 1.78e2
+          },
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "01990062-a8a6-77ea-b503-1388aca87608",
+            "node_type": "draw_call",
+            "settings": {
+              "__type_name": "ct_draw_call_node_settings",
+              "__uuid": "01990061-c064-7d15-a740-a252ae272bb5",
+              "visibility_flags": {
+                "__type_name": "ct_visibility_flags",
+                "__uuid": "01990061-c064-7468-83dd-495715f23456",
+                "flags": [
+                  {
+                    "__type_name": "ct_visibility_flag",
+                    "__uuid": "01990064-0b5a-7661-a096-22b8a45ccd12",
+                    "uuid": 495562435
+                  }
+                ]
+              }
+            },
+            "pos_x": 1.104e3,
+            "pos_y": 1.26e2
+          },
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "01990062-6d94-781b-b922-63d329873f7b",
+            "node_type": "gpu_const",
+            "settings": {
+              "__type_name": "ct_gpu_const_node_settings",
+              "__uuid": "01990062-681e-7dab-acdd-709fbeefb47c",
+              "result_type": "color",
+              "value": {
+                "__type_name": "ct_color_4f",
+                "__uuid": "01990062-7284-7f78-a056-911ae627c6c0",
+                "r": 1e0,
+                "g": 1e0,
+                "b": 1e0,
+                "a": 1e0
+              }
+            },
+            "pos_x": 4.03e2,
+            "pos_y": 1.58e2
+          }
+        ],
+        "connections": [
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "01990061-cd4f-789e-9989-9e45f478c358",
+            "from_node": "ct_graph_node:01990062-a8a6-7ff5-ac67-3ccc9a50725c",
+            "to_node": "ct_graph_node:01990062-a8a6-77ea-b503-1388aca87608",
+            "from_pin": "out:gpu_shader",
+            "to_pin": "in:gpu_shader"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "01990061-d37f-7a1b-8760-11c1a946ff4d",
+            "from_node": "ct_graph_node:01990062-a8a6-7bbd-b940-c3e77fa6052b",
+            "to_node": "ct_graph_node:01990062-a8a6-77ea-b503-1388aca87608",
+            "from_pin": "out:gpu_geometry",
+            "to_pin": "in:gpu_geometry"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "01990061-dcf3-7bae-90da-0bdcd5ce508a",
+            "from_node": "ct_graph_node:01990062-a8a6-7bbd-b940-c3e77fa6052b",
+            "to_node": "ct_graph_node:01990062-a8a6-77ea-b503-1388aca87608",
+            "from_pin": "out:gpu_index_buffer",
+            "to_pin": "in:gpu_index_buffer"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "01990061-e290-70ed-b53c-7afcd0aa85cb",
+            "from_node": "ct_graph_node:01990062-a8a6-7bbd-b940-c3e77fa6052b",
+            "to_node": "ct_graph_node:01990062-a8a6-77ea-b503-1388aca87608",
+            "from_pin": "out:vertex_count",
+            "to_pin": "in:vertex_count"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "01990061-e8e3-7bb8-8c77-0d3441c20742",
+            "from_node": "ct_graph_node:01990062-a8a6-7bbd-b940-c3e77fa6052b",
+            "to_node": "ct_graph_node:01990062-a8a6-77ea-b503-1388aca87608",
+            "from_pin": "out:index_count",
+            "to_pin": "in:index_count"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "01990062-a0ce-7058-a9e5-9e968f981cc2",
+            "from_node": "ct_graph_node:01990062-6d94-781b-b922-63d329873f7b",
+            "to_node": "ct_graph_node:01990062-a8a6-7ff5-ac67-3ccc9a50725c",
+            "from_pin": "out:output",
+            "to_pin": "in:albedo"
+          }
+        ],
+        "data": [
+          {
+            "__type_name": "ct_graph_data",
+            "__uuid": "01990062-0129-78a2-907e-1c30fccd6b67",
+            "to_node": "ct_graph_node:01990062-a8a6-7cae-960d-be4bf65aa806",
+            "to_node_pin": "in:max",
+            "value": {
+              "__type_name": "ct_vec_3f",
+              "__uuid": "01990062-0129-7b43-b6dc-8b160e7f51ee",
+              "x": 5e-1,
+              "y": 1.0000000149011612e-1,
+              "z": 5e-1
+            }
+          },
+          {
+            "__type_name": "ct_graph_data",
+            "__uuid": "01990061-fadd-7a53-89cd-684cf4281c70",
+            "to_node": "ct_graph_node:01990062-a8a6-7cae-960d-be4bf65aa806",
+            "to_node_pin": "in:min",
+            "value": {
+              "__type_name": "ct_vec_3f",
+              "__uuid": "01990061-fadd-7914-80b0-cbf90df77cff",
+              "x": -5e-1,
+              "y": -1.0000000149011612e-1,
+              "z": -5e-1
+            }
+          },
+          {
+            "__type_name": "ct_graph_data",
+            "__uuid": "01997c97-52d1-7888-b251-2a11f63bdfcc",
+            "to_node": "ct_graph_node:01990062-a8a6-7ff5-ac67-3ccc9a50725c",
+            "to_node_pin": "in:roughness",
+            "value": {
+              "__type_name": "ct_gpu_f32",
+              "__uuid": "01997c97-52d1-7af1-b47b-11e44a4183d5"
+            }
+          },
+          {
+            "__type_name": "ct_graph_data",
+            "__uuid": "01997c97-57c9-74a0-a101-106cb8b2066c",
+            "to_node": "ct_graph_node:01990062-a8a6-7ff5-ac67-3ccc9a50725c",
+            "to_node_pin": "in:metallic",
+            "value": {
+              "__type_name": "ct_gpu_f32",
+              "__uuid": "01997c97-57c9-7d9d-b928-fe61bca30f54"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

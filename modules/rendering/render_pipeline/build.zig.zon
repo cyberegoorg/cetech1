@@ -1,0 +1,14 @@
+.{
+    .name = .render_pipeline,
+    .fingerprint = 0xc83cefcf6b2288ec,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .render_graph = .{ .path = "../render_graph" },
+        .shader_system = .{ .path = "../shader_system" },
+    },
+}

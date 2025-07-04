@@ -1,0 +1,165 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "01989447-fb54-77d3-a89b-e84c738f6c48",
+  "__type_name": "ct_entity",
+  "__uuid": "01989447-fee6-7e42-bc47-f67421e06157",
+  "components": [
+    {
+      "__type_name": "ct_position",
+      "__uuid": "01989448-1c71-7a33-8bda-9b55c6ea4eac"
+    },
+    {
+      "__type_name": "ct_render_component",
+      "__uuid": "01989448-3482-7c78-ae7a-651e57498954",
+      "graph": {
+        "__type_name": "ct_graph",
+        "__uuid": "01989448-412b-75e9-9a5b-b2e52b4b2a85",
+        "nodes": [
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "01989449-a2bf-7133-a075-58333a8cff39",
+            "node_type": "simple_mesh",
+            "settings": {
+              "__type_name": "ct_gpu_simple_mesh_settings",
+              "__uuid": "01989448-5d92-7b3c-bed6-64c70b99d434"
+            },
+            "pos_x": 7.13e2,
+            "pos_y": 4.2e1
+          },
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "01989449-a2bf-75ff-83ae-f35ccf544ffe",
+            "node_type": "node_pbr_lit",
+            "pos_x": 5.26e2,
+            "pos_y": -6e0
+          },
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "0198944b-3dab-7964-bb53-95993d7c9af7",
+            "node_type": "gpu_vertex_color",
+            "pos_x": 2.58e2,
+            "pos_y": 4.6e1
+          },
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "01989993-581e-71be-9c50-5f6caf8c4155",
+            "node_type": "draw_call",
+            "settings": {
+              "__type_name": "ct_draw_call_node_settings",
+              "__uuid": "01989993-206b-7c8e-a420-863309166881",
+              "visibility_flags": {
+                "__type_name": "ct_visibility_flags",
+                "__uuid": "019899b1-a43d-713f-af14-12a18ad67d8e",
+                "flags": [
+                  {
+                    "__type_name": "ct_visibility_flag",
+                    "__uuid": "019899be-274f-704d-9e3b-f3c3f2a3c64c",
+                    "uuid": 495562435
+                  }
+                ]
+              }
+            },
+            "pos_x": 8.99e2,
+            "pos_y": -6e0
+          },
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "01989449-a2bf-711e-9473-2fdd7063f8fd",
+            "node_type": "culling_volume",
+            "pos_x": 8.92e2,
+            "pos_y": -3.38e2
+          }
+        ],
+        "connections": [
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "01989448-bfe7-7472-8274-2894e472d327",
+            "from_node": "ct_graph_node:0198944b-3dab-7964-bb53-95993d7c9af7",
+            "to_node": "ct_graph_node:01989449-a2bf-75ff-83ae-f35ccf544ffe",
+            "from_pin": "out:color",
+            "to_pin": "in:albedo"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "01989993-3852-7c39-982a-38d1258d1940",
+            "from_node": "ct_graph_node:01989449-a2bf-75ff-83ae-f35ccf544ffe",
+            "to_node": "ct_graph_node:01989993-581e-71be-9c50-5f6caf8c4155",
+            "from_pin": "out:gpu_shader",
+            "to_pin": "in:gpu_shader"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "01989993-3dc5-72e2-945a-bab63d924ed4",
+            "from_node": "ct_graph_node:01989449-a2bf-7133-a075-58333a8cff39",
+            "to_node": "ct_graph_node:01989993-581e-71be-9c50-5f6caf8c4155",
+            "from_pin": "out:gpu_geometry",
+            "to_pin": "in:gpu_geometry"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "01989993-4228-7440-adf0-3497b130f3c3",
+            "from_node": "ct_graph_node:01989449-a2bf-7133-a075-58333a8cff39",
+            "to_node": "ct_graph_node:01989993-581e-71be-9c50-5f6caf8c4155",
+            "from_pin": "out:gpu_index_buffer",
+            "to_pin": "in:gpu_index_buffer"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "01989993-482b-7054-9c72-e4656f8e53db",
+            "from_node": "ct_graph_node:01989449-a2bf-7133-a075-58333a8cff39",
+            "to_node": "ct_graph_node:01989993-581e-71be-9c50-5f6caf8c4155",
+            "from_pin": "out:vertex_count",
+            "to_pin": "in:vertex_count"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "01989993-516f-7818-812f-dc8bedadc894",
+            "from_node": "ct_graph_node:01989449-a2bf-7133-a075-58333a8cff39",
+            "to_node": "ct_graph_node:01989993-581e-71be-9c50-5f6caf8c4155",
+            "from_pin": "out:index_count",
+            "to_pin": "in:index_count"
+          }
+        ],
+        "data": [
+          {
+            "__type_name": "ct_graph_data",
+            "__uuid": "01989449-86c9-7093-9862-31026baff406",
+            "to_node": "ct_graph_node:01989449-a2bf-711e-9473-2fdd7063f8fd",
+            "to_node_pin": "in:radius",
+            "value": {
+              "__type_name": "ct_f32",
+              "__uuid": "01989449-7a13-7d4a-9866-377bfb218097",
+              "value": 1e0
+            }
+          },
+          {
+            "__type_name": "ct_graph_data",
+            "__uuid": "0198944a-3867-7aff-a479-6ab641027e2a",
+            "to_node": "ct_graph_node:01989449-a2bf-711e-9473-2fdd7063f8fd",
+            "to_node_pin": "in:min",
+            "value": {
+              "__type_name": "ct_vec_3f",
+              "__uuid": "0198944a-3867-769d-b15d-6b4a73f51098",
+              "x": -5e-1,
+              "y": -5e-1,
+              "z": -5e-1
+            }
+          },
+          {
+            "__type_name": "ct_graph_data",
+            "__uuid": "0198944a-671d-7d71-9fd8-ae17beffc736",
+            "to_node": "ct_graph_node:01989449-a2bf-711e-9473-2fdd7063f8fd",
+            "to_node_pin": "in:max",
+            "value": {
+              "__type_name": "ct_vec_3f",
+              "__uuid": "0198944a-671d-750f-be1c-52e2abf56814",
+              "x": 5e-1,
+              "y": 5e-1,
+              "z": 5e-1
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

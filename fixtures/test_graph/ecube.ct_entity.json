@@ -1,0 +1,275 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "019990fe-3804-72f4-a9ad-0bd5afdb0dc4",
+  "__type_name": "ct_entity",
+  "__uuid": "019990fe-3ba7-7110-9ce3-eef8568cc994",
+  "components": [
+    {
+      "__type_name": "ct_position",
+      "__uuid": "019990fe-65a8-7082-9110-ed51bd819977"
+    },
+    {
+      "__type_name": "ct_rotation",
+      "__uuid": "019990fe-6f0b-7daf-879a-d662da036444"
+    },
+    {
+      "__type_name": "ct_render_component",
+      "__uuid": "019990fe-8065-76d6-8fac-085a0ace038b",
+      "graph": {
+        "__type_name": "ct_graph",
+        "__uuid": "019990fe-8e85-736a-b299-3a9d9e7f3473",
+        "nodes": [
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "019990ff-be50-783a-8a67-e7a52c75fdb3",
+            "node_type": "draw_call",
+            "settings": {
+              "__type_name": "ct_draw_call_node_settings",
+              "__uuid": "019990fe-acef-7f46-ac2b-de87791a147b",
+              "visibility_flags": {
+                "__type_name": "ct_visibility_flags",
+                "__uuid": "019990fe-acef-7716-8bf1-f15b1e338c77",
+                "flags": [
+                  {
+                    "__type_name": "ct_visibility_flag",
+                    "__uuid": "019990ff-be50-7267-8b25-c83d27901d2d",
+                    "uuid": 495562435
+                  }
+                ]
+              }
+            },
+            "pos_x": 9e0
+          },
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "019990ff-be50-76ee-8fb6-f47acbaf81ef",
+            "node_type": "node_unlit",
+            "pos_x": -3.91e2,
+            "pos_y": -2e0
+          },
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "019990ff-be50-7e57-bc5d-1390e3af222b",
+            "node_type": "culling_volume",
+            "pos_x": 1.2e1,
+            "pos_y": 1.5e2
+          },
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "019990ff-be50-7128-ba10-75a81138109d",
+            "node_type": "simple_mesh",
+            "settings": {
+              "__type_name": "ct_gpu_simple_mesh_settings",
+              "__uuid": "019990ff-88d5-723c-84c3-84f03ac5e104"
+            },
+            "pos_x": -1.98e2,
+            "pos_y": 5.4e1
+          },
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "01999163-8906-77cb-bce5-33e3dea06b8e",
+            "node_type": "gpu_const",
+            "settings": {
+              "__type_name": "ct_gpu_const_node_settings",
+              "__uuid": "01999163-4ec7-76d8-a2b6-a53ad84eee8d",
+              "result_type": "vec3",
+              "value": {
+                "__type_name": "ct_vec_3f",
+                "__uuid": "01999163-62f2-7eaf-a644-7a2c831bed0b",
+                "y": 1e0
+              }
+            },
+            "pos_x": -1.069e3,
+            "pos_y": 3e1
+          },
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "0199917c-3852-77b2-8579-ac525a731ab5",
+            "node_type": "gpu_mul",
+            "pos_x": -7.66e2,
+            "pos_y": 2.6e1
+          },
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "0199917c-3852-75cf-ae9f-a1027ee0bbfc",
+            "node_type": "gpu_time",
+            "pos_x": -1.663e3,
+            "pos_y": 1.26e2
+          },
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "0199917c-3852-701d-a1b3-487e28b20748",
+            "node_type": "gpu_sin",
+            "pos_x": -1.469e3,
+            "pos_y": 1.26e2
+          },
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "0199917c-3852-7d3d-ae66-7d5cf7f24192",
+            "node_type": "gpu_mix",
+            "pos_x": -1.069e3,
+            "pos_y": 1.26e2
+          },
+          {
+            "__type_name": "ct_graph_node",
+            "__uuid": "0199917c-3852-702a-bd37-d566fc9db16e",
+            "node_type": "gpu_abs",
+            "pos_x": -1.277e3,
+            "pos_y": 1.26e2
+          }
+        ],
+        "connections": [
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "019990fe-d8a2-709a-b65c-6e1d7808b073",
+            "from_node": "ct_graph_node:019990ff-be50-76ee-8fb6-f47acbaf81ef",
+            "to_node": "ct_graph_node:019990ff-be50-783a-8a67-e7a52c75fdb3",
+            "from_pin": "out:gpu_shader",
+            "to_pin": "in:gpu_shader"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "019990ff-919c-7c14-b146-a364b8dc0cb1",
+            "from_node": "ct_graph_node:019990ff-be50-7128-ba10-75a81138109d",
+            "to_node": "ct_graph_node:019990ff-be50-783a-8a67-e7a52c75fdb3",
+            "from_pin": "out:gpu_geometry",
+            "to_pin": "in:gpu_geometry"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "019990ff-98fe-7fc2-aa1b-576d07abe319",
+            "from_node": "ct_graph_node:019990ff-be50-7128-ba10-75a81138109d",
+            "to_node": "ct_graph_node:019990ff-be50-783a-8a67-e7a52c75fdb3",
+            "from_pin": "out:gpu_index_buffer",
+            "to_pin": "in:gpu_index_buffer"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "019990ff-9f5f-7e9a-b7b5-96a97fd195f0",
+            "from_node": "ct_graph_node:019990ff-be50-7128-ba10-75a81138109d",
+            "to_node": "ct_graph_node:019990ff-be50-783a-8a67-e7a52c75fdb3",
+            "from_pin": "out:vertex_count",
+            "to_pin": "in:vertex_count"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "019990ff-a4c7-7630-aab1-eaf0f3a75c41",
+            "from_node": "ct_graph_node:019990ff-be50-7128-ba10-75a81138109d",
+            "to_node": "ct_graph_node:019990ff-be50-783a-8a67-e7a52c75fdb3",
+            "from_pin": "out:index_count",
+            "to_pin": "in:index_count"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "01999176-18ef-7345-b1d3-48fd2cca2004",
+            "from_node": "ct_graph_node:0199917c-3852-77b2-8579-ac525a731ab5",
+            "to_node": "ct_graph_node:019990ff-be50-76ee-8fb6-f47acbaf81ef",
+            "from_pin": "out:result",
+            "to_pin": "in:emissive"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "01999176-0e56-7962-ada1-a89b4ea3f6de",
+            "from_node": "ct_graph_node:01999163-8906-77cb-bce5-33e3dea06b8e",
+            "to_node": "ct_graph_node:0199917c-3852-77b2-8579-ac525a731ab5",
+            "from_pin": "out:output",
+            "to_pin": "in:a"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "01999177-84a3-74d4-98fa-f843556f3cea",
+            "from_node": "ct_graph_node:0199917c-3852-75cf-ae9f-a1027ee0bbfc",
+            "to_node": "ct_graph_node:0199917c-3852-701d-a1b3-487e28b20748",
+            "from_pin": "out:time",
+            "to_pin": "in:a"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "0199917b-1c16-7f92-b7d6-3dd1996eb830",
+            "from_node": "ct_graph_node:0199917c-3852-702a-bd37-d566fc9db16e",
+            "to_node": "ct_graph_node:0199917c-3852-7d3d-ae66-7d5cf7f24192",
+            "from_pin": "out:result",
+            "to_pin": "in:t"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "0199917a-286c-7826-b4f9-5f089a36ad5f",
+            "from_node": "ct_graph_node:0199917c-3852-701d-a1b3-487e28b20748",
+            "to_node": "ct_graph_node:0199917c-3852-702a-bd37-d566fc9db16e",
+            "from_pin": "out:result",
+            "to_pin": "in:a"
+          },
+          {
+            "__type_name": "ct_graph_connection",
+            "__uuid": "0199917b-a317-7fc8-a03b-42e2fab8eafe",
+            "from_node": "ct_graph_node:0199917c-3852-7d3d-ae66-7d5cf7f24192",
+            "to_node": "ct_graph_node:0199917c-3852-77b2-8579-ac525a731ab5",
+            "from_pin": "out:result",
+            "to_pin": "in:b"
+          }
+        ],
+        "data": [
+          {
+            "__type_name": "ct_graph_data",
+            "__uuid": "019990ff-1212-7b59-a265-6b2f5cee285d",
+            "to_node": "ct_graph_node:019990ff-be50-7e57-bc5d-1390e3af222b",
+            "to_node_pin": "in:radius",
+            "value": {
+              "__type_name": "ct_f32",
+              "__uuid": "019990ff-1212-71f2-a07e-4a5ed7c30ee8",
+              "value": 1e0
+            }
+          },
+          {
+            "__type_name": "ct_graph_data",
+            "__uuid": "019990ff-29e4-7c3b-be7d-29f338c12ee7",
+            "to_node": "ct_graph_node:019990ff-be50-7e57-bc5d-1390e3af222b",
+            "to_node_pin": "in:min",
+            "value": {
+              "__type_name": "ct_vec_3f",
+              "__uuid": "019990ff-29e4-71f3-aeb2-6232866395ff",
+              "x": -5e-1,
+              "y": -5e-1,
+              "z": -5e-1
+            }
+          },
+          {
+            "__type_name": "ct_graph_data",
+            "__uuid": "019990ff-45f6-7848-aa38-9457616f6bdb",
+            "to_node": "ct_graph_node:019990ff-be50-7e57-bc5d-1390e3af222b",
+            "to_node_pin": "in:max",
+            "value": {
+              "__type_name": "ct_vec_3f",
+              "__uuid": "019990ff-45f6-7aee-843b-b1ad5c170ca0",
+              "x": 5e-1,
+              "y": 5e-1,
+              "z": 5e-1
+            }
+          },
+          {
+            "__type_name": "ct_graph_data",
+            "__uuid": "0199917b-828e-7438-9be4-bcbe7a607699",
+            "to_node": "ct_graph_node:0199917c-3852-7d3d-ae66-7d5cf7f24192",
+            "to_node_pin": "in:a",
+            "value": {
+              "__type_name": "ct_gpu_f32",
+              "__uuid": "0199917b-5bc4-71cb-962d-83970be351ed",
+              "value": 1e0
+            }
+          },
+          {
+            "__type_name": "ct_graph_data",
+            "__uuid": "0199917b-3caa-7327-a0ea-758054c6b826",
+            "to_node": "ct_graph_node:0199917c-3852-7d3d-ae66-7d5cf7f24192",
+            "to_node_pin": "in:b",
+            "value": {
+              "__type_name": "ct_gpu_f32",
+              "__uuid": "0199917b-3caa-7cee-a07e-a902fdffba05",
+              "value": 5e0
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
