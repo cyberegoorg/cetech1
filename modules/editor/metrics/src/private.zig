@@ -227,6 +227,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 const name = try std.fmt.bufPrintZ(&buf, "{s}###{s}", .{ v.key_ptr.*, v.key_ptr.* });
                 if (_coreui.menuItem(_allocator, name, .{}, null)) {
                     _ = tab_o.selected_metrics.remove(v.key_ptr.*);
+                    break;
                 }
             }
         }

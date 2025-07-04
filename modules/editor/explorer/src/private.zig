@@ -5,7 +5,6 @@ const cetech1 = @import("cetech1");
 const coreui = cetech1.coreui;
 const assetdb = cetech1.assetdb;
 const cdb = cetech1.cdb;
-const strid = cetech1.strid;
 
 const editor = @import("editor");
 const editor_tree = @import("editor_tree");

@@ -195,10 +195,11 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
         }
 
         pub fn start(self: *Self) !void {
-            const cpu_count = (std.Thread.getCpuCount() catch 2);
-            const cpu_core_count = @max(2, if (builtin.cpu.arch == .x86_64) cpu_count / 2 else cpu_count); // TODO:
+            const cpu_count = std.Thread.getCpuCount() catch 1;
+            const cpu_core_count = @max(2, if (builtin.cpu.arch == .x86_64) cpu_count / 2 else cpu_count); // TODO: Is hyperthreding good or bad?
+            // const cpu_core_count = cpu_count;
 
-            self.num_threads = @intCast(@min(queue_config.max_threads, @max(1, (cpu_core_count))));
+            self.num_threads = @intCast(@min(queue_config.max_threads, cpu_core_count));
             // self.num_threads = 2;
             // self.num_threads = 1;
             log.info("Using {} threads for {} cores", .{ self.num_threads, cpu_core_count });
@@ -289,7 +290,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
             }
 
             while (self.isRunning()) {
-                if (self.getWorkToDo()) |task| {
+                if (self.getWorkToDo(false)) |task| {
                     const slot = &self.tasks[task.index()];
 
                     if (slot.executeJob(task)) {
@@ -315,7 +316,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
             return &self.workers[wid];
         }
 
-        fn getWorkToDo(self: *Self) ?public.TaskID {
+        fn getWorkToDo(self: *Self, only_prio: bool) ?public.TaskID {
 
             // var zone_ctx = profiler.ztracy.Zone(@src());
             // defer zone_ctx.End();
@@ -369,6 +370,10 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
                         return task;
                     }
                 }
+            }
+
+            if (only_prio) {
+                return null;
             }
 
             for (0..self.num_threads) |value| {
@@ -433,7 +438,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
                 const _id = task.fields();
                 std.debug.assert(isLiveCycle(_id.cycle));
                 while (!self.isDone(task)) {
-                    if (self.getWorkToDo()) |t| {
+                    if (self.getWorkToDo(false)) |t| {
                         var task_slot = &self.tasks[t.index()];
                         if (task_slot.executeJob(t)) {
                             self.freeTaskIdx(t.index());
@@ -444,8 +449,8 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
             }
         }
 
-        pub fn doOneTask(self: *Self) void {
-            if (self.getWorkToDo()) |t| {
+        pub fn doOneTask(self: *Self, only_prio: bool) void {
+            if (self.getWorkToDo(only_prio)) |t| {
                 var task_slot = &self.tasks[t.index()];
                 if (task_slot.executeJob(t)) {
                     self.freeTaskIdx(t.index());
@@ -521,8 +526,8 @@ fn getWorkerId() usize {
     return _job_system.getWokerId();
 }
 
-fn doOneTask() void {
-    _job_system.doOneTask();
+fn doOneTask(only_prio: bool) void {
+    _job_system.doOneTask(only_prio);
 }
 
 const JobSystemImpl = JobSystem(.{

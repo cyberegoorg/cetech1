@@ -26,6 +26,10 @@ pub const coreui_node_editor = @import("coreui_node_editor.zig");
 
 pub const actions = @import("actions.zig");
 
+// BitSet
+pub const StaticBitSet = std.StaticBitSet;
+pub const DynamicBitSet = std.DynamicBitSetUnmanaged;
+
 // List
 pub const ArrayList = std.ArrayListUnmanaged;
 pub const ByteList = ArrayList(u8);

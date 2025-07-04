@@ -8,7 +8,6 @@ const std = @import("std");
 const assetdb = @import("assetdb.zig");
 const cetech1 = @import("cetech1");
 const public = cetech1.cdb;
-const strid = cetech1.strid;
 
 const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");
@@ -581,13 +580,9 @@ pub const TypeStorage = struct {
         return new_blob;
     }
 
-    pub fn createObj(self: *Self) !public.ObjId {
+    pub fn createEmptyObj(self: *Self) !public.ObjId {
         var zone_ctx = profiler.ztracy.Zone(@src());
         defer zone_ctx.End();
-
-        if (!self.default_obj.isEmpty()) {
-            return self.cloneObject(self.default_obj);
-        }
 
         const id = try self.allocateObjId();
         var obj = try self.allocateObject(id, true);
@@ -596,6 +591,17 @@ pub const TypeStorage = struct {
         obj.parent = .{};
 
         return id;
+    }
+
+    pub fn createObj(self: *Self) !public.ObjId {
+        var zone_ctx = profiler.ztracy.Zone(@src());
+        defer zone_ctx.End();
+
+        if (!self.default_obj.isEmpty()) {
+            return self.cloneObject(self.default_obj);
+        }
+
+        return self.createEmptyObj();
     }
 
     pub fn createObjectFromPrototype(self: *Self, prototype: public.ObjId) !public.ObjId {
@@ -1531,6 +1537,11 @@ pub const Db = struct {
         return try storage.createObj();
     }
 
+    pub fn createEmptyObj(self: *Self, type_idx: public.TypeIdx) !public.ObjId {
+        var storage = self.getTypeStorageByTypeIdx(type_idx).?;
+        return try storage.createEmptyObj();
+    }
+
     pub fn createObjectFromPrototype(self: *Self, prototype: public.ObjId) !public.ObjId {
         var storage = self.getTypeStorage(prototype).?;
         return try storage.createObjectFromPrototype(prototype);
@@ -2348,6 +2359,8 @@ pub var api = public.CdbAPI{
     .setDefaultObjectFn = setDefaultObjectFn,
 
     .createObjectFn = createObjectFn,
+    .createEmptyObjectFn = createEmptyObjectFn,
+
     .addAspectFn = addAspectFn,
     .getAspectFn = getAspectFn,
     .addPropertyAspectFn = addPropertyAspectFn,
@@ -2433,6 +2446,12 @@ fn createObjectFn(dbidx: public.DbId, type_idx: public.TypeIdx) !public.ObjId {
     var db = getDbFromIdx(dbidx);
     return db.createObject(type_idx);
 }
+
+fn createEmptyObjectFn(dbidx: public.DbId, type_idx: public.TypeIdx) !public.ObjId {
+    var db = getDbFromIdx(dbidx);
+    return db.createEmptyObj(type_idx);
+}
+
 fn getDefaultObjectFn(dbidx: public.DbId, type_idx: public.TypeIdx) ?public.ObjId {
     var db = getDbFromIdx(dbidx);
     return db.getDefaultObject(type_idx);

@@ -2190,7 +2190,7 @@ pub const query_group_info_t = extern struct {
 pub const query_get_group_info = ecs_query_get_group_info;
 extern fn ecs_query_get_group_info(query: *const query_t, group_id: u64) ?*const query_group_info_t;
 
-pub const query_count_t = struct {
+pub const query_count_t = extern struct {
     results: i32,
     entities: i32,
     tables: i32,
@@ -3162,7 +3162,6 @@ pub fn new_w_pair(world: *world_t, first: entity_t, second: entity_t) entity_t {
 pub fn delete_children(world: *world_t, parent: entity_t) void {
     delete_with(world, make_pair(ChildOf, parent));
 }
-
 
 //--------------------------------------------------------------------------------------------------
 //

@@ -39,6 +39,12 @@ pub fn PoolWithLock(comptime T: type) type {
             return try self.pool.create();
         }
 
+        pub fn clear(self: *Self) void {
+            self.lock.lock();
+            defer self.lock.unlock();
+            _ = self.pool.reset(.retain_capacity);
+        }
+
         pub fn createMany(self: *Self, output: []*T, count: usize) !void {
             self.lock.lock();
             defer self.lock.unlock();
@@ -193,6 +199,13 @@ pub fn VirtualPool(comptime T: type) type {
 
         pub fn deinit(self: *Self) void {
             self.free_id_node_pool.deinit();
+            self.mem.deinit();
+        }
+
+        pub fn clear(self: *Self) void {
+            self.free_id_node_pool.clear();
+            self.free_id = .init();
+            self.alocated_items = AtomicInt.init(1);
         }
 
         pub inline fn index(self: *Self, id: *T) u32 {

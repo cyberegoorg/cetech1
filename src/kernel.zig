@@ -23,7 +23,7 @@ const metrics = @import("metrics.zig");
 const cetech1 = @import("cetech1");
 const public = cetech1.kernel;
 const profiler = cetech1.profiler;
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 
 const cetech1_options = @import("cetech1_options");
@@ -266,11 +266,12 @@ pub fn deinit(
     allocator: std.mem.Allocator,
 ) !void {
     try shutdownKernelTasks();
+
+    // Before modules deinit because ImGUI test engine need test love for export result.xml
+    coreui.deinit();
     try modules.unloadAll();
 
     ecs.deinit();
-
-    coreui.deinit();
     //renderer.deinit();
     if (gpu_context) |ctx| gpu.api.destroyContext(ctx);
     gpu.deinit();
@@ -438,11 +439,17 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         // Boot ARGS aka. command line args
         const max_kernel_tick = getIntArgs("--max-kernel-tick") orelse boot_args.max_kernel_tick;
         _max_tick_rate = getIntArgs("--max-kernel-tick-rate") orelse 60;
+
         const load_dynamic = 1 == getIntArgs("--load-dynamic") orelse @intFromBool(boot_args.load_dynamic);
         const asset_root = getStrArgs("--asset-root") orelse "";
+
         _headless = 1 == getIntArgs("--headless") orelse @intFromBool(boot_args.headless);
         const fullscreen = 1 == getIntArgs("--fullscreen") orelse 0;
+        const vsync = 1 == getIntArgs("--vsync") orelse 1;
+
         const renderer_type = getStrArgs("--renderer");
+        const renderer_debug = 1 == getIntArgs("--renderer-debug") orelse @intFromBool(is_debug);
+        const renderer_profile = 1 == getIntArgs("--renderer-profile") orelse @intFromBool(is_debug);
 
         // Init Kernel
         try init(gpa_allocator, _headless);
@@ -518,8 +525,10 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         gpu_context = try gpu.api.createContext(
             main_window,
             if (renderer_type) |r| cetech1.gpu.Backend.fromString(r) else null,
-            !_headless,
+            !_headless and vsync,
             _headless,
+            renderer_debug,
+            renderer_profile,
         );
 
         try initKernelTasks();
@@ -613,33 +622,33 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             };
 
             if (task.api.isDone(last_game_tick_task)) {
-                const noww = std.time.milliTimestamp();
-                const game_dt_ms = noww - game_tick_last_call;
-                const game_dt_s: f32 = @as(f32, @floatFromInt(game_dt_ms)) / std.time.ms_per_s;
-                game_tick_last_call = noww;
+                if (_next_asset_root != null) {
+                    try assetdb.api.openAssetRootFolder(
+                        if (_next_asset_root) |root| root else asset_root,
+                        _assetdb_allocator.allocator(),
+                    );
+                    _next_asset_root = null;
+                } else {
+                    const noww = std.time.milliTimestamp();
+                    const game_dt_ms = noww - game_tick_last_call;
+                    const game_dt_s: f32 = @as(f32, @floatFromInt(game_dt_ms)) / std.time.ms_per_s;
+                    game_tick_last_call = noww;
 
-                const t = try task.api.schedule(
-                    .none,
-                    GameTickTask{
-                        .dt_s = game_dt_s,
-                        .kernel_tick = kernel_tick,
-                        .fast_mode = fast_mode,
-                    },
-                    .{},
-                );
-                last_game_tick_task = t;
-                // task.api.wait(t);
-                game_tick +%= 1;
+                    const t = try task.api.schedule(
+                        .none,
+                        GameTickTask{
+                            .dt_s = game_dt_s,
+                            .kernel_tick = kernel_tick,
+                            .fast_mode = fast_mode,
+                        },
+                        .{},
+                    );
+                    last_game_tick_task = t;
+                    // task.api.wait(t);
+                    game_tick +%= 1;
+                }
             } else {
-                task.api.doOneTask();
-            }
-
-            if (_next_asset_root != null) {
-                try assetdb.api.openAssetRootFolder(
-                    if (_next_asset_root) |root| root else asset_root,
-                    _assetdb_allocator.allocator(),
-                );
-                _next_asset_root = null;
+                task.api.doOneTask(true);
             }
 
             // Check window close request
@@ -672,6 +681,13 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             }
         }
 
+        // wait for last game tick
+        // without this deadlock shit
+        // TODO: quit loop only after last_game_tick_task
+        while (!task.api.isDone(last_game_tick_task)) {
+            _ = gpu.api.renderFrame(2);
+            task.api.doOneTask(false);
+        }
         task.api.wait(last_game_tick_task);
 
         if (test_ui) {
@@ -684,7 +700,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                 const result = iface.getResult();
 
                 if (result.count_success != result.count_tested) {
-                    @panic("Why are you break my app?");
+                    return error.TestFailed;
                 }
             }
         }

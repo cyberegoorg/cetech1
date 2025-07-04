@@ -3,7 +3,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
 const ecs = cetech1.ecs;
@@ -373,7 +373,9 @@ const VMInstance = struct {
     const InstanceNodeMap = cetech1.AutoArrayHashMap(cdb.ObjId, *InstanceNode);
 
     const InstanceNodeIdxMap = cetech1.AutoArrayHashMap(GraphNode, VMInstanceNodeIdx);
+
     const InstanceNodeMultiArray = std.MultiArrayList(InstanceNode);
+    const InstanceNodeArrayList = cetech1.ArrayList(InstanceNode);
 
     const DataHolder = cetech1.ByteList;
     const StateHolder = cetech1.ByteList;
@@ -383,7 +385,7 @@ const VMInstance = struct {
     vm: *GraphVM,
 
     node_idx_map: InstanceNodeIdxMap = .{},
-    nodes: InstanceNodeMultiArray = .{},
+    nodes: InstanceNodeArrayList = .{},
 
     context_map: ContextMap = .{},
 
@@ -405,12 +407,11 @@ const VMInstance = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        const ifaces = self.vm.vmnodes.items(.iface);
-
-        for (0..self.nodes.len) |idx| {
-            var v = self.nodes.get(idx);
+        for (0..self.nodes.items.len) |idx| {
+            var v = &self.nodes.items[idx];
+            const vmnode = &self.vm.vmnodes.items[v.vmnode_idx];
             if (v.state) |state| {
-                const iface = ifaces[v.vmnode_idx];
+                const iface = vmnode.iface;
                 if (iface.destroy) |destroy| {
                     destroy(iface, state, false) catch undefined;
                 }
@@ -435,6 +436,7 @@ const VMInstance = struct {
         self.graph_in.deinit(self.allocator);
         self.graph_out.deinit(self.allocator);
         self.graph_data.deinit(self.allocator);
+        _ = self.node_arena.reset(.retain_capacity);
     }
 
     pub fn setContext(self: *Self, context_name: cetech1.StrId32, context: *anyopaque) !void {
@@ -464,6 +466,7 @@ const RebuildTask = struct {
     }
 };
 const VMNodeMultiArray = std.MultiArrayList(VMNode);
+const VMNodeArrayList = cetech1.ArrayList(VMNode);
 const PivotList = cetech1.ArrayList(VMNodeIdx);
 
 const DataConnection = struct {
@@ -502,7 +505,7 @@ const GraphVM = struct {
     graph_version: cdb.ObjVersion = 0,
 
     node_idx_map: VMNodeMap,
-    vmnodes: VMNodeMultiArray = .{},
+    vmnodes: VMNodeArrayList = .{},
 
     free_idx: IdxSet,
 
@@ -573,15 +576,15 @@ const GraphVM = struct {
             self.allocator.free(datas);
         }
 
-        for (0..self.vmnodes.len) |idx| {
+        for (0..self.vmnodes.items.len) |idx| {
             if (self.free_idx.contains(idx)) continue;
-            var node = self.vmnodes.get(idx);
+            var node = &self.vmnodes.items[idx];
             node.deinit();
         }
 
         for (self.transpile_state_map.keys(), self.transpile_state_map.values()) |k, v| {
-            const ifaces = self.vmnodes.items(.iface);
-            const iface = ifaces[k];
+            const vmnode = &self.vmnodes.items[k];
+            const iface = vmnode.iface;
             if (iface.destroyTranspileState) |destroyTranspileState| {
                 destroyTranspileState(iface, v);
             }
@@ -620,8 +623,8 @@ const GraphVM = struct {
         }
 
         for (self.transpile_state_map.keys(), self.transpile_state_map.values()) |k, v| {
-            const ifaces = self.vmnodes.items(.iface);
-            const iface = ifaces[k];
+            const vmnode = &self.vmnodes.items[k];
+            const iface = vmnode.iface;
             if (iface.destroyTranspileState) |destroyTranspileState| {
                 destroyTranspileState(iface, v);
             }
@@ -691,8 +694,6 @@ const GraphVM = struct {
     ) anyerror!void {
         _ = root; // autofix
 
-        var cdb_versions = self.vmnodes.items(.cdb_version);
-
         const node_r = _cdb.readObj(node).?;
         const type_hash = public.NodeType.f.getNodeTypeId(_cdb, node_r);
         const iface = findNodeI(type_hash).?;
@@ -709,10 +710,11 @@ const GraphVM = struct {
 
         // TODO: remove orphans nodes => exist in node_map but not in graph (need set)
         const exist = node_idx_get.found_existing;
-        const regen = if (exist) cdb_versions[node_idx_get.value_ptr.*] != node_version else false;
+        const regen = if (exist) self.vmnodes.items[node_idx_get.value_ptr.*].cdb_version != node_version else false;
 
         if (exist) {
-            cdb_versions[node_idx_get.value_ptr.*] = node_version;
+            const vmnode = &self.vmnodes.items[node_idx_get.value_ptr.*];
+            vmnode.cdb_version = node_version;
         }
 
         const settings = public.NodeType.readSubObj(_cdb, node_r, .settings);
@@ -724,15 +726,18 @@ const GraphVM = struct {
         if (!exist) {
             if (self.free_idx.pop()) |idx| {
                 node_idx_get.value_ptr.* = idx;
-                self.vmnodes.set(idx, VMNode.init(
+
+                const vmnode2 = &self.vmnodes.items[idx];
+
+                vmnode2.* = VMNode.init(
                     _allocator,
                     iface,
                     settings,
                     node,
                     node_version,
-                ));
+                );
             } else {
-                node_idx_get.value_ptr.* = self.vmnodes.len;
+                node_idx_get.value_ptr.* = self.vmnodes.items.len;
                 self.vmnodes.appendAssumeCapacity(VMNode.init(
                     _allocator,
                     iface,
@@ -742,7 +747,7 @@ const GraphVM = struct {
                 ));
             }
         } else if (regen) {
-            var vmnode = self.vmnodes.get(node_idx_get.value_ptr.*);
+            const vmnode = &self.vmnodes.items[node_idx_get.value_ptr.*];
             vmnode.clean();
         }
 
@@ -1079,11 +1084,9 @@ const GraphVM = struct {
         //     });
         // }
 
-        const data_maps = self.vmnodes.items(.data_map);
-        const pin_def = self.vmnodes.items(.pin_def);
-        const output_blob_size = self.vmnodes.items(.output_blob_size);
-
-        const ifaces = self.vmnodes.items(.iface);
+        // const data_maps = self.vmnodes.items(.data_map);
+        // const pin_def = self.vmnodes.items(.pin_def);
+        // const output_blob_size = self.vmnodes.items(.output_blob_size);
 
         for (out_connections.items) |v| {
             const connection_r = _cdb.readObj(v.c).?;
@@ -1120,6 +1123,7 @@ const GraphVM = struct {
                 try self.collectNodePoints(allocator, &outs, &node_map, to_node_obj, to_pin);
 
                 const node_from_idx = self.node_idx_map.get(.{ .parent = v.graph, .node = from_node_obj });
+                const from_vmnode = &self.vmnodes.items[node_from_idx.?];
 
                 var it = outs.iterator();
                 while (it.next()) |vv| {
@@ -1129,8 +1133,10 @@ const GraphVM = struct {
                         log.err("Invalid node_to_idx for node with UUID {any}", .{_assetdb.getUuid(vv.key_ptr.obj)});
                     }
 
+                    const to_vmnode = &self.vmnodes.items[node_to_idx.?];
+
                     const pin_type: cetech1.StrId32 = blk: {
-                        for (pin_def[node_from_idx.?].out) |pin| {
+                        for (from_vmnode.pin_def.out) |pin| {
                             if (pin.pin_hash.eql(from_pin)) break :blk pin.type_hash;
                         }
                         break :blk .{ .id = 0 };
@@ -1143,13 +1149,13 @@ const GraphVM = struct {
                                 .node = node_from_idx.?,
                                 .pin = from_pin,
                                 .pin_type = pin_type,
-                                .pin_idx = data_maps[node_from_idx.?].get(from_pin).?,
+                                .pin_idx = from_vmnode.data_map.get(from_pin).?,
                             },
                             .to = .{
                                 .node = node_to_idx.?,
                                 .pin = vv.key_ptr.pin,
                                 .pin_type = pin_type,
-                                .pin_idx = data_maps[node_to_idx.?].get(vv.key_ptr.pin).?,
+                                .pin_idx = to_vmnode.data_map.get(vv.key_ptr.pin).?,
                             },
                         },
                     );
@@ -1161,6 +1167,7 @@ const GraphVM = struct {
                 try self.collectNodePoints(allocator, &outs, &node_backward_map, from_node_obj, from_pin);
 
                 const node_to_idx = self.node_idx_map.get(.{ .parent = v.graph, .node = to_node_obj });
+                const to_vmnode = &self.vmnodes.items[node_to_idx.?];
 
                 // const node_to_idx = self.node_idx_map.get(.{ .parent = v.graph, .node = to_node_obj }) orelse {
                 //     log.err("Could not find to_node_obj with UUID {s}", .{_assetdb.getUuid(to_node_obj).?});
@@ -1176,8 +1183,10 @@ const GraphVM = struct {
                         continue;
                     };
 
+                    const from_vmnode = &self.vmnodes.items[node_from_idx];
+
                     const pin_type: cetech1.StrId32 = blk: {
-                        for (pin_def[node_from_idx].out) |pin| {
+                        for (from_vmnode.pin_def.out) |pin| {
                             if (pin.pin_hash.eql(from_pin)) break :blk pin.type_hash;
                         }
                         break :blk .{ .id = 0 };
@@ -1190,13 +1199,13 @@ const GraphVM = struct {
                                 .node = node_from_idx,
                                 .pin = vv.key_ptr.pin,
                                 .pin_type = pin_type,
-                                .pin_idx = data_maps[node_from_idx].get(vv.key_ptr.pin).?,
+                                .pin_idx = from_vmnode.data_map.get(vv.key_ptr.pin).?,
                             },
                             .to = .{
                                 .node = node_to_idx.?,
                                 .pin = to_pin,
                                 .pin_type = pin_type,
-                                .pin_idx = data_maps[node_to_idx.?].get(to_pin).?,
+                                .pin_idx = to_vmnode.data_map.get(to_pin).?,
                             },
                         },
                     );
@@ -1212,8 +1221,11 @@ const GraphVM = struct {
                     continue;
                 };
 
+                const to_vmnode = &self.vmnodes.items[node_to_idx];
+                const from_vmnode = &self.vmnodes.items[node_from_idx];
+
                 const pin_type: cetech1.StrId32 = blk: {
-                    for (pin_def[node_from_idx].out) |pin| {
+                    for (from_vmnode.pin_def.out) |pin| {
                         if (pin.pin_hash.eql(from_pin)) break :blk pin.type_hash;
                     }
                     break :blk .{ .id = 0 };
@@ -1226,13 +1238,13 @@ const GraphVM = struct {
                             .node = node_from_idx,
                             .pin = from_pin,
                             .pin_type = pin_type,
-                            .pin_idx = data_maps[node_from_idx].get(from_pin).?,
+                            .pin_idx = from_vmnode.data_map.get(from_pin).?,
                         },
                         .to = .{
                             .node = node_to_idx,
                             .pin = to_pin,
                             .pin_type = pin_type,
-                            .pin_idx = data_maps[node_to_idx].get(to_pin).?,
+                            .pin_idx = to_vmnode.data_map.get(to_pin).?,
                         },
                     },
                 );
@@ -1268,7 +1280,10 @@ const GraphVM = struct {
                 var it = outs.iterator();
                 while (it.next()) |vv| {
                     const node_to_idx = self.node_idx_map.get(.{ .parent = data.graph, .node = vv.key_ptr.obj }).?;
-                    const to_node_pin_idx = data_maps[node_to_idx].get(vv.key_ptr.pin).?;
+
+                    const to_vmnode = &self.vmnodes.items[node_to_idx];
+
+                    const to_node_pin_idx = to_vmnode.data_map.get(vv.key_ptr.pin).?;
 
                     try self.data_list.append(
                         allocator,
@@ -1289,7 +1304,9 @@ const GraphVM = struct {
                 // Data is wire to clasic node inputs
             } else {
                 const node_to_idx = self.node_idx_map.get(.{ .parent = data.graph, .node = to_node_obj }).?;
-                const to_node_pin_idx = data_maps[node_to_idx].get(data.pin_hash).?;
+                const to_vmnode = &self.vmnodes.items[node_to_idx];
+
+                const to_node_pin_idx = to_vmnode.data_map.get(data.pin_hash).?;
 
                 try self.data_list.append(
                     self.allocator,
@@ -1329,11 +1346,9 @@ const GraphVM = struct {
             defer fnn.deinit(allocator);
 
             // add all nodes
-            for (0..self.vmnodes.len) |node_idx| {
+            for (0..self.vmnodes.items.len) |node_idx| {
                 depends.clearRetainingCapacity();
 
-                const vm_node = self.vmnodes.get(node_idx);
-                _ = vm_node; // autofix
                 // log.debug("\tdddd: {s} {s}", .{ _assetdb.getUuid(vm_node.node_obj).?, ifaces[node_idx].name });
 
                 for (self.connection.items) |connect| {
@@ -1362,12 +1377,12 @@ const GraphVM = struct {
 
             // log.debug("Collect types:", .{});
             for (dag.output.keys()) |node_idx| {
-                const vm_node = self.vmnodes.get(node_idx);
-                _ = vm_node; // autofix
+                const vmnode = &self.vmnodes.items[node_idx];
+
                 // log.debug("\t{s} {s}", .{ _assetdb.getUuid(vm_node.node_obj).?, ifaces[node_idx].name });
 
-                const in_pins = pin_def[node_idx].in;
-                const out_pins = pin_def[node_idx].out;
+                const in_pins = vmnode.pin_def.in;
+                const out_pins = vmnode.pin_def.out;
 
                 for (in_pins, 0..) |in_pin, pin_idx| {
                     const is_generic = in_pin.type_hash.eql(public.PinTypes.GENERIC);
@@ -1395,7 +1410,7 @@ const GraphVM = struct {
                     if (out_pin.type_of) |tof| {
                         const from_node_type = resolved_pintype_map.get(.{ node_idx, tof }).?;
                         try resolved_pintype_map.put(allocator, .{ node_idx, out_pin.pin_hash }, from_node_type);
-                        pin_def[node_idx].out[pin_idx].type_hash = from_node_type;
+                        vmnode.pin_def.out[pin_idx].type_hash = from_node_type;
                         try patched_nodes.append(allocator, node_idx);
                     } else {
                         try resolved_pintype_map.put(allocator, .{ node_idx, out_pin.pin_hash }, out_pin.type_hash);
@@ -1404,10 +1419,10 @@ const GraphVM = struct {
             }
 
             for (patched_nodes.items) |node_idx| {
-                var vm_node = self.vmnodes.get(node_idx);
+                const vm_node = &self.vmnodes.items[node_idx];
                 const size = try vm_node.getOutputPinsSize(vm_node.pin_def.out);
-                output_blob_size[node_idx] = size;
-                log.debug("Pathed output type {s} {s}", .{ _assetdb.getUuid(vm_node.node_obj).?, ifaces[node_idx].name });
+                vm_node.output_blob_size = size;
+                log.debug("Pathed output type {s} {s}", .{ _assetdb.getUuid(vm_node.node_obj).?, vm_node.iface.name });
             }
         }
 
@@ -1453,7 +1468,6 @@ const GraphVM = struct {
         //
         var dag = cetech1.dag.DAG(VMNodeIdx).init(allocator);
         defer dag.deinit();
-        const has_flow_outs = self.vmnodes.items(.has_flow_out);
 
         var plan_allocator = self.plan_arena.allocator();
 
@@ -1463,12 +1477,14 @@ const GraphVM = struct {
         for (pivots.items) |pivot| {
             try dag.reset();
             const pivot_vmnode = pivot;
-            const pivot_type = ifaces[pivot_vmnode].pivot;
+
+            const vmnode = &self.vmnodes.items[pivot_vmnode];
+            const pivot_type = vmnode.iface.pivot;
 
             if (pivot_type == .transpiler) {
                 try transpile_pivots.append(allocator, pivot);
             } else {
-                if (has_flow_outs[pivot_vmnode]) {
+                if (vmnode.has_flow_out) {
                     try dag.add(pivot, &.{});
                     for (self.connection.items) |pair| {
                         // only conection from this node
@@ -1487,10 +1503,10 @@ const GraphVM = struct {
 
                 try self.node_plan.put(self.allocator, pivot, try plan_allocator.dupe(VMNodeIdx, dag.output.keys()));
 
-                log.debug("Plan for pivot \"{s}\":", .{ifaces[pivot_vmnode].name});
+                log.debug("Plan for pivot \"{s}\":", .{vmnode.iface.name});
                 for (dag.output.keys()) |node| {
-                    const vmnode = node;
-                    log.debug("\t - {s}", .{ifaces[vmnode].name});
+                    const vm_node = &self.vmnodes.items[node];
+                    log.debug("\t - {s}", .{vm_node.iface.name});
                 }
             }
         }
@@ -1505,7 +1521,9 @@ const GraphVM = struct {
             defer self.destroyInstance(instance);
 
             for (transpile_pivots.items) |transpile_pivot| {
-                const iface: *const public.NodeI = ifaces[transpile_pivot];
+                const vmnode = &self.vmnodes.items[transpile_pivot];
+
+                const iface: *const public.NodeI = vmnode.iface;
 
                 const stages = try iface.getTranspileStages.?(iface, allocator);
                 defer allocator.free(stages);
@@ -1523,17 +1541,17 @@ const GraphVM = struct {
                     const plan = dag.output.keys()[0 .. dag.output.keys().len - 1];
 
                     for (plan) |node| {
-                        const vmnode = node;
-                        const transpile_border = ifaces[vmnode].transpile_border;
+                        const vm_node = &self.vmnodes.items[node];
+                        const transpile_border = vm_node.iface.transpile_border;
                         if (transpile_border) {
-                            try self.transpile_map.put(self.allocator, vmnode, transpile_pivot);
+                            try self.transpile_map.put(self.allocator, node, transpile_pivot);
                         }
                     }
 
-                    log.debug("Plan for transpile pivot \"{s}\":", .{ifaces[transpile_pivot].name});
+                    log.debug("Plan for transpile pivot \"{s}\":", .{vmnode.iface.name});
                     for (dag.output.keys()) |node| {
-                        const vmnode = node;
-                        log.debug("\t - {s}", .{ifaces[vmnode].name});
+                        const vm_node = &self.vmnodes.items[node];
+                        log.debug("\t - {s}", .{vm_node.iface.name});
                     }
 
                     // Transpile nodes for pivot
@@ -1617,7 +1635,7 @@ const GraphVM = struct {
             const node = entry.key_ptr.*;
             const idx = self.node_idx_map.get(node).?;
 
-            var vmnode = self.vmnodes.get(idx);
+            const vmnode = &self.vmnodes.items[idx];
             vmnode.deinit();
 
             _ = try self.free_idx.add(self.allocator, idx);
@@ -1628,11 +1646,6 @@ const GraphVM = struct {
     pub fn buildInstances(self: *Self, allocator: std.mem.Allocator, instances: []const *VMInstance, deleted_nodes: ?*const NodeSet, changed_nodes: ?*const IdxSet) !void {
         var zone_ctx = _profiler.ZoneN(@src(), "GraphVM - Instance build many");
         defer zone_ctx.End();
-
-        const ifaces = self.vmnodes.items(.iface);
-        const vmnode_pin_def = self.vmnodes.items(.pin_def);
-        const vmnode_input_blob_size = self.vmnodes.items(.input_blob_size);
-        const vmnode_output_blob_size = self.vmnodes.items(.output_blob_size);
 
         for (instances) |vminstance| {
             try vminstance.clean();
@@ -1657,11 +1670,14 @@ const GraphVM = struct {
 
             // Init nodes
             {
-                try vminstance.nodes.resize(vminstance.allocator, self.vmnodes.len);
+                try vminstance.nodes.ensureTotalCapacityPrecise(vminstance.allocator, self.vmnodes.items.len);
+                try vminstance.nodes.resize(vminstance.allocator, self.vmnodes.items.len);
                 try vminstance.node_idx_map.ensureTotalCapacity(self.allocator, self.node_idx_map.count());
 
                 for (self.node_idx_map.keys(), self.node_idx_map.values()) |k, node_idx| {
-                    const iface: *const public.NodeI = ifaces[node_idx];
+                    const vmnode = &self.vmnodes.items[node_idx];
+
+                    const iface: *const public.NodeI = vmnode.iface;
 
                     const exist_node = vminstance.node_idx_map.get(k);
                     const new = exist_node == null;
@@ -1669,8 +1685,7 @@ const GraphVM = struct {
 
                     var state: ?*anyopaque = null;
 
-                    const states = vminstance.nodes.items(.state);
-                    const evals = vminstance.nodes.items(.eval);
+                    const node = &vminstance.nodes.items[node_idx];
 
                     if (new) {
                         if (iface.state_size != 0) {
@@ -1684,21 +1699,23 @@ const GraphVM = struct {
                         const new_node_idx = node_idx;
                         //std.debug.assert(new_node_idx == node_idx);
 
-                        vminstance.nodes.set(node_idx, try InstanceNode.init(
+                        const new_vmnode = &self.vmnodes.items[new_node_idx];
+
+                        node.* = try InstanceNode.init(
                             data_alloc,
                             state,
-                            vmnode_pin_def[new_node_idx],
-                            vmnode_input_blob_size[new_node_idx],
-                            vmnode_output_blob_size[new_node_idx],
+                            new_vmnode.pin_def,
+                            new_vmnode.input_blob_size,
+                            new_vmnode.output_blob_size,
                             new_node_idx,
-                        ));
+                        );
 
                         vminstance.node_idx_map.putAssumeCapacity(k, new_node_idx);
                     }
 
                     if (iface.pivot == .transpiler or (!new and changed)) {
                         if (iface.state_size != 0) {
-                            state = states[node_idx];
+                            state = node.state;
 
                             if (iface.destroy) |destroy| {
                                 try destroy(iface, state.?, true);
@@ -1707,7 +1724,7 @@ const GraphVM = struct {
                             try iface.create.?(iface, allocator, state.?, k.node, true, ts);
                         }
 
-                        evals[node_idx] = false;
+                        node.eval = false;
                     }
                 }
 
@@ -1716,7 +1733,7 @@ const GraphVM = struct {
                     while (it.next()) |entry| {
                         const idx = vminstance.node_idx_map.get(entry.key_ptr.*) orelse continue;
 
-                        var node = vminstance.nodes.get(idx);
+                        var node = &vminstance.nodes.items[idx];
                         node.deinit();
 
                         _ = vminstance.node_idx_map.swapRemove(entry.key_ptr.*);
@@ -1728,9 +1745,6 @@ const GraphVM = struct {
             // Set input slice in input node to output slice of output node
             // With this is not needeed to propagate value after exec because input is linked to output.
             {
-                var in_datas = vminstance.nodes.items(.in_data);
-                var out_datas = vminstance.nodes.items(.out_data);
-
                 var graph_data = vminstance.graph_data;
 
                 // Data
@@ -1747,9 +1761,11 @@ const GraphVM = struct {
                     const validity = try data.value_i.calcValidityHash(value);
                     try graph_data.toPins().write(idx, validity, value);
 
-                    in_datas[to_node_idx].data.?[to_node_pin_idx] = graph_data.data_slices.?[idx];
-                    in_datas[to_node_idx].validity_hash.?[to_node_pin_idx] = &graph_data.validity_hash.?[idx];
-                    in_datas[to_node_idx].types.?[to_node_pin_idx] = graph_data.types.?[idx];
+                    var to_node = &vminstance.nodes.items[to_node_idx];
+
+                    to_node.in_data.data.?[to_node_pin_idx] = graph_data.data_slices.?[idx];
+                    to_node.in_data.validity_hash.?[to_node_pin_idx] = &graph_data.validity_hash.?[idx];
+                    to_node.in_data.types.?[to_node_pin_idx] = graph_data.types.?[idx];
                 }
 
                 // Connections
@@ -1760,11 +1776,14 @@ const GraphVM = struct {
                     const from_pin_idx = pair.from.pin_idx;
                     const to_pin_idx = pair.to.pin_idx;
 
-                    const out_data_slices = out_datas[from_node_idx].data_slices orelse continue;
+                    var to_node = &vminstance.nodes.items[to_node_idx];
+                    var from_node = &vminstance.nodes.items[from_node_idx];
 
-                    in_datas[to_node_idx].data.?[to_pin_idx] = out_data_slices[from_pin_idx];
-                    in_datas[to_node_idx].validity_hash.?[to_pin_idx] = &out_datas[from_node_idx].validity_hash.?[from_pin_idx];
-                    in_datas[to_node_idx].types.?[to_pin_idx] = out_datas[from_node_idx].types.?[from_pin_idx];
+                    const out_data_slices = from_node.out_data.data_slices orelse continue;
+
+                    to_node.in_data.data.?[to_pin_idx] = out_data_slices[from_pin_idx];
+                    to_node.in_data.validity_hash.?[to_pin_idx] = &from_node.out_data.validity_hash.?[from_pin_idx];
+                    to_node.in_data.types.?[to_pin_idx] = from_node.out_data.types.?[from_pin_idx];
                 }
             }
         }
@@ -1774,7 +1793,7 @@ const GraphVM = struct {
         var zone_ctx = _profiler.ZoneN(@src(), "GraphVM - Build VM nodes");
         defer zone_ctx.End();
 
-        var vm_node = self.vmnodes.get(node_idx);
+        const vm_node = &self.vmnodes.items[node_idx];
         const iface = vm_node.iface;
 
         vm_node.pin_def = try iface.getPinsDef(iface, self.allocator, graph_obj, node_obj);
@@ -1784,8 +1803,6 @@ const GraphVM = struct {
 
         vm_node.has_flow_out = vm_node.pin_def.out.len != 0 and vm_node.pin_def.out[0].type_hash.eql(public.PinTypes.Flow);
         vm_node.output_blob_size = try vm_node.getOutputPinsSize(vm_node.pin_def.out);
-
-        self.vmnodes.set(node_idx, vm_node);
     }
 
     fn flowDag(self: *Self, allocator: std.mem.Allocator, dag: *cetech1.dag.DAG(VMNodeIdx), node: VMNodeIdx) !void {
@@ -1817,10 +1834,12 @@ const GraphVM = struct {
         var depends = cetech1.ArrayList(VMNodeIdx){};
         defer depends.deinit(allocator);
 
-        const ifaces = self.vmnodes.items(.iface);
-        const is_transpile_pivot = ifaces[node].pivot == .transpiler;
-        const is_transpile_border = ifaces[node].transpile_border;
-        const has_transpile = ifaces[node].transpile != null;
+        const vmnode = &self.vmnodes.items[node];
+
+        const is_transpile_pivot = vmnode.iface.pivot == .transpiler;
+        const is_transpile_border = vmnode.iface.transpile_border;
+        const has_transpile = vmnode.iface.transpile != null;
+
         const skip_node = skip_transpile and (is_transpile_pivot or (has_transpile and !is_transpile_border));
 
         conection_for: for (self.connection.items) |pair| {
@@ -1875,43 +1894,52 @@ const GraphVM = struct {
         _g.instance_pool.destroy(instance);
     }
 
-    fn executeNodesMany(self: *Self, allocator: std.mem.Allocator, instances: []const public.GraphInstance, node_type: cetech1.StrId32) !void {
+    fn executeNodesMany(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        instances: []const public.GraphInstance,
+        node_type: cetech1.StrId32,
+        out_states: ?[]?*anyopaque,
+        out_idxs: []const usize,
+    ) !void {
         var zone_ctx = _profiler.Zone(@src());
         defer zone_ctx.End();
 
-        const ifaces = self.vmnodes.items(.iface);
-        const settings = self.vmnodes.items(.settings);
-        const pin_def = self.vmnodes.items(.pin_def);
-        const has_flows = self.vmnodes.items(.has_flow);
-
         if (self.findNodeByType(node_type)) |event_nodes| {
-            for (instances) |instance| {
+            for (instances, 0..) |instance, instance_idx| {
                 //if (!instance.isValid()) continue;
 
-                var ints: *VMInstance = @alignCast(@ptrCast(instance.inst));
+                const ints: *VMInstance = @alignCast(@ptrCast(instance.inst));
 
-                const in_datas = ints.nodes.items(.in_data);
-                const out_datas = ints.nodes.items(.out_data);
-                const last_inputs_validity_hashs = ints.nodes.items(.last_inputs_validity_hash);
-                const states = ints.nodes.items(.state);
-                const evals = ints.nodes.items(.eval);
+                // const in_datas = ints.nodes.items(.in_data);
+                // const out_datas = ints.nodes.items(.out_data);
+                // const last_inputs_validity_hashs = ints.nodes.items(.last_inputs_validity_hash);
+                // const states = ints.nodes.items(.state);
+                // const evals = ints.nodes.items(.eval);
+
+                if (out_states) |out| {
+                    out[out_idxs[instance_idx]] = null;
+                }
 
                 for (event_nodes) |event_node_idx| {
                     const plan = self.node_plan.get(event_node_idx).?;
                     for (plan) |node_idx| {
-                        const iface: *const public.NodeI = ifaces[node_idx];
+                        var node = &ints.nodes.items[node_idx];
+                        const vmnode = &self.vmnodes.items[node_idx];
 
-                        const in_pins = in_datas[node_idx].toPins();
-                        const out_pins = out_datas[node_idx].toPins();
+                        const iface: *const public.NodeI = vmnode.iface;
+
+                        const in_pins = node.in_data.toPins();
+                        const out_pins = node.out_data.toPins();
 
                         var node_inputs_changed = false;
                         if (in_pins.validity_hash) |validity_hash| {
-                            for (0..last_inputs_validity_hashs[node_idx].len) |pin_idx| {
+                            for (0..node.last_inputs_validity_hash.len) |pin_idx| {
                                 if (validity_hash[pin_idx] == null) continue;
 
                                 const vh = validity_hash[pin_idx].?.*;
-                                if (last_inputs_validity_hashs[node_idx][pin_idx] != vh) {
-                                    last_inputs_validity_hashs[node_idx][pin_idx] = vh;
+                                if (node.last_inputs_validity_hash[pin_idx] != vh) {
+                                    node.last_inputs_validity_hash[pin_idx] = vh;
                                     node_inputs_changed = true;
                                 }
                             }
@@ -1924,13 +1952,14 @@ const GraphVM = struct {
 
                         // If node has input flow check if its True.
                         // Input flow node is always 0 idx
-                        if (has_flows[node_idx]) {
+                        if (vmnode.has_flow) {
                             if (!in_pins.read(bool, 0).?[1]) continue;
                         }
 
-                        if (!evals[node_idx] or node_inputs_changed) {
-                            var zone_exec_ctx = _profiler.ZoneN(@src(), "GraphVM - execute one node");
-                            defer zone_exec_ctx.End();
+                        if (!node.eval or node_inputs_changed) {
+                            // var zone_exec_ctx = _profiler.ZoneN(@src(), "GraphVM - execute one node");
+                            // defer zone_exec_ctx.End();
+
                             const ts = self.transpile_state_map.get(node_idx);
                             const transpier_node = self.transpile_map.get(node_idx);
 
@@ -1938,19 +1967,25 @@ const GraphVM = struct {
                                 iface,
                                 .{
                                     .allocator = allocator,
-                                    .settings = settings[node_idx],
-                                    .state = states[node_idx],
+                                    .settings = vmnode.settings,
+                                    .state = node.state,
                                     .graph = self.graph_obj,
                                     .instance = instance,
-                                    .pin_def = pin_def[node_idx],
+                                    .pin_def = vmnode.pin_def,
                                     .transpile_state = ts,
-                                    .transpiler_node_state = if (transpier_node) |n| states[n] else null,
+                                    .transpiler_node_state = if (transpier_node) |n| ints.nodes.items[n].state else null,
                                 },
                                 in_pins,
                                 out_pins,
                             );
 
-                            evals[node_idx] = true;
+                            node.eval = true;
+                        }
+
+                        if (iface.type_hash.eql(node_type)) {
+                            if (out_states) |out| {
+                                out[out_idxs[instance_idx]] = node.state;
+                            }
                         }
                     }
                 }
@@ -1972,24 +2007,18 @@ const GraphVM = struct {
         var zone_ctx = _profiler.Zone(@src());
         defer zone_ctx.End();
 
-        const ifaces = self.vmnodes.items(.iface);
-        const settings = self.vmnodes.items(.settings);
-        const pin_def = self.vmnodes.items(.pin_def);
-
         for (instances) |instance| {
-            var ints: *VMInstance = @alignCast(@ptrCast(instance.inst));
-
-            const in_datas = ints.nodes.items(.in_data);
-            const out_datas = ints.nodes.items(.out_data);
-
-            const states = ints.nodes.items(.state);
+            const ints: *VMInstance = @alignCast(@ptrCast(instance.inst));
 
             const plan = transpile_plan;
             for (plan) |node_idx| {
-                const iface: *const public.NodeI = ifaces[node_idx];
+                const vmnode = &self.vmnodes.items[node_idx];
 
-                const in_pins = in_datas[node_idx].toPins();
-                const out_pins = out_datas[node_idx].toPins();
+                const iface: *const public.NodeI = vmnode.iface;
+
+                var node = &ints.nodes.items[node_idx];
+                const in_pins = node.in_data.toPins();
+                const out_pins = node.out_data.toPins();
 
                 var zone_exec_ctx = _profiler.ZoneN(@src(), "GraphVM - transpile one node");
                 defer zone_exec_ctx.End();
@@ -1999,11 +2028,11 @@ const GraphVM = struct {
                     iface,
                     .{
                         .allocator = allocator,
-                        .settings = settings[node_idx],
-                        .state = states[node_idx],
+                        .settings = vmnode.settings,
+                        .state = node.state,
                         .graph = self.graph_obj,
                         .instance = instance,
-                        .pin_def = pin_def[node_idx],
+                        .pin_def = vmnode.pin_def,
                         .transpile_state = null,
                         .transpiler_node_state = null,
                     },
@@ -2017,20 +2046,21 @@ const GraphVM = struct {
         }
     }
 
-    pub fn getNodeStateMany(self: *Self, results: []?*anyopaque, containers: []const public.GraphInstance, node_type: cetech1.StrId32) !void {
+    pub fn getNodeStateMany(self: *Self, results: []?*anyopaque, containers: []const public.GraphInstance, node_type: cetech1.StrId32, instance_idx: []const usize) !void {
         var zone_ctx = _profiler.Zone(@src());
         defer zone_ctx.End();
-
-        @memset(results, null);
 
         if (self.findNodeByType(node_type)) |nodes| {
             for (containers, 0..) |container, idx| {
                 if (!container.isValid()) continue;
-                var c: *VMInstance = @alignCast(@ptrCast(container.inst));
-                const states = c.nodes.items(.state);
+                const c: *VMInstance = @alignCast(@ptrCast(container.inst));
+
                 const node_idx = nodes[0];
-                if (states[node_idx]) |state| {
-                    results[idx] = state;
+
+                const node = &c.nodes.items[node_idx];
+
+                if (node.state) |state| {
+                    results[instance_idx[idx]] = state;
                 }
             }
         }
@@ -2056,19 +2086,20 @@ const GraphVM = struct {
         defer bw.flush() catch undefined;
         const writer = bw.writer();
 
-        const ifaces = self.vmnodes.items(.iface);
-        const node_objs = self.vmnodes.items(.node_obj);
-
         for (self.node_plan.keys(), self.node_plan.values()) |k, v| {
             const plan_node = k;
-            try writer.print("# Plan for {s}\n\n", .{ifaces[plan_node].name});
+
+            const plan_vmnode = &self.vmnodes.items[plan_node];
+
+            try writer.print("# Plan for {s}\n\n", .{plan_vmnode.iface.name});
 
             // write header
             try writer.print("```d2\n", .{});
             _ = try writer.write("vars: {d2-config: {layout-engine: elk}}\n\n");
 
             for (v) |node| {
-                try writer.print("{s}: {s}\n", .{ try _assetdb.getOrCreateUuid(node_objs[node]), ifaces[node].name });
+                const vmnode = &self.vmnodes.items[node];
+                try writer.print("{s}: {s}\n", .{ try _assetdb.getOrCreateUuid(vmnode.node_obj), vmnode.iface.name });
             }
 
             try writer.print("\n", .{});
@@ -2077,7 +2108,10 @@ const GraphVM = struct {
                 const node = v[idx];
                 const nex_node = v[idx + 1];
 
-                try writer.print("{s}->{s}\n", .{ try _assetdb.getOrCreateUuid(node_objs[node]), try _assetdb.getOrCreateUuid(node_objs[nex_node]) });
+                const vmnode = &self.vmnodes.items[node];
+                const nex_vmnode = &self.vmnodes.items[nex_node];
+
+                try writer.print("{s}->{s}\n", .{ try _assetdb.getOrCreateUuid(vmnode.node_obj), try _assetdb.getOrCreateUuid(nex_vmnode.node_obj) });
             }
 
             try writer.print("```\n", .{});
@@ -2105,6 +2139,7 @@ pub const api = public.GraphVMApi{
     .compile = compile,
     .createCdbNode = createCdbNode,
     .getNodeStateFn = getNodeState,
+    .executeNodeAndGetStateFn = executeNodeAndGetState,
 
     .setInstanceContext = setInstanceContext,
     .getContextFn = getInstanceContext,
@@ -2275,6 +2310,8 @@ fn destroyInstance(vmc: public.GraphInstance) void {
 
 const executeNodesTask = struct {
     instances: []const public.GraphInstance,
+    instance_idx: []const usize,
+    out_states: ?[]?*anyopaque,
     event_hash: cetech1.StrId32,
 
     pub fn exec(self: *const @This()) !void {
@@ -2282,7 +2319,7 @@ const executeNodesTask = struct {
         const vm = c0.vm;
         const alloc = try _tmpalloc.create();
         defer _tmpalloc.destroy(alloc);
-        try vm.executeNodesMany(alloc, self.instances, self.event_hash);
+        try vm.executeNodesMany(alloc, self.instances, self.event_hash, self.out_states, self.instance_idx);
     }
 };
 
@@ -2312,27 +2349,68 @@ fn lessThanGraphInstance(ctx: void, lhs: public.GraphInstance, rhs: public.Graph
     return lhs.graph.toU64() < rhs.graph.toU64();
 }
 
-fn clusterByGraph(allocator: std.mem.Allocator, sorted_instances: []const public.GraphInstance) ![][]const public.GraphInstance {
+const Clusters = struct {
+    instances: [][]const public.GraphInstance,
+    instances_idx: ?[][]const usize,
+
+    pub fn deinit(self: *Clusters, allocator: std.mem.Allocator) void {
+        allocator.free(self.instances);
+        if (self.instances_idx) |idxs| {
+            allocator.free(idxs);
+        }
+    }
+};
+
+fn clusterByGraph(allocator: std.mem.Allocator, sorted_instances: []const public.GraphInstance, instances_idx: ?[]const usize) !Clusters {
     var zone2_ctx = _profiler.ZoneN(@src(), "clusterByGraph");
     defer zone2_ctx.End();
 
     var clusters = cetech1.ArrayList([]const public.GraphInstance){};
     defer clusters.deinit(allocator);
 
+    var clusters_idx = cetech1.ArrayList([]const usize){};
+    defer clusters_idx.deinit(allocator);
+
     var cluster_begin_idx: usize = 0;
     var current_obj = sorted_instances[0].graph;
     for (sorted_instances, 0..) |inst, idx| {
         if (inst.graph.isEmpty()) continue;
-
         if (inst.graph.eql(current_obj)) continue;
+
         try clusters.append(allocator, sorted_instances[cluster_begin_idx..idx]);
+
+        if (instances_idx) |inst_idx| {
+            try clusters_idx.append(allocator, inst_idx[cluster_begin_idx..idx]);
+        }
+
         current_obj = inst.graph;
         cluster_begin_idx = idx; //-1;
     }
-    try clusters.append(allocator, sorted_instances[cluster_begin_idx..sorted_instances.len]);
 
-    return clusters.toOwnedSlice(allocator);
+    try clusters.append(allocator, sorted_instances[cluster_begin_idx..sorted_instances.len]);
+    if (instances_idx) |inst_idx| {
+        try clusters_idx.append(allocator, inst_idx[cluster_begin_idx..inst_idx.len]);
+    }
+
+    return .{
+        .instances = try clusters.toOwnedSlice(allocator),
+        .instances_idx = if (instances_idx == null) null else try clusters_idx.toOwnedSlice(allocator),
+    };
 }
+
+const SortDrawCallsContext = struct {
+    instances: []public.GraphInstance,
+    ent_idx: []usize,
+
+    pub fn lessThan(ctx: *SortDrawCallsContext, lhs: usize, rhs: usize) bool {
+        return ctx.instances[lhs].graph.toU64() < ctx.instances[rhs].graph.toU64();
+    }
+
+    pub fn swap(ctx: *SortDrawCallsContext, lhs: usize, rhs: usize) void {
+        std.mem.swap(usize, &ctx.ent_idx[lhs], &ctx.ent_idx[rhs]);
+        std.mem.swap(public.GraphInstance, &ctx.instances[lhs], &ctx.instances[rhs]);
+    }
+};
 
 fn executeNodes(allocator: std.mem.Allocator, instances: []const public.GraphInstance, event_hash: cetech1.StrId32, cfg: public.ExecuteConfig) !void {
     var zone_ctx = _profiler.ZoneN(@src(), "GraphVM - execute nodes");
@@ -2340,22 +2418,36 @@ fn executeNodes(allocator: std.mem.Allocator, instances: []const public.GraphIns
 
     if (instances.len == 0) return;
 
+    var instance_idx = try allocator.alloc(usize, instances.len);
+    defer allocator.free(instance_idx);
+
+    for (0..instance_idx.len) |idx| {
+        instance_idx[idx] = idx;
+    }
+
     const sorted_instances = try allocator.dupe(public.GraphInstance, instances);
     defer allocator.free(sorted_instances);
-    std.sort.insertion(public.GraphInstance, sorted_instances, void{}, lessThanGraphInstance);
 
-    const clusters = try clusterByGraph(allocator, sorted_instances);
-    defer allocator.free(clusters);
+    var sort_ctx = SortDrawCallsContext{
+        .instances = sorted_instances,
+        .ent_idx = instance_idx,
+    };
+    std.sort.insertionContext(0, sorted_instances.len, &sort_ctx);
 
-    var tasks = try cetech1.task.TaskIdList.initCapacity(allocator, clusters.len);
+    var clusters = try clusterByGraph(allocator, sorted_instances, instance_idx);
+    defer clusters.deinit(allocator);
+
+    var tasks = try cetech1.task.TaskIdList.initCapacity(allocator, clusters.instances.len);
     defer tasks.deinit(allocator);
 
     const ARGS = struct {
-        items: []const public.GraphInstance,
+        instances: []const public.GraphInstance,
+        instance_idx: []const usize,
         event_hash: cetech1.StrId32,
+        cfg: public.ExecuteConfig,
     };
 
-    for (clusters) |cluster| {
+    for (clusters.instances, 0..) |cluster, cluster_idx| {
         if (try cetech1.task.batchWorkloadTask(
             .{
                 .allocator = allocator,
@@ -2366,14 +2458,18 @@ fn executeNodes(allocator: std.mem.Allocator, instances: []const public.GraphIns
                 .batch_size = if (cfg.use_tasks) cetech1.task.default_bacth_size else cluster.len,
             },
             ARGS{
-                .items = cluster,
+                .instances = cluster,
+                .instance_idx = clusters.instances_idx.?[cluster_idx],
                 .event_hash = event_hash,
+                .cfg = cfg,
             },
             struct {
                 pub fn createTask(create_args: ARGS, batch_id: usize, args: cetech1.task.BatchWorkloadArgs, count: usize) executeNodesTask {
                     return executeNodesTask{
-                        .instances = create_args.items[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
                         .event_hash = create_args.event_hash,
+                        .instances = create_args.instances[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
+                        .instance_idx = create_args.instance_idx[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
+                        .out_states = if (create_args.cfg.out_states) |out| out else null,
                     };
                 }
             },
@@ -2397,17 +2493,17 @@ fn buildInstances(allocator: std.mem.Allocator, instances: []const public.GraphI
     defer allocator.free(sorted_instances);
     std.sort.insertion(public.GraphInstance, sorted_instances, void{}, lessThanGraphInstance);
 
-    const clusters = try clusterByGraph(allocator, sorted_instances);
-    defer allocator.free(clusters);
+    var clusters = try clusterByGraph(allocator, sorted_instances, null);
+    defer clusters.deinit(allocator);
 
-    var tasks = try cetech1.task.TaskIdList.initCapacity(allocator, clusters.len);
+    var tasks = try cetech1.task.TaskIdList.initCapacity(allocator, clusters.instances.len);
     defer tasks.deinit(allocator);
 
     const ARGS = struct {
         items: []const public.GraphInstance,
     };
 
-    for (clusters) |cluster| {
+    for (clusters.instances) |cluster| {
         if (try cetech1.task.batchWorkloadTask(
             .{
                 .allocator = allocator,
@@ -2462,9 +2558,10 @@ const getNodeStateTask = struct {
     containers: []const public.GraphInstance,
     node_type: cetech1.StrId32,
     output: []?*anyopaque,
+    instance_idx: []const usize,
     pub fn exec(self: *const @This()) !void {
         var c: *VMInstance = @alignCast(@ptrCast(self.containers[0].inst));
-        try c.vm.getNodeStateMany(self.output, self.containers, self.node_type);
+        try c.vm.getNodeStateMany(self.output, self.containers, self.node_type, self.instance_idx);
     }
 };
 
@@ -2474,30 +2571,40 @@ pub fn getNodeState(allocator: std.mem.Allocator, instances: []const public.Grap
 
     var results = try cetech1.ArrayList(?*anyopaque).initCapacity(allocator, instances.len);
     try results.resize(allocator, instances.len);
+    @memset(results.items, null);
 
     if (instances.len == 0) return results.toOwnedSlice(allocator);
 
+    var instance_idx = try allocator.alloc(usize, instances.len);
+    defer allocator.free(instance_idx);
+
+    for (0..instance_idx.len) |idx| {
+        instance_idx[idx] = idx;
+    }
+
     const sorted_instances = try allocator.dupe(public.GraphInstance, instances);
     defer allocator.free(sorted_instances);
-    std.sort.insertion(public.GraphInstance, sorted_instances, void{}, lessThanGraphInstance);
 
-    const clusters = try clusterByGraph(allocator, sorted_instances);
-    defer allocator.free(clusters);
+    var sort_ctx = SortDrawCallsContext{
+        .instances = sorted_instances,
+        .ent_idx = instance_idx,
+    };
+    std.sort.insertionContext(0, sorted_instances.len, &sort_ctx);
 
-    var tasks = try cetech1.task.TaskIdList.initCapacity(allocator, clusters.len);
+    var clusters = try clusterByGraph(allocator, sorted_instances, instance_idx);
+    defer clusters.deinit(allocator);
+
+    var tasks = try cetech1.task.TaskIdList.initCapacity(allocator, clusters.instances.len);
     defer tasks.deinit(allocator);
 
     const ARGS = struct {
         items: []const public.GraphInstance,
         node_type: cetech1.StrId32,
         results: []?*anyopaque,
+        instance_idx: []const usize,
     };
 
-    var result_idx: usize = 0;
-    for (clusters) |cluster| {
-        const r = results.items[result_idx .. result_idx + cluster.len];
-        result_idx += cluster.len;
-
+    for (clusters.instances, 0..) |cluster, cluster_idx| {
         if (try cetech1.task.batchWorkloadTask(
             .{
                 .allocator = allocator,
@@ -2508,15 +2615,17 @@ pub fn getNodeState(allocator: std.mem.Allocator, instances: []const public.Grap
             },
             ARGS{
                 .items = cluster,
+                .instance_idx = clusters.instances_idx.?[cluster_idx],
                 .node_type = node_type,
-                .results = r,
+                .results = results.items,
             },
             struct {
                 pub fn createTask(create_args: ARGS, batch_id: usize, args: cetech1.task.BatchWorkloadArgs, count: usize) getNodeStateTask {
                     return getNodeStateTask{
                         .containers = create_args.items[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
+                        .instance_idx = create_args.instance_idx[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
                         .node_type = create_args.node_type,
-                        .output = create_args.results[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
+                        .output = create_args.results,
                     };
                 }
             },
@@ -2528,6 +2637,15 @@ pub fn getNodeState(allocator: std.mem.Allocator, instances: []const public.Grap
     if (tasks.items.len != 0) {
         _task.waitMany(tasks.items);
     }
+
+    return results.toOwnedSlice(allocator);
+}
+
+pub fn executeNodeAndGetState(allocator: std.mem.Allocator, instances: []const public.GraphInstance, node_type: cetech1.StrId32, cfg: public.ExecuteConfig) ![]?*anyopaque {
+    var results = try cetech1.ArrayList(?*anyopaque).initCapacity(allocator, instances.len);
+    try results.resize(allocator, instances.len);
+
+    try executeNodes(allocator, instances, node_type, .{ .use_tasks = cfg.use_tasks, .out_states = results.items });
 
     return results.toOwnedSlice(allocator);
 }
@@ -2876,7 +2994,7 @@ const call_graph_node_i = public.NodeI.implement(
                         if (try public.Interface.readSubObjSet(_cdb, iface_r, .inputs, allocator)) |inputs| {
                             defer allocator.free(inputs);
 
-                            try in_pins.ensureTotalCapacity(allocator, inputs.len);
+                            try in_pins.ensureTotalCapacityPrecise(allocator, inputs.len);
 
                             for (inputs) |input| {
                                 const input_r = _cdb.readObj(input).?;
@@ -2899,7 +3017,7 @@ const call_graph_node_i = public.NodeI.implement(
                         if (try public.Interface.readSubObjSet(_cdb, iface_r, .outputs, allocator)) |outputs| {
                             defer allocator.free(outputs);
 
-                            try out_pins.ensureTotalCapacity(allocator, outputs.len);
+                            try out_pins.ensureTotalCapacityPrecise(allocator, outputs.len);
 
                             for (outputs) |input| {
                                 const input_r = _cdb.readObj(input).?;
@@ -3140,11 +3258,11 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     // impl interface
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
+    try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task, load);
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
 
     try apidb.setOrRemoveZigApi(module_name, public.GraphVMApi, &api, load);
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
-    try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task, load);
 
     try basic_nodes.addOrRemove(module_name, apidb, _cdb, _log, &api, load);
 

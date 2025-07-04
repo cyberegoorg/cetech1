@@ -2,7 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 const render_graph = cetech1.render_graph;
 const ecs = cetech1.ecs;
