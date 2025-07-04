@@ -5,7 +5,7 @@ const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");
 const task = @import("task.zig");
 
-pub var api = cetech1.log.LogAPI{
+pub const api = cetech1.log.LogAPI{
     .logFn = logFn,
 };
 
@@ -15,30 +15,18 @@ pub fn registerToApi() !void {
     try apidb.api.setZigApi(module_name, cetech1.log.LogAPI, &api);
 }
 
+pub const zigLogFn = cetech1.log.zigLogFnGen(&&api);
+
 const MAX_HANDLERS = 8;
 
 pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]const u8) void {
-    if (profiler.profiler_enabled) {
-        const LOG_FORMAT_TRACY = "{s}: {s}";
-        const color: u32 = switch (level) {
-            .info => 0x00_ff_ff_ff,
-            .debug => 0x00_00_ff_00,
-            .warn => 0x00_ff_ef_00,
-            .err => 0x00_ff_00_00,
-            else => 0x00_ff_00_00,
-        };
-        var buffer: [256:0]u8 = undefined;
-        _ = std.fmt.bufPrintZ(&buffer, LOG_FORMAT_TRACY, .{ scope, msg }) catch return;
-        profiler.api.msgWithColor(&buffer, color);
-    }
-
     const thread_id = task.api.getWorkerId();
     //const thread_name = task.getThreadName(thread_id);
 
-    const LOG_FORMAT = "[{s}|{d}|{s}]\t{s}";
-    const args = .{ level.asText(), thread_id, scope, msg };
-
     {
+        const LOG_FORMAT = "[{s}|{d}|{s}]\t{s}";
+        const args = .{ level.asText(), thread_id, scope, msg };
+
         const stderr = std.io.getStdErr().writer();
         std.debug.lockStdErr();
         defer std.debug.unlockStdErr();
@@ -57,7 +45,24 @@ pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]cons
         cfg.setColor(stderr, .reset) catch return;
     }
 
-    {
+    if (profiler.profiler_enabled) {
+        const LOG_FORMAT_TRACY = "{s}: {s}";
+        const color: u32 = switch (level) {
+            .info => 0x00_ff_ff_ff,
+            .debug => 0x00_00_ff_00,
+            .warn => 0x00_ff_ef_00,
+            .err => 0x00_ff_00_00,
+            else => 0x00_ff_00_00,
+        };
+        var buffer: [256:0]u8 = undefined;
+        if (std.fmt.bufPrintZ(&buffer, LOG_FORMAT_TRACY, .{ scope, msg })) |_| {
+            profiler.api.msgWithColor(&buffer, color);
+        } else |err| switch (err) {
+            else => {},
+        }
+    }
+
+    if (apidb.isInit()) {
         var buff: [@sizeOf(*anyopaque) * MAX_HANDLERS]u8 = undefined;
         var fba = std.heap.FixedBufferAllocator.init(&buff);
         const a = fba.allocator();
@@ -67,27 +72,6 @@ pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]cons
             iface.log(level, scope, msg) catch continue;
         }
     }
-}
-
-pub fn zigLogFn(
-    comptime level: std.log.Level,
-    comptime scope: @TypeOf(.enum_literal),
-    comptime format: []const u8,
-    args: anytype,
-) void {
-    var msg: [cetech1.log.MAX_LOG_ENTRY_SIZE]u8 = undefined; // TODO: SHIIIIIIIIIIIIITTTTTTTT
-    const formated_msg = std.fmt.bufPrintZ(&msg, format, args) catch |e| {
-        std.debug.print("caught err writing to buffer {any}", .{e});
-        return;
-    };
-
-    var message: [:0]u8 = formated_msg;
-    if (std.mem.endsWith(u8, formated_msg, "\n")) {
-        message[message.len - 1] = 0;
-        message = message[0 .. message.len - 1 :0];
-    }
-
-    logFn(cetech1.log.LogAPI.Level.fromStdLevel(level), @tagName(scope), message);
 }
 
 test "log: should log messge" {

@@ -8,7 +8,6 @@ const std = @import("std");
 const assetdb = @import("assetdb.zig");
 const cetech1 = @import("cetech1");
 const public = cetech1.cdb;
-const strid = cetech1.strid;
 
 const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");
@@ -346,8 +345,8 @@ pub const TypeStorage = struct {
     pub fn deinit(self: *Self) void {
         if (self.contain_set) {
             // idx 0 is null element
-            for (self.idset_pool.mem.items[1..self.idset_pool.alocated_items.raw]) |*obj| {
-                obj.deinit(self.allocator);
+            for (self.idset_pool.allocatedItems()) |*obj| {
+                obj.data.deinit(self.allocator);
             }
         }
 
@@ -397,8 +396,8 @@ pub const TypeStorage = struct {
     }
 
     fn allocateObjId(self: *Self) !public.ObjId {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         var is_new = false;
         const id = self.objid_pool.create(&is_new);
@@ -489,8 +488,8 @@ pub const TypeStorage = struct {
     }
 
     fn allocateObject(self: *Self, id: ?public.ObjId, init_props: bool) !*Object {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         var new = false;
         var obj = self.object_pool.create(&new);
@@ -499,11 +498,12 @@ pub const TypeStorage = struct {
             try self.objs_mem.notifyAlloc(self.props_def.len);
         }
 
-        var obj_mem: [*]PropertyValue = self.objs_mem.items + (self.props_def.len * self.object_pool.index(obj));
+        const begin_idx = self.props_def.len * self.object_pool.index(obj);
+        const obj_mem: []PropertyValue = self.objs_mem.items[begin_idx .. begin_idx + self.props_def.len];
 
         obj.* = Object{
             .objid = id orelse .{},
-            .props_mem = obj_mem[0..self.props_def.len],
+            .props_mem = obj_mem,
             .parent_prop_idx = 0,
             .overrides_set = if (new) OverridesSet.initEmpty() else obj.*.overrides_set,
             .version = AtomicInt64.init(1),
@@ -561,7 +561,7 @@ pub const TypeStorage = struct {
         list.added.clearRetainingCapacity();
         list.removed.clearRetainingCapacity();
 
-        try self.idset_pool.destroy(list);
+        self.idset_pool.destroy(list);
     }
 
     pub fn allocateBlob(self: *Self, size: usize) !*Blob {
@@ -581,13 +581,9 @@ pub const TypeStorage = struct {
         return new_blob;
     }
 
-    pub fn createObj(self: *Self) !public.ObjId {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
-
-        if (!self.default_obj.isEmpty()) {
-            return self.cloneObject(self.default_obj);
-        }
+    pub fn createEmptyObj(self: *Self) !public.ObjId {
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         const id = try self.allocateObjId();
         var obj = try self.allocateObject(id, true);
@@ -598,9 +594,20 @@ pub const TypeStorage = struct {
         return id;
     }
 
+    pub fn createObj(self: *Self) !public.ObjId {
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
+
+        if (!self.default_obj.isEmpty()) {
+            return self.cloneObject(self.default_obj);
+        }
+
+        return self.createEmptyObj();
+    }
+
     pub fn createObjectFromPrototype(self: *Self, prototype: public.ObjId) !public.ObjId {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         const prototype_obj = self.db.getObjectPtr(prototype).?;
         var new_object = try self.cloneObjectRaw(prototype_obj, true, false, false);
@@ -612,8 +619,8 @@ pub const TypeStorage = struct {
     }
 
     pub fn cloneObject(self: *Self, obj: public.ObjId) !public.ObjId {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         const true_obj = self.db.getObjectPtr(obj).?;
         const new_object = try self.cloneObjectRaw(true_obj, true, true, true);
@@ -621,8 +628,8 @@ pub const TypeStorage = struct {
     }
 
     pub fn destroyObj(self: *Self, obj: public.ObjId) !void {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         const true_obj = self.objid2obj.items[obj.id];
         if (true_obj == null) return;
@@ -630,8 +637,8 @@ pub const TypeStorage = struct {
     }
 
     pub fn cloneObjectRaw(self: *Self, obj: *Object, create_new: bool, clone_subobject: bool, clone_set: bool) !*Object {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         const obj_id = if (!create_new) obj.objid else try self.allocateObjId();
         var new_obj = try self.allocateObject(obj_id, false);
@@ -749,8 +756,8 @@ pub const TypeStorage = struct {
     }
 
     pub fn freeObject(self: *Self, obj: *Object, destroyed_objid: *public.ObjIdList, allocator: std.mem.Allocator) !u32 {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         const is_writer = self.objid2obj.items[obj.objid.id] != obj;
 
@@ -868,7 +875,7 @@ pub const TypeStorage = struct {
         }
 
         obj.overrides_set.setRangeValue(std.bit_set.Range{ .start = 0, .end = self.props_def.len }, false);
-        try self.object_pool.destroy(obj);
+        self.object_pool.destroy(obj);
 
         return free_objects;
     }
@@ -907,8 +914,8 @@ pub const TypeStorage = struct {
     }
 
     pub fn readGeneric(self: *Self, obj: *public.Obj, prop_idx: u32, prop_type: public.PropType) []const u8 {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         var true_obj = toObjFromObjO(obj);
 
@@ -941,8 +948,8 @@ pub const TypeStorage = struct {
     }
 
     pub fn setGeneric(self: *Self, obj: *public.Obj, prop_idx: u32, value: [*]const u8, prop_type: public.PropType) void {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         var true_obj = toObjFromObjO(obj);
 
@@ -978,8 +985,8 @@ pub const TypeStorage = struct {
     }
 
     pub fn instantiateSubObj(self: *Self, writer: *public.Obj, prop_idx: u32) !public.ObjId {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         const value = self.readTT(public.ObjId, writer, prop_idx, public.PropType.SUBOBJECT);
         if (value.isEmpty()) return .{};
@@ -992,8 +999,8 @@ pub const TypeStorage = struct {
     }
 
     pub fn instantiateSubObjFromSet(self: *Self, writer: *public.Obj, prop_idx: u32, set_obj: public.ObjId) !public.ObjId {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         var storage = self.db.getTypeStorage(set_obj).?;
         const new_subobj = try storage.createObjectFromPrototype(set_obj);
@@ -1531,6 +1538,11 @@ pub const Db = struct {
         return try storage.createObj();
     }
 
+    pub fn createEmptyObj(self: *Self, type_idx: public.TypeIdx) !public.ObjId {
+        var storage = self.getTypeStorageByTypeIdx(type_idx).?;
+        return try storage.createEmptyObj();
+    }
+
     pub fn createObjectFromPrototype(self: *Self, prototype: public.ObjId) !public.ObjId {
         var storage = self.getTypeStorage(prototype).?;
         return try storage.createObjectFromPrototype(prototype);
@@ -1610,8 +1622,8 @@ pub const Db = struct {
     }
 
     pub fn writerCommit(self: *Self, writer: *public.Obj) !void {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         const new_obj = toObjFromObjO(writer);
 
@@ -1629,9 +1641,8 @@ pub const Db = struct {
 
     pub fn increaseVersionToAll(self: *Self, obj: *Object) void {
         // TODO: no recursion
-
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
         std.debug.assert(obj.objid.id != obj.parent.id or obj.objid.type_idx.idx != obj.parent.type_idx.idx);
 
         var storage = self.getTypeStorage(obj.objid).?;
@@ -1886,8 +1897,8 @@ pub const Db = struct {
     }
 
     pub fn readSubObjSet(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]public.ObjId {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         return self.readSet(writer, prop_idx, allocator) catch |err| {
             log.err("Could not read suboj set {}", .{err});
@@ -1897,33 +1908,33 @@ pub const Db = struct {
     }
 
     pub fn readSubObjSetShallow(self: *Self, writer: *public.Obj, prop_idx: u32) []const public.ObjId {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
         return self.readSetAddedShallow(writer, prop_idx);
     }
 
     pub fn readRefSetShallow(self: *Self, writer: *public.Obj, prop_idx: u32) []const public.ObjId {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
         return self.readSetAddedShallow(writer, prop_idx);
     }
 
     pub fn readSubObjSetRemovedShallow(self: *Self, writer: *public.Obj, prop_idx: u32) []const public.ObjId {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         return self.readSetRemovedShallow(writer, prop_idx);
     }
 
     pub fn readRefSetRemovedShallow(self: *Self, writer: *public.Obj, prop_idx: u32) []const public.ObjId {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
         return self.readSetRemovedShallow(writer, prop_idx);
     }
 
     pub fn readRefSet(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ?[]public.ObjId {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
         return self.readSet(writer, prop_idx, allocator) catch |err| {
             log.err("Could not read ref set {}", .{err});
             @breakpoint();
@@ -1933,8 +1944,8 @@ pub const Db = struct {
 
     fn readSetAddedShallow(self: *Self, writer: *public.Obj, prop_idx: u32) []const public.ObjId {
         _ = self;
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         var true_obj = toObjFromObjO(writer);
         const array = true_obj.getPropPtr(*ObjIdSet, prop_idx);
@@ -1943,8 +1954,8 @@ pub const Db = struct {
 
     fn readSetRemovedShallow(self: *Self, writer: *public.Obj, prop_idx: u32) []const public.ObjId {
         _ = self;
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         var true_obj = toObjFromObjO(writer);
         const array = true_obj.getPropPtr(*ObjIdSet, prop_idx);
@@ -1952,8 +1963,8 @@ pub const Db = struct {
     }
 
     fn readSet(self: *Self, writer: *public.Obj, prop_idx: u32, allocator: std.mem.Allocator) ![]public.ObjId {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         var true_obj = toObjFromObjO(writer);
 
@@ -2018,8 +2029,8 @@ pub const Db = struct {
     }
 
     pub fn isInSet(self: *Self, reader: *public.Obj, prop_idx: u32, item_obj: public.ObjId) bool {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         const true_obj = toObjFromObjO(reader);
         const count = self.countAddedRemoved(true_obj, prop_idx, item_obj);
@@ -2027,8 +2038,8 @@ pub const Db = struct {
     }
 
     pub fn addToSubObjSet(self: *Self, writer: *public.Obj, prop_idx: u32, sub_obj_writers: []const *public.Obj) !void {
-        var zone_ctx = profiler.ztracy.Zone(@src());
-        defer zone_ctx.End();
+        //        var zone_ctx = profiler.ztracy.Zone(@src());
+        //        defer zone_ctx.End();
 
         var true_obj = toObjFromObjO(writer);
 
@@ -2348,6 +2359,8 @@ pub var api = public.CdbAPI{
     .setDefaultObjectFn = setDefaultObjectFn,
 
     .createObjectFn = createObjectFn,
+    .createEmptyObjectFn = createEmptyObjectFn,
+
     .addAspectFn = addAspectFn,
     .getAspectFn = getAspectFn,
     .addPropertyAspectFn = addPropertyAspectFn,
@@ -2433,6 +2446,12 @@ fn createObjectFn(dbidx: public.DbId, type_idx: public.TypeIdx) !public.ObjId {
     var db = getDbFromIdx(dbidx);
     return db.createObject(type_idx);
 }
+
+fn createEmptyObjectFn(dbidx: public.DbId, type_idx: public.TypeIdx) !public.ObjId {
+    var db = getDbFromIdx(dbidx);
+    return db.createEmptyObj(type_idx);
+}
+
 fn getDefaultObjectFn(dbidx: public.DbId, type_idx: public.TypeIdx) ?public.ObjId {
     var db = getDbFromIdx(dbidx);
     return db.getDefaultObject(type_idx);
@@ -2746,7 +2765,7 @@ fn createDb(name: [:0]const u8) !public.DbId {
 fn destroyDb(db_: public.DbId) void {
     var db = toDbFromDbT(db_);
     db.deinit();
-    _db_pool.destroy(db) catch undefined;
+    _db_pool.destroy(db);
 }
 
 // Assert C and Zig Enums

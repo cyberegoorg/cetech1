@@ -47,7 +47,7 @@ jobs:
     needs: ["validation"]
     name: x86-64 Linux
     runs-on: linux-large
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -137,7 +137,7 @@ jobs:
     needs: ["validation"]
     name: x86-64 Macos
     runs-on: macos-13-large # macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -195,7 +195,7 @@ jobs:
     needs: ["validation"]
     name: x86-64 Windows
     runs-on: windows-large # windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -241,9 +241,16 @@ jobs:
         shell: bash
         run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
 
-      # TODO: fix me pls
       # - name: Test UI headless 
       #   shell: bash
-      #   # TODO: bug with save result to file
-      #   run: zig-out/bin/cetech1 --headless --test-ui
-      #   # run: zig-out/bin/cetech1 --headless --test-ui --test-ui-junit ./result.xml
+      #   run: zig-out/bin/cetech1 --headless --test-ui --test-ui-junit ./result.xml
+
+      # - name: Publish Test Report
+      #   uses: mikepenz/action-junit-report@v4
+      #   if: success() || failure() # always run even if the previous step fails
+      #   with:
+      #     report_paths: "./result.xml"
+      #     fail_on_failure: true
+      #     require_passed_tests: true
+      #     require_tests: true
+      #     detailed_summary: true

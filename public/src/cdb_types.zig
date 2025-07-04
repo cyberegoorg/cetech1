@@ -31,6 +31,31 @@ pub const Color4f = cdb.CdbTypeDecl(
     },
 );
 
+pub const Color3f = cdb.CdbTypeDecl(
+    "ct_color_3f",
+    enum(u32) {
+        R = 0,
+        G,
+        B,
+    },
+    struct {
+        pub fn toSlice(api: *const cdb.CdbAPI, obj: cdb.ObjId) [3]f32 {
+            const r = api.readObj(obj) orelse return .{ 1.0, 1.0, 1.0 };
+            return .{
+                Color4f.readValue(f32, api, r, .R),
+                Color4f.readValue(f32, api, r, .G),
+                Color4f.readValue(f32, api, r, .B),
+            };
+        }
+
+        pub fn fromSlice(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: [3]f32) void {
+            Color4f.setValue(f32, api, obj_w, .R, value[0]);
+            Color4f.setValue(f32, api, obj_w, .G, value[1]);
+            Color4f.setValue(f32, api, obj_w, .B, value[2]);
+        }
+    },
+);
+
 pub const Vec2f = cdb.CdbTypeDecl(
     "ct_vec_2f",
     enum(u32) {

@@ -5,7 +5,7 @@ const public = @import("editor_tree.zig");
 
 const cetech1 = @import("cetech1");
 const coreui = cetech1.coreui;
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 
 const editor = @import("editor");
@@ -279,9 +279,9 @@ fn cdbTreeView(
                 subobj = _cdb.readSubObj(_cdb.readObj(obj.obj).?, prop_idx) orelse continue;
                 // }
 
-                if (_cdb.getAspect(editor_inspector.UiEmbedPropertiesAspect, db, subobj.type_idx) != null) {
-                    continue;
-                }
+                // if (_cdb.getAspect(editor_inspector.UiEmbedPropertiesAspect, db, subobj.type_idx) != null) {
+                //     continue;
+                // }
 
                 const label = try std.fmt.bufPrintZ(
                     &buff,

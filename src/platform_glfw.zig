@@ -24,6 +24,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try zglfw.init();
 
     zglfw.windowHint(.client_api, .no_api);
+
     if (headless) {
         zglfw.windowHint(.visible, false);
     }

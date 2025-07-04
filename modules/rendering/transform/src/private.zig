@@ -2,7 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 
@@ -45,6 +45,7 @@ const position_c = ecs.ComponentI.implement(
         .cdb_type_hash = public.PositionCdb.type_hash,
         .category = "Transform",
         .category_order = 0.1,
+        .with = &.{ecs.id(public.WorldTransform)},
     },
     struct {
         pub fn uiIcons(
@@ -82,6 +83,7 @@ const rotation_c = ecs.ComponentI.implement(
         .cdb_type_hash = public.RotationCdb.type_hash,
         .category = "Transform",
         .category_order = 0.2,
+        .with = &.{ecs.id(public.WorldTransform)},
     },
     struct {
         pub fn uiIcons(
@@ -121,6 +123,7 @@ const scale_c = ecs.ComponentI.implement(
         .cdb_type_hash = public.ScaleCdb.type_hash,
         .category = "Transform",
         .category_order = 0.3,
+        .with = &.{ecs.id(public.WorldTransform)},
     },
     struct {
         pub fn uiIcons(
@@ -157,12 +160,11 @@ const world_tranform_c = cetech1.ecs.ComponentI.implement(public.WorldTransform,
 const transform_system_i = ecs.SystemI.implement(
     .{
         .name = "transform.transform",
-        // .multi_threaded = true,
-        .instanced = true,
+        .multi_threaded = true,
         .phase = ecs.OnValidate,
         .query = &.{
             .{ .id = ecs.id(public.WorldTransform), .inout = .Out },
-            .{ .id = ecs.id(public.WorldTransform), .inout = .In, .oper = .Optional, .src = .{ .id = ecs.Up | ecs.Cascade } },
+            .{ .id = ecs.id(public.WorldTransform), .inout = .In, .oper = .Optional, .src = .{ .id = ecs.Cascade } },
             .{ .id = ecs.id(public.Position), .inout = .In }, // .src = .{ .id = ecs.Self_ | ecs.Up }
             .{ .id = ecs.id(public.Rotation), .inout = .In, .oper = .Optional },
             .{ .id = ecs.id(public.Scale), .inout = .In, .oper = .Optional },
@@ -174,12 +176,6 @@ const transform_system_i = ecs.SystemI.implement(
             // log.debug("BEGIN", .{});
 
             while (it.next()) {
-                if (!it.changed()) {
-                    it.skip();
-                    // log.debug("SKIP", .{});
-                    continue;
-                }
-
                 var zone_iner_ctx = _profiler.ZoneN(@src(), "Transform iner");
                 defer zone_iner_ctx.End();
 
@@ -244,29 +240,6 @@ const transform_system_i = ecs.SystemI.implement(
     },
 );
 
-const spawn_transform_world_system_i = ecs.SystemI.implement(
-    .{
-        .name = "transform.spawn_world",
-        .multi_threaded = true,
-        .phase = ecs.PostLoad,
-        .query = &.{
-            .{ .id = ecs.id(public.WorldTransform), .inout = .Out, .oper = .Not },
-            .{ .id = ecs.id(public.Rotation), .inout = .In, .oper = .Or },
-            .{ .id = ecs.id(public.Scale), .inout = .In, .oper = .Or },
-            .{ .id = ecs.id(public.Position), .inout = .In },
-        },
-    },
-    struct {
-        pub fn update(world: ecs.World, it: *ecs.Iter) !void {
-            //const world = it.getWorld();
-            const ents = it.entities();
-            for (0..it.count()) |i| {
-                _ = world.setId(public.WorldTransform, ents[i], &public.WorldTransform{});
-            }
-        }
-    },
-);
-
 const set_position_node_i = graphvm.NodeI.implement(
     .{
         .name = "Set position",
@@ -290,7 +263,7 @@ const set_position_node_i = graphvm.NodeI.implement(
             };
         }
 
-        pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: graphvm.OutPins) !void {
+        pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
             _ = out_pins; // autofix
             _ = self;
 
@@ -400,7 +373,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, ecs.ComponentI, &rotation_c, load);
     try apidb.implOrRemove(module_name, ecs.ComponentI, &scale_c, load);
     try apidb.implOrRemove(module_name, ecs.SystemI, &transform_system_i, load);
-    try apidb.implOrRemove(module_name, ecs.SystemI, &spawn_transform_world_system_i, load);
 
     try apidb.implOrRemove(module_name, graphvm.NodeI, &set_position_node_i, true);
 

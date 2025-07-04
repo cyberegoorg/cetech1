@@ -1,0 +1,115 @@
+{
+  "__version": "0.1.0",
+  "__asset_uuid": "0198d6b0-9111-7a8c-bfdd-2314b0f5b988",
+  "__type_name": "ct_entity",
+  "__uuid": "0198d6b0-9580-74d8-b06f-e4df9723720a",
+  "childrens": [
+    {
+      "__type_name": "ct_entity",
+      "__uuid": "0198d6b0-b390-77d1-994f-f0a3fdf746a9",
+      "__prototype_uuid": "0191e6d1-830a-73d8-992a-aa6f9add6d1e",
+      "components__instantiate": [
+        {
+          "__type_name": "ct_position",
+          "__uuid": "0198d6b0-caa8-776d-9dd5-8576f2818540",
+          "__prototype_uuid": "0191e6d1-b2e2-7508-9b3e-f6f9de03ab92",
+          "x": -2e0,
+          "y": 1e0
+        }
+      ]
+    },
+    {
+      "__type_name": "ct_entity",
+      "__uuid": "0198d6b0-c100-7ea6-bd34-823d3c275aee",
+      "__prototype_uuid": "01989447-fee6-7e42-bc47-f67421e06157",
+      "components__instantiate": [
+        {
+          "__type_name": "ct_position",
+          "__uuid": "0198d6b0-f9f2-7266-928a-a9bcbd53a0d5",
+          "__prototype_uuid": "01989448-1c71-7a33-8bda-9b55c6ea4eac",
+          "x": 2e0,
+          "y": 1e0
+        }
+      ]
+    },
+    {
+      "__type_name": "ct_entity",
+      "__uuid": "0198f9fb-b090-7e10-a44d-27fa46d8edf7",
+      "__prototype_uuid": "0198f9db-b41e-743c-817c-1c1fb5db1c59",
+      "components__instantiate": [
+        {
+          "__type_name": "ct_position",
+          "__uuid": "0198f9fb-bc6f-725d-a0f6-9277ba251ef6",
+          "__prototype_uuid": "0198f9db-f31d-7fb3-9830-1babb2858b7a",
+          "y": 3e0
+        },
+        {
+          "__type_name": "ct_light_component",
+          "__uuid": "01990024-e27e-7fea-b6e2-18df69b0fdf8",
+          "__prototype_uuid": "0198f9fb-70ca-7cf1-9c8f-8d77a4434245",
+          "radius": 5e0,
+          "power": 1e2
+        }
+      ]
+    },
+    {
+      "__type_name": "ct_entity",
+      "__uuid": "01990064-40df-71cd-b12d-d93819e76a41",
+      "__prototype_uuid": "01990060-eb2c-724d-a353-bc93abe3e7c0",
+      "components__instantiate": [
+        {
+          "__type_name": "ct_position",
+          "__uuid": "01990064-5861-7ef3-adfb-1a8416a3e5c2",
+          "__prototype_uuid": "01990061-225c-7069-b02a-5eafa6df56cb"
+        },
+        {
+          "__type_name": "ct_scale",
+          "__uuid": "01990064-8e13-72ac-9ea7-241dbc473ebe",
+          "__prototype_uuid": "01990061-3c17-7dc7-9d08-a1443edfde9f",
+          "x": 1e1,
+          "y": 1e1,
+          "z": 1e1
+        }
+      ]
+    },
+    {
+      "__type_name": "ct_entity",
+      "__uuid": "0199391a-d1b6-7ced-bcc3-052b87572c3a",
+      "__prototype_uuid": "0198f9db-b41e-743c-817c-1c1fb5db1c59",
+      "components": [
+        {
+          "__type_name": "ct_rotation",
+          "__uuid": "0199391b-818e-7dac-8f01-94f8708c8435",
+          "x": 1.24e2,
+          "y": 5e1
+        }
+      ],
+      "components__instantiate": [
+        {
+          "__type_name": "ct_position",
+          "__uuid": "0199391a-dd55-755e-a3f1-1cfe212e2067",
+          "__prototype_uuid": "0198f9db-f31d-7fb3-9830-1babb2858b7a",
+          "x": 5e0,
+          "y": 5e0
+        },
+        {
+          "__type_name": "ct_light_component",
+          "__uuid": "0199391a-e198-760b-861c-de66b009257c",
+          "__prototype_uuid": "0198f9fb-70ca-7cf1-9c8f-8d77a4434245",
+          "type": "spot",
+          "radius": 1.7e1,
+          "color": {
+            "__type_name": "ct_color_3f",
+            "__uuid": "0199391a-f7e2-7287-be8e-8d1f2dda000f",
+            "__prototype_uuid": "0198f9fb-7daf-71f9-b9a4-fa6ac5a36ad0",
+            "r": 1e0,
+            "g": 0e0,
+            "b": 0e0
+          },
+          "angle_inner": 3.5e1,
+          "angle_outer": 4.5e1
+        }
+      ]
+    }
+  ]
+}

@@ -85,11 +85,11 @@ pub fn MPMCBoundedQueue(comptime T: type, comptime size: usize) type {
 
 pub fn QueueWithLock(comptime T: type) type {
     return struct {
-        ll: std.DoublyLinkedList(T),
+        ll: std.SinglyLinkedList(T),
         mutex: std.Thread.Mutex,
 
         pub const Self = @This();
-        pub const Node = std.DoublyLinkedList(T).Node;
+        pub const Node = std.SinglyLinkedList(T).Node;
 
         pub fn init() Self {
             return Self{
@@ -101,13 +101,13 @@ pub fn QueueWithLock(comptime T: type) type {
         pub fn pop(self: *Self) ?*Node {
             self.mutex.lock();
             defer self.mutex.unlock();
-            return self.ll.pop();
+            return self.ll.popFirst();
         }
 
         pub fn put(self: *Self, new_node: *Node) void {
             self.mutex.lock();
             defer self.mutex.unlock();
-            self.ll.append(new_node);
+            self.ll.prepend(new_node);
         }
     };
 }
