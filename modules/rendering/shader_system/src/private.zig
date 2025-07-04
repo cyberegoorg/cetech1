@@ -3,7 +3,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
 const ecs = cetech1.ecs;
@@ -18,7 +18,7 @@ const graphvm = @import("graphvm");
 const editor_inspector = @import("editor_inspector");
 
 const basic_nodes = @import("basic_nodes.zig");
-const renderer = @import("renderer");
+const render_viewport = @import("render_viewport");
 
 const module_name = .shader_system;
 
@@ -56,6 +56,9 @@ const ProgramCounter = cetech1.heap.VirtualArray(cetech1.heap.AtomicInt);
 const NodeIMap = cetech1.AutoArrayHashMap(cetech1.StrId32, *const graphvm.NodeI);
 const StringIntern = cetech1.string.InternWithLock([:0]const u8);
 const NodeExportMap = cetech1.AutoArrayHashMap(cetech1.StrId32, public.DefExport);
+
+const UniformBufferPool = cetech1.heap.VirtualPool(UniformBuffer);
+const ShaderContextPool = cetech1.heap.VirtualPool(ShaderContext);
 
 const VariableSemantic = enum {
     position,
@@ -107,6 +110,65 @@ const Shader = struct {
 
 const SystemToIdx = cetech1.AutoArrayHashMap(cetech1.StrId32, usize);
 
+const MAX_UNIFORM_VALUE_SIZE = @sizeOf(zm.Mat);
+
+const UniformBuffer = struct {
+    data: cetech1.AutoArrayHashMap(cetech1.StrId32, [MAX_UNIFORM_VALUE_SIZE]u8) = .{},
+
+    pub fn init() UniformBuffer {
+        return .{};
+    }
+
+    pub fn deinit(self: *UniformBuffer) void {
+        self.data.deinit(_allocator);
+    }
+
+    pub fn clear(self: *UniformBuffer) void {
+        self.data.clearRetainingCapacity();
+    }
+};
+
+const buffer_vt = public.UniformBuffer.VTable.implement(struct {
+    pub fn set(self: *anyopaque, name: cetech1.StrId32, value: []const u8) !void {
+        var true_buffer: *UniformBuffer = @alignCast(@ptrCast(self));
+        const get_or_put = try true_buffer.data.getOrPut(_allocator, name);
+        std.mem.copyForwards(u8, get_or_put.value_ptr, value);
+    }
+});
+
+const ShaderContext = struct {
+    systems: cetech1.ArrayList(*public.SystemInstance) = .{},
+
+    pub fn init() ShaderContext {
+        return .{};
+    }
+
+    pub fn deinit(self: *ShaderContext) void {
+        self.systems.deinit(_allocator);
+    }
+
+    pub fn clear(self: *ShaderContext) void {
+        self.systems.clearRetainingCapacity();
+    }
+};
+
+const shader_context_vt = public.ShaderContext.VTable.implement(struct {
+    pub fn addSystem(self: *anyopaque, system: *public.SystemInstance) !void {
+        const true_buffer: *ShaderContext = @alignCast(@ptrCast(self));
+        try true_buffer.systems.append(_allocator, system);
+    }
+
+    pub fn submit(
+        self: *anyopaque,
+        encoder: gpu.Encoder,
+    ) void {
+        const true_buffer: *ShaderContext = @alignCast(@ptrCast(self));
+        for (true_buffer.systems.items) |instance| {
+            submitSystem(encoder, instance.*);
+        }
+    }
+});
+
 // Global state that can surive hot-reload
 const G = struct {
     shader_def_map: ShaderDefMap = undefined,
@@ -129,6 +191,9 @@ const G = struct {
 
     system_to_idx: SystemToIdx = undefined,
     system_counter: cetech1.heap.AtomicInt = undefined,
+
+    uniform_buffer_pool: UniformBufferPool = undefined,
+    shader_context_pool: ShaderContextPool = undefined,
 };
 var _g: *G = undefined;
 
@@ -148,7 +213,12 @@ const api = public.ShaderSystemAPI{
     .destroySystemInstance = destroySystemInstance,
 
     .selectShaderVariant = selectShaderVariant,
-    .getSystemIdx = getSystemIdx,
+
+    .createUniformBuffer = createUniformBuffer,
+    .destroyUniformBuffer = destroyUniformBuffer,
+
+    .createShaderContext = createShaderContext,
+    .destroyShaderContext = destroyShaderContext,
 };
 
 inline fn nodeInputToType(input_type: public.DefGraphNodeInputType) cetech1.StrId32 {
@@ -211,7 +281,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                         var out_pins = graphvm.NodePinList{};
 
                         if (shader_def.graph_node.?.inputs) |inputs| {
-                            try in_pins.ensureTotalCapacity(allocator, inputs.len);
+                            try in_pins.ensureTotalCapacityPrecise(allocator, inputs.len);
                             for (inputs) |input| {
                                 const pin_name = try graphvm.NodePin.alocPinHash(allocator, input.name, false);
                                 defer allocator.free(pin_name);
@@ -228,7 +298,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                         }
 
                         if (shader_def.graph_node.?.outputs) |outputs| {
-                            try out_pins.ensureTotalCapacity(allocator, outputs.len);
+                            try out_pins.ensureTotalCapacityPrecise(allocator, outputs.len);
 
                             for (outputs) |output| {
                                 const pin_name = try graphvm.NodePin.alocPinHash(allocator, output.name, true);
@@ -813,8 +883,12 @@ fn systemsToSet(systems: []const cetech1.StrId32) public.SystemSet {
     return set;
 }
 
-fn getSystemIdx(system: cetech1.StrId32) usize {
-    return _g.system_to_idx.get(system).?;
+fn getSystemSet(systems: []*public.SystemInstance) public.SystemSet {
+    var set = public.SystemSet.initEmpty();
+    for (systems) |system| {
+        set.set(system.system_idx);
+    }
+    return set;
 }
 
 fn createExportedNode(alloc: std.mem.Allocator, graph_node: public.DefGraphNode, export_def: public.DefExport) !void {
@@ -934,11 +1008,11 @@ fn compileShader(allocator: std.mem.Allocator, use_definitions: []const cetech1.
         }
     }
 
-    for (compile.contexts) |constext| {
-        const context_item = try instance.variants.getOrPut(_allocator, cetech1.strId32(constext.name));
+    for (compile.contexts) |context| {
+        const context_item = try instance.variants.getOrPut(_allocator, cetech1.strId32(context.name));
         context_item.value_ptr.* = .{};
 
-        for (constext.defs) |def| {
+        for (context.defs) |def| {
             const cfg = config_map.get(cetech1.strId32(def.config)).?;
             for (cfg.variations) |variation| {
                 const systems_len = if (variation.systems) |s| s.len else 0;
@@ -952,8 +1026,20 @@ fn compileShader(allocator: std.mem.Allocator, use_definitions: []const cetech1.
                     }
                 }
 
+                var d = definition.?;
+                if (variation.state) |s| {
+                    d.state = s;
+                }
+
                 const layer = if (def.layer) |l| cetech1.strId32(l) else null;
-                const shader_variant = try compileShaderVariant(allocator, includes.items, definition, layer, sytem_ids.items);
+                const shader_variant = try compileShaderVariant(
+                    allocator,
+                    includes.items,
+                    d,
+                    layer,
+                    sytem_ids.items,
+                );
+
                 try context_item.value_ptr.append(_allocator, shader_variant);
             }
         }
@@ -1072,13 +1158,13 @@ fn compileShaderVariant(
         all_definitions.appendAssumeCapacity(shader_def);
     }
 
-    if (definition) |d| {
-        all_definitions.appendAssumeCapacity(d);
-    }
-
     for (systems) |system| {
         const shader_def = _g.shader_def_map.get(system) orelse @panic("where shader def?");
         all_definitions.appendAssumeCapacity(shader_def);
+    }
+
+    if (definition) |d| {
+        all_definitions.appendAssumeCapacity(d);
     }
 
     try vs_output_struct_w.print("  vec4 position;\n", .{});
@@ -1090,7 +1176,10 @@ fn compileShaderVariant(
     var vs_export_semantic_counter: usize = 1;
 
     for (all_definitions.items) |shader_def| {
-        state |= shader_def.state;
+        if (shader_def.state != 0) {
+            state = shader_def.state;
+        }
+
         rgba |= shader_def.rgba;
 
         if (shader_def.common_block) |cb| {
@@ -1109,7 +1198,7 @@ fn compileShaderVariant(
                 if (!get_or_put.found_existing) {
                     try main_imports_w.print("uniform {s} {s};\n", .{ @tagName(import.type), import.name });
                     try main_imports_w.print(
-                        \\ {s} load_{s}() {{
+                        \\{s} load_{s}() {{
                         \\  return {s};
                         \\}}
                         \\
@@ -1348,6 +1437,7 @@ fn compileShaderVariant(
     );
     defer allocator.free(fs_source);
     //std.debug.print("FS:\n{s}\n", .{fs_source});
+    //std.debug.print("FS:\n{s}\n", .{main_imports.items});
 
     var h = std.hash.Wyhash.init(0);
     h.update(vs_source);
@@ -1408,59 +1498,54 @@ fn compileShaderVariant(
 }
 
 fn selectShaderVariant(
+    allocator: std.mem.Allocator,
     shader_instance: public.ShaderInstance,
     context: cetech1.StrId32,
-    systems: public.SystemSet,
-) ?*const public.ShaderVariant {
+    shader_context: *const public.ShaderContext,
+) ![]*const public.ShaderVariant {
     const inst = _g.shader_pool.get(shader_instance.idx);
 
-    const variants = inst.variants.get(context) orelse return null;
+    var result = cetech1.ArrayList(*const public.ShaderVariant){};
+
+    const variants = inst.variants.get(context) orelse return try result.toOwnedSlice(allocator);
+    try result.ensureTotalCapacity(allocator, variants.items.len);
+
+    var set = public.SystemSet.initEmpty();
+    const true_shader_context: *const ShaderContext = @alignCast(@ptrCast(shader_context.ptr));
+    for (true_shader_context.systems.items) |system| {
+        set.set(system.system_idx);
+    }
 
     for (variants.items) |*variant| {
-        const intersection = systems.intersectWith(variant.system_set);
-        if (intersection.count() == variant.system_set.count()) {
-            return variant;
+        const intersection = set.intersectWith(variant.system_set);
+        if (intersection.count() != 0) {
+            result.appendAssumeCapacity(variant);
         }
     }
 
-    return null;
+    return result.toOwnedSlice(allocator);
 }
 
 fn submitUniforms(encoder: gpu.Encoder, variant: *const public.ShaderVariant, shader_instance: public.ShaderInstance) void {
     if (shader_instance.uniforms) |uniforms| {
-        for (uniforms.data.keys(), uniforms.data.values()) |k, v| {
+        var buffer: *UniformBuffer = @alignCast(@ptrCast(uniforms.ptr));
+
+        for (buffer.data.keys(), buffer.data.values()) |k, v| {
             const handler = variant.uniforms.get(k) orelse continue;
-            encoder.setUniform(handler, v.ptr, 1);
+            encoder.setUniform(handler, &v, 1);
         }
     }
 }
 
-// fn submit(shader_instance: public.ShaderInstance, context: ?cetech1.StrId32, systems: []const cetech1.StrId32, builder: renderer.GraphBuilder, encoder: gpu.Encoder) void {
-//     const inst = _g.shader_pool.get(shader_instance.idx);
-
-//     if (selectShaderVariant(inst, context.?, systems)) |variant| {
-//         if (variant.prg) |prg| {
-//             if (shader_instance.uniforms) |uniforms| {
-//                 for (uniforms.keys(), uniforms.values()) |k, v| {
-//                     const handler = variant.uniforms.get(k).?;
-//                     _gpu.setUniform(handler, v.ptr, 1);
-//                 }
-//             }
-
-//             const layer = if (variant.layer) |l| builder.getLayerById(l) else 256; // TODO: SHIT
-//             encoder.setState(variant.state, variant.rgba);
-//             encoder.submit(layer, prg, 0, 255);
-//         }
-//     }
-// }
-
 fn submitSystem(encoder: gpu.Encoder, system_instance: public.SystemInstance) void {
     if (system_instance.uniforms) |uniforms| {
-        for (uniforms.data.keys(), uniforms.data.values()) |k, v| {
+        var buffer: *UniformBuffer = @alignCast(@ptrCast(uniforms.ptr));
+
+        for (buffer.data.keys(), buffer.data.values()) |k, v| {
             const system = _g.system_pool[system_instance.system_idx];
 
             const handler = system.uniforms.get(k).?;
-            encoder.setUniform(handler, v.ptr, 1);
+            encoder.setUniform(handler, &v, 1);
         }
     }
 }
@@ -1485,12 +1570,9 @@ fn destroyShader(shader_instance: public.Shader) void {
     _g.shader_pool.destroy(inst) catch undefined;
 }
 
-var shit_lock = std.Thread.Mutex{};
 fn createShaderInstance(shader: public.Shader) !public.ShaderInstance {
     const inst = _g.shader_pool.get(shader.idx);
 
-    // shit_lock.lock();
-    // defer shit_lock.unlock();
     var max_u: usize = 0;
     for (inst.variants.values()) |variants| {
         for (variants.items) |variant| {
@@ -1498,33 +1580,68 @@ fn createShaderInstance(shader: public.Shader) !public.ShaderInstance {
         }
     }
 
-    const umap = try public.UniformMap.init(_allocator, max_u);
+    const umap = try createUniformBuffer();
 
     return .{ .idx = shader.idx, .uniforms = umap };
 }
-fn destroyShaderInstance(shader: *public.ShaderInstance) void {
-    // shit_lock.lock();
-    // defer shit_lock.unlock();
 
-    if (shader.uniforms) |*u| {
-        u.deinit();
+fn destroyShaderInstance(shader: *public.ShaderInstance) void {
+    if (shader.uniforms) |u| {
+        destroyUniformBuffer(u);
     }
 }
 
 fn createSystemInstance(system_id: cetech1.StrId32) !public.SystemInstance {
     const system_idx = _g.system_to_idx.get(system_id) orelse return .{ .system_idx = 0 };
-    const system = _g.system_pool[system_idx];
+    // const system = _g.system_pool[system_idx];
 
-    const umap = try public.UniformMap.init(_allocator, system.uniforms.count());
+    const umap = try createUniformBuffer();
 
     return .{ .system_idx = system_idx, .uniforms = umap };
 }
 
 fn destroySystemInstance(system: *public.SystemInstance) void {
-    if (system.uniforms) |*u| {
-        u.deinit();
+    if (system.uniforms) |u| {
+        destroyUniformBuffer(u);
     }
 }
+
+fn createUniformBuffer() !public.UniformBuffer {
+    var new: bool = false;
+    const buffer = _g.uniform_buffer_pool.create(&new);
+
+    if (new) {
+        buffer.* = .init();
+    } else {
+        buffer.clear();
+    }
+
+    return .{ .ptr = buffer, .vtable = &buffer_vt };
+}
+fn destroyUniformBuffer(buffer: public.UniformBuffer) void {
+    const true_buffer: *UniformBuffer = @alignCast(@ptrCast(buffer.ptr));
+    _g.uniform_buffer_pool.destroy(true_buffer) catch undefined;
+}
+
+fn createShaderContext() !public.ShaderContext {
+    var new: bool = false;
+    const buffer = _g.shader_context_pool.create(&new);
+
+    if (new) {
+        buffer.* = .init();
+    } else {
+        buffer.clear();
+    }
+
+    return .{ .ptr = buffer, .vtable = &shader_context_vt };
+}
+fn destroyShaderContext(buffer: public.ShaderContext) void {
+    const true_buffer: *ShaderContext = @alignCast(@ptrCast(buffer.ptr));
+    _g.shader_context_pool.destroy(true_buffer) catch undefined;
+}
+
+const MAX_UNIFORM_BUFFERS = 4 * 1024;
+const MAX_SHADER_CONTEXT = 128;
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
     "ShaderSystem",
@@ -1547,6 +1664,9 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
 
             _g.system_to_idx = .{};
             _g.system_counter = cetech1.heap.AtomicInt.init(0);
+
+            _g.uniform_buffer_pool = try UniformBufferPool.init(_allocator, MAX_UNIFORM_BUFFERS);
+            _g.shader_context_pool = try ShaderContextPool.init(_allocator, MAX_SHADER_CONTEXT);
 
             // Shaderlib from BGFX
             try api.addShaderDefiniton("shaderlib", .{
@@ -1577,6 +1697,9 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                     },
                 },
             });
+
+            // Depth system
+            try api.addSystemDefiniton("depth_system", .{});
 
             // Time system
             try api.addSystemDefiniton("time_system", .{
@@ -1627,6 +1750,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
 
             // Foo output node
             try api.addShaderDefiniton("node_foo_output", .{
+                .state = public.default_state | gpu.StateFlags_DepthTestEqual,
                 .graph_node = .{
                     .name = "node_foo_output",
                     .display_name = "Foo Output",
@@ -1680,12 +1804,22 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                                 .{ .systems = &.{ "time_system", "viewer_system" } },
                             },
                         },
+                        .{
+                            .name = "depth",
+                            .variations = &.{
+                                .{
+                                    .systems = &.{ "time_system", "viewer_system", "depth_system" },
+                                    .state = gpu.StateFlags_WriteZ | gpu.StateFlags_CullCcw | gpu.StateFlags_DepthTestLess,
+                                },
+                            },
+                        },
                     },
                     .contexts = &.{
                         .{
                             .name = "viewport",
                             .defs = &.{
                                 .{ .layer = "color", .config = "default" },
+                                .{ .layer = "depth", .config = "depth" },
                             },
                         },
                     },
@@ -1727,6 +1861,16 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             }
 
             _g.system_to_idx.deinit(_allocator);
+
+            for (_g.uniform_buffer_pool.mem.items[0.._g.uniform_buffer_pool.alocated_items.raw]) |*obj| {
+                obj.deinit();
+            }
+            _g.uniform_buffer_pool.deinit();
+
+            for (_g.shader_context_pool.mem.items[0.._g.shader_context_pool.alocated_items.raw]) |*obj| {
+                obj.deinit();
+            }
+            _g.shader_context_pool.deinit();
         }
     },
 );

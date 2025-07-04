@@ -1,6 +1,6 @@
 .{
-    .name = .renderer,
-    .fingerprint = 0xf199a19ccee012ea,
+    .name = .render_pipeline,
+    .fingerprint = 0xc83cefcf6b2288ec,
     .version = "0.1.0",
     .paths = .{
         "build.zig",
@@ -8,9 +8,7 @@
     },
     .dependencies = .{
         .cetech1 = .{ .path = "../../../public/" },
-        .transform = .{ .path = "../transform" },
-        .graphvm = .{ .path = "../../scripting/graphvm" },
-        .camera = .{ .path = "../camera" },
+        .render_graph = .{ .path = "../render_graph" },
         .shader_system = .{ .path = "../shader_system" },
     },
 }

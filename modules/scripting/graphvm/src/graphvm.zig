@@ -3,7 +3,6 @@ const cetech1 = @import("cetech1");
 
 const cdb = cetech1.cdb;
 const modules = cetech1.modules;
-const strid = cetech1.strid;
 
 // TODO: MOVE
 pub const EVENT_INIT_NODE_TYPE_STR = "event_init";
@@ -422,11 +421,22 @@ pub const CALL_GRAPH_NODE_TYPE = cetech1.strId32(CALL_GRAPH_NODE_TYPE_STR);
 
 pub const ExecuteConfig = struct {
     use_tasks: bool = true,
+    out_states: ?[]?*anyopaque = null,
 };
 
 pub const GraphVMApi = struct {
     pub inline fn getNodeState(self: *const GraphVMApi, comptime T: type, allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32) ![]?*T {
         const result = try self.getNodeStateFn(allocator, instances, node_type);
+
+        var r: []?*T = undefined;
+        r.ptr = @alignCast(@ptrCast(result.ptr));
+        r.len = result.len;
+
+        return r;
+    }
+
+    pub inline fn executeNodeAndGetState(self: *const GraphVMApi, comptime T: type, allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32, cfg: ExecuteConfig) ![]?*T {
+        const result = try self.executeNodeAndGetStateFn(allocator, instances, node_type, cfg);
 
         var r: []?*T = undefined;
         r.ptr = @alignCast(@ptrCast(result.ptr));
@@ -463,7 +473,6 @@ pub const GraphVMApi = struct {
     createInstance: *const fn (allocator: std.mem.Allocator, graph: cdb.ObjId) anyerror!GraphInstance,
     createInstances: *const fn (allocator: std.mem.Allocator, graph: cdb.ObjId, instances: []GraphInstance) anyerror!void,
     destroyInstance: *const fn (instance: GraphInstance) void,
-    executeNode: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32, cfg: ExecuteConfig) anyerror!void,
     buildInstances: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance) anyerror!void,
 
     setInstanceContext: *const fn (instance: GraphInstance, context_name: cetech1.StrId32, context: *anyopaque) anyerror!void,
@@ -472,5 +481,7 @@ pub const GraphVMApi = struct {
     getInputPins: *const fn (instance: GraphInstance) OutPins,
     getOutputPins: *const fn (instance: GraphInstance) OutPins,
 
+    executeNode: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32, cfg: ExecuteConfig) anyerror!void,
     getNodeStateFn: *const fn (allocator: std.mem.Allocator, containers: []const GraphInstance, node_type: cetech1.StrId32) anyerror![]?*anyopaque,
+    executeNodeAndGetStateFn: *const fn (allocator: std.mem.Allocator, containers: []const GraphInstance, node_type: cetech1.StrId32, cfg: ExecuteConfig) anyerror![]?*anyopaque,
 };

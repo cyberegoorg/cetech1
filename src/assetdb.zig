@@ -15,7 +15,7 @@ const cetech1 = @import("cetech1");
 const public = cetech1.assetdb;
 const cdb = cetech1.cdb;
 const uuid = cetech1.uuid;
-const strid = cetech1.strid;
+
 const platform = cetech1.platform;
 const cdb_types = cetech1.cdb_types;
 
@@ -1553,9 +1553,7 @@ fn getUuid(obj: cdb.ObjId) ?uuid.Uuid {
     return _assetroot_fs.getUuid(obj);
 }
 
-fn setAssetNameAndFolder(asset: cdb.ObjId, name: []const u8, description: ?[]const u8, asset_folder: cdb.ObjId) !void {
-    const asset_w = _cdb.writeObj(asset).?;
-
+fn setAssetNameAndFolder(asset_w: *cdb.Obj, name: []const u8, description: ?[]const u8, asset_folder: cdb.ObjId) !void {
     var buffer: [128]u8 = undefined;
 
     if (name.len != 0) {
@@ -1571,23 +1569,23 @@ fn setAssetNameAndFolder(asset: cdb.ObjId, name: []const u8, description: ?[]con
     if (!asset_folder.isEmpty()) {
         try public.Asset.setRef(_cdb, asset_w, .Folder, getObjForAsset(asset_folder).?);
     }
-
-    try _cdb.writeCommit(asset_w);
 }
 
 fn createAsset(asset_name: []const u8, asset_folder: cdb.ObjId, asset_obj: ?cdb.ObjId) ?cdb.ObjId {
     const asset = createObject(AssetTypeIdx) catch return null;
+    const asset_w = _cdb.writeObj(asset).?;
 
     if (asset_obj != null) {
-        const asset_w = _cdb.writeObj(asset).?;
         const asset_obj_w = _cdb.writeObj(asset_obj.?).?;
         public.Asset.setSubObj(_cdb, asset_w, .Object, asset_obj_w) catch return null;
 
         _cdb.writeCommit(asset_obj_w) catch return null;
-        _cdb.writeCommit(asset_w) catch return null;
     }
 
-    setAssetNameAndFolder(asset, asset_name, null, asset_folder) catch return null;
+    setAssetNameAndFolder(asset_w, asset_name, null, asset_folder) catch return null;
+
+    _cdb.writeCommit(asset_w) catch return null;
+
     _assetroot_fs.addAssetToRoot(asset) catch return null;
     return asset;
 }
@@ -2244,9 +2242,14 @@ pub fn readAssetFromReader(
         desc = asset_desc.string;
     }
 
-    try setAssetNameAndFolder(asset, asset_name, desc, asset_folder);
+    {
+        const asset_w = _cdb.writeObj(asset).?;
+        try setAssetNameAndFolder(asset_w, asset_name, desc, asset_folder);
+        try _cdb.writeCommit(asset_w);
+    }
 
     const asset_w = _cdb.writeObj(asset).?;
+
     if (parsed.value.object.get(JSON_TAGS_TOKEN)) |tags| {
         for (tags.array.items) |tag| {
             var ref_link = std.mem.splitAny(u8, tag.string, ":");

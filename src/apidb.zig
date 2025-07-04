@@ -4,7 +4,6 @@ const mem = std.mem;
 const Allocator = mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const strid = cetech1.strid;
 
 const public = cetech1.apidb;
 
@@ -91,6 +90,10 @@ var _global_var_map: setGlobalVarMap = undefined;
 
 var _module_info_map: ModuleInfoMap = undefined;
 var _api2module: Api2Modules = undefined;
+
+pub fn isInit() bool {
+    return _init;
+}
 
 pub fn init(a: Allocator) !void {
     _init = true;

@@ -605,8 +605,11 @@ pub const editor_modules = [_][]const u8{
 
 pub const core_modules = [_][]const u8{
     "graphvm",
-    "renderer",
-    "default_rg",
+    "render_viewport",
+    "render_graph",
+    "renderer_nodes",
+    "default_render_pipeline",
+    "render_pipeline",
     "shader_system",
     "render_component",
     "entity_logic_component",

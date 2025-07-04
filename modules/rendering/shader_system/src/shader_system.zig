@@ -2,11 +2,11 @@ const std = @import("std");
 
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
-const strid = cetech1.strid;
+
 const math = cetech1.math.zmath;
 const gpu = cetech1.gpu;
 
-const renderer = @import("renderer");
+const render_viewport = @import("render_viewport");
 
 pub const MAX_SYSTEMS = 64;
 
@@ -170,13 +170,12 @@ pub const DefImport = struct {
     type: DefMainImportVariableType,
 };
 
-const defualt_state = 0 |
+pub const default_state = 0 |
     gpu.StateFlags_WriteRgb |
     gpu.StateFlags_WriteA |
-    gpu.StateFlags_WriteZ |
     gpu.StateFlags_DepthTestLess |
-    gpu.StateFlags_CullCcw |
-    gpu.StateFlags_Msaa;
+    gpu.StateFlags_CullCcw;
+//gpu.StateFlags_Msaa;
 
 pub const DefGraphNodeInputType = enum {
     vec2,
@@ -218,6 +217,7 @@ pub const DefGraphNode = struct {
 
 pub const DefCompileConfigurationVariation = struct {
     systems: ?[]const [:0]const u8 = null,
+    state: ?u64 = null,
 };
 
 pub const DefCompileConfiguration = struct {
@@ -242,7 +242,7 @@ pub const DefCompile = struct {
 };
 
 pub const ShaderDefinition = struct {
-    state: u64 = defualt_state,
+    state: u64 = 0,
     rgba: u32 = 0,
 
     imports: ?[]const DefImport = null,
@@ -278,42 +278,58 @@ pub const ShaderVariant = struct {
     system_set: SystemSet,
 };
 
-// TODO: use idx and and array
-pub const UniformMap = struct {
-    allocator: std.mem.Allocator,
-    data: cetech1.AutoArrayHashMap(cetech1.StrId32, []u8),
-
-    pub fn init(allocator: std.mem.Allocator, max_uniforms: usize) !UniformMap {
-        var data = cetech1.AutoArrayHashMap(cetech1.StrId32, []u8){};
-        try data.ensureTotalCapacity(allocator, max_uniforms);
-
-        return .{
-            .allocator = allocator,
-            .data = data,
-        };
+pub const UniformBuffer = struct {
+    pub inline fn set(self: *UniformBuffer, name: cetech1.StrId32, value: anytype) !void {
+        return self.vtable.set(self.ptr, name, std.mem.asBytes(&value));
     }
 
-    pub fn deinit(self: *UniformMap) void {
-        for (self.data.values()) |values| {
-            self.allocator.free(values);
+    ptr: *anyopaque,
+    vtable: *const VTable,
+
+    pub const VTable = struct {
+        set: *const fn (uniformbuffer: *anyopaque, name: cetech1.StrId32, value: []const u8) anyerror!void,
+
+        pub fn implement(comptime T: type) VTable {
+            if (!std.meta.hasFn(T, "set")) @compileError("implement me");
+
+            return VTable{
+                .set = &T.set,
+            };
         }
-        self.data.deinit(self.allocator);
+    };
+};
+
+pub const ShaderContext = struct {
+    pub inline fn addSystem(self: *ShaderContext, system: *SystemInstance) !void {
+        return self.vtable.addSystem(self.ptr, system);
     }
 
-    pub fn set(self: *UniformMap, name: cetech1.StrId32, value: anytype) !void {
-        // TODO: prealocate on create
-        const result = self.data.getOrPutAssumeCapacity(name);
-        if (!result.found_existing) {
-            result.value_ptr.* = try self.allocator.dupe(u8, std.mem.asBytes(&value));
-            return;
-        }
-        @memcpy(result.value_ptr.*, std.mem.asBytes(&value));
+    pub inline fn submit(self: *const ShaderContext, encoder: gpu.Encoder) void {
+        self.vtable.submit(self.ptr, encoder);
     }
+
+    ptr: *anyopaque,
+    vtable: *const VTable,
+
+    pub const VTable = struct {
+        addSystem: *const fn (self: *anyopaque, system: *SystemInstance) anyerror!void,
+        submit: *const fn (self: *anyopaque, encoder: gpu.Encoder) void,
+
+        pub fn implement(comptime T: type) VTable {
+            if (!std.meta.hasFn(T, "addSystem")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "submit")) @compileError("implement me");
+
+            return VTable{
+                .addSystem = &T.addSystem,
+                .submit = &T.submit,
+            };
+        }
+    };
 };
 
 pub const ShaderInstance = struct {
     idx: u32 = 0,
-    uniforms: ?UniformMap = null,
+    uniforms: ?UniformBuffer = null,
 };
 
 pub const GpuValue = struct {
@@ -442,7 +458,7 @@ pub const SystemSet = std.bit_set.IntegerBitSet(MAX_SYSTEMS);
 
 pub const SystemInstance = struct {
     system_idx: usize,
-    uniforms: ?UniformMap = null,
+    uniforms: ?UniformBuffer = null,
 };
 
 pub const ShaderSystemAPI = struct {
@@ -455,10 +471,11 @@ pub const ShaderSystemAPI = struct {
     createShaderInstance: *const fn (shader: Shader) anyerror!ShaderInstance,
     destroyShaderInstance: *const fn (shader: *ShaderInstance) void,
     selectShaderVariant: *const fn (
+        allocator: std.mem.Allocator,
         shader_instance: ShaderInstance,
         context: cetech1.StrId32,
-        systems: SystemSet,
-    ) ?*const ShaderVariant,
+        shader_context: *const ShaderContext,
+    ) anyerror![]*const ShaderVariant,
 
     submitShaderUniforms: *const fn (encoder: gpu.Encoder, variant: *const ShaderVariant, shader_instance: ShaderInstance) void,
 
@@ -466,5 +483,9 @@ pub const ShaderSystemAPI = struct {
     destroySystemInstance: *const fn (system: *SystemInstance) void,
     submitSystemUniforms: *const fn (encoder: gpu.Encoder, system_instance: SystemInstance) void,
 
-    getSystemIdx: *const fn (system: cetech1.StrId32) usize,
+    createShaderContext: *const fn () anyerror!ShaderContext,
+    destroyShaderContext: *const fn (context: ShaderContext) void,
+
+    createUniformBuffer: *const fn () anyerror!UniformBuffer,
+    destroyUniformBuffer: *const fn (buffer: UniformBuffer) void,
 };

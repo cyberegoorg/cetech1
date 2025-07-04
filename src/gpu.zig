@@ -76,9 +76,6 @@ pub const api = public.GpuApi{
     .addPaletteColor = addPaletteColor,
     .endAllUsedEncoders = endAllUsedEncoders,
 
-    .newViewId = newViewId,
-    .resetViewId = resetViewId,
-
     .vertexPack = @ptrCast(&bgfx.vertexPack),
     .vertexUnpack = @ptrCast(&bgfx.vertexUnpack),
     .vertexConvert = @ptrCast(&bgfx.vertexConvert),
@@ -228,14 +225,6 @@ pub const api = public.GpuApi{
     .getBackendType = @ptrCast(&bgfx.getRendererType),
 };
 
-var _view_id: AtomicViewId = AtomicViewId.init(1);
-fn newViewId() public.ViewId {
-    return _view_id.fetchAdd(1, .monotonic);
-}
-fn resetViewId() void {
-    _view_id.store(1, .monotonic);
-}
-
 pub fn compileShader(
     allocator: std.mem.Allocator,
     varying: []const u8,
@@ -301,7 +290,7 @@ fn initBgfx(context: *GpuContext, backend: public.Backend, vsync: bool, headless
         bgfxInit.resolution.height = @intCast(framebufferSize[1]);
 
         if (vsync) {
-            bgfxInit.resolution.reset |= bgfx.ResetFlags_Vsync; // | bgfx.ResetFlags_FlipAfterRender;
+            bgfxInit.resolution.reset |= bgfx.ResetFlags_Vsync | bgfx.ResetFlags_FlipAfterRender;
         }
 
         bgfxInit.platformData.nwh = context.window.?.getOsWindowHandler();
