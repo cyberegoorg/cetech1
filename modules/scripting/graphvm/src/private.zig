@@ -3,7 +3,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
 const ecs = cetech1.ecs;
@@ -1875,7 +1875,13 @@ const GraphVM = struct {
         _g.instance_pool.destroy(instance);
     }
 
-    fn executeNodesMany(self: *Self, allocator: std.mem.Allocator, instances: []const public.GraphInstance, node_type: cetech1.StrId32) !void {
+    fn executeNodesMany(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        instances: []const public.GraphInstance,
+        node_type: cetech1.StrId32,
+        out_states: ?[]?*anyopaque,
+    ) !void {
         var zone_ctx = _profiler.Zone(@src());
         defer zone_ctx.End();
 
@@ -1885,7 +1891,7 @@ const GraphVM = struct {
         const has_flows = self.vmnodes.items(.has_flow);
 
         if (self.findNodeByType(node_type)) |event_nodes| {
-            for (instances) |instance| {
+            for (instances, 0..) |instance, instance_idx| {
                 //if (!instance.isValid()) continue;
 
                 var ints: *VMInstance = @alignCast(@ptrCast(instance.inst));
@@ -1895,6 +1901,10 @@ const GraphVM = struct {
                 const last_inputs_validity_hashs = ints.nodes.items(.last_inputs_validity_hash);
                 const states = ints.nodes.items(.state);
                 const evals = ints.nodes.items(.eval);
+
+                if (out_states) |out| {
+                    out[instance_idx] = null;
+                }
 
                 for (event_nodes) |event_node_idx| {
                     const plan = self.node_plan.get(event_node_idx).?;
@@ -1929,8 +1939,9 @@ const GraphVM = struct {
                         }
 
                         if (!evals[node_idx] or node_inputs_changed) {
-                            var zone_exec_ctx = _profiler.ZoneN(@src(), "GraphVM - execute one node");
-                            defer zone_exec_ctx.End();
+                            // var zone_exec_ctx = _profiler.ZoneN(@src(), "GraphVM - execute one node");
+                            // defer zone_exec_ctx.End();
+
                             const ts = self.transpile_state_map.get(node_idx);
                             const transpier_node = self.transpile_map.get(node_idx);
 
@@ -1951,6 +1962,12 @@ const GraphVM = struct {
                             );
 
                             evals[node_idx] = true;
+                        }
+
+                        if (iface.type_hash.eql(node_type)) {
+                            if (out_states) |out| {
+                                out[instance_idx] = states[node_idx];
+                            }
                         }
                     }
                 }
@@ -2105,6 +2122,7 @@ pub const api = public.GraphVMApi{
     .compile = compile,
     .createCdbNode = createCdbNode,
     .getNodeStateFn = getNodeState,
+    .executeNodeAndGetStateFn = executeNodeAndGetState,
 
     .setInstanceContext = setInstanceContext,
     .getContextFn = getInstanceContext,
@@ -2275,6 +2293,7 @@ fn destroyInstance(vmc: public.GraphInstance) void {
 
 const executeNodesTask = struct {
     instances: []const public.GraphInstance,
+    out_states: ?[]?*anyopaque,
     event_hash: cetech1.StrId32,
 
     pub fn exec(self: *const @This()) !void {
@@ -2282,7 +2301,7 @@ const executeNodesTask = struct {
         const vm = c0.vm;
         const alloc = try _tmpalloc.create();
         defer _tmpalloc.destroy(alloc);
-        try vm.executeNodesMany(alloc, self.instances, self.event_hash);
+        try vm.executeNodesMany(alloc, self.instances, self.event_hash, self.out_states);
     }
 };
 
@@ -2353,6 +2372,7 @@ fn executeNodes(allocator: std.mem.Allocator, instances: []const public.GraphIns
     const ARGS = struct {
         items: []const public.GraphInstance,
         event_hash: cetech1.StrId32,
+        cfg: public.ExecuteConfig,
     };
 
     for (clusters) |cluster| {
@@ -2368,11 +2388,13 @@ fn executeNodes(allocator: std.mem.Allocator, instances: []const public.GraphIns
             ARGS{
                 .items = cluster,
                 .event_hash = event_hash,
+                .cfg = cfg,
             },
             struct {
                 pub fn createTask(create_args: ARGS, batch_id: usize, args: cetech1.task.BatchWorkloadArgs, count: usize) executeNodesTask {
                     return executeNodesTask{
                         .instances = create_args.items[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
+                        .out_states = if (create_args.cfg.out_states) |out| out[batch_id * args.batch_size .. (batch_id * args.batch_size) + count] else null,
                         .event_hash = create_args.event_hash,
                     };
                 }
@@ -2528,6 +2550,15 @@ pub fn getNodeState(allocator: std.mem.Allocator, instances: []const public.Grap
     if (tasks.items.len != 0) {
         _task.waitMany(tasks.items);
     }
+
+    return results.toOwnedSlice(allocator);
+}
+
+pub fn executeNodeAndGetState(allocator: std.mem.Allocator, instances: []const public.GraphInstance, node_type: cetech1.StrId32, cfg: public.ExecuteConfig) ![]?*anyopaque {
+    var results = try cetech1.ArrayList(?*anyopaque).initCapacity(allocator, instances.len);
+    try results.resize(allocator, instances.len);
+
+    try executeNodes(allocator, instances, node_type, .{ .use_tasks = cfg.use_tasks, .out_states = results.items });
 
     return results.toOwnedSlice(allocator);
 }
@@ -2876,7 +2907,7 @@ const call_graph_node_i = public.NodeI.implement(
                         if (try public.Interface.readSubObjSet(_cdb, iface_r, .inputs, allocator)) |inputs| {
                             defer allocator.free(inputs);
 
-                            try in_pins.ensureTotalCapacity(allocator, inputs.len);
+                            try in_pins.ensureTotalCapacityPrecise(allocator, inputs.len);
 
                             for (inputs) |input| {
                                 const input_r = _cdb.readObj(input).?;
@@ -2899,7 +2930,7 @@ const call_graph_node_i = public.NodeI.implement(
                         if (try public.Interface.readSubObjSet(_cdb, iface_r, .outputs, allocator)) |outputs| {
                             defer allocator.free(outputs);
 
-                            try out_pins.ensureTotalCapacity(allocator, outputs.len);
+                            try out_pins.ensureTotalCapacityPrecise(allocator, outputs.len);
 
                             for (outputs) |input| {
                                 const input_r = _cdb.readObj(input).?;

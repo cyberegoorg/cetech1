@@ -58,9 +58,6 @@ pub const GpuApi = struct {
     addPaletteColor: *const fn (color: u32) u8,
     endAllUsedEncoders: *const fn () void,
 
-    newViewId: *const fn () ViewId,
-    resetViewId: *const fn () void,
-
     getBackendType: *const fn () Backend,
 
     compileShader: *const fn (

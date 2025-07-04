@@ -5,7 +5,6 @@ const cetech1 = @import("cetech1");
 
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
-const strid = cetech1.strid;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{

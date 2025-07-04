@@ -8,7 +8,6 @@ const std = @import("std");
 const assetdb = @import("assetdb.zig");
 const cetech1 = @import("cetech1");
 const public = cetech1.cdb;
-const strid = cetech1.strid;
 
 const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");

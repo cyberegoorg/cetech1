@@ -3,7 +3,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
 const ecs = cetech1.ecs;
@@ -18,7 +18,7 @@ const graphvm = @import("graphvm");
 const editor_inspector = @import("editor_inspector");
 
 const basic_nodes = @import("basic_nodes.zig");
-const renderer = @import("renderer");
+const render_viewport = @import("render_viewport");
 
 const module_name = .shader_system;
 
@@ -57,6 +57,10 @@ const NodeIMap = cetech1.AutoArrayHashMap(cetech1.StrId32, *const graphvm.NodeI)
 const StringIntern = cetech1.string.InternWithLock([:0]const u8);
 const NodeExportMap = cetech1.AutoArrayHashMap(cetech1.StrId32, public.DefExport);
 
+const UniformBufferPool = cetech1.heap.VirtualPool(UniformBuffer);
+const ResourceBufferPool = cetech1.heap.VirtualPool(ResourceBuffer);
+const ShaderContextPool = cetech1.heap.VirtualPool(ShaderContext);
+
 const VariableSemantic = enum {
     position,
     normal,
@@ -79,15 +83,15 @@ const VariableSemantic = enum {
 };
 
 const UniformHandleMap = cetech1.AutoArrayHashMap(cetech1.StrId32, gpu.UniformHandle);
+const ResourceSlotMap = cetech1.AutoArrayHashMap(cetech1.StrId32, usize);
 
 const System = struct {
-    uniforms: UniformHandleMap = .{},
+    uniform_count: usize = 0,
+    resource_count: usize = 0,
 
     pub fn deinit(self: *System, allocator: Allocator) void {
-        for (self.uniforms.values()) |u| {
-            _gpu.destroyUniform(u);
-        }
-        self.uniforms.deinit(allocator);
+        _ = self;
+        _ = allocator;
     }
 };
 
@@ -97,15 +101,132 @@ const ShaderVariantMap = cetech1.AutoArrayHashMap(cetech1.StrId32, VariantList);
 const Shader = struct {
     variants: ShaderVariantMap = .{},
 
+    uniforms: cetech1.AutoArrayHashMap(cetech1.StrId32, gpu.UniformHandle) = .{},
+    resources: cetech1.AutoArrayHashMap(cetech1.StrId32, usize) = .{},
+
     pub fn deinit(self: *Shader, allocator: std.mem.Allocator) void {
         for (self.variants.values()) |*variants| {
             variants.deinit(allocator);
         }
         self.variants.deinit(allocator);
+        self.uniforms.deinit(allocator);
+        self.resources.deinit(allocator);
     }
 };
 
 const SystemToIdx = cetech1.AutoArrayHashMap(cetech1.StrId32, usize);
+
+const MAX_UNIFORM_VALUE_SIZE = @sizeOf(zm.Mat);
+
+const UniformBuffer = struct {
+    data: cetech1.AutoArrayHashMap(cetech1.StrId32, [MAX_UNIFORM_VALUE_SIZE]u8) = .{},
+
+    pub fn init() UniformBuffer {
+        return .{};
+    }
+
+    pub fn deinit(self: *UniformBuffer) void {
+        self.data.deinit(_allocator);
+    }
+
+    pub fn clear(self: *UniformBuffer) void {
+        self.data.clearRetainingCapacity();
+    }
+};
+
+const buffer_vt = public.UniformBuffer.VTable.implement(struct {
+    pub fn set(self: *anyopaque, name: cetech1.StrId32, value: []const u8) !void {
+        var true_buffer: *UniformBuffer = @alignCast(@ptrCast(self));
+        const get_or_put = true_buffer.data.getOrPutAssumeCapacity(name);
+        std.mem.copyForwards(u8, get_or_put.value_ptr, value);
+    }
+
+    pub fn bind(self: *anyopaque, encoder: gpu.Encoder, shader: public.ShaderInstance) void {
+        var true_buffer: *UniformBuffer = @alignCast(@ptrCast(self));
+        const sh = _g.shader_pool.get(shader.idx);
+
+        for (true_buffer.data.keys(), true_buffer.data.values()) |k, v| {
+            const handler = sh.uniforms.get(k) orelse continue;
+            encoder.setUniform(handler, &v, 1);
+        }
+    }
+});
+
+const MAX_RESOURCE_IN_BUFFER = 16;
+const MAX_RESOURCE_VALUE_SIZE = @sizeOf(gpu.VertexBufferHandle);
+
+const ResourceBuffer = struct {
+    data: cetech1.AutoArrayHashMap(cetech1.StrId32, [MAX_RESOURCE_VALUE_SIZE]u8) = .{},
+
+    pub fn init() ResourceBuffer {
+        return .{};
+    }
+
+    pub fn deinit(self: *ResourceBuffer) void {
+        self.data.deinit(_allocator);
+    }
+
+    pub fn clear(self: *ResourceBuffer) void {
+        self.data.clearRetainingCapacity();
+    }
+};
+const resource_buffer_vt = public.ResourceBuffer.VTable.implement(struct {
+    pub fn set(self: *anyopaque, name: cetech1.StrId32, value: []const u8) !void {
+        var true_buffer: *ResourceBuffer = @alignCast(@ptrCast(self));
+        const get_or_put = true_buffer.data.getOrPutAssumeCapacity(name);
+        std.mem.copyForwards(u8, get_or_put.value_ptr, value);
+    }
+
+    pub fn bind(self: *const anyopaque, encoder: gpu.Encoder, shader: public.ShaderInstance) void {
+        var true_buffer: *const ResourceBuffer = @alignCast(@ptrCast(self));
+        const sh = _g.shader_pool.get(shader.idx);
+
+        for (true_buffer.data.keys(), true_buffer.data.values()) |k, v| {
+            const stage_id = sh.resources.get(k) orelse continue;
+            encoder.setComputeVertexBuffer(@truncate(stage_id), std.mem.bytesToValue(gpu.VertexBufferHandle, &v), .Read);
+        }
+    }
+});
+
+const ShaderContext = struct {
+    count: u8 = 0,
+    systems: [public.MAX_SYSTEMS]*const public.SystemInstance = @splat(undefined),
+
+    pub fn init() ShaderContext {
+        return .{};
+    }
+
+    pub fn deinit(self: *ShaderContext) void {
+        _ = self;
+    }
+
+    pub fn clear(self: *ShaderContext) void {
+        self.count = 0;
+    }
+};
+
+const shader_context_vt = public.ShaderContext.VTable.implement(struct {
+    pub fn addSystem(self: *anyopaque, system: *const public.SystemInstance) !void {
+        const true_buffer: *ShaderContext = @alignCast(@ptrCast(self));
+        for (true_buffer.systems[0..true_buffer.count]) |*value| {
+            if (value.*.system_idx != system.system_idx) continue;
+            value.* = system;
+            return;
+        }
+
+        true_buffer.systems[true_buffer.count] = system;
+        true_buffer.count += 1;
+    }
+
+    pub fn bind(self: *const anyopaque, encoder: gpu.Encoder, shader: public.ShaderInstance) void {
+        const true_buffer: *const ShaderContext = @alignCast(@ptrCast(self));
+
+        for (true_buffer.systems[0..true_buffer.count]) |instance| {
+            if (instance.uniforms) |*u| u.bind(encoder, shader);
+            if (instance.resources) |*r| r.bind(encoder, shader);
+        }
+    }
+});
 
 // Global state that can surive hot-reload
 const G = struct {
@@ -129,6 +250,10 @@ const G = struct {
 
     system_to_idx: SystemToIdx = undefined,
     system_counter: cetech1.heap.AtomicInt = undefined,
+
+    uniform_buffer_pool: UniformBufferPool = undefined,
+    resource_buffer_pool: ResourceBufferPool = undefined,
+    shader_context_pool: ShaderContextPool = undefined,
 };
 var _g: *G = undefined;
 
@@ -138,8 +263,6 @@ const api = public.ShaderSystemAPI{
 
     .compileShader = compileShader,
 
-    .submitShaderUniforms = submitUniforms,
-    .submitSystemUniforms = submitSystem,
     .destroyShader = destroyShader,
     .createShaderInstance = createShaderInstance,
     .destroyShaderInstance = destroyShaderInstance,
@@ -148,7 +271,16 @@ const api = public.ShaderSystemAPI{
     .destroySystemInstance = destroySystemInstance,
 
     .selectShaderVariant = selectShaderVariant,
-    .getSystemIdx = getSystemIdx,
+
+    // .createUniformBuffer = createUniformBuffer,
+    // .destroyUniformBuffer = destroyUniformBuffer,
+
+    // .createResourceBuffer = createResourceBuffer,
+    // .destroyResourceBuffer = destroyResourceBuffer,
+
+    .createShaderContext = createShaderContext,
+    .cloneShaderContext = cloneShaderContext,
+    .destroyShaderContext = destroyShaderContext,
 };
 
 inline fn nodeInputToType(input_type: public.DefGraphNodeInputType) cetech1.StrId32 {
@@ -211,7 +343,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                         var out_pins = graphvm.NodePinList{};
 
                         if (shader_def.graph_node.?.inputs) |inputs| {
-                            try in_pins.ensureTotalCapacity(allocator, inputs.len);
+                            try in_pins.ensureTotalCapacityPrecise(allocator, inputs.len);
                             for (inputs) |input| {
                                 const pin_name = try graphvm.NodePin.alocPinHash(allocator, input.name, false);
                                 defer allocator.free(pin_name);
@@ -228,7 +360,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                         }
 
                         if (shader_def.graph_node.?.outputs) |outputs| {
-                            try out_pins.ensureTotalCapacity(allocator, outputs.len);
+                            try out_pins.ensureTotalCapacityPrecise(allocator, outputs.len);
 
                             for (outputs) |output| {
                                 const pin_name = try graphvm.NodePin.alocPinHash(allocator, output.name, true);
@@ -511,11 +643,16 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
 
                                         const w = get_result.value_ptr.*.writer(real_state.allocator);
 
-                                        _, const val = in_pins.read(public.GpuValue, idx) orelse .{ 0, public.GpuValue{ .str = "" } };
-                                        try w.print("graph.{s} = {s};\n", .{
-                                            input.name,
-                                            val.str,
-                                        });
+                                        if (in_pins.read(public.GpuValue, idx)) |val| {
+                                            const define = try std.fmt.allocPrint(args.allocator, "CT_PIN_CONNECTED_{s}", .{input.name});
+                                            try real_state.defines.put(real_state.allocator, define, {});
+
+                                            _, const v = val;
+                                            try w.print("graph.{s} = {s};\n", .{
+                                                input.name,
+                                                v.str,
+                                            });
+                                        }
                                     }
                                 }
                             }
@@ -532,6 +669,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
 
                             // graph struct
                             try common_writer.print("struct ct_graph {{\n", .{});
+                            try common_writer.print("ct_vertex_loader_ctx vertex_ctx;\n", .{});
                             if (shader_def.graph_node.?.inputs) |inputs| {
                                 for (inputs, 0..) |input, idx| {
                                     const is_generic = input.type == null;
@@ -557,6 +695,16 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                             }
 
                             if (shader_def.vertex_block) |vb| {
+                                // Graph structure init
+                                try vs_common_w.print(
+                                    \\
+                                    \\void ct_graph_init(out ct_graph graph, in ct_vertex_loader_ctx vertex_ctx) {{
+                                    \\      graph = (ct_graph)0;
+                                    \\      graph.vertex_ctx = vertex_ctx;
+                                    \\}}
+                                    \\
+                                , .{});
+
                                 if (vb.exports) |exports| {
                                     for (exports) |ex| {
                                         if (ex.to_node) {
@@ -566,6 +714,15 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                                 }
                             }
                             if (shader_def.fragment_block) |fb| {
+                                // Graph structure init
+                                try fs_common_w.print(
+                                    \\
+                                    \\void ct_graph_init(out ct_graph graph) {{
+                                    \\      graph = (ct_graph)0;
+                                    \\}}
+                                    \\
+                                , .{});
+
                                 if (fb.exports) |exports| {
                                     for (exports) |ex| {
                                         if (ex.to_node) {
@@ -575,15 +732,6 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                                 }
                             }
                             try common_writer.print("}};\n", .{});
-
-                            // Graph structure init
-                            try common_writer.print(
-                                \\
-                                \\void ct_graph_init(out ct_graph graph) {{
-                                \\      graph = (ct_graph)0; 
-                                \\}}
-                                \\
-                            , .{});
 
                             for (real_state.context_result_map.keys(), real_state.context_result_map.values()) |ctx, v| {
                                 for (v.keys(), v.values()) |stage_id, data| {
@@ -626,7 +774,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
 
                             if (result_shader_def.vertex_block) |vertex| {
                                 log.debug("Shader def vertex code:", .{});
-                                log.debug("{s}", .{vertex.code});
+                                log.debug("{?s}", .{vertex.code});
 
                                 if (vertex.common_block) |common| {
                                     log.debug("Shader def vs common code:", .{});
@@ -636,7 +784,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
 
                             if (result_shader_def.fragment_block) |fragment| {
                                 log.debug("Shader def fragment code:", .{});
-                                log.debug("{s}", .{fragment.code});
+                                log.debug("{?s}", .{fragment.code});
 
                                 if (fragment.common_block) |common| {
                                     log.debug("Shader def fs common code:", .{});
@@ -740,6 +888,10 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                         _ = self; // autofix
                         const state = try allocator.create(public.GpuTranspileState);
                         state.* = public.GpuTranspileState.init(allocator);
+
+                        var common_w = state.common_code.writer(state.allocator);
+                        try common_w.print("#define CT_PIN_CONNECTED(x) #defined(CT_PIN_CONNECTED_##x)\n", .{});
+
                         return std.mem.asBytes(state);
                     }
 
@@ -788,20 +940,27 @@ fn addSystemDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
     try _g.system_to_idx.put(_allocator, system_id, idx);
     try _g.shader_def_map.put(_allocator, system_id, definition);
 
-    var system = System{};
+    var u_count: usize = 0;
+    var r_count: usize = 0;
 
     if (definition.imports) |imports| {
         for (imports) |value| {
-            const u_type: gpu.UniformType = switch (value.type) {
-                .mat3 => .Mat3,
-                .mat4 => .Mat4,
-                .vec4 => .Vec4,
-            };
-
-            const u = _gpu.createUniform(value.name, u_type, 1);
-            try system.uniforms.put(_allocator, cetech1.strId32(value.name), u);
+            switch (value.type) {
+                .mat3, .mat4, .vec4 => {
+                    u_count += 1;
+                },
+                .buffer => {
+                    r_count += 1;
+                },
+            }
         }
     }
+
+    const system = System{
+        .uniform_count = u_count,
+        .resource_count = r_count,
+    };
+
     _g.system_pool[idx] = system;
 }
 
@@ -813,8 +972,12 @@ fn systemsToSet(systems: []const cetech1.StrId32) public.SystemSet {
     return set;
 }
 
-fn getSystemIdx(system: cetech1.StrId32) usize {
-    return _g.system_to_idx.get(system).?;
+fn getSystemSet(systems: []*public.SystemInstance) public.SystemSet {
+    var set = public.SystemSet.initEmpty();
+    for (systems) |system| {
+        set.set(system.system_idx);
+    }
+    return set;
 }
 
 fn createExportedNode(alloc: std.mem.Allocator, graph_node: public.DefGraphNode, export_def: public.DefExport) !void {
@@ -904,10 +1067,10 @@ const bgfx_shader = @embedFile("embed/bgfx_shader.sh");
 const bgfx_compute = @embedFile("embed/bgfx_compute.sh");
 
 fn compileShader(allocator: std.mem.Allocator, use_definitions: []const cetech1.StrId32, definition: ?public.ShaderDefinition) !?public.Shader {
-    const instance = _g.shader_pool.create(null);
-    const instance_idx = _g.shader_pool.index(instance);
+    const shader = _g.shader_pool.create(null);
+    const shader_idx = _g.shader_pool.index(shader);
 
-    instance.* = .{};
+    shader.* = .{};
 
     const compile = definition.?.compile.?;
 
@@ -934,33 +1097,31 @@ fn compileShader(allocator: std.mem.Allocator, use_definitions: []const cetech1.
         }
     }
 
-    for (compile.contexts) |constext| {
-        const context_item = try instance.variants.getOrPut(_allocator, cetech1.strId32(constext.name));
+    for (compile.contexts) |context| {
+        const context_item = try shader.variants.getOrPut(_allocator, cetech1.strId32(context.name));
         context_item.value_ptr.* = .{};
 
-        for (constext.defs) |def| {
+        for (context.defs) |def| {
             const cfg = config_map.get(cetech1.strId32(def.config)).?;
             for (cfg.variations) |variation| {
-                const systems_len = if (variation.systems) |s| s.len else 0;
-
-                var sytem_ids = try cetech1.StrId32List.initCapacity(allocator, systems_len);
-                defer sytem_ids.deinit(allocator);
-
-                if (variation.systems) |systems| {
-                    for (systems) |value| {
-                        sytem_ids.appendAssumeCapacity(cetech1.strId32(value));
-                    }
-                }
-
                 const layer = if (def.layer) |l| cetech1.strId32(l) else null;
-                const shader_variant = try compileShaderVariant(allocator, includes.items, definition, layer, sytem_ids.items);
+                const shader_variant = try compileShaderVariant(
+                    allocator,
+                    includes.items,
+                    definition,
+                    layer,
+                    variation.systems,
+                    variation,
+                    shader,
+                );
+
                 try context_item.value_ptr.append(_allocator, shader_variant);
             }
         }
     }
 
     return .{
-        .idx = instance_idx,
+        .idx = shader_idx,
     };
 }
 
@@ -969,7 +1130,9 @@ fn compileShaderVariant(
     use_definitions: []const cetech1.StrId32,
     definition: ?public.ShaderDefinition,
     layer: ?cetech1.StrId32,
-    systems: []const cetech1.StrId32,
+    systems: ?[]const [:0]const u8,
+    variant: public.DefCompileConfigurationVariation,
+    shader: *Shader,
 ) !public.ShaderVariant {
     //TODO: BRAINDUMP SHIT DETECTED
     //TODO: merge defs rules
@@ -1058,14 +1221,38 @@ fn compileShaderVariant(
     var defines = std.StringArrayHashMapUnmanaged(void){};
     defer defines.deinit(allocator);
 
-    var state: u64 = 0;
+    var vs_import_semantics = cetech1.AutoArrayHashMap(public.DefVertexImportSemantics, void){};
+    defer vs_import_semantics.deinit(allocator);
+
+    var raster_state: public.RasterState = .{};
+    var color_state: public.ColorState = .{};
+    var depth_stencil_state: public.DepthStencilState = .{};
+
     var rgba: u32 = 0;
 
     const dn: usize = if (definition != null) 1 else 0;
-    const system_count = systems.len;
+
+    const system_count = if (systems) |s| s.len else 0;
+    var sytem_ids = try cetech1.StrId32List.initCapacity(allocator, system_count);
+    defer sytem_ids.deinit(allocator);
+
+    if (systems) |sys| {
+        for (sys) |value| {
+            sytem_ids.appendAssumeCapacity(cetech1.strId32(value));
+        }
+    }
 
     var all_definitions = try cetech1.ArrayList(public.ShaderDefinition).initCapacity(allocator, use_definitions.len + dn + system_count);
     defer all_definitions.deinit(allocator);
+
+    if (systems) |sys| {
+        for (sys) |system| {
+            const shader_def = _g.shader_def_map.get(cetech1.strId32(system)) orelse @panic("where shader def?");
+            all_definitions.appendAssumeCapacity(shader_def);
+
+            try defines.put(allocator, try std.fmt.allocPrintZ(allocator, "CT_SYSTEM_ACTIVATED_{s}", .{system}), {});
+        }
+    }
 
     for (use_definitions) |def_name| {
         const shader_def = _g.shader_def_map.get(def_name) orelse @panic("where shader def?");
@@ -1076,10 +1263,7 @@ fn compileShaderVariant(
         all_definitions.appendAssumeCapacity(d);
     }
 
-    for (systems) |system| {
-        const shader_def = _g.shader_def_map.get(system) orelse @panic("where shader def?");
-        all_definitions.appendAssumeCapacity(shader_def);
-    }
+    try cmn_blocks_w.print("#define CT_SYSTEM_ACTIVATED(x) defined(CT_SYSTEM_ACTIVATED_##x)\n", .{});
 
     try vs_output_struct_w.print("  vec4 position;\n", .{});
     try vs_fill_ouput_struct_w.print("  gl_Position = output.position;\n", .{});
@@ -1090,7 +1274,16 @@ fn compileShaderVariant(
     var vs_export_semantic_counter: usize = 1;
 
     for (all_definitions.items) |shader_def| {
-        state |= shader_def.state;
+        if (shader_def.raster_state) |cs| {
+            raster_state = raster_state.merge(cs);
+        }
+        if (shader_def.color_state) |cs| {
+            color_state = color_state.merge(cs);
+        }
+        if (shader_def.depth_stencil_state) |cs| {
+            depth_stencil_state = depth_stencil_state.merge(cs);
+        }
+
         rgba |= shader_def.rgba;
 
         if (shader_def.common_block) |cb| {
@@ -1106,19 +1299,53 @@ fn compileShaderVariant(
         if (shader_def.imports) |imports| {
             for (imports) |import| {
                 const get_or_put = try main_imports_set.getOrPutValue(allocator, import.name, import);
+
                 if (!get_or_put.found_existing) {
-                    try main_imports_w.print("uniform {s} {s};\n", .{ @tagName(import.type), import.name });
-                    try main_imports_w.print(
-                        \\ {s} load_{s}() {{
-                        \\  return {s};
-                        \\}}
-                        \\
-                    , .{ @tagName(import.type), import.name, import.name });
+                    if (import.type != .buffer) {
+                        try main_imports_w.print("uniform {s} {s};\n", .{ @tagName(import.type), import.name });
+                        try main_imports_w.print(
+                            \\{s} load_{s}() {{
+                            \\  return {s};
+                            \\}}
+                            \\
+                        , .{ @tagName(import.type), import.name, import.name });
+                    } else {
+                        const t = switch (import.buffer_type.?) {
+                            .float => "float",
+                            .vec4 => "vec4",
+                        };
+
+                        const acces = switch (import.buffer_acces.?) {
+                            .read => "RO",
+                            .write => "WO",
+                            .read_write => "RW",
+                        };
+
+                        const get_or_put_idx = try shader.resources.getOrPut(allocator, cetech1.strId32(import.name));
+                        const binding_idx = blk: {
+                            if (get_or_put_idx.found_existing) {
+                                break :blk get_or_put_idx.value_ptr.*;
+                            } else {
+                                const idx = shader.resources.count();
+                                get_or_put_idx.value_ptr.* = idx;
+                                break :blk idx;
+                            }
+                        };
+
+                        try main_imports_w.print("BUFFER_{s}({s}, {s}, {d});\n", .{ acces, import.name, t, binding_idx });
+                        try cmn_blocks_w.print("#define load_{s}_buffer(idx) ({s}[idx])\n", .{ import.name, import.name });
+                    }
                 }
             }
         }
 
         if (shader_def.vertex_block) |vb| {
+            if (vb.import_semantic) |import_semantics| {
+                for (import_semantics) |value| {
+                    try vs_import_semantics.put(allocator, value, {});
+                }
+            }
+
             if (vb.imports) |imports| {
                 for (imports, 0..) |value, idx| {
                     if (!try vs_imports_set.add(allocator, value)) continue;
@@ -1198,7 +1425,10 @@ fn compileShaderVariant(
                 try vs_cmn_blocks_w.writeAll(cb);
             }
 
-            try vs_blocks_w.writeAll(vb.code);
+            if (vb.code) |code| {
+                try vs_blocks_w.writeAll(code);
+            }
+
             try vs_blocks_w.writeAll("\n");
         }
 
@@ -1207,8 +1437,40 @@ fn compileShaderVariant(
                 try fs_cmn_blocks_w.writeAll(cb);
             }
 
-            try fs_blocks_w.writeAll(fb.code);
+            if (fb.code) |code| {
+                try fs_blocks_w.writeAll(code);
+            }
+
             try fs_blocks_w.writeAll("\n");
+        }
+    }
+
+    if (variant.raster_state) |cs| {
+        raster_state = raster_state.merge(cs);
+    }
+    if (variant.color_state) |cs| {
+        color_state = color_state.merge(cs);
+    }
+    if (variant.depth_stencil_state) |cs| {
+        depth_stencil_state = depth_stencil_state.merge(cs);
+    }
+
+    for (vs_import_semantics.keys()) |semantic| {
+        switch (semantic) {
+            .vertex_id => {
+                try vs_input_struct_w.print("  {s} {s};\n", .{
+                    "uint",
+                    "vertex_id",
+                });
+                try vs_fill_input_struct_w.print("  input.{s} = {s};\n", .{ "vertex_id", "gl_VertexID" });
+            },
+            .instance_id => {
+                try vs_input_struct_w.print("  {s} {s};\n", .{
+                    "uint",
+                    "instance_id",
+                });
+                try vs_fill_input_struct_w.print("  input.{s} = {s};\n", .{ "instance_id", "gl_InstanceID" });
+            },
         }
     }
 
@@ -1226,6 +1488,7 @@ fn compileShaderVariant(
         \\
         \\// bgfx_shader.sh
         \\{s}
+        \\{s}
         \\
         \\// INPUTS
         \\struct ct_input {{
@@ -1237,10 +1500,10 @@ fn compileShaderVariant(
         \\{s}
         \\}};
         \\
-        \\// Common block
+        \\// Uniforms
         \\{s}
         \\
-        \\// Uniforms
+        \\// Common block
         \\{s}
         \\
         \\// Common vs block
@@ -1264,13 +1527,13 @@ fn compileShaderVariant(
             vs_imports.items,
             vs_exports.items,
             bgfx_shader,
+            bgfx_compute,
 
             if (vs_input_struct.items.len != 0) vs_input_struct.items else "",
             if (vs_output_struct.items.len != 0) vs_output_struct.items else "",
 
-            if (cmn_blocks.items.len != 0) cmn_blocks.items else "",
-
             if (main_imports.items.len != 0) main_imports.items else "",
+            if (cmn_blocks.items.len != 0) cmn_blocks.items else "",
 
             if (vs_cmn_blocks.items.len != 0) vs_cmn_blocks.items else "",
             if (vs_fill_input_struct.items.len != 0) vs_fill_input_struct.items else "",
@@ -1295,6 +1558,7 @@ fn compileShaderVariant(
         \\
         \\// bgfx_shader.sh
         \\{s}
+        \\{s}
         \\
         \\// INPUTS
         \\struct ct_input {{
@@ -1306,10 +1570,10 @@ fn compileShaderVariant(
         \\{s}
         \\}};
         \\
-        \\// Common block
+        \\// Uniforms
         \\{s}
         \\
-        \\// Uniforms
+        \\// Common block
         \\{s}
         \\
         \\// Common vs block
@@ -1332,14 +1596,15 @@ fn compileShaderVariant(
         .{
             fs_imports.items,
             bgfx_shader,
+            bgfx_compute,
             if (fs_input_struct.items.len != 0) fs_input_struct.items else "",
             if (fs_output_struct.items.len != 0) fs_output_struct.items else "",
 
+            if (main_imports.items.len != 0) main_imports.items else "",
             if (cmn_blocks.items.len != 0) cmn_blocks.items else "",
 
-            if (main_imports.items.len != 0) main_imports.items else "",
-
             if (fs_cmn_blocks.items.len != 0) fs_cmn_blocks.items else "",
+
             if (fs_fill_input_struct.items.len != 0) fs_fill_input_struct.items else "",
             if (fs_blocks.items.len != 0) fs_blocks.items else "",
 
@@ -1348,40 +1613,52 @@ fn compileShaderVariant(
     );
     defer allocator.free(fs_source);
     //std.debug.print("FS:\n{s}\n", .{fs_source});
+    //std.debug.print("FS:\n{s}\n", .{main_imports.items});
 
     var h = std.hash.Wyhash.init(0);
     h.update(vs_source);
     h.update(fs_source);
     const hash = h.final();
 
-    var shader = public.ShaderVariant{
+    const state = raster_state.toState() | color_state.toState() | depth_stencil_state.toState();
+
+    var shader_variant = public.ShaderVariant{
         .hash = hash,
         .state = state,
         .rgba = rgba,
         .layer = layer,
-        .system_set = systemsToSet(systems),
+        .system_set = systemsToSet(sytem_ids.items),
     };
 
     for (main_imports_set.values()) |value| {
-        const u_type: gpu.UniformType = switch (value.type) {
-            .mat3 => .Mat3,
-            .mat4 => .Mat4,
-            .vec4 => .Vec4,
-        };
+        if (shader.uniforms.contains(cetech1.strId32(value.name))) continue;
 
-        const u = _gpu.createUniform(value.name, u_type, 1);
-        try shader.uniforms.put(allocator, cetech1.strId32(value.name), u);
+        switch (value.type) {
+            .mat3 => {
+                const u = _gpu.createUniform(value.name, .Mat3, 1);
+                try shader.uniforms.put(allocator, cetech1.strId32(value.name), u);
+            },
+            .mat4 => {
+                const u = _gpu.createUniform(value.name, .Mat4, 1);
+                try shader.uniforms.put(allocator, cetech1.strId32(value.name), u);
+            },
+            .vec4 => {
+                const u = _gpu.createUniform(value.name, .Vec4, 1);
+                try shader.uniforms.put(allocator, cetech1.strId32(value.name), u);
+            },
+            else => {},
+        }
     }
 
     const cached_program = try _g.program_cache.getOrPut(_allocator, hash);
     if (cached_program.found_existing) {
-        shader.prg = cached_program.value_ptr.*;
+        shader_variant.prg = cached_program.value_ptr.*;
 
-        if (shader.prg) |prg| {
+        if (shader_variant.prg) |prg| {
             _ = _g.program_counter.items[prg.idx].fetchAdd(1, .monotonic);
         }
 
-        return shader;
+        return shader_variant;
     }
 
     // Compile shader
@@ -1399,70 +1676,41 @@ fn compileShaderVariant(
     const programHandle = _gpu.createProgram(vs_cubes, fs_cubes, true);
 
     cached_program.value_ptr.* = programHandle;
-    shader.prg = programHandle;
+    shader_variant.prg = programHandle;
 
     log.debug("prg: {d}", .{programHandle.idx});
     _g.program_counter.items[programHandle.idx] = cetech1.heap.AtomicInt.init(1);
 
-    return shader;
+    return shader_variant;
 }
 
 fn selectShaderVariant(
+    allocator: std.mem.Allocator,
     shader_instance: public.ShaderInstance,
     context: cetech1.StrId32,
-    systems: public.SystemSet,
-) ?*const public.ShaderVariant {
+    shader_context: *const public.ShaderContext,
+) ![]*const public.ShaderVariant {
     const inst = _g.shader_pool.get(shader_instance.idx);
 
-    const variants = inst.variants.get(context) orelse return null;
+    var result = cetech1.ArrayList(*const public.ShaderVariant){};
+
+    const variants = inst.variants.get(context) orelse return try result.toOwnedSlice(allocator);
+    try result.ensureTotalCapacity(allocator, variants.items.len);
+
+    var set = public.SystemSet.initEmpty();
+    const true_shader_context: *const ShaderContext = @alignCast(@ptrCast(shader_context.ptr));
+
+    for (true_shader_context.systems[0..true_shader_context.count]) |system| {
+        set.set(system.system_idx);
+    }
 
     for (variants.items) |*variant| {
-        const intersection = systems.intersectWith(variant.system_set);
-        if (intersection.count() == variant.system_set.count()) {
-            return variant;
+        if (variant.system_set.subsetOf(set)) {
+            result.appendAssumeCapacity(variant);
         }
     }
 
-    return null;
-}
-
-fn submitUniforms(encoder: gpu.Encoder, variant: *const public.ShaderVariant, shader_instance: public.ShaderInstance) void {
-    if (shader_instance.uniforms) |uniforms| {
-        for (uniforms.data.keys(), uniforms.data.values()) |k, v| {
-            const handler = variant.uniforms.get(k) orelse continue;
-            encoder.setUniform(handler, v.ptr, 1);
-        }
-    }
-}
-
-// fn submit(shader_instance: public.ShaderInstance, context: ?cetech1.StrId32, systems: []const cetech1.StrId32, builder: renderer.GraphBuilder, encoder: gpu.Encoder) void {
-//     const inst = _g.shader_pool.get(shader_instance.idx);
-
-//     if (selectShaderVariant(inst, context.?, systems)) |variant| {
-//         if (variant.prg) |prg| {
-//             if (shader_instance.uniforms) |uniforms| {
-//                 for (uniforms.keys(), uniforms.values()) |k, v| {
-//                     const handler = variant.uniforms.get(k).?;
-//                     _gpu.setUniform(handler, v.ptr, 1);
-//                 }
-//             }
-
-//             const layer = if (variant.layer) |l| builder.getLayerById(l) else 256; // TODO: SHIT
-//             encoder.setState(variant.state, variant.rgba);
-//             encoder.submit(layer, prg, 0, 255);
-//         }
-//     }
-// }
-
-fn submitSystem(encoder: gpu.Encoder, system_instance: public.SystemInstance) void {
-    if (system_instance.uniforms) |uniforms| {
-        for (uniforms.data.keys(), uniforms.data.values()) |k, v| {
-            const system = _g.system_pool[system_instance.system_idx];
-
-            const handler = system.uniforms.get(k).?;
-            encoder.setUniform(handler, v.ptr, 1);
-        }
-    }
+    return result.toOwnedSlice(allocator);
 }
 
 fn destroyShader(shader_instance: public.Shader) void {
@@ -1485,46 +1733,116 @@ fn destroyShader(shader_instance: public.Shader) void {
     _g.shader_pool.destroy(inst) catch undefined;
 }
 
-var shit_lock = std.Thread.Mutex{};
 fn createShaderInstance(shader: public.Shader) !public.ShaderInstance {
     const inst = _g.shader_pool.get(shader.idx);
 
-    // shit_lock.lock();
-    // defer shit_lock.unlock();
-    var max_u: usize = 0;
-    for (inst.variants.values()) |variants| {
-        for (variants.items) |variant| {
-            max_u = @max(max_u, variant.uniforms.count());
-        }
-    }
-
-    const umap = try public.UniformMap.init(_allocator, max_u);
-
-    return .{ .idx = shader.idx, .uniforms = umap };
+    return .{
+        .idx = shader.idx,
+        .uniforms = try createUniformBuffer(inst.uniforms.count()),
+        .resouces = try createResourceBuffer(inst.resources.count()),
+    };
 }
-fn destroyShaderInstance(shader: *public.ShaderInstance) void {
-    // shit_lock.lock();
-    // defer shit_lock.unlock();
 
-    if (shader.uniforms) |*u| {
-        u.deinit();
+fn destroyShaderInstance(shader: *public.ShaderInstance) void {
+    if (shader.uniforms) |u| {
+        destroyUniformBuffer(u);
+    }
+    if (shader.resouces) |u| {
+        destroyResourceBuffer(u);
     }
 }
 
 fn createSystemInstance(system_id: cetech1.StrId32) !public.SystemInstance {
     const system_idx = _g.system_to_idx.get(system_id) orelse return .{ .system_idx = 0 };
+
     const system = _g.system_pool[system_idx];
 
-    const umap = try public.UniformMap.init(_allocator, system.uniforms.count());
-
-    return .{ .system_idx = system_idx, .uniforms = umap };
+    return .{
+        .system_idx = system_idx,
+        .uniforms = try createUniformBuffer(system.uniform_count),
+        .resources = try createResourceBuffer(system.resource_count),
+    };
 }
 
 fn destroySystemInstance(system: *public.SystemInstance) void {
-    if (system.uniforms) |*u| {
-        u.deinit();
+    if (system.uniforms) |u| {
+        destroyUniformBuffer(u);
+    }
+
+    if (system.resources) |u| {
+        destroyResourceBuffer(u);
     }
 }
+
+fn createUniformBuffer(count: usize) !public.UniformBuffer {
+    var new: bool = false;
+    const buffer = _g.uniform_buffer_pool.create(&new);
+
+    if (new) {
+        buffer.* = .init();
+    } else {
+        buffer.clear();
+    }
+
+    try buffer.data.ensureTotalCapacity(_allocator, count);
+
+    return .{ .ptr = buffer, .vtable = &buffer_vt };
+}
+fn destroyUniformBuffer(buffer: public.UniformBuffer) void {
+    const true_buffer: *UniformBuffer = @alignCast(@ptrCast(buffer.ptr));
+    _g.uniform_buffer_pool.destroy(true_buffer) catch undefined;
+}
+
+fn createResourceBuffer(count: usize) !public.ResourceBuffer {
+    var new: bool = false;
+    const buffer = _g.resource_buffer_pool.create(&new);
+
+    if (new) {
+        buffer.* = .init();
+    } else {
+        buffer.clear();
+    }
+
+    try buffer.data.ensureTotalCapacity(_allocator, count);
+
+    return .{ .ptr = buffer, .vtable = &resource_buffer_vt };
+}
+fn destroyResourceBuffer(buffer: public.ResourceBuffer) void {
+    const true_buffer: *ResourceBuffer = @alignCast(@ptrCast(buffer.ptr));
+    _g.resource_buffer_pool.destroy(true_buffer) catch undefined;
+}
+
+fn createShaderContext() !public.ShaderContext {
+    var new: bool = false;
+    const buffer = _g.shader_context_pool.create(&new);
+
+    if (new) {
+        buffer.* = .init();
+    } else {
+        buffer.clear();
+    }
+
+    return .{ .ptr = buffer, .vtable = &shader_context_vt };
+}
+fn destroyShaderContext(buffer: public.ShaderContext) void {
+    const true_buffer: *ShaderContext = @alignCast(@ptrCast(buffer.ptr));
+    _g.shader_context_pool.destroy(true_buffer) catch undefined;
+}
+
+fn cloneShaderContext(context: public.ShaderContext) !public.ShaderContext {
+    const new = try createShaderContext();
+
+    const true_new: *ShaderContext = @alignCast(@ptrCast(new.ptr));
+    const true_context: *ShaderContext = @alignCast(@ptrCast(context.ptr));
+
+    true_new.* = true_context.*;
+
+    return new;
+}
+
+const MAX_UNIFORM_BUFFERS = 4 * 1024;
+const MAX_RESOUREC_BUFFERS = 4 * 1024;
+const MAX_SHADER_CONTEXT = 128;
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
     "ShaderSystem",
@@ -1547,6 +1865,10 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
 
             _g.system_to_idx = .{};
             _g.system_counter = cetech1.heap.AtomicInt.init(0);
+
+            _g.uniform_buffer_pool = try UniformBufferPool.init(_allocator, MAX_UNIFORM_BUFFERS);
+            _g.resource_buffer_pool = try ResourceBufferPool.init(_allocator, MAX_RESOUREC_BUFFERS);
+            _g.shader_context_pool = try ShaderContextPool.init(_allocator, MAX_SHADER_CONTEXT);
 
             // Shaderlib from BGFX
             try api.addShaderDefiniton("shaderlib", .{
@@ -1578,17 +1900,13 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                 },
             });
 
-            // Time system
-            try api.addSystemDefiniton("time_system", .{
-                .imports = &.{
-                    .{ .name = "time", .type = .vec4 },
-                },
-            });
-
             // Viewer system
             try api.addSystemDefiniton(
                 "viewer_system",
                 .{
+                    .imports = &.{
+                        .{ .name = "camera_pos", .type = .vec4 },
+                    },
                     .common_block =
                     \\vec4 load_view_rect() {
                     \\  return u_viewRect;
@@ -1625,72 +1943,118 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                 },
             );
 
-            // Foo output node
-            try api.addShaderDefiniton("node_foo_output", .{
-                .graph_node = .{
-                    .name = "node_foo_output",
-                    .display_name = "Foo Output",
-                    .category = "FOO",
-
-                    .inputs = &.{
-                        .{ .name = "position", .display_name = "Position", .type = .vec4, .stage = public.TranspileStages.Vertex },
-                        .{ .name = "color", .display_name = "Color", .type = .vec4, .stage = public.TranspileStages.Fragment, .contexts = &.{ "default", "color" } },
-                    },
-                },
-
-                .vertex_block = .{
+            // Viewer system
+            try api.addSystemDefiniton(
+                "vertex_system",
+                .{
                     .imports = &.{
-                        .position,
-                        .color0,
+                        .{ .name = "vertex_system_data1", .type = .vec4 },
+                        .{ .name = "vertex_system_offsets", .type = .mat4 },
+                        .{ .name = "vertex_system_strides", .type = .mat4 },
+                        .{ .name = "vertex_system_buffer_idx", .type = .mat4 },
+                        .{ .name = "vertex_system_channel0", .type = .buffer, .buffer_type = .float, .buffer_acces = .read },
+                        .{ .name = "vertex_system_channel1", .type = .buffer, .buffer_type = .float, .buffer_acces = .read },
                     },
-                    .exports = &.{
-                        .{ .name = "color0", .type = .vec4 },
-                    },
-                    .code =
-                    \\  ct_graph graph;
-                    \\  ct_graph_init(graph);
-                    \\  ct_graph_eval(graph, input);
-                    \\
-                    \\  output.position = graph.position;
-                    \\  output.color0 = a_color0;
-                    ,
-                },
-                .fragment_block = .{
-                    .exports = &.{
-                        .{ .name = "foo", .type = .vec4, .to_node = true },
-                    },
-                    .code =
-                    \\  ct_graph graph;
-                    \\  ct_graph_init(graph);
-                    \\
-                    \\  graph.foo = vec4(0,1,0,1);
-                    \\
-                    \\  ct_graph_eval(graph, input);
-                    \\
-                    \\  output.color0 = graph.color;
-                    ,
-                },
 
-                .compile = .{
-                    .includes = &.{"shaderlib"},
-                    .configurations = &.{
-                        .{
-                            .name = "default",
-                            .variations = &.{
-                                .{ .systems = &.{ "time_system", "viewer_system" } },
-                            },
-                        },
+                    .common_block =
+                    \\#define CT_VERTEX_SEMANTIC_POSITION 0 
+                    \\#define CT_VERTEX_SEMANTIC_COLOR 1 
+                    \\#define CT_VERTEX_SEMANTIC_MAX 16
+                    \\
+                    \\struct ct_vertex_loader_ctx {
+                    \\  uint instance_id;
+                    \\  uint active_channels;
+                    \\  uint num_vertices;
+                    \\  uint num_sets;
+                    \\  mat4 offset;
+                    \\  mat4 stride;
+                    \\  mat4 buffer_idx;
+                    \\//  vec3 position;
+                    \\};
+                    ,
+                    .vertex_block = .{
+                        .import_semantic = &.{ .vertex_id, .instance_id },
+                        .common_block =
+                        \\#define mat4_read(mat, idx) mat[idx % 4][idx / 3]
+                        \\
+                        \\void init_vertex_loader(inout ct_vertex_loader_ctx ctx, in ct_input input, in uint instance_id) {
+                        \\    ctx = (ct_vertex_loader_ctx)(0);
+                        \\
+                        \\    ctx.instance_id = instance_id;
+                        \\    ctx.active_channels = uint(load_vertex_system_data1().x);
+                        \\    ctx.num_vertices = uint(load_vertex_system_data1().y);
+                        \\    ctx.num_sets = uint(load_vertex_system_data1().z);
+                        \\
+                        \\    ctx.offset = vertex_system_offsets;
+                        \\    ctx.stride = vertex_system_strides;
+                        \\    ctx.buffer_idx = vertex_system_buffer_idx;
+                        \\
+                        \\    ctx.stride = vertex_system_strides;
+                        \\    ctx.buffer_idx = vertex_system_buffer_idx;
+                        \\
+                        \\    // ctx.position = input.a_position;
+                        \\}
+                        \\
+                        \\float vertex_system_load_float(in uint channel_idx, in uint offset) {
+                        \\    switch (channel_idx) {
+                        \\        case 0: return load_vertex_system_channel0_buffer(offset);
+                        \\        case 1: return load_vertex_system_channel1_buffer(offset);
+                        \\        default: return 0;
+                        \\    }
+                        \\}
+                        \\
+                        \\vec2 vertex_system_load_vec2(in uint channel_idx, in uint offset) {
+                        \\    switch (channel_idx) {
+                        \\        case 0: return vec2(load_vertex_system_channel0_buffer(offset), load_vertex_system_channel0_buffer(offset + 1));
+                        \\        case 1: return vec2(load_vertex_system_channel1_buffer(offset), load_vertex_system_channel1_buffer(offset + 1));
+                        \\        default: return vec2_splat(0);
+                        \\    }
+                        \\}
+                        \\
+                        \\vec3 vertex_system_load_vec3(in uint channel_idx, in uint offset) {
+                        \\    switch (channel_idx) {
+                        \\        case 0: return vec3(load_vertex_system_channel0_buffer(offset), load_vertex_system_channel0_buffer(offset + 1), load_vertex_system_channel0_buffer(offset + 2));
+                        \\        case 1: return vec3(load_vertex_system_channel1_buffer(offset), load_vertex_system_channel1_buffer(offset + 1), load_vertex_system_channel1_buffer(offset + 2));
+                        \\        default: return vec3_splat(0);
+                        \\    }
+                        \\}
+                        \\
+                        \\vec4 vertex_system_load_vec4(in uint channel_idx, in uint offset) {
+                        \\    switch (channel_idx) {
+                        \\        case 0: return vec4(load_vertex_system_channel0_buffer(offset), load_vertex_system_channel0_buffer(offset + 1), load_vertex_system_channel0_buffer(offset + 2), load_vertex_system_channel0_buffer(offset + 3));
+                        \\        case 1: return vec4(load_vertex_system_channel1_buffer(offset), load_vertex_system_channel1_buffer(offset + 1), load_vertex_system_channel1_buffer(offset + 2), load_vertex_system_channel1_buffer(offset + 3));
+                        \\        default: return vec4_splat(0);
+                        \\    }
+                        \\}
+                        \\
+                        \\bool vertex_system_has_channel(in ct_vertex_loader_ctx ctx, in uint channel_id) {
+                        \\    return ctx.active_channels & (1 << channel_id);
+                        \\}
+                        \\
+                        \\vec4 load_vertex_position(in ct_vertex_loader_ctx ctx, in uint vertex_id, in uint set) {
+                        \\    uint offset = (set * ctx.num_vertices + vertex_id) * floatBitsToUint(mat4_read(ctx.stride, CT_VERTEX_SEMANTIC_POSITION)) + floatBitsToUint(mat4_read(ctx.offset, CT_VERTEX_SEMANTIC_POSITION));
+                        \\    uint buffer_idx = floatBitsToUint(ctx.buffer_idx[CT_VERTEX_SEMANTIC_POSITION]);
+                        \\    return vertex_system_has_channel(ctx, CT_VERTEX_SEMANTIC_POSITION) ? vec4(vertex_system_load_vec3(buffer_idx, offset), 1) : vec4(0, 0, 0, 1);
+                        \\}
+                        \\
+                        \\vec4 load_vertex_color(in ct_vertex_loader_ctx ctx, in uint vertex_id, in uint set) {
+                        \\    uint offset = (set * ctx.num_vertices + vertex_id) * floatBitsToUint(mat4_read(ctx.stride, CT_VERTEX_SEMANTIC_COLOR)) + floatBitsToUint(mat4_read(ctx.offset, CT_VERTEX_SEMANTIC_COLOR));
+                        \\    uint buffer_idx = floatBitsToUint(ctx.buffer_idx[CT_VERTEX_SEMANTIC_COLOR]);
+                        \\    return vertex_system_has_channel(ctx, CT_VERTEX_SEMANTIC_COLOR) ? vertex_system_load_vec4(buffer_idx, offset) : vec4(1, 0, 0, 1);
+                        \\}
+                        ,
+                        .code =
+                        \\ct_vertex_loader_ctx vertex_ctx;
+                        \\init_vertex_loader(vertex_ctx, input, input.instance_id);
+                        ,
                     },
-                    .contexts = &.{
-                        .{
-                            .name = "viewport",
-                            .defs = &.{
-                                .{ .layer = "color", .config = "default" },
-                            },
-                        },
-                    },
+                    // .fragment_block = .{
+                    //     .code =
+                    //     \\ct_vertex_loader_ctx vertex_ctx;
+                    //     ,
+                    // },
                 },
-            });
+            );
         }
 
         pub fn shutdown() !void {
@@ -1727,6 +2091,21 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             }
 
             _g.system_to_idx.deinit(_allocator);
+
+            for (_g.uniform_buffer_pool.mem.items[0.._g.uniform_buffer_pool.alocated_items.raw]) |*obj| {
+                obj.deinit();
+            }
+            _g.uniform_buffer_pool.deinit();
+
+            for (_g.resource_buffer_pool.mem.items[0.._g.resource_buffer_pool.alocated_items.raw]) |*obj| {
+                obj.deinit();
+            }
+            _g.resource_buffer_pool.deinit();
+
+            for (_g.shader_context_pool.mem.items[0.._g.shader_context_pool.alocated_items.raw]) |*obj| {
+                obj.deinit();
+            }
+            _g.shader_context_pool.deinit();
         }
     },
 );
@@ -2059,7 +2438,7 @@ const gpu_vertex_position_node_i = graphvm.NodeI.implement(
             const real_state = std.mem.bytesAsValue(public.GpuTranspileState, state);
             _ = real_state; // autofix
 
-            const val = public.GpuValue{ .str = "input.a_position" };
+            const val = public.GpuValue{ .str = "load_vertex_position(graph.vertex_ctx, input.vertex_id, 0)" };
             try out_pins.writeTyped(public.GpuValue, 0, cetech1.strId64(val.str).id, val);
         }
 
@@ -2174,7 +2553,7 @@ const gpu_mul_mvp_node_i = graphvm.NodeI.implement(
             _, const position = in_pins.read(public.GpuValue, 0) orelse .{ 0, public.GpuValue{ .str = "a_position" } };
 
             const val = public.GpuValue{
-                .str = try std.fmt.allocPrint(args.allocator, "mul(u_modelViewProj, vec4({s}, 1.0))", .{position.str}),
+                .str = try std.fmt.allocPrint(args.allocator, "mul(u_modelViewProj, vec4({s}.xyz, 1.0))", .{position.str}),
             };
 
             try out_pins.writeTyped(public.GpuValue, 0, cetech1.strId64(val.str).id, val);
