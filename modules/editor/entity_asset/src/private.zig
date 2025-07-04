@@ -8,7 +8,6 @@ const node_editor = cetech1.coreui_node_editor;
 const assetdb = cetech1.assetdb;
 const cdb_types = cetech1.cdb_types;
 const ecs = cetech1.ecs;
-const strid = cetech1.strid;
 
 const editor = @import("editor");
 const Icons = coreui.CoreIcons;
@@ -339,8 +338,7 @@ var component_visual_aspect = editor.UiVisualAspect.implement(struct {
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
     ) ![:0]const u8 {
-        _ = allocator; // autofix
-
+        _ = allocator;
         const db = _cdb.getDbFromObjid(obj);
         const component_cdb_type = _cdb.getTypeHash(db, obj.type_idx).?;
         const iface = _ecs.findComponentIByCdbHash(component_cdb_type).?;

@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+// TODO: find in folder
 const patches = [_][]const u8{
     "patches/zf.patch",
     "patches/zgui.patch",

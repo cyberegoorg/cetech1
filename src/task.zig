@@ -102,7 +102,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
             std.debug.assert(isLiveCycle(new_cycle));
 
             {
-                const acquired: bool = null == self.cycle.cmpxchgWeak(
+                const acquired: bool = null == self.cycle.cmpxchgStrong(
                     old_cycle,
                     new_cycle,
                     .monotonic,
@@ -141,7 +141,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
             std.debug.assert(old_id2 == id);
 
             {
-                const released: bool = null == self.cycle.cmpxchgWeak(
+                const released: bool = null == self.cycle.cmpxchgStrong(
                     old_cycle,
                     new_cycle,
                     .monotonic,
@@ -169,7 +169,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
         tasks: [queue_config.max_jobs]Slot align(cache_line_size) = @splat(.{}),
         free_tasks: FreeQueue = undefined,
 
-        lock: std.Thread.Mutex = .{},
+        job_signal: std.Thread.Semaphore = .{},
 
         pub fn init(allocator: std.mem.Allocator) !Self {
             var self = Self{
@@ -194,11 +194,15 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
             return self.running.load(.monotonic);
         }
 
-        pub fn start(self: *Self) !void {
-            const cpu_count = (std.Thread.getCpuCount() catch 2);
-            const cpu_core_count = @max(2, if (builtin.cpu.arch == .x86_64) cpu_count / 2 else cpu_count); // TODO:
+        pub fn start(self: *Self, worker_count: ?u32) !void {
+            const cpu_count = std.Thread.getCpuCount() catch 1;
+            var cpu_core_count = @max(2, if (builtin.cpu.arch == .x86_64) cpu_count / 2 else cpu_count); // TODO: Is hyperthreding good or bad?
 
-            self.num_threads = @intCast(@min(queue_config.max_threads, @max(1, (cpu_core_count))));
+            // const cpu_core_count = cpu_count;
+            if (worker_count) |count| {
+                cpu_core_count = @max(2, count);
+            }
+            self.num_threads = @intCast(@min(queue_config.max_threads, cpu_core_count));
             // self.num_threads = 2;
             // self.num_threads = 1;
             log.info("Using {} threads for {} cores", .{ self.num_threads, cpu_core_count });
@@ -263,7 +267,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
                 var w = self.getWorker();
                 w.pushJob(id);
             }
-
+            self.job_signal.post();
             return id;
         }
 
@@ -289,13 +293,16 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
             }
 
             while (self.isRunning()) {
-                if (self.getWorkToDo()) |task| {
+                if (self.getWorkToDo(false)) |task| {
                     const slot = &self.tasks[task.index()];
 
                     if (slot.executeJob(task)) {
                         self.freeTaskIdx(task.index());
                     }
                 } else {
+                    //self.job_signal.timedWait(queue_config.idle_sleep_ns) catch undefined;
+                    // self.job_signal.wait();
+                    //std.Thread.yield() catch undefined;
                     std.time.sleep(queue_config.idle_sleep_ns);
                 }
             }
@@ -315,7 +322,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
             return &self.workers[wid];
         }
 
-        fn getWorkToDo(self: *Self) ?public.TaskID {
+        fn getWorkToDo(self: *Self, only_prio: bool) ?public.TaskID {
 
             // var zone_ctx = profiler.ztracy.Zone(@src());
             // defer zone_ctx.End();
@@ -326,10 +333,14 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
 
             {
                 defer {
+                    // var zone_ctx = profiler.ztracy.Zone(@src());
+
                     for (0..self_w.buffer.items.len) |idx| {
                         self_w.pushPrioJob(self_w.buffer.items[idx]);
                     }
                     self_w.buffer.clearRetainingCapacity();
+
+                    // zone_ctx.End();
                 }
 
                 while (self_w.popPrioJob()) |task| {
@@ -371,16 +382,24 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
                 }
             }
 
+            if (only_prio) {
+                return null;
+            }
+
             for (0..self.num_threads) |value| {
                 const worker_idx = (wid + value) % self.num_threads;
 
                 var w = &self.workers[worker_idx];
 
                 defer {
+                    // var zone_ctx = profiler.ztracy.Zone(@src());
                     for (0..self_w.buffer.items.len) |idx| {
-                        self_w.pushJob(self_w.buffer.items[idx]);
+                        if (!self.isDone(self_w.buffer.items[idx])) {
+                            self_w.pushJob(self_w.buffer.items[idx]);
+                        }
                     }
                     self_w.buffer.clearRetainingCapacity();
+                    // zone_ctx.End();
                 }
 
                 while (w.stealJob()) |task| {
@@ -431,31 +450,37 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
             for (tasks) |task| {
                 if (task == .none) continue;
                 const _id = task.fields();
+
                 std.debug.assert(isLiveCycle(_id.cycle));
+
                 while (!self.isDone(task)) {
-                    if (self.getWorkToDo()) |t| {
+                    if (self.getWorkToDo(false)) |t| {
                         var task_slot = &self.tasks[t.index()];
                         if (task_slot.executeJob(t)) {
                             self.freeTaskIdx(t.index());
                         }
+                    } else {
+                        // self.job_signal.timedWait(queue_config.idle_sleep_ns) catch undefined;
+                        // self.job_signal.wait();
                     }
                     std.time.sleep(queue_config.idle_sleep_ns);
                 }
             }
         }
 
-        pub fn doOneTask(self: *Self) void {
-            if (self.getWorkToDo()) |t| {
+        pub fn doOneTask(self: *Self, only_prio: bool) void {
+            if (self.getWorkToDo(only_prio)) |t| {
                 var task_slot = &self.tasks[t.index()];
                 if (task_slot.executeJob(t)) {
                     self.freeTaskIdx(t.index());
                 }
             }
-            //std.time.sleep(queue_config.idle_sleep_ns);
+            std.time.sleep(queue_config.idle_sleep_ns);
         }
 
         pub fn isDone(self: *Self, task: public.TaskID) bool {
             if (task == .none) return true;
+
             const _id = task.fields();
             const cycle = _id.cycle;
             var slot: *Slot = &self.tasks[_id.index];
@@ -521,8 +546,8 @@ fn getWorkerId() usize {
     return _job_system.getWokerId();
 }
 
-fn doOneTask() void {
-    _job_system.doOneTask();
+fn doOneTask(only_prio: bool) void {
+    _job_system.doOneTask(only_prio);
 }
 
 const JobSystemImpl = JobSystem(.{
@@ -542,8 +567,8 @@ pub fn deinit() void {
     _job_system.deinit();
 }
 
-pub fn start() !void {
-    try _job_system.start();
+pub fn start(worker_count: ?u32) !void {
+    try _job_system.start(worker_count);
 }
 
 pub fn stop() void {
@@ -619,7 +644,7 @@ test "task: basic test" {
     var job_system = try Queue.init(allocator);
     defer job_system.deinit();
 
-    try job_system.start();
+    try job_system.start(null);
     defer job_system.stop();
 
     const TaskA = struct {
@@ -689,7 +714,7 @@ test "task: spawn task from task" {
     var job_system = try Queue.init(allocator);
     defer job_system.deinit();
 
-    try job_system.start();
+    try job_system.start(null);
     defer job_system.stop();
 
     // log.err("dasdasdasda", .{});

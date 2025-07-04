@@ -8,7 +8,7 @@ const coreui = cetech1.coreui;
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
 const assetdb = cetech1.assetdb;
-const strid = cetech1.strid;
+
 const Tag = assetdb.Tag;
 
 const editor = @import("editor");

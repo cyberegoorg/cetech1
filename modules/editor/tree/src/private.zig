@@ -5,7 +5,7 @@ const public = @import("editor_tree.zig");
 
 const cetech1 = @import("cetech1");
 const coreui = cetech1.coreui;
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 
 const editor = @import("editor");
@@ -34,6 +34,7 @@ var _editor: *const editor.EditorAPI = undefined;
 var _assetdb: *const cetech1.assetdb.AssetDBAPI = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
+var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
 
 // Global state
 const G = struct {};
@@ -203,6 +204,9 @@ fn cdbTreeView(
     depth: u32,
     args: public.CdbTreeViewArgs,
 ) !bool {
+    var zone_ctx = _profiler.ZoneN(@src(), "cdbTreeView");
+    defer zone_ctx.End();
+
     const db = _cdb.getDbFromObjid(obj.obj);
 
     // if exist aspect use it
@@ -271,6 +275,9 @@ fn cdbTreeView(
         switch (prop_def.type) {
             //.SUBOBJECT, .REFERENCE => {
             .SUBOBJECT => {
+                var zz = _profiler.ZoneN(@src(), "cdbTreeView - subobject");
+                defer zz.End();
+
                 var subobj: cdb.ObjId = undefined;
 
                 // if (prop_def.type == .REFERENCE) {
@@ -279,9 +286,9 @@ fn cdbTreeView(
                 subobj = _cdb.readSubObj(_cdb.readObj(obj.obj).?, prop_idx) orelse continue;
                 // }
 
-                if (_cdb.getAspect(editor_inspector.UiEmbedPropertiesAspect, db, subobj.type_idx) != null) {
-                    continue;
-                }
+                // if (_cdb.getAspect(editor_inspector.UiEmbedPropertiesAspect, db, subobj.type_idx) != null) {
+                //     continue;
+                // }
 
                 const label = try std.fmt.bufPrintZ(
                     &buff,
@@ -330,6 +337,9 @@ fn cdbTreeView(
             },
             //.SUBOBJECT_SET, .REFERENCE_SET => {
             .SUBOBJECT_SET => {
+                var zz = _profiler.ZoneN(@src(), "cdbTreeView - subobject set");
+                defer zz.End();
+
                 const prop_label = try std.fmt.bufPrintZ(
                     &buff,
                     "{s}  {s} {s}###{s}",
@@ -397,10 +407,15 @@ fn cdbTreeView(
 
                         const ui_sort_aspect = _cdb.getPropertyAspect(editor.UiSetSortPropertyAspect, db, obj.obj.type_idx, prop_idx);
                         if (ui_sort_aspect) |aspect| {
+                            var zzz = _profiler.ZoneN(@src(), "cdbTreeView - subobject set sort");
+                            defer zzz.End();
                             try aspect.sort(allocator, s);
                         }
 
                         for (s, 0..) |subobj, set_idx| {
+                            var zzz = _profiler.ZoneN(@src(), "cdbTreeView - subobject set item");
+                            defer zzz.End();
+
                             const label = _editor.buffFormatObjLabel(allocator, &buff, subobj, true, true) orelse
                                 try std.fmt.bufPrintZ(&buff, "{d}", .{set_idx});
 
@@ -522,6 +537,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _assetdb = apidb.getZigApi(module_name, cetech1.assetdb.AssetDBAPI).?;
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _tempalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
+    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});

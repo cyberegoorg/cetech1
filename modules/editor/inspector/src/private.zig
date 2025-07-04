@@ -5,7 +5,7 @@ const public = @import("editor_inspector.zig");
 
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
-const strid = cetech1.strid;
+
 const assetdb = cetech1.assetdb;
 const coreui = cetech1.coreui;
 const coreui_icons = cetech1.coreui;
@@ -48,7 +48,10 @@ var _profiler: *const profiler.ProfilerAPI = undefined;
 const G = struct {
     tab_vt: *editor.TabTypeI = undefined,
     asset_prop_aspect: *public.UiPropertiesAspect = undefined,
+
     color4f_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+    color3f_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+
     hide_proto_property_config_aspect: *public.UiPropertiesConfigAspect = undefined,
 };
 var _g: *G = undefined;
@@ -402,10 +405,10 @@ fn cdbPropertiesObj(
 
         for (prop_defs, 0..) |prop_def, idx| {
             const prop_idx: u32 = @truncate(idx);
-            const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
+            // const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
 
-            const prop_name = if (visible) try api.formatedPropNameToBuff(&prop_name_buff, prop_def.name) else "";
-            const prop_state = if (visible) _cdb.getRelation(top_level_obj, obj, prop_idx, null) else .not_owned;
+            const prop_name = try api.formatedPropNameToBuff(&prop_name_buff, prop_def.name);
+            const prop_state = _cdb.getRelation(top_level_obj, obj, prop_idx, null);
             const prop_color = _editor.getStateColor(prop_state);
 
             switch (prop_def.type) {
@@ -441,19 +444,16 @@ fn cdbPropertiesObj(
                     const ui_embed_prop_aspect = _cdb.getAspect(public.UiEmbedPropertiesAspect, db, type_idx);
                     if (ui_embed_prop_aspect) |aspect| {
                         const lbl = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
-                        if (visible) {
-                            if (uiPropLabel(allocator, lbl, prop_color, enabled, args)) {
-                                _coreui.tableNextColumn();
-                                if (subobj == null) {
-                                    try objContextMenuBtn(allocator, tab, top_level_obj, obj, prop_idx, null);
-                                } else {
-                                    _coreui.beginDisabled(.{ .disabled = !enabled });
-                                    defer _coreui.endDisabled();
-                                    try aspect.ui_properties(allocator, subobj.?, args);
-                                }
+
+                        if (uiPropLabel(allocator, lbl, prop_color, enabled, args)) {
+                            _coreui.tableNextColumn();
+                            if (subobj == null) {
+                                try objContextMenuBtn(allocator, tab, top_level_obj, obj, prop_idx, null);
+                            } else {
+                                _coreui.beginDisabled(.{ .disabled = !enabled });
+                                defer _coreui.endDisabled();
+                                try aspect.ui_properties(allocator, subobj.?, args);
                             }
-                        } else {
-                            _coreui.dummy(.{ .w = -1, .h = -1 });
                         }
                     }
                     continue;
@@ -512,10 +512,10 @@ fn cdbPropertiesObj(
         _coreui.pushPropName(obj, @truncate(idx));
         defer _coreui.popId();
 
-        const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
+        //const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
 
-        const prop_name = if (visible) try api.formatedPropNameToBuff(&prop_name_buff, prop_def.name) else "";
-        const prop_state = if (visible) _cdb.getRelation(top_level_obj, obj, prop_idx, null) else .not_owned;
+        const prop_name = try api.formatedPropNameToBuff(&prop_name_buff, prop_def.name);
+        const prop_state = _cdb.getRelation(top_level_obj, obj, prop_idx, null);
         const prop_color = _editor.getStateColor(prop_state);
 
         const ui_prop_aspect = _cdb.getPropertyAspect(public.UiPropertyAspect, db, obj.type_idx, prop_idx);
@@ -616,9 +616,10 @@ fn cdbPropertiesObj(
                             try objContextMenuBtn(allocator, tab, top_level_obj, obj, prop_idx, subobj);
                             _coreui.sameLine(.{});
 
-                            const visible_item = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
-                            const label = if (visible_item) _editor.buffFormatObjLabel(allocator, &buff, subobj, true, false) orelse try std.fmt.bufPrintZ(&buff, "{d}", .{set_idx}) else "";
-                            const set_state = if (visible_item) _cdb.getRelation(top_level_obj, obj, prop_idx, subobj) else .not_owned;
+                            //const visible_item = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
+
+                            const label = _editor.buffFormatObjLabel(allocator, &buff, subobj, true, false) orelse try std.fmt.bufPrintZ(&buff, "{d}", .{set_idx});
+                            const set_state = _cdb.getRelation(top_level_obj, obj, prop_idx, subobj);
                             const set_color = _editor.getStateColor(set_state);
 
                             _coreui.pushStyleColor4f(.{ .idx = .text, .c = set_color });
@@ -762,7 +763,7 @@ fn uiPropInputRaw(obj: cdb.ObjId, prop_idx: u32, args: public.cdbPropertiesViewA
 
     const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
     if (!visible) {
-        _coreui.dummy(.{ .w = -1, .h = -1 });
+        _coreui.dummy(.{ .w = -1, .h = _coreui.getFontSize() * _coreui.getScaleFactor() });
         return;
     }
 
@@ -781,7 +782,7 @@ fn uiPropInputRaw(obj: cdb.ObjId, prop_idx: u32, args: public.cdbPropertiesViewA
 
     switch (prop_def.type) {
         .BOOL => {
-            var value = if (visible) _cdb.readValue(bool, reader, prop_idx) else false;
+            var value = _cdb.readValue(bool, reader, prop_idx);
             if (_coreui.checkbox(label, .{
                 .v = &value,
             })) {
@@ -791,7 +792,7 @@ fn uiPropInputRaw(obj: cdb.ObjId, prop_idx: u32, args: public.cdbPropertiesViewA
             }
         },
         .F32 => {
-            var value = if (visible) _cdb.readValue(f32, reader, prop_idx) else 0;
+            var value = _cdb.readValue(f32, reader, prop_idx);
             if (_coreui.dragF32(label, .{
                 .v = &value,
                 .flags = .{
@@ -804,7 +805,7 @@ fn uiPropInputRaw(obj: cdb.ObjId, prop_idx: u32, args: public.cdbPropertiesViewA
             }
         },
         .F64 => {
-            var value = if (visible) _cdb.readValue(f64, reader, prop_idx) else 0;
+            var value = _cdb.readValue(f64, reader, prop_idx);
             if (_coreui.dragF64(label, .{
                 .v = &value,
                 .flags = .{
@@ -817,7 +818,7 @@ fn uiPropInputRaw(obj: cdb.ObjId, prop_idx: u32, args: public.cdbPropertiesViewA
             }
         },
         .I32 => {
-            var value = if (visible) _cdb.readValue(i32, reader, prop_idx) else 0;
+            var value = _cdb.readValue(i32, reader, prop_idx);
             if (_coreui.dragI32(label, .{
                 .v = &value,
                 .flags = .{
@@ -830,7 +831,7 @@ fn uiPropInputRaw(obj: cdb.ObjId, prop_idx: u32, args: public.cdbPropertiesViewA
             }
         },
         .U32 => {
-            var value = if (visible) _cdb.readValue(u32, reader, prop_idx) else 0;
+            var value = _cdb.readValue(u32, reader, prop_idx);
             if (_coreui.dragU32(label, .{
                 .v = &value,
                 .flags = .{
@@ -843,7 +844,7 @@ fn uiPropInputRaw(obj: cdb.ObjId, prop_idx: u32, args: public.cdbPropertiesViewA
             }
         },
         .I64 => {
-            var value = if (visible) _cdb.readValue(i64, reader, prop_idx) else 0;
+            var value = _cdb.readValue(i64, reader, prop_idx);
             if (_coreui.dragI64(label, .{
                 .v = &value,
                 .flags = .{
@@ -856,7 +857,7 @@ fn uiPropInputRaw(obj: cdb.ObjId, prop_idx: u32, args: public.cdbPropertiesViewA
             }
         },
         .U64 => {
-            var value = if (visible) _cdb.readValue(u64, reader, prop_idx) else 0;
+            var value = _cdb.readValue(u64, reader, prop_idx);
             if (_coreui.dragU64(label, .{
                 .v = &value,
                 .flags = .{
@@ -869,7 +870,7 @@ fn uiPropInputRaw(obj: cdb.ObjId, prop_idx: u32, args: public.cdbPropertiesViewA
             }
         },
         .STR => {
-            const name = if (visible) _cdb.readStr(reader, prop_idx) else "";
+            const name = _cdb.readStr(reader, prop_idx);
             if (name) |str| {
                 _ = try std.fmt.bufPrintZ(&buf, "{s}", .{str});
             }
@@ -1031,6 +1032,29 @@ var color4f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
     }
 });
 
+var color3f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+    pub fn ui(
+        allocator: std.mem.Allocator,
+        obj: cdb.ObjId,
+        args: public.cdbPropertiesViewArgs,
+    ) !void {
+        _ = allocator;
+        _ = args;
+
+        _coreui.pushObjUUID(obj);
+        defer _coreui.popId();
+
+        const color = cetech1.cdb_types.Color3f.f.toSlice(_cdb, obj);
+        var c = [4]f32{ color[0], color[1], color[2], 1.0 };
+        _coreui.setNextItemWidth(-1);
+        if (_coreui.colorEdit4("", .{ .col = &c, .flags = .{ .no_alpha = true } })) {
+            const w = _cdb.writeObj(obj).?;
+            cetech1.cdb_types.Color3f.f.fromSlice(_cdb, w, .{ c[0], c[1], c[2] });
+            try _cdb.writeCommit(w);
+        }
+    }
+});
+
 //
 
 const PropertyTab = struct {
@@ -1167,6 +1191,13 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
             _cdb,
             db,
             _g.color4f_properties_aspec,
+        );
+
+        try cetech1.cdb_types.Color3f.addAspect(
+            public.UiEmbedPropertiesAspect,
+            _cdb,
+            db,
+            _g.color3f_properties_aspec,
         );
     }
 });
@@ -1822,8 +1853,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _g.tab_vt = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, INSPECTOR_TAB_NAME, inspector_tab);
 
     _g.asset_prop_aspect = try apidb.setGlobalVarValue(public.UiPropertiesAspect, module_name, ASSET_PROPERTIES_ASPECT_NAME, asset_properties_aspec);
-    _g.color4f_properties_aspec = try apidb.setGlobalVarValue(public.UiEmbedPropertiesAspect, module_name, COLOR4F_PROPERTY_ASPECT_NAME, color4f_properties_aspec);
     _g.hide_proto_property_config_aspect = try apidb.setGlobalVarValue(public.UiPropertiesConfigAspect, module_name, FOLDER_PROPERTY_CONFIG_ASPECT_NAME, folder_properties_config_aspect);
+    _g.color4f_properties_aspec = try apidb.setGlobalVarValue(public.UiEmbedPropertiesAspect, module_name, COLOR4F_PROPERTY_ASPECT_NAME, color4f_properties_aspec);
+    _g.color3f_properties_aspec = try apidb.setGlobalVarValue(public.UiEmbedPropertiesAspect, module_name, COLOR4F_PROPERTY_ASPECT_NAME, color3f_properties_aspec);
 
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(module_name, cdb.PostCreateTypesI, &post_create_types_i, load);

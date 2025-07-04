@@ -15,7 +15,7 @@ const cetech1 = @import("cetech1");
 const public = cetech1.assetdb;
 const cdb = cetech1.cdb;
 const uuid = cetech1.uuid;
-const strid = cetech1.strid;
+
 const platform = cetech1.platform;
 const cdb_types = cetech1.cdb_types;
 
@@ -1406,6 +1406,13 @@ pub fn createObjectWithUuid(type_idx: cdb.TypeIdx, with_uuid: uuid.Uuid) !cdb.Ob
     return obj;
 }
 
+pub fn createEmptyObjectWithUuid(type_idx: cdb.TypeIdx, with_uuid: uuid.Uuid) !cdb.ObjId {
+    //log.debug("Creating new obj with UUID {}", .{with_uuid});
+    const obj = try _cdb.createEmptyObject(_db, type_idx);
+    try _assetroot_fs.mapUuidObjid(with_uuid, obj);
+    return obj;
+}
+
 fn getOrCreateUuid(obj: cdb.ObjId) !uuid.Uuid {
     // _get_or_create_lock.lock();
     // defer _get_or_create_lock.unlock();
@@ -1421,6 +1428,12 @@ fn getOrCreateUuid(obj: cdb.ObjId) !uuid.Uuid {
 
 fn createObject(type_idx: cdb.TypeIdx) !cdb.ObjId {
     const obj = try _cdb.createObject(_db, type_idx);
+    _ = try getOrCreateUuid(obj);
+    return obj;
+}
+
+fn createEmptyObject(type_idx: cdb.TypeIdx) !cdb.ObjId {
+    const obj = try _cdb.createEmptyObject(_db, type_idx);
     _ = try getOrCreateUuid(obj);
     return obj;
 }
@@ -1553,9 +1566,7 @@ fn getUuid(obj: cdb.ObjId) ?uuid.Uuid {
     return _assetroot_fs.getUuid(obj);
 }
 
-fn setAssetNameAndFolder(asset: cdb.ObjId, name: []const u8, description: ?[]const u8, asset_folder: cdb.ObjId) !void {
-    const asset_w = _cdb.writeObj(asset).?;
-
+fn setAssetNameAndFolder(asset_w: *cdb.Obj, name: []const u8, description: ?[]const u8, asset_folder: cdb.ObjId) !void {
     var buffer: [128]u8 = undefined;
 
     if (name.len != 0) {
@@ -1571,23 +1582,23 @@ fn setAssetNameAndFolder(asset: cdb.ObjId, name: []const u8, description: ?[]con
     if (!asset_folder.isEmpty()) {
         try public.Asset.setRef(_cdb, asset_w, .Folder, getObjForAsset(asset_folder).?);
     }
-
-    try _cdb.writeCommit(asset_w);
 }
 
 fn createAsset(asset_name: []const u8, asset_folder: cdb.ObjId, asset_obj: ?cdb.ObjId) ?cdb.ObjId {
     const asset = createObject(AssetTypeIdx) catch return null;
+    const asset_w = _cdb.writeObj(asset).?;
 
     if (asset_obj != null) {
-        const asset_w = _cdb.writeObj(asset).?;
         const asset_obj_w = _cdb.writeObj(asset_obj.?).?;
         public.Asset.setSubObj(_cdb, asset_w, .Object, asset_obj_w) catch return null;
 
         _cdb.writeCommit(asset_obj_w) catch return null;
-        _cdb.writeCommit(asset_w) catch return null;
     }
 
-    setAssetNameAndFolder(asset, asset_name, null, asset_folder) catch return null;
+    setAssetNameAndFolder(asset_w, asset_name, null, asset_folder) catch return null;
+
+    _cdb.writeCommit(asset_w) catch return null;
+
     _assetroot_fs.addAssetToRoot(asset) catch return null;
     return asset;
 }
@@ -1909,12 +1920,12 @@ fn writeCdbObjJsonBody(
                 const value = _cdb.readValue(bool, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
 
-                if (_cdb.getDefaultObject(_db, obj.type_idx)) |default| {
-                    const default_value = _cdb.readValue(bool, _cdb.readObj(default).?, prop_idx);
-                    if (value == default_value) continue;
-                } else {
-                    if (!has_prototype and value == false) continue;
-                }
+                // if (_cdb.getDefaultObject(_db, obj.type_idx)) |default| {
+                //     const default_value = _cdb.readValue(bool, _cdb.readObj(default).?, prop_idx);
+                //     if (value == default_value) continue;
+                // } else {
+                if (!has_prototype and value == false) continue;
+                // }
 
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
@@ -1923,12 +1934,12 @@ fn writeCdbObjJsonBody(
                 const value = _cdb.readValue(u64, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
 
-                if (_cdb.getDefaultObject(_db, obj.type_idx)) |default| {
-                    const default_value = _cdb.readValue(u64, _cdb.readObj(default).?, prop_idx);
-                    if (value == default_value) continue;
-                } else {
-                    if (!has_prototype and value == 0) continue;
-                }
+                // if (_cdb.getDefaultObject(_db, obj.type_idx)) |default| {
+                //     const default_value = _cdb.readValue(u64, _cdb.readObj(default).?, prop_idx);
+                //     if (value == default_value) continue;
+                // } else {
+                if (!has_prototype and value == 0) continue;
+                // }
 
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
@@ -1937,12 +1948,12 @@ fn writeCdbObjJsonBody(
                 const value = _cdb.readValue(i64, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
 
-                if (_cdb.getDefaultObject(_db, obj.type_idx)) |default| {
-                    const default_value = _cdb.readValue(i64, _cdb.readObj(default).?, prop_idx);
-                    if (value == default_value) continue;
-                } else {
-                    if (!has_prototype and value == 0) continue;
-                }
+                // if (_cdb.getDefaultObject(_db, obj.type_idx)) |default| {
+                //     const default_value = _cdb.readValue(i64, _cdb.readObj(default).?, prop_idx);
+                //     if (value == default_value) continue;
+                // } else {
+                if (!has_prototype and value == 0) continue;
+                // }
 
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
@@ -1951,12 +1962,12 @@ fn writeCdbObjJsonBody(
                 const value = _cdb.readValue(u32, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
 
-                if (_cdb.getDefaultObject(_db, obj.type_idx)) |default| {
-                    const default_value = _cdb.readValue(u32, _cdb.readObj(default).?, prop_idx);
-                    if (value == default_value) continue;
-                } else {
-                    if (!has_prototype and value == 0) continue;
-                }
+                // if (_cdb.getDefaultObject(_db, obj.type_idx)) |default| {
+                //     const default_value = _cdb.readValue(u32, _cdb.readObj(default).?, prop_idx);
+                //     if (value == default_value) continue;
+                // } else {
+                if (!has_prototype and value == 0) continue;
+                // }
 
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
@@ -1965,12 +1976,12 @@ fn writeCdbObjJsonBody(
                 const value = _cdb.readValue(i32, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
 
-                if (_cdb.getDefaultObject(_db, obj.type_idx)) |default| {
-                    const default_value = _cdb.readValue(i32, _cdb.readObj(default).?, prop_idx);
-                    if (value == default_value) continue;
-                } else {
-                    if (!has_prototype and value == 0) continue;
-                }
+                // if (_cdb.getDefaultObject(_db, obj.type_idx)) |default| {
+                // const default_value = _cdb.readValue(i32, _cdb.readObj(default).?, prop_idx);
+                // if (value == default_value) continue;
+                // } else {
+                if (!has_prototype and value == 0) continue;
+                // }
 
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
@@ -1979,12 +1990,12 @@ fn writeCdbObjJsonBody(
                 const value = _cdb.readValue(f64, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
 
-                if (_cdb.getDefaultObject(_db, obj.type_idx)) |default| {
-                    const default_value = _cdb.readValue(f64, _cdb.readObj(default).?, prop_idx);
-                    if (value == default_value) continue;
-                } else {
-                    if (!has_prototype and value == 0) continue;
-                }
+                // if (_cdb.getDefaultObject(_db, obj.type_idx)) |default| {
+                //     const default_value = _cdb.readValue(f64, _cdb.readObj(default).?, prop_idx);
+                //     if (value == default_value) continue;
+                // } else {
+                if (!has_prototype and value == 0) continue;
+                // }
 
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
@@ -1993,12 +2004,12 @@ fn writeCdbObjJsonBody(
                 const value = _cdb.readValue(f32, obj_r, prop_idx);
                 if (has_prototype and !property_overided) continue;
 
-                if (_cdb.getDefaultObject(_db, obj.type_idx)) |default| {
-                    const default_value = _cdb.readValue(f32, _cdb.readObj(default).?, prop_idx);
-                    if (value == default_value) continue;
-                } else {
-                    if (!has_prototype and value == 0) continue;
-                }
+                // if (_cdb.getDefaultObject(_db, obj.type_idx)) |default| {
+                //     const default_value = _cdb.readValue(f32, _cdb.readObj(default).?, prop_idx);
+                //     if (value == default_value) continue;
+                // } else {
+                if (!has_prototype and value == 0) continue;
+                // }
 
                 try writer.objectField(prop_def.name);
                 try writer.write(value);
@@ -2009,13 +2020,13 @@ fn writeCdbObjJsonBody(
                 if (has_prototype and !property_overided) continue;
                 if (!has_prototype and str.?.len == 0) continue;
 
-                if (_cdb.getDefaultObject(_db, obj.type_idx)) |default| {
-                    if (_cdb.readStr(_cdb.readObj(default).?, prop_idx)) |default_value| {
-                        if (std.mem.eql(u8, str.?, default_value)) continue;
-                    }
-                } else {
-                    if (!has_prototype and str.?.len == 0) continue;
-                }
+                // if (_cdb.getDefaultObject(_db, obj.type_idx)) |default| {
+                //     if (_cdb.readStr(_cdb.readObj(default).?, prop_idx)) |default_value| {
+                //         if (std.mem.eql(u8, str.?, default_value)) continue;
+                //     }
+                // } else {
+                if (!has_prototype and str.?.len == 0) continue;
+                // }
 
                 try writer.objectField(prop_def.name);
                 try writer.print("\"{s}\"", .{str.?});
@@ -2244,9 +2255,14 @@ pub fn readAssetFromReader(
         desc = asset_desc.string;
     }
 
-    try setAssetNameAndFolder(asset, asset_name, desc, asset_folder);
+    {
+        const asset_w = _cdb.writeObj(asset).?;
+        try setAssetNameAndFolder(asset_w, asset_name, desc, asset_folder);
+        try _cdb.writeCommit(asset_w);
+    }
 
     const asset_w = _cdb.writeObj(asset).?;
+
     if (parsed.value.object.get(JSON_TAGS_TOKEN)) |tags| {
         for (tags.array.items) |tag| {
             var ref_link = std.mem.splitAny(u8, tag.string, ":");
@@ -2292,7 +2308,7 @@ fn getOrCreate(obj_uuid: uuid.Uuid, type_idx: cdb.TypeIdx) !cdb.ObjId {
 
     var obj = getObjId(obj_uuid);
     if (obj == null) {
-        obj = try createObjectWithUuid(type_idx, obj_uuid);
+        obj = try createEmptyObjectWithUuid(type_idx, obj_uuid);
     }
     return obj.?;
 }
@@ -2318,7 +2334,7 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cdb.ObjId, read_blob: 
     const prototype_uuid = parsed.object.get(JSON_PROTOTYPE_UUID);
     var obj: ?cdb.ObjId = null;
     if (prototype_uuid == null) {
-        obj = try createObject(obj_type_idx);
+        obj = try createEmptyObject(obj_type_idx);
     } else {
         obj = try createObjectFromPrototypeLocked(uuid_private.fromStr(prototype_uuid.?.string).?, obj_type_idx);
     }
