@@ -2,11 +2,12 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 
 const renderer = @import("renderer");
+const render_graph = @import("render_graph");
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
 const zm = cetech1.math.zmath;
@@ -14,6 +15,7 @@ const zm = cetech1.math.zmath;
 const graphvm = @import("graphvm");
 const transform = @import("transform");
 const shader_system = @import("shader_system");
+const renderer_nodes = @import("renderer_nodes");
 
 const public = @import("render_component.zig");
 
@@ -203,9 +205,11 @@ const RenderComponentTask = struct {
     transforms: []const transform.WorldTransform,
     draw_calls: []const ?*renderer.DrawCall,
     viewport: renderer.Viewport,
-    viewers: []const renderer.Viewer,
+    viewers: []const render_graph.Viewer,
     systems: shader_system.SystemSet,
-    builder: renderer.GraphBuilder,
+    builder: render_graph.GraphBuilder,
+    result: *const renderer.CullingResult,
+    visibility_offset: usize,
 
     pub fn exec(self: *@This()) !void {
         var zone = _profiler.ZoneN(@src(), "RenderComponentTask");
@@ -217,7 +221,7 @@ const RenderComponentTask = struct {
         if (_gpu.getEncoder()) |e| {
             defer _gpu.endEncoder(e);
 
-            for (self.draw_calls, self.transforms) |draw_call, mtx| {
+            for (self.draw_calls, self.transforms, 0..) |draw_call, mtx, renderable_idx| {
                 if (draw_call) |dc| {
                     var zzz = _profiler.ZoneN(@src(), "draw");
                     defer zzz.End();
@@ -232,11 +236,12 @@ const RenderComponentTask = struct {
                         }
 
                         e.setIndexBuffer(dc.gpu_index_buffer.?, 0, dc.index_count);
+                        for (self.viewers, 0..) |viewer, viewer_idx| {
+                            if (!self.result.isVisibile(self.visibility_offset + (renderable_idx * self.viewers.len) + viewer_idx)) continue;
 
-                        for (self.viewers) |viewver| {
                             if (_shader_system.selectShaderVariant(
                                 dc.gpu_shader.?,
-                                viewver.context,
+                                viewer.context,
                                 self.systems,
                             )) |variant| {
                                 if (variant.prg) |prg| {
@@ -267,7 +272,13 @@ pub fn toInstanceSlice(from: anytype) []const graphvm.GraphInstance {
 }
 
 const render_component_renderer_i = renderer.RendereableI.implement(public.RenderComponentInstance, struct {
-    pub fn culling(allocator: std.mem.Allocator, builder: renderer.GraphBuilder, world: ecs.World, viewers: []const renderer.Viewer, rq: *renderer.CullingRequest) !void {
+    pub fn culling(
+        allocator: std.mem.Allocator,
+        builder: render_graph.GraphBuilder,
+        world: ecs.World,
+        viewers: []const render_graph.Viewer,
+        rq: *renderer.CullingRequest,
+    ) !void {
         var zz = _profiler.ZoneN(@src(), "RenderComponent - Culling calback");
         defer zz.End();
 
@@ -293,18 +304,12 @@ const render_component_renderer_i = renderer.RendereableI.implement(public.Rende
             try all_render_components.appendSlice(allocator, containers);
         }
 
-        try _graphvm.executeNode(
-            allocator,
-            all_render_components.items,
-            renderer.CULLING_VOLUME_NODE_TYPE,
-            .{},
-        );
-
-        const states = try _graphvm.getNodeState(
+        const states = try _graphvm.executeNodeAndGetState(
             renderer.CullingVolume,
             allocator,
             all_render_components.items,
-            renderer.CULLING_VOLUME_NODE_TYPE,
+            renderer_nodes.CULLING_VOLUME_NODE_TYPE,
+            .{},
         );
         defer allocator.free(states);
 
@@ -325,7 +330,6 @@ const render_component_renderer_i = renderer.RendereableI.implement(public.Rende
         var render_components_without_volumes = cetech1.ArrayList(graphvm.GraphInstance){};
         defer render_components_without_volumes.deinit(allocator);
 
-        volumes.clearRetainingCapacity();
         try volumes.ensureTotalCapacity(allocator, states.len);
         for (states, 0..) |volume, idx| {
             if (volume) |v| {
@@ -351,37 +355,32 @@ const render_component_renderer_i = renderer.RendereableI.implement(public.Rende
 
     pub fn render(
         allocator: std.mem.Allocator,
-        builder: renderer.GraphBuilder,
+        builder: render_graph.GraphBuilder,
         world: ecs.World,
         viewport: renderer.Viewport,
-        viewers: []const renderer.Viewer,
+        viewers: []const render_graph.Viewer,
         systems: shader_system.SystemSet,
-        mtx: []const transform.WorldTransform,
-        renderables: []const u8,
+        result: *const renderer.CullingResult,
     ) !void {
         var zz = _profiler.ZoneN(@src(), "RenderComponent - Render calback");
         defer zz.End();
         _ = world;
 
         var ci: []const graphvm.GraphInstance = undefined;
-        ci.ptr = @alignCast(@ptrCast(renderables.ptr));
-        ci.len = renderables.len / @sizeOf(graphvm.GraphInstance);
+        ci.ptr = @alignCast(@ptrCast(result.data.items.ptr));
+        ci.len = result.data.items.len / @sizeOf(graphvm.GraphInstance);
 
-        const volumes = try _graphvm.getNodeState(renderer.CullingVolume, allocator, ci, renderer.CULLING_VOLUME_NODE_TYPE);
-        defer allocator.free(volumes);
-
-        try _graphvm.executeNode(allocator, ci, renderer.DRAW_CALL_NODE_TYPE, .{});
-        const draw_calls = try _graphvm.getNodeState(renderer.DrawCall, allocator, ci, renderer.DRAW_CALL_NODE_TYPE);
+        const draw_calls = try _graphvm.executeNodeAndGetState(renderer.DrawCall, allocator, ci, renderer_nodes.DRAW_CALL_NODE_TYPE, .{});
         defer allocator.free(draw_calls);
 
         const ARGS = struct {
             viewport: renderer.Viewport,
-            viewers: []const renderer.Viewer,
+            viewers: []const render_graph.Viewer,
             systems: shader_system.SystemSet,
-            builder: renderer.GraphBuilder,
+            builder: render_graph.GraphBuilder,
 
-            transforms: []const transform.WorldTransform,
             draw_calls: []const ?*renderer.DrawCall,
+            result: *const renderer.CullingResult,
         };
         if (try cetech1.task.batchWorkloadTask(
             .{
@@ -397,8 +396,8 @@ const render_component_renderer_i = renderer.RendereableI.implement(public.Rende
                 .systems = systems,
                 .builder = builder,
 
-                .transforms = mtx,
                 .draw_calls = draw_calls,
+                .result = result,
             },
 
             struct {
@@ -408,8 +407,10 @@ const render_component_renderer_i = renderer.RendereableI.implement(public.Rende
                         .viewers = create_args.viewers,
                         .systems = create_args.systems,
                         .builder = create_args.builder,
+                        .visibility_offset = batch_id * args.batch_size * create_args.viewers.len,
+                        .result = create_args.result,
 
-                        .transforms = create_args.transforms[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
+                        .transforms = create_args.result.mtx.items[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
                         .draw_calls = create_args.draw_calls[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
                     };
                 }
@@ -420,10 +421,7 @@ const render_component_renderer_i = renderer.RendereableI.implement(public.Rende
     }
 });
 
-// Foo cdb type decl
-
 // Register all cdb stuff in this method
-
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.DbId) !void {
         // RenderComponentCdb
@@ -471,6 +469,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, ecs.ComponentI, &rc_initialized_c, load);
     try apidb.implOrRemove(module_name, ecs.SystemI, &init_render_graph_system_i, load);
     try apidb.implOrRemove(module_name, ecs.OnWorldI, &query_onworld_i, load);
+
     try apidb.implOrRemove(module_name, renderer.RendereableI, &render_component_renderer_i, load);
 
     // create global variable that can survive reload

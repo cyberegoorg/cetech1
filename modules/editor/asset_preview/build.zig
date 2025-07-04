@@ -28,4 +28,5 @@ pub fn build(b: *std.Build) !void {
     lib.root_module.addImport("camera", b.dependency("camera", .{}).module("camera"));
     lib.root_module.addImport("transform", b.dependency("transform", .{}).module("transform"));
     lib.root_module.addImport("editor_entity", b.dependency("editor_entity", .{}).module("editor_entity"));
+    lib.root_module.addImport("render_graph", b.dependency("render_graph", .{}).module("render_graph"));
 }

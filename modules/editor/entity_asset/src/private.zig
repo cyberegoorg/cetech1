@@ -8,7 +8,6 @@ const node_editor = cetech1.coreui_node_editor;
 const assetdb = cetech1.assetdb;
 const cdb_types = cetech1.cdb_types;
 const ecs = cetech1.ecs;
-const strid = cetech1.strid;
 
 const editor = @import("editor");
 const Icons = coreui.CoreIcons;

@@ -9,8 +9,8 @@
     .dependencies = .{
         .cetech1 = .{ .path = "../../../public/" },
         .transform = .{ .path = "../transform" },
-        .graphvm = .{ .path = "../../scripting/graphvm" },
         .camera = .{ .path = "../camera" },
         .shader_system = .{ .path = "../shader_system" },
+        .render_graph = .{ .path = "../render_graph" },
     },
 }

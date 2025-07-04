@@ -2,15 +2,16 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 const gpu = cetech1.gpu;
 const zm = cetech1.math.zmath;
 
 const renderer = @import("renderer");
+const render_graph = @import("render_graph");
 
-const module_name = .default_rg;
+const module_name = .default_render_pipeline;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
@@ -29,11 +30,10 @@ var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 var _ecs: *const ecs.EcsAPI = undefined;
 var _gpu: *const gpu.GpuApi = undefined;
 var _dd: *const gpu.GpuDDApi = undefined;
+var _renderer: *const renderer.RendererApi = undefined;
 
-const simple_pass = renderer.Pass.implement(struct {
-    pub fn setup(pass: *renderer.Pass, builder: renderer.GraphBuilder) !void {
-        try builder.exportLayer(pass, "color");
-
+const simple_pass = render_graph.Pass.implement(struct {
+    pub fn setup(pass: *render_graph.Pass, builder: render_graph.GraphBuilder) !void {
         try builder.createTexture2D(
             pass,
             "foo",
@@ -68,20 +68,21 @@ const simple_pass = renderer.Pass.implement(struct {
             },
         );
 
-        try builder.addPass("simple_pass", pass);
+        try builder.addPass("simple_pass", pass, "color");
     }
 
-    pub fn render(builder: renderer.GraphBuilder, gfx_api: *const gpu.GpuApi, viewport: renderer.Viewport, viewid: gpu.ViewId, viewers: []const renderer.Viewer) !void {
+    pub fn execute(builder: render_graph.GraphBuilder, gpu_api: *const gpu.GpuApi, world: ecs.World, vp_size: [2]f32, viewid: gpu.ViewId, viewers: []const render_graph.Viewer) !void {
         _ = builder;
-        _ = viewport;
+        _ = vp_size;
+        _ = world;
 
         const projMtx = viewers[0].proj;
         const viewMtx = viewers[0].mtx;
 
-        gfx_api.setViewTransform(viewid, &viewMtx, &projMtx);
+        gpu_api.setViewTransform(viewid, &viewMtx, &projMtx);
 
-        if (gfx_api.getEncoder()) |e| {
-            defer gfx_api.endEncoder(e);
+        if (gpu_api.getEncoder()) |e| {
+            defer gpu_api.endEncoder(e);
             //e.touch(viewid);
 
             const dd = _dd.encoderCreate();
@@ -104,19 +105,21 @@ const simple_pass = renderer.Pass.implement(struct {
     }
 });
 
-const blit_pass = renderer.Pass.implement(struct {
-    pub fn setup(pass: *renderer.Pass, builder: renderer.GraphBuilder) !void {
+const blit_pass = render_graph.Pass.implement(struct {
+    pub fn setup(pass: *render_graph.Pass, builder: render_graph.GraphBuilder) !void {
         try builder.writeTexture(pass, renderer.ViewportColorResource);
         try builder.readTexture(pass, "foo");
-        try builder.addPass("blit", pass);
+        try builder.addPass("blit", pass, null);
     }
 
-    pub fn render(builder: renderer.GraphBuilder, gfx_api: *const gpu.GpuApi, viewport: renderer.Viewport, viewid: gpu.ViewId, viewers: []const renderer.Viewer) !void {
+    pub fn execute(builder: render_graph.GraphBuilder, gpu_api: *const gpu.GpuApi, world: ecs.World, vp_size: [2]f32, viewid: gpu.ViewId, viewers: []const render_graph.Viewer) !void {
         _ = viewers; // autofix
-        const fb_size = viewport.getSize();
+        _ = world; // autofix
 
-        if (gfx_api.getEncoder()) |e| {
-            defer gfx_api.endEncoder(e);
+        const fb_size = vp_size;
+
+        if (gpu_api.getEncoder()) |e| {
+            defer gpu_api.endEncoder(e);
 
             const out_tex = builder.getTexture(renderer.ViewportColorResource).?;
             const foo_tex = builder.getTexture("foo").?;
@@ -141,11 +144,12 @@ const blit_pass = renderer.Pass.implement(struct {
 });
 
 const rg_i = renderer.DefaultRenderGraphI.implement(struct {
-    pub fn create(allocator: std.mem.Allocator, rg_api: *const renderer.RenderGraphApi, graph: renderer.Graph) !void {
+    pub fn create(allocator: std.mem.Allocator, rg_api: *const render_graph.RenderGraphApi, module: render_graph.Module) !void {
         _ = allocator; // autofix
         _ = rg_api; // autofix
-        try graph.addPass(simple_pass);
-        try graph.addPass(blit_pass);
+
+        try module.addPass(simple_pass);
+        try module.addPass(blit_pass);
     }
 });
 
@@ -163,6 +167,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
     _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
     _dd = apidb.getZigApi(module_name, gpu.GpuDDApi).?;
+    _renderer = apidb.getZigApi(module_name, renderer.RendererApi).?;
 
     try apidb.implOrRemove(module_name, renderer.DefaultRenderGraphI, &rg_i, load);
 
@@ -172,6 +177,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_default_rg(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_default_render_pipeline(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

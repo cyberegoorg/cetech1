@@ -15,7 +15,7 @@ const cetech1 = @import("cetech1");
 const public = cetech1.assetdb;
 const cdb = cetech1.cdb;
 const uuid = cetech1.uuid;
-const strid = cetech1.strid;
+
 const platform = cetech1.platform;
 const cdb_types = cetech1.cdb_types;
 

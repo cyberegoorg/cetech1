@@ -3,7 +3,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const strid = cetech1.strid;
+
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
 const ecs = cetech1.ecs;
@@ -1109,7 +1109,7 @@ fn compileShaderVariant(
                 if (!get_or_put.found_existing) {
                     try main_imports_w.print("uniform {s} {s};\n", .{ @tagName(import.type), import.name });
                     try main_imports_w.print(
-                        \\ {s} load_{s}() {{
+                        \\{s} load_{s}() {{
                         \\  return {s};
                         \\}}
                         \\
@@ -1348,6 +1348,7 @@ fn compileShaderVariant(
     );
     defer allocator.free(fs_source);
     //std.debug.print("FS:\n{s}\n", .{fs_source});
+    //std.debug.print("FS:\n{s}\n", .{main_imports.items});
 
     var h = std.hash.Wyhash.init(0);
     h.update(vs_source);
@@ -1435,7 +1436,7 @@ fn submitUniforms(encoder: gpu.Encoder, variant: *const public.ShaderVariant, sh
     }
 }
 
-// fn submit(shader_instance: public.ShaderInstance, context: ?cetech1.StrId32, systems: []const cetech1.StrId32, builder: renderer.GraphBuilder, encoder: gpu.Encoder) void {
+// fn submit(shader_instance: public.ShaderInstance, context: ?cetech1.StrId32, systems: []const cetech1.StrId32, builder: render_graph.GraphBuilder, encoder: gpu.Encoder) void {
 //     const inst = _g.shader_pool.get(shader_instance.idx);
 
 //     if (selectShaderVariant(inst, context.?, systems)) |variant| {

@@ -8,11 +8,12 @@ pub fn build(b: *std.Build) !void {
 
     const lib, _ = cetech1_build.addCetechModule(
         b,
-        "default_rg",
+        "default_render_pipeline",
         .{ .major = 0, .minor = 1, .patch = 0 },
         target,
         optimize,
     );
 
     lib.root_module.addImport("renderer", b.dependency("renderer", .{}).module("renderer"));
+    lib.root_module.addImport("render_graph", b.dependency("render_graph", .{}).module("render_graph"));
 }

@@ -10,6 +10,7 @@
         .cetech1 = .{ .path = "../../public/" },
         .editor = .{ .path = "../../modules/editor/editor" },
         .renderer = .{ .path = "../../modules/rendering/renderer" },
+        .render_graph = .{ .path = "../../modules/rendering/render_graph" },
         .transform = .{ .path = "../../modules/rendering/transform" },
         .camera = .{ .path = "../../modules/rendering/camera" },
         .editor_entity = .{ .path = "../../modules/editor/entity_editor" },
