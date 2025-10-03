@@ -34,7 +34,7 @@ const V = union(enum) {
 };
 
 pub fn main() !void {
-    const stdout = std.io.getStdOut().writer();
+    const stdout = std.fs.File.stdout().deprecatedWriter();
 
     var buf: [1024]u8 = undefined;
     var fixed_buf = std.heap.FixedBufferAllocator.init(buf[0..]);
@@ -94,9 +94,9 @@ pub fn main() !void {
     i = 1;
     while (i <= num_iters) : (i += 1) {
         const uuid = v.new(domain_name);
-        try stdout.print("    iteration {d}, uuid: {s} \n", .{ i, uuid });
+        try stdout.print("    iteration {d}, uuid: {f} \n", .{ i, uuid });
     }
     const end = timer.read();
 
-    try stdout.print("Total duration: {s}\n", .{std.fmt.fmtDuration(end - start)});
+    try stdout.print("Total duration: {D}\n", .{end - start});
 }

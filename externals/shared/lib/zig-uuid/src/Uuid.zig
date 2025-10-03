@@ -61,19 +61,19 @@ test "fromString" {
 }
 
 /// Formats the UUID according to RFC-4122.
-pub fn format(self: Uuid, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) (@TypeOf(writer).Error)!void {
-    try std.fmt.format(writer, "{}-{}-{}-{}-{}", .{
-        std.fmt.fmtSliceHexLower(self.bytes[0..4]),
-        std.fmt.fmtSliceHexLower(self.bytes[4..6]),
-        std.fmt.fmtSliceHexLower(self.bytes[6..8]),
-        std.fmt.fmtSliceHexLower(self.bytes[8..10]),
-        std.fmt.fmtSliceHexLower(self.bytes[10..16]),
+pub fn format(self: Uuid, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    try writer.print("{s}-{s}-{s}-{s}-{s}", .{
+        std.fmt.bytesToHex(self.bytes[0..4], .lower),
+        std.fmt.bytesToHex(self.bytes[4..6], .lower),
+        std.fmt.bytesToHex(self.bytes[6..8], .lower),
+        std.fmt.bytesToHex(self.bytes[8..10], .lower),
+        std.fmt.bytesToHex(self.bytes[10..16], .lower),
     });
 }
 
 test "format" {
     const uuid = fromInt(0x0123456789ABCDEF0123456789ABCDEF);
-    try std.testing.expectFmt("01234567-89ab-cdef-0123-456789abcdef", "{s}", .{uuid});
+    try std.testing.expectFmt("01234567-89ab-cdef-0123-456789abcdef", "{f}", .{uuid});
 }
 
 /// UUID variant or family.

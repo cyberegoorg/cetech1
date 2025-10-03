@@ -1146,7 +1146,7 @@ const GraphVM = struct {
                     //const node_from_idx = self.node_idx_map.get(.{ .parent = v.graph, .node = vv.key_ptr.obj }) orelse continue;
 
                     const node_from_idx = self.node_idx_map.get(.{ .parent = vv.key_ptr.graph, .node = vv.key_ptr.obj }) orelse {
-                        log.err("Could not find vv.key_ptr.obj with UUID {s} in graph UUID {s}", .{ _assetdb.getUuid(vv.key_ptr.obj).?, _assetdb.getUuid(vv.key_ptr.graph).? });
+                        log.err("Could not find vv.key_ptr.obj with UUID {f} in graph UUID {f}", .{ _assetdb.getUuid(vv.key_ptr.obj).?, _assetdb.getUuid(vv.key_ptr.graph).? });
                         continue;
                     };
 
@@ -1179,12 +1179,12 @@ const GraphVM = struct {
                 }
             } else {
                 const node_from_idx = self.node_idx_map.get(.{ .parent = v.graph, .node = from_node_obj }) orelse {
-                    log.err("Could not find from_node_obj with UUID {s}", .{_assetdb.getUuid(from_node_obj).?});
+                    log.err("Could not find from_node_obj with UUID {f}", .{_assetdb.getUuid(from_node_obj).?});
                     continue;
                 };
 
                 const node_to_idx = self.node_idx_map.get(.{ .parent = v.graph, .node = to_node_obj }) orelse {
-                    log.err("Could not find to_node_obj with UUID {s}", .{_assetdb.getUuid(to_node_obj).?});
+                    log.err("Could not find to_node_obj with UUID {f}", .{_assetdb.getUuid(to_node_obj).?});
                     continue;
                 };
 
@@ -1389,7 +1389,7 @@ const GraphVM = struct {
                 const vm_node = self.vmnodes.get(node_idx);
                 const size = try vm_node.getOutputPinsSize(vm_node.pin_def.out);
                 vm_node.output_blob_size = size;
-                log.debug("Pathed output type {s} {s}", .{ _assetdb.getUuid(vm_node.node_obj) orelse cetech1.uuid.Uuid{}, vm_node.iface.name });
+                log.debug("Pathed output type {f} {s}", .{ _assetdb.getUuid(vm_node.node_obj) orelse cetech1.uuid.Uuid{}, vm_node.iface.name });
             }
         }
 
@@ -1883,7 +1883,7 @@ const GraphVM = struct {
 
         if (self.findNodeByType(node_type)) |event_nodes| {
             for (instances, 0..) |instance, instance_idx| {
-                const ints: *VMInstance = @alignCast(@ptrCast(instance.inst));
+                const ints: *VMInstance = @ptrCast(@alignCast(instance.inst));
 
                 if (out_states) |out| {
                     out[out_idxs[instance_idx]] = null;
@@ -1973,7 +1973,7 @@ const GraphVM = struct {
         defer zone_ctx.End();
 
         for (instances) |instance| {
-            const ints: *VMInstance = @alignCast(@ptrCast(instance.inst));
+            const ints: *VMInstance = @ptrCast(@alignCast(instance.inst));
 
             const plan = transpile_plan;
             for (plan) |node_idx| {
@@ -2018,7 +2018,7 @@ const GraphVM = struct {
         if (self.findNodeByType(node_type)) |nodes| {
             for (instances, 0..) |instance, idx| {
                 // if (!instance.isValid()) continue;
-                const c: *VMInstance = @alignCast(@ptrCast(instance.inst));
+                const c: *VMInstance = @ptrCast(@alignCast(instance.inst));
 
                 const node_idx = nodes[0];
 
@@ -2046,9 +2046,11 @@ const GraphVM = struct {
         var d2_file = try root_dir.createFile(filename, .{});
         defer d2_file.close();
 
-        var bw = std.io.bufferedWriter(d2_file.writer());
-        defer bw.flush() catch undefined;
-        const writer = bw.writer();
+        var buffer: [4096]u8 = undefined;
+
+        var bw = d2_file.writer(&buffer);
+        const writer = &bw.interface;
+        defer writer.flush() catch undefined;
 
         for (self.node_plan.keys(), self.node_plan.values()) |k, v| {
             const plan_node = k;
@@ -2063,7 +2065,7 @@ const GraphVM = struct {
 
             for (v) |node| {
                 const vmnode = self.vmnodes.get(node);
-                try writer.print("{s}: {s}\n", .{ try _assetdb.getOrCreateUuid(vmnode.node_obj), vmnode.iface.name });
+                try writer.print("{f}: {s}\n", .{ try _assetdb.getOrCreateUuid(vmnode.node_obj), vmnode.iface.name });
             }
 
             try writer.print("\n", .{});
@@ -2075,7 +2077,7 @@ const GraphVM = struct {
                 const vmnode = self.vmnodes.get(node);
                 const nex_vmnode = self.vmnodes.get(nex_node);
 
-                try writer.print("{s}->{s}\n", .{ try _assetdb.getOrCreateUuid(vmnode.node_obj), try _assetdb.getOrCreateUuid(nex_vmnode.node_obj) });
+                try writer.print("{f}->{f}\n", .{ try _assetdb.getOrCreateUuid(vmnode.node_obj), try _assetdb.getOrCreateUuid(nex_vmnode.node_obj) });
             }
 
             try writer.print("```\n", .{});
@@ -2274,7 +2276,7 @@ fn createInstances(allocator: std.mem.Allocator, graph: cdb.ObjId, instances: []
 
 fn destroyInstance(vmc: public.GraphInstance) void {
     var vm = _g.vm_map.get(vmc.graph) orelse return; //TODO: ?
-    vm.destroyInstance(@alignCast(@ptrCast(vmc.inst)));
+    vm.destroyInstance(@ptrCast(@alignCast(vmc.inst)));
 }
 
 const executeNodesTask = struct {
@@ -2303,7 +2305,7 @@ const buildInstancesTask = struct {
         defer alloc.free(instatnces);
 
         for (self.instances, 0..) |inst, idx| {
-            instatnces[idx] = @alignCast(@ptrCast(inst.inst));
+            instatnces[idx] = @ptrCast(@alignCast(inst.inst));
         }
 
         try self.vm.buildInstances(alloc, instatnces, null, null);
@@ -2637,28 +2639,28 @@ pub fn executeNodeAndGetState(allocator: std.mem.Allocator, instances: []const p
 }
 
 fn setInstanceContext(instance: public.GraphInstance, context_name: cetech1.StrId32, context: *anyopaque) !void {
-    const c: *VMInstance = @alignCast(@ptrCast(instance.inst));
+    const c: *VMInstance = @ptrCast(@alignCast(instance.inst));
     const vm = _g.vm_map.get(instance.graph).?;
     try c.setContext(vm, context_name, context);
 }
 
 fn getInstanceContext(instance: public.GraphInstance, context_name: cetech1.StrId32) ?*anyopaque {
-    const c: *VMInstance = @alignCast(@ptrCast(instance.inst));
+    const c: *VMInstance = @ptrCast(@alignCast(instance.inst));
     return c.getContext(context_name);
 }
 
 fn removeInstanceContext(instance: public.GraphInstance, context_name: cetech1.StrId32) void {
-    const c: *VMInstance = @alignCast(@ptrCast(instance.inst));
+    const c: *VMInstance = @ptrCast(@alignCast(instance.inst));
     return c.removeContext(context_name);
 }
 
 fn getInputPins(instance: public.GraphInstance) public.OutPins {
-    const c: *VMInstance = @alignCast(@ptrCast(instance.inst));
+    const c: *VMInstance = @ptrCast(@alignCast(instance.inst));
     return c.graph_in.toPins();
 }
 
 fn getOutputPins(instance: public.GraphInstance) public.OutPins {
-    const c: *VMInstance = @alignCast(@ptrCast(instance.inst));
+    const c: *VMInstance = @ptrCast(@alignCast(instance.inst));
     return c.graph_out.toPins();
 }
 
@@ -2799,7 +2801,7 @@ const graph_inputs_i = public.NodeI.implement(
 
                         const uuid = try _assetdb.getOrCreateUuid(input);
                         var buffer: [128]u8 = undefined;
-                        const str = try std.fmt.bufPrintZ(&buffer, "{s}", .{uuid});
+                        const str = try std.fmt.bufPrintZ(&buffer, "{f}", .{uuid});
 
                         const value_type = findValueTypeIByCdb(_cdb.getTypeHash(db, value_obj.type_idx).?).?;
 
@@ -2884,7 +2886,7 @@ const graph_outputs_i = public.NodeI.implement(
 
                         const uuid = try _assetdb.getOrCreateUuid(input);
                         var buffer: [128]u8 = undefined;
-                        const str = try std.fmt.bufPrintZ(&buffer, "{s}", .{uuid});
+                        const str = try std.fmt.bufPrintZ(&buffer, "{f}", .{uuid});
 
                         const value_type = findValueTypeIByCdb(_cdb.getTypeHash(db, value_obj.type_idx).?).?;
 
@@ -2982,7 +2984,7 @@ const call_graph_node_i = public.NodeI.implement(
 
                                 const uuid = try _assetdb.getOrCreateUuid(input);
                                 var buffer: [128]u8 = undefined;
-                                const str = try std.fmt.bufPrintZ(&buffer, "{s}", .{uuid});
+                                const str = try std.fmt.bufPrintZ(&buffer, "{f}", .{uuid});
 
                                 const value_type = findValueTypeIByCdb(_cdb.getTypeHash(db, value_obj.type_idx).?).?;
 
@@ -3005,7 +3007,7 @@ const call_graph_node_i = public.NodeI.implement(
 
                                 const uuid = try _assetdb.getOrCreateUuid(input);
                                 var buffer: [128]u8 = undefined;
-                                const str = try std.fmt.bufPrintZ(&buffer, "{s}", .{uuid});
+                                const str = try std.fmt.bufPrintZ(&buffer, "{f}", .{uuid});
 
                                 const value_type = findValueTypeIByCdb(_cdb.getTypeHash(db, value_obj.type_idx).?).?;
 
@@ -3255,6 +3257,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_graphvm(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_graphvm(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

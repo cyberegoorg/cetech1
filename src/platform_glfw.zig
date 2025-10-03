@@ -42,24 +42,24 @@ pub fn deinit() void {
 
 pub const window_vt = public.Window.VTable.implement(struct {
     pub fn setCursorMode(window: *anyopaque, mode: public.CursorMode) void {
-        const true_w: *Window = @alignCast(@ptrCast(window));
+        const true_w: *Window = @ptrCast(@alignCast(window));
         const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
         glfw_w.setInputMode(.cursor, cursorModeTOGlfw(mode)) catch undefined;
     }
 
     pub fn getKey(window: *anyopaque, key: public.Key) public.Action {
-        const true_w: *Window = @alignCast(@ptrCast(window));
+        const true_w: *Window = @ptrCast(@alignCast(window));
         const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
         return glfwActionToAction(glfw_w.getKey(keyToglfwKey(key)));
     }
 
     pub fn getMods(window: *anyopaque) public.Mods {
-        const true_w: *Window = @alignCast(@ptrCast(window));
+        const true_w: *Window = @ptrCast(@alignCast(window));
         return true_w.key_mods;
     }
 
     pub fn getOsWindowHandler(window: *anyopaque) ?*anyopaque {
-        const true_w: *Window = @alignCast(@ptrCast(window));
+        const true_w: *Window = @ptrCast(@alignCast(window));
         const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
 
         return switch (builtin.target.os.tag) {
@@ -83,50 +83,50 @@ pub const window_vt = public.Window.VTable.implement(struct {
     }
 
     pub fn shouldClose(window: *anyopaque) bool {
-        const true_w: *Window = @alignCast(@ptrCast(window));
+        const true_w: *Window = @ptrCast(@alignCast(window));
         const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
         return zglfw.Window.shouldClose(glfw_w);
     }
 
     pub fn setShouldClose(window: *anyopaque, should_quit: bool) void {
-        const true_w: *Window = @alignCast(@ptrCast(window));
+        const true_w: *Window = @ptrCast(@alignCast(window));
         const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
         zglfw.setWindowShouldClose(glfw_w, should_quit);
     }
 
     pub fn getMouseButton(window: *anyopaque, button: public.MouseButton) public.Action {
-        const true_w: *Window = @alignCast(@ptrCast(window));
+        const true_w: *Window = @ptrCast(@alignCast(window));
         const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
         return glfwActionToAction(glfw_w.getMouseButton(mouseButtonToGlfwMouseButton(button)));
     }
 
     pub fn getCursorPos(window: *anyopaque) [2]f64 {
-        const true_w: *Window = @alignCast(@ptrCast(window));
+        const true_w: *Window = @ptrCast(@alignCast(window));
         const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
         return glfw_w.getCursorPos();
     }
 
     pub fn getCursorPosDelta(window: *anyopaque, last_pos: [2]f64) [2]f64 {
-        const true_w: *Window = @alignCast(@ptrCast(window));
+        const true_w: *Window = @ptrCast(@alignCast(window));
         const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
         const pos = glfw_w.getCursorPos();
         return .{ pos[0] - last_pos[0], last_pos[1] - pos[1] };
     }
 
     pub fn getFramebufferSize(window: *anyopaque) [2]i32 {
-        const true_w: *Window = @alignCast(@ptrCast(window));
+        const true_w: *Window = @ptrCast(@alignCast(window));
         const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
         return glfw_w.getFramebufferSize();
     }
 
     pub fn getContentScale(window: *anyopaque) [2]f32 {
-        const true_w: *Window = @alignCast(@ptrCast(window));
+        const true_w: *Window = @ptrCast(@alignCast(window));
         const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
         return glfw_w.getContentScale();
     }
 
     pub fn getInternalHandler(window: *anyopaque) *const anyopaque {
-        const true_w: *Window = @alignCast(@ptrCast(window));
+        const true_w: *Window = @ptrCast(@alignCast(window));
         const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
         return glfw_w;
     }
@@ -172,7 +172,7 @@ pub fn createWindow(width: i32, height: i32, title: [:0]const u8, monitor: ?publ
 }
 
 pub fn destroyWindow(window: public.Window) void {
-    const true_w: *Window = @alignCast(@ptrCast(window.ptr));
+    const true_w: *Window = @ptrCast(@alignCast(window.ptr));
     zglfw.Window.destroy(@ptrCast(true_w.window));
 }
 
@@ -188,7 +188,7 @@ pub fn getPrimaryMonitor() ?*anyopaque {
     return @ptrCast(zglfw.Monitor.getPrimary() orelse return null);
 }
 
-fn mouseButtonCallback(window: *zglfw.Window, button: zglfw.MouseButton, action: zglfw.Action, mods: zglfw.Mods) callconv(.C) void {
+fn mouseButtonCallback(window: *zglfw.Window, button: zglfw.MouseButton, action: zglfw.Action, mods: zglfw.Mods) callconv(.c) void {
     _ = button; // autofix
     _ = action; // autofix
     const true_w = findWindowByInternal(window) orelse return;
@@ -202,7 +202,7 @@ fn mouseButtonCallback(window: *zglfw.Window, button: zglfw.MouseButton, action:
     };
 }
 
-fn keyCallback(window: *zglfw.Window, key: zglfw.Key, scancode: i32, action: zglfw.Action, mods: zglfw.Mods) callconv(.C) void {
+fn keyCallback(window: *zglfw.Window, key: zglfw.Key, scancode: i32, action: zglfw.Action, mods: zglfw.Mods) callconv(.c) void {
     _ = key; // autofix
     _ = action; // autofix
     const true_w = findWindowByInternal(window) orelse return;

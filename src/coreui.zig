@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const cetech1_options = @import("cetech1_options");
 
@@ -60,8 +61,6 @@ var ui_being_task = cetech1.kernel.KernelTaskUpdateI.implment(
             var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "Begin-loop CoreUI");
             defer update_zone_ctx.End();
 
-            const ctx = kernel.api.getGpuCtx();
-            _ = ctx; // autofix
             const window = kernel.api.getMainWindow();
 
             if (!_enabled_ui) {
@@ -70,12 +69,6 @@ var ui_being_task = cetech1.kernel.KernelTaskUpdateI.implment(
             }
 
             if (_enabled_ui) {
-                var size = [2]i32{ 0, 0 };
-
-                if (window) |w| {
-                    size = w.getFramebufferSize();
-                }
-
                 // if (_new_scale_factor) |nsf| {
                 //     initFonts(16, nsf);
                 //     _scale_factor = nsf;
@@ -83,7 +76,7 @@ var ui_being_task = cetech1.kernel.KernelTaskUpdateI.implment(
                 //     return;
                 // }
 
-                newFrame(@intCast(size[0]), @intCast(size[1]));
+                newFrame(255);
             }
         }
     },
@@ -253,8 +246,7 @@ pub var api = public.CoreUIApi{
     .getCursorPosX = @ptrCast(&zgui.getCursorPosX),
     .calcTextSize = @ptrCast(&zgui.calcTextSize),
     .getWindowPos = @ptrCast(&zgui.getWindowPos),
-    .getWindowContentRegionMax = @ptrCast(&zgui.getWindowContentRegionMax),
-    .getContentRegionMax = @ptrCast(&zgui.getContentRegionMax),
+    .getWindowSize = @ptrCast(&zgui.getWindowSize),
     .getContentRegionAvail = @ptrCast(&zgui.getContentRegionAvail),
     .setCursorPosX = @ptrCast(&zgui.setCursorPosX),
     .setCursorPosY = @ptrCast(&zgui.setCursorPosY),
@@ -588,11 +580,11 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
     }
     pub fn pushTextureId(draw_list: *anyopaque, texture_id: gpu.TextureHandle) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
-        return dl.pushTextureId(@ptrFromInt(texture_id.idx));
+        return dl.pushTexture(.{ .tex_id = @enumFromInt(texture_id.idx), .tex_data = null });
     }
     pub fn popTextureId(draw_list: *anyopaque) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
-        return dl.popTextureId();
+        return dl.popTexture();
     }
     pub fn getClipRectMin(draw_list: *anyopaque) [2]f32 {
         const dl: zgui.DrawList = @ptrCast(draw_list);
@@ -876,7 +868,7 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
         col: u32 = 0xff_ff_ff_ff,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
-        dl.addImage(@ptrFromInt(user_texture_id.idx), .{
+        dl.addImage(.{ .tex_id = @enumFromInt(user_texture_id.idx), .tex_data = null }, .{
             .pmin = args.pmin,
             .pmax = args.pmax,
             .uvmin = args.uvmin,
@@ -897,7 +889,7 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
 
-        dl.addImageQuad(@ptrFromInt(user_texture_id.idx), .{
+        dl.addImageQuad(.{ .tex_id = @enumFromInt(user_texture_id.idx), .tex_data = null }, .{
             .p1 = args.p1,
             .p2 = args.p2,
             .p3 = args.p3,
@@ -909,6 +901,7 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
             .col = args.col,
         });
     }
+
     pub fn addImageRounded(draw_list: *anyopaque, user_texture_id: gpu.TextureHandle, args: struct {
         pmin: [2]f32,
         pmax: [2]f32,
@@ -920,7 +913,7 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
 
-        dl.addImageRounded(@ptrFromInt(user_texture_id.idx), .{
+        dl.addImageRounded(.{ .tex_data = null, .tex_id = @enumFromInt(user_texture_id.idx) }, .{
             .pmin = args.pmin,
             .pmax = args.pmax,
             .uvmin = args.uvmin,
@@ -1100,8 +1093,6 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
 
 const BgfxImage = struct {
     handle: gpu.TextureHandle,
-    flags: u8,
-    mip: u8,
 
     pub fn toTextureIdent(self: *const BgfxImage) zgui.TextureIdent {
         return std.mem.bytesToValue(zgui.TextureIdent, std.mem.asBytes(self));
@@ -1111,22 +1102,18 @@ const BgfxImage = struct {
 fn image(texture: gpu.TextureHandle, args: public.Image) void {
     const tt = BgfxImage{
         .handle = texture,
-        .flags = args.flags,
-        .mip = args.mip,
     };
 
-    zgui.image(tt.toTextureIdent(), .{
+    zgui.image(.{ .tex_data = null, .tex_id = tt.toTextureIdent() }, .{
         .w = args.w,
         .h = args.h,
         .uv0 = args.uv0,
         .uv1 = args.uv1,
-        .tint_col = args.tint_col,
-        .border_col = args.border_col,
     });
 }
 
 fn mainDockSpace(flags: public.DockNodeFlags) zgui.Ident {
-    const f: *zgui.DockNodeFlags = @constCast(@ptrCast(&flags));
+    const f: *zgui.DockNodeFlags = @ptrCast(@constCast(&flags));
     return zgui.DockSpaceOverViewport(0, zgui.getMainViewport(), f.*);
 }
 
@@ -1290,7 +1277,7 @@ fn menuItemPtr(allocator: std.mem.Allocator, label: [:0]const u8, args: public.M
 fn pushObjUUID(obj: cdb.ObjId) void {
     const uuid = assetdb.api.getOrCreateUuid(obj) catch undefined;
     var buff: [128]u8 = undefined;
-    const uuid_str = std.fmt.bufPrintZ(&buff, "{s}", .{uuid}) catch undefined;
+    const uuid_str = std.fmt.bufPrintZ(&buff, "{f}", .{uuid}) catch undefined;
 
     zgui.pushStrIdZ(uuid_str);
 }
@@ -1372,12 +1359,14 @@ pub fn registerToApi() !void {
     try apidb.api.implOrRemove(.cdb_types, cdb.CreateTypesI, &create_cdb_types_i, true);
 }
 
-pub fn initFonts(font_size: f32, scale_factor: f32) void {
-    const sized_pixel = std.math.floor(font_size * scale_factor);
+pub fn initFonts(font_size: f32) void {
+    // _ = font_size;
+    const sized_pixel = font_size;
 
     // Load main font
     var main_cfg = zgui.FontConfig.init();
     main_cfg.font_data_owned_by_atlas = false;
+    main_cfg.glyph_exclude_ranges = &[_:0]u16{ public.CoreIcons.ICON_MIN_FA, public.CoreIcons.ICON_MAX_FA, 0 };
     _ = zgui.io.addFontFromMemoryWithConfig(_main_font, sized_pixel, main_cfg, null);
 
     // Merge Font Awesome
@@ -1388,21 +1377,21 @@ pub fn initFonts(font_size: f32, scale_factor: f32) void {
         _fa_solid_font,
         sized_pixel,
         fa_cfg,
-        &[_]u16{ public.CoreIcons.ICON_MIN_FA, public.CoreIcons.ICON_MAX_FA, 0 },
+        null, //&[_]u16{ public.CoreIcons.ICON_MIN_FA, public.CoreIcons.ICON_MAX_FA, 0 },
     );
-
-    var style = zgui.getStyle();
-    //style.frame_border_size = 1.0;
-    style.indent_spacing = 30;
-    style.scaleAllSizes(scale_factor);
 }
 
 pub fn enableWithWindow(window: ?cetech1.platform.Window) !void {
-    _scale_factor = _scale_factor orelse scale_factor: {
-        const scale = if (window) |w| w.getContentScale() else .{ 1, 1 };
-        break :scale_factor @max(scale[0], scale[1]);
+    _scale_factor = scale_factor: {
+        if (builtin.os.tag.isDarwin()) break :scale_factor 1;
+
+        if (window) |w| {
+            const scale = w.getContentScale();
+            break :scale_factor @max(scale[0], scale[1]);
+        }
+
+        break :scale_factor 1; // Headless mode
     };
-    //_scale_factor = 2;
 
     //zgui.getStyle().frame_rounding = 8;
 
@@ -1411,12 +1400,26 @@ pub fn enableWithWindow(window: ?cetech1.platform.Window) !void {
         .nav_enable_gamepad = true,
         .nav_enable_set_mouse_pos = true,
         .dock_enable = true,
+        .dpi_enable_scale_fonts = true,
+        .dpi_enable_scale_viewport = true,
     });
     zgui.io.setConfigWindowsMoveFromTitleBarOnly(true);
 
+    // Headless
+    if (window == null) {
+        zgui.io.setDisplaySize(1024, 768);
+    }
+
     _backed_initialised = true;
 
-    initFonts(16, _scale_factor.?);
+    initFonts(16);
+
+    var style = zgui.getStyle();
+    //style.frame_border_size = 1.0;
+    // style.indent_spacing = 30;
+    style.scaleAllSizes(_scale_factor.?);
+    style.font_scale_dpi = _scale_factor.?;
+
     backend.init(if (window) |w| w.getInternal(anyopaque) else null);
 
     //TODO:
@@ -1449,7 +1452,7 @@ pub fn enableWithWindow(window: ?cetech1.platform.Window) !void {
     try registerAllTests();
 
     if (test_ui) {
-        const filter = try std.fmt.allocPrintZ(_allocator, "{s}", .{test_ui_filter});
+        const filter = try std.fmt.allocPrintSentinel(_allocator, "{s}", .{test_ui_filter}, 0);
         defer _allocator.free(filter);
         testSetRunSpeed(test_ui_speed);
 
@@ -1461,10 +1464,10 @@ pub fn enableWithWindow(window: ?cetech1.platform.Window) !void {
     }
 }
 
-fn newFrame(fb_width: u32, fb_height: u32) void {
+fn newFrame(viewid: gpu.ViewId) void {
     var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "CoreUI new frame");
     defer update_zone_ctx.End();
-    backend.newFrame(fb_width, fb_height);
+    backend.newFrame(viewid);
 }
 
 fn afterAll() void {

@@ -243,7 +243,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
     // Destroy tab instantce
     pub fn destroy(tab_inst: *editor.TabI) !void {
-        const tab_o: *FooViewportTab = @alignCast(@ptrCast(tab_inst.inst));
+        const tab_o: *FooViewportTab = @ptrCast(@alignCast(tab_inst.inst));
         _render_viewport.destroyViewport(tab_o.viewport);
         tab_o.render_pipeline.deinit();
         _ecs.destroyWorld(tab_o.world);
@@ -254,7 +254,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
         _ = kernel_tick;
 
-        const tab_o: *FooViewportTab = @alignCast(@ptrCast(inst));
+        const tab_o: *FooViewportTab = @ptrCast(@alignCast(inst));
         const size = _coreui.getContentRegionAvail();
         tab_o.viewport.setSize(size);
 
@@ -262,8 +262,6 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             _coreui.image(
                 texture,
                 .{
-                    .flags = 0,
-                    .mip = 0,
                     .w = size[0],
                     .h = size[1],
                 },
@@ -312,7 +310,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
     // Draw tab menu
     pub fn menu(inst: *editor.TabO) !void {
-        const tab_o: *FooViewportTab = @alignCast(@ptrCast(inst));
+        const tab_o: *FooViewportTab = @ptrCast(@alignCast(inst));
 
         const allocator = try _tempalloc.create();
         defer _tempalloc.destroy(allocator);
@@ -462,6 +460,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_foo_viewport_tab(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor_foo_viewport_tab(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

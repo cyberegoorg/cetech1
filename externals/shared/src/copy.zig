@@ -43,7 +43,6 @@ const sync_list = [_]RepositorySyncConfig{
             "src",
             "tools",
             ".gitattributes",
-            ".zigversion",
             ".gitignore",
             "build.zig",
             "build.zig.zon",
@@ -72,7 +71,6 @@ const sync_list = [_]RepositorySyncConfig{
             "src",
             "libs",
             ".gitignore",
-            ".zigversion",
             "build.zig",
             "build.zig.zon",
             "LICENSE",
@@ -86,7 +84,6 @@ const sync_list = [_]RepositorySyncConfig{
             "src",
             "libs",
             ".gitignore",
-            ".zigversion",
             "build.zig",
             "build.zig.zon",
             "LICENSE",
@@ -100,7 +97,6 @@ const sync_list = [_]RepositorySyncConfig{
             "src",
             "libs",
             ".gitignore",
-            ".zigversion",
             "build.zig",
             "build.zig.zon",
             "LICENSE",
@@ -138,7 +134,6 @@ const sync_list = [_]RepositorySyncConfig{
         .entries = &.{
             "src",
             ".gitignore",
-            ".zigversion",
             "build.zig",
             "build.zig.zon",
             "LICENSE",
@@ -164,7 +159,6 @@ const sync_list = [_]RepositorySyncConfig{
             "libs",
             "src",
             ".gitignore",
-            ".zigversion",
             "build.zig",
             "build.zig.zon",
             "LICENSE",
@@ -196,7 +190,15 @@ pub fn main() !void {
         defer dest_dir.close();
 
         for (config.entries) |entry| {
-            const stat = try src_dir.statFile(entry);
+            const stat = src_dir.statFile(entry) catch |e| {
+                switch (e) {
+                    error.FileNotFound => {
+                        std.log.err("File {s} not found", .{entry});
+                        continue;
+                    },
+                    else => return e,
+                }
+            };
 
             if (stat.kind == .file) {
                 try src_dir.copyFile(entry, dest_dir, entry, .{});

@@ -153,13 +153,14 @@ pub fn main() !void {
 
     var config_file = try std.fs.openFileAbsolute(arguments.config, .{});
     defer config_file.close();
-
-    var config_file_data = std.ArrayList(u8).init(allocator);
-    defer config_file_data.deinit();
-
     const config_file_size = try config_file.getEndPos();
-    try config_file.reader().readAllArrayList(&config_file_data, config_file_size);
-    try config_file_data.append(0);
+
+    var config_file_data = std.ArrayList(u8){};
+    defer config_file_data.deinit(allocator);
+    try config_file_data.resize(allocator, config_file_size);
+    var config_file_data_reader = config_file.reader(&.{});
+    try config_file_data_reader.interface.readSliceAll(config_file_data.items);
+    try config_file_data.append(allocator, 0);
 
     const config = try std.zon.parse.fromSlice(
         LaunchConfig,
@@ -242,17 +243,20 @@ pub fn createLaunchersVSCode(allocator: std.mem.Allocator, project_dir: std.fs.D
     var obj_file = try vscode_dir.createFile("launch.json", .{});
     defer obj_file.close();
 
-    var bw = std.io.bufferedWriter(obj_file.writer());
-    defer bw.flush() catch undefined;
-    const writer = bw.writer();
+    var buffer: [4096]u8 = undefined;
 
-    var ws = std.json.writeStream(writer, .{ .whitespace = .indent_tab });
+    var bw = obj_file.writer(&buffer);
+    defer bw.interface.flush() catch undefined;
+
+    var ws = std.json.Stringify{ .writer = &bw.interface, .options = .{ .whitespace = .indent_tab } };
     try ws.write(VSCodeLaunchConfig{ .configurations = cmd_list.items });
 }
 
 pub fn createOrUpdateSettingsJsonVSCode(allocator: std.mem.Allocator, project_dir: std.fs.Dir, args: ParseArgsResult) !void {
     var vscode_dir = try project_dir.makeOpenPath(".vscode", .{});
     defer vscode_dir.close();
+
+    var buffer: [4096]u8 = undefined;
 
     // Read or create
     var parsed = blk: {
@@ -263,9 +267,8 @@ pub fn createOrUpdateSettingsJsonVSCode(allocator: std.mem.Allocator, project_di
             return err;
         };
         defer obj_file.close();
-        var rb = std.io.bufferedReader(obj_file.reader());
-        const reader = rb.reader();
-        var json_reader = std.json.reader(allocator, reader);
+        var rb = obj_file.reader(&buffer);
+        var json_reader = std.json.Reader.init(allocator, &rb.interface);
         defer json_reader.deinit();
 
         break :blk try std.json.parseFromTokenSource(std.json.Value, allocator, &json_reader, .{});
@@ -308,11 +311,11 @@ pub fn createOrUpdateSettingsJsonVSCode(allocator: std.mem.Allocator, project_di
     // Write back
     var obj_file = try vscode_dir.createFile("settings.json", .{});
     defer obj_file.close();
-    var bw = std.io.bufferedWriter(obj_file.writer());
-    defer bw.flush() catch undefined;
-    const writer = bw.writer();
+    var bw = obj_file.writer(&buffer);
+    defer bw.interface.flush() catch undefined;
 
-    var ws = std.json.writeStream(writer, .{ .whitespace = .indent_tab });
+    // writeStream(writer, .{ .whitespace = .indent_tab });
+    var ws = std.json.Stringify{ .writer = &bw.interface, .options = .{ .whitespace = .indent_tab } };
     try ws.write(parsed.value);
 }
 
@@ -362,17 +365,20 @@ pub fn createLaunchersFleet(allocator: std.mem.Allocator, project_dir: std.fs.Di
     var obj_file = try vscode_dir.createFile("run.json", .{});
     defer obj_file.close();
 
-    var bw = std.io.bufferedWriter(obj_file.writer());
-    defer bw.flush() catch undefined;
-    const writer = bw.writer();
+    var buffer: [4096]u8 = undefined;
 
-    var ws = std.json.writeStream(writer, .{ .whitespace = .indent_tab });
+    var bw = obj_file.writer(&buffer);
+    defer bw.interface.flush() catch undefined;
+
+    var ws = std.json.Stringify{ .writer = &bw.interface, .options = .{ .whitespace = .indent_tab } };
     try ws.write(FleetCodeLaunchConfig{ .configurations = cmd_list.items });
 }
 
 pub fn createOrUpdateSettingsJsonFleet(allocator: std.mem.Allocator, project_dir: std.fs.Dir, args: ParseArgsResult) !void {
     var fleet_dir = try project_dir.makeOpenPath(".fleet", .{});
     defer fleet_dir.close();
+
+    var buffer: [4096]u8 = undefined;
 
     // Read or create
     var parsed = blk: {
@@ -383,9 +389,8 @@ pub fn createOrUpdateSettingsJsonFleet(allocator: std.mem.Allocator, project_dir
             return err;
         };
         defer obj_file.close();
-        var rb = std.io.bufferedReader(obj_file.reader());
-        const reader = rb.reader();
-        var json_reader = std.json.reader(allocator, reader);
+        var rb = obj_file.reader(&buffer);
+        var json_reader = std.json.Reader.init(allocator, &rb.interface);
         defer json_reader.deinit();
 
         break :blk try std.json.parseFromTokenSource(std.json.Value, allocator, &json_reader, .{});
@@ -414,11 +419,11 @@ pub fn createOrUpdateSettingsJsonFleet(allocator: std.mem.Allocator, project_dir
     // Write back
     var obj_file = try fleet_dir.createFile("settings.json", .{});
     defer obj_file.close();
-    var bw = std.io.bufferedWriter(obj_file.writer());
-    defer bw.flush() catch undefined;
-    const writer = bw.writer();
 
-    var ws = std.json.writeStream(writer, .{ .whitespace = .indent_tab });
+    var bw = obj_file.writer(&buffer);
+    defer bw.interface.flush() catch undefined;
+
+    var ws = std.json.Stringify{ .writer = &bw.interface, .options = .{ .whitespace = .indent_tab } };
     try ws.write(parsed.value);
 }
 
@@ -442,6 +447,8 @@ pub fn createLaunchersIdea(allocator: std.mem.Allocator, project_dir: std.fs.Dir
     var run_config_dir = try vscode_dir.makeOpenPath("runConfigurations", .{});
     defer run_config_dir.close();
 
+    var buffer: [4096]u8 = undefined;
+
     for (launch_cmds) |cmd| {
         const cmd_name = try tmp_alloc.dupe(u8, cmd.name);
         _ = std.mem.replace(u8, cmd_name, " ", "_", cmd_name);
@@ -455,12 +462,13 @@ pub fn createLaunchersIdea(allocator: std.mem.Allocator, project_dir: std.fs.Dir
 
         var obj_file = try run_config_dir.createFile(launcher_path, .{});
         defer obj_file.close();
-        var bw = std.io.bufferedWriter(obj_file.writer());
-        defer bw.flush() catch undefined;
+
+        var bw = obj_file.writer(&buffer);
+        defer bw.interface.flush() catch undefined;
 
         const program = try std.fmt.allocPrint(tmp_alloc, "{s}{s}", .{ cmd.program orelse args.bin_path, osBasedProgramExtension() });
 
-        try std.fmt.format(bw.writer(),
+        try bw.interface.print(
             \\<component name="ProjectRunConfigurationManager">
             \\  <configuration default="false" name="{s}" type="ZIGBRAINS_BUILD" factoryName="ZIGBRAINS_BUILD">
             \\    <ZigBrainsOption name="workingDirectory" value="$PROJECT_DIR$" />
@@ -470,22 +478,22 @@ pub fn createLaunchersIdea(allocator: std.mem.Allocator, project_dir: std.fs.Dir
         , .{cmd.name});
 
         if (cmd.args.len != 0) {
-            _ = try bw.write("<ZigBrainsArrayOption name=\"compilerArgs\">\n");
-            _ = try bw.write("  <ZigBrainsArrayEntry value=\"--\" />\n");
+            _ = try bw.interface.write("<ZigBrainsArrayOption name=\"compilerArgs\">\n");
+            _ = try bw.interface.write("  <ZigBrainsArrayEntry value=\"--\" />\n");
             for (cmd.args) |arg| {
-                try std.fmt.format(bw.writer(), "<ZigBrainsArrayEntry value=\"{s}\" />\n", .{arg});
+                try bw.interface.print("<ZigBrainsArrayEntry value=\"{s}\" />\n", .{arg});
             }
-            _ = try bw.write(" </ZigBrainsArrayOption>\n");
+            _ = try bw.interface.write(" </ZigBrainsArrayOption>\n");
 
             // Debug args
-            _ = try bw.write("<ZigBrainsArrayOption name=\"exeArgs\">\n");
+            _ = try bw.interface.write("<ZigBrainsArrayOption name=\"exeArgs\">\n");
             for (cmd.args) |arg| {
-                try std.fmt.format(bw.writer(), "<ZigBrainsArrayEntry value=\"{s}\" />\n", .{arg});
+                try bw.interface.print("<ZigBrainsArrayEntry value=\"{s}\" />\n", .{arg});
             }
-            _ = try bw.write(" </ZigBrainsArrayOption>\n");
+            _ = try bw.interface.write(" </ZigBrainsArrayOption>\n");
         }
 
-        try std.fmt.format(bw.writer(),
+        try bw.interface.print(
             \\    <ZigBrainsOption name="colored" value="true" />
             \\    <ZigBrainsOption name="exePath" value="{s}" />
             \\    <ZigBrainsArrayOption name="exeArgs" />
@@ -503,6 +511,8 @@ pub fn createProjectIdea(allocator: std.mem.Allocator, project_dir: std.fs.Dir, 
     const base_path = try project_dir.realpathAlloc(allocator, ".");
     defer allocator.free(base_path);
 
+    var buffer: [4096]u8 = undefined;
+
     // zigbrains.xml
     {
         const zls_path = try genZlsPath(allocator, base_path, args.is_project);
@@ -510,10 +520,10 @@ pub fn createProjectIdea(allocator: std.mem.Allocator, project_dir: std.fs.Dir, 
 
         var obj_file = try fleet_dir.createFile("zigbrains.xml", .{});
         defer obj_file.close();
-        var bw = std.io.bufferedWriter(obj_file.writer());
-        defer bw.flush() catch undefined;
+        var bw = obj_file.writer(&buffer);
+        defer bw.interface.flush() catch undefined;
 
-        try std.fmt.format(bw.writer(),
+        try bw.interface.print(
             \\<?xml version="1.0" encoding="UTF-8"?>
             \\<project version="4">
             \\  <component name="ZLSSettings">
@@ -527,10 +537,10 @@ pub fn createProjectIdea(allocator: std.mem.Allocator, project_dir: std.fs.Dir, 
     {
         var obj_file = try fleet_dir.createFile("cetech1.iml", .{});
         defer obj_file.close();
-        var bw = std.io.bufferedWriter(obj_file.writer());
-        defer bw.flush() catch undefined;
+        var bw = obj_file.writer(&buffer);
+        defer bw.interface.flush() catch undefined;
 
-        try std.fmt.format(bw.writer(),
+        try bw.interface.print(
             \\<?xml version="1.0" encoding="UTF-8"?>
             \\<module type="EMPTY_MODULE" version="4">
             \\  <component name="NewModuleRootManager">
@@ -546,10 +556,10 @@ pub fn createProjectIdea(allocator: std.mem.Allocator, project_dir: std.fs.Dir, 
     {
         var obj_file = try fleet_dir.createFile("modules.xml", .{});
         defer obj_file.close();
-        var bw = std.io.bufferedWriter(obj_file.writer());
-        defer bw.flush() catch undefined;
+        var bw = obj_file.writer(&buffer);
+        defer bw.interface.flush() catch undefined;
 
-        try std.fmt.format(bw.writer(),
+        try bw.interface.print(
             \\<?xml version="1.0" encoding="UTF-8"?>
             \\<project version="4">
             \\  <component name="ProjectModuleManager">
@@ -565,10 +575,10 @@ pub fn createProjectIdea(allocator: std.mem.Allocator, project_dir: std.fs.Dir, 
     {
         var obj_file = try fleet_dir.createFile(".gitignore", .{});
         defer obj_file.close();
-        var bw = std.io.bufferedWriter(obj_file.writer());
-        defer bw.flush() catch undefined;
+        var bw = obj_file.writer(&buffer);
+        defer bw.interface.flush() catch undefined;
 
-        try std.fmt.format(bw.writer(),
+        try bw.interface.print(
             \\# Default ignored files
             \\/shelf/
             \\/tools/

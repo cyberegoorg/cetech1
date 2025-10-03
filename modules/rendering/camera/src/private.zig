@@ -85,7 +85,7 @@ const camera_c = ecs.ComponentI.implement(
             const aspect_ratio = size[0] / size[1];
 
             var cameras: []const public.Camera = undefined;
-            cameras.ptr = @alignCast(@ptrCast(data.ptr));
+            cameras.ptr = @ptrCast(@alignCast(data.ptr));
             cameras.len = data.len / @sizeOf(public.Camera);
 
             for (entites, cameras) |ent, camera| {
@@ -169,7 +169,7 @@ fn selectMainCameraMenu(allocator: std.mem.Allocator, world: ecs.World, camera_e
             const ent = entities[idx];
             const is_main_camera = ent == current_main_camera;
 
-            const label = if (ent == camera_ent) try std.fmt.allocPrintZ(allocator, "{s}", .{"Editor camera"}) else try std.fmt.allocPrintZ(allocator, "{d}", .{entities[idx]});
+            const label = if (ent == camera_ent) try std.fmt.allocPrintSentinel(allocator, "{s}", .{"Editor camera"}, 0) else try std.fmt.allocPrintSentinel(allocator, "{d}", .{entities[idx]}, 0);
             defer allocator.free(label);
 
             if (_coreui.menuItem(_allocator, label, .{ .selected = is_main_camera }, null)) {
@@ -285,6 +285,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_camera(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_camera(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

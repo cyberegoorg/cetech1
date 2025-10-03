@@ -216,7 +216,7 @@ pub const NodePin = struct {
 
     pub fn alocPinHash(allocator: std.mem.Allocator, name: []const u8, comptime is_output: bool) ![:0]const u8 {
         const prefix = if (is_output) "out" else "in";
-        return std.fmt.allocPrintZ(allocator, "{s}:{s}", .{ prefix, name });
+        return std.fmt.allocPrintSentinel(allocator, "{s}:{s}", .{ prefix, name }, 0);
     }
 };
 
@@ -233,7 +233,7 @@ pub const ExecuteArgs = struct {
 
     pub fn getState(self: ExecuteArgs, comptime T: type) ?*T {
         if (self.state) |s| {
-            return @alignCast(@ptrCast(s));
+            return @ptrCast(@alignCast(s));
         }
         return null;
     }
@@ -432,7 +432,7 @@ pub const GraphVMApi = struct {
         const result = try self.getNodeStateFn(allocator, instances, node_type);
 
         var r: []?*T = undefined;
-        r.ptr = @alignCast(@ptrCast(result.ptr));
+        r.ptr = @ptrCast(@alignCast(result.ptr));
         r.len = result.len;
 
         return r;
@@ -442,7 +442,7 @@ pub const GraphVMApi = struct {
         const result = try self.executeNodeAndGetStateFn(allocator, instances, node_type, cfg);
 
         var r: []?*T = undefined;
-        r.ptr = @alignCast(@ptrCast(result.ptr));
+        r.ptr = @ptrCast(@alignCast(result.ptr));
         r.len = result.len;
 
         return r;
@@ -450,7 +450,7 @@ pub const GraphVMApi = struct {
 
     pub inline fn getContext(self: *const GraphVMApi, comptime T: type, instance: GraphInstance, context_name: cetech1.StrId32) ?*T {
         const result = self.getContextFn(instance, context_name) orelse return null;
-        return @alignCast(@ptrCast(result));
+        return @ptrCast(@alignCast(result));
     }
 
     findNodeI: *const fn (type_hash: cetech1.StrId32) ?*const NodeI,

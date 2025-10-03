@@ -105,7 +105,7 @@ const ChangedObjects = struct {
 };
 
 fn toObjFromObjO(obj: *public.Obj) *Object {
-    return @alignCast(@ptrCast(obj));
+    return @ptrCast(@alignCast(obj));
 }
 
 const PropertyValue = usize;
@@ -155,7 +155,7 @@ pub const Object = struct {
     pub fn getPropPtr(self: *Self, comptime T: type, prop_idx: usize) *T {
         const ptr = &self.props_mem[prop_idx];
         std.debug.assert(std.mem.isAligned(@intFromPtr(ptr), @alignOf(T)));
-        return @alignCast(@ptrCast(ptr));
+        return @ptrCast(@alignCast(ptr));
     }
 };
 
@@ -939,7 +939,7 @@ pub const TypeStorage = struct {
 
     pub fn readTT(self: *Self, comptime T: type, obj: *public.Obj, prop_idx: u32, prop_type: public.PropType) T {
         const value_ptr = self.readGeneric(obj, prop_idx, prop_type);
-        const typed_ptr: *const T = @alignCast(@ptrCast(value_ptr.ptr));
+        const typed_ptr: *const T = @ptrCast(@alignCast(value_ptr.ptr));
         return typed_ptr.*;
     }
 
@@ -2290,7 +2290,7 @@ inline fn getDbFromIdx(idx: public.DbId) *Db {
 }
 
 inline fn getDbFromObj(obj: *public.Obj) *Db {
-    const real_obj: *Object = @alignCast(@ptrCast(obj));
+    const real_obj: *Object = @ptrCast(@alignCast(obj));
     return getDbFromIdx(real_obj.objid.db);
 }
 
@@ -2657,9 +2657,10 @@ fn dumpFn(dbidx: public.DbId) !void {
     var dot_file = try std.fs.createFileAbsolute(path, .{});
     defer dot_file.close();
 
-    var bw = std.io.bufferedWriter(dot_file.writer());
-    defer bw.flush() catch undefined;
-    const writer = bw.writer();
+    var buffer: [4096]u8 = undefined;
+    var bw = dot_file.writer(&buffer);
+    const writer = &bw.interface;
+    defer writer.flush() catch undefined;
 
     try writer.print("# CDB Types reference\n\n", .{});
 

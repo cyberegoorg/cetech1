@@ -106,7 +106,7 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
     // Destroy FooTab instantce
     pub fn destroy(tab_inst: *editor.TabI) !void {
-        var tab_o: *AssetBrowserTab = @alignCast(@ptrCast(tab_inst.inst));
+        var tab_o: *AssetBrowserTab = @ptrCast(@alignCast(tab_inst.inst));
         _cdb.destroyObject(tab_o.tags);
         tab_o.selection_obj.deinit();
         tab_o.type_filter.deinit(_allocator);
@@ -114,7 +114,7 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     pub fn menu(inst: *editor.TabO) !void {
-        const tab_o: *AssetBrowserTab = @alignCast(@ptrCast(inst));
+        const tab_o: *AssetBrowserTab = @ptrCast(@alignCast(inst));
 
         const allocator = try _tempalloc.create();
         defer _tempalloc.destroy(allocator);
@@ -148,7 +148,7 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
         _ = kernel_tick;
         _ = dt;
-        var tab_o: *AssetBrowserTab = @alignCast(@ptrCast(inst));
+        var tab_o: *AssetBrowserTab = @ptrCast(@alignCast(inst));
 
         const root_folder = _assetdb.getRootFolder();
         if (root_folder.isEmpty()) {
@@ -178,7 +178,7 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     pub fn focused(inst: *editor.TabO) !void {
-        const tab_o: *AssetBrowserTab = @alignCast(@ptrCast(inst));
+        const tab_o: *AssetBrowserTab = @ptrCast(@alignCast(inst));
         _ = tab_o;
     }
 
@@ -191,7 +191,7 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     pub fn selectObjFromMenu(allocator: std.mem.Allocator, tab: *editor.TabO, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) !cdb.ObjId {
         var label_buff: [1024]u8 = undefined;
 
-        const tab_o: *AssetBrowserTab = @alignCast(@ptrCast(tab));
+        const tab_o: *AssetBrowserTab = @ptrCast(@alignCast(tab));
 
         const selected_n = tab_o.selection_obj.count();
         const selected_obj = tab_o.selection_obj.first();
@@ -237,7 +237,7 @@ const UiAssetBrowserResult = struct {
 };
 
 fn filterType(allocator: std.mem.Allocator, tab: *editor.TabO, db: cdb.DbId) !void {
-    const tab_o: *AssetBrowserTab = @alignCast(@ptrCast(tab));
+    const tab_o: *AssetBrowserTab = @ptrCast(@alignCast(tab));
 
     if (_coreui.beginPopup("asset_browser_filter_popup", .{})) {
         defer _coreui.endPopup();
@@ -502,6 +502,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_asset_browser(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor_asset_browser(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

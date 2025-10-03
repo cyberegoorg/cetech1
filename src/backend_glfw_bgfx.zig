@@ -19,23 +19,10 @@ pub fn deinit() void {
     if (backend_init) zgui.backend.deinit();
 }
 
-pub fn newFrame(fb_width: u32, fb_height: u32) void {
-    var w = fb_width;
-    var h = fb_height;
-
-    // Headless mode
-    // Set some default imgui screen size
-    if (fb_width == 0 and fb_height == 0) {
-        w = 1024;
-        h = 768;
-    }
-
+pub fn newFrame(viewid: zbgfx.bgfx.ViewId) void {
     if (backend_init) zgui.backend.newFrame();
 
-    zgui.io.setDisplaySize(@floatFromInt(w), @floatFromInt(h));
-    zgui.io.setDisplayFramebufferScale(1.0, 1.0);
-
-    ImGui_ImplBgfx_NewFrame(255);
+    ImGui_ImplBgfx_NewFrame(viewid);
     zgui.gizmo.beginFrame();
 }
 

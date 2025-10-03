@@ -27,7 +27,10 @@ pub fn main() !void {
     };
     defer output_file.close();
 
-    const w = output_file.writer();
+    var buffer: [1024]u8 = undefined;
+    var writer = output_file.writer(&buffer);
+    const w = &writer.interface;
+    defer w.flush() catch undefined;
 
     try w.print("# Thanks to all ;)\n\n", .{});
 
@@ -43,13 +46,14 @@ pub fn main() !void {
 
         var config_file = try std.fs.openFileAbsolute(config_path, .{});
         defer config_file.close();
-
-        var config_file_data = std.ArrayList(u8).init(allocator);
-        defer config_file_data.deinit();
-
         const config_file_size = try config_file.getEndPos();
-        try config_file.reader().readAllArrayList(&config_file_data, config_file_size);
-        try config_file_data.append(0);
+
+        var config_file_data = std.ArrayList(u8){};
+        defer config_file_data.deinit(allocator);
+        try config_file_data.resize(allocator, config_file_size);
+        var config_file_data_reader = config_file.reader(&.{});
+        try config_file_data_reader.interface.readSliceAll(config_file_data.items);
+        try config_file_data.append(allocator, 0);
 
         const config = try std.zon.parse.fromSlice(
             ExternalsConfig,
@@ -68,7 +72,8 @@ pub fn main() !void {
 
             try w.print("## {s}\n\n", .{external.name});
 
-            try output_file.writeFileAll(f, .{});
+            var reader = f.reader(&.{});
+            _ = try w.sendFileAll(&reader, .unlimited);
 
             try w.print("\n", .{});
         }

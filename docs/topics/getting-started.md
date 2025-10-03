@@ -23,14 +23,14 @@
 
 ## Get ZIG
 
-Get ZIG `0.14.0`.
+Get ZIG `0.15.1`.
 
 <tabs>
     <tab title="ZVM">
         Get <a href="https://www.zvm.app">ZVM</a>
         <code-block lang="bash">
             # zvm vmu zig mach - only for mach versions
-            zvm i 0.14.0
+            zvm i 0.15.1
         </code-block>
     </tab>
 </tabs>
@@ -84,18 +84,22 @@ Get ZIG `0.14.0`.
 > Bool arguments does not need value 1 for true value. ex.: `--fullscreen` is equal `--fullscreen 1`
 > {style="note"}
 
-| Args                     | Value                          | Default | Description                                 |
-|--------------------------|--------------------------------|---------|---------------------------------------------|
-| `--load-dynamic`         | `1` or `0`                     | `1`     | Load dynamic modules?                       |
-| `--max-kernel-tick`      | `n`                            | `null`  | Quit after kernel make n ticks.             |
-| `--max-kernel-tick-rate` | `n`                            | `60`    | Kernel frame rate.                          |
-| `--headless`             | `1` or `0`                     | `0`     | Without creating real window.               |
-| `--asset-root`           | `str`                          | `null`  | Path to asset root. (project path)          |
-| `--fullscreen`           | `1` or `0`                     | `0`     | Force full-screen mode, nice for SteamDeck. |
-| `--test-ui`              | `1` or `0`                     | `0`     | Run UI tests and quit.                      |
-| `--test-ui-filter`       | `str`                          | `all`   | Run only ui tests that pass this filter.    |
-| `--test-ui-speed`        | `fast`, `normal`,  `cinematic` | `fast`  | UI test speed.                              |
-| `--test-ui-junit`        | `str`                          | `null`  | UI test JUnit result filename.              |
+| Args                     | Value                          | Default   | Description                                 |
+|--------------------------|--------------------------------|-----------|---------------------------------------------|
+| `--load-dynamic`         | `1` or `0`                     | `1`       | Load dynamic modules?                       |
+| `--max-kernel-tick`      | `n`                            | `null`    | Quit after kernel make n ticks.             |
+| `--max-kernel-tick-rate` | `n`                            | `60`      | Kernel frame rate.                          |
+| `--headless`             | `1` or `0`                     | `0`       | Without creating real window.               |
+| `--asset-root`           | `str`                          | `null`    | Path to asset root. (project path)          |
+| `--renderer-debug`       | `1` or `0`                     | `0`       | Render backed debug. (shaders)              |
+| `--renderer-profile`     | `1` or `0`                     | `0`       | Render backed profile. (shaders)            |
+| `--vsync`                | `1` or `0`                     | `0`       | Vsync.                                      |
+| `--fullscreen`           | `1` or `0`                     | `0`       | Force full-screen mode, nice for SteamDeck. |
+| `--worker-count`         | number                         | cpu count | Max threads for task system.                |
+| `--test-ui`              | `1` or `0`                     | `0`       | Run UI tests and quit.                      |
+| `--test-ui-filter`       | `str`                          | `all`     | Run only ui tests that pass this filter.    |
+| `--test-ui-speed`        | `fast`, `normal`,  `cinematic` | `fast`    | UI test speed.                              |
+| `--test-ui-junit`        | `str`                          | `null`    | UI test JUnit result filename.              |
 
 ## ZLS
 
@@ -154,15 +158,33 @@ Need [zigbrains](https://plugins.jetbrains.com/plugin/22456-zigbrains)
 
 ## Tracy profiler
 
-CETech1 has builtin support for tracy profiler.
+CETech1 has builtin support for tracy profiler and provide Tracy as submodule, but you must build it first.
 
 > For more details go to [tracy](https://github.com/wolfpld/tracy) repository.
 
 <tabs>
+    <tab title="MacOS/Linux">
+        <code-block lang="bash">
+            git submodule update --init externals/shared/repo/tracy
+            cd externals/shared/repo/tracy
+            cmake -B profiler/build -S profiler -DCMAKE_BUILD_TYPE=Release
+            make -C profiler/build
+        </code-block>
+    </tab>
+    <tab title="Windows">
+        <code-block lang="bash">
+            git submodule update --init externals/shared/repo/tracy
+            cd externals/shared/repo/tracy
+            cmake -B profiler/build -S profiler -DCMAKE_BUILD_TYPE=Release
+            make -C profiler/build
+        </code-block>
+    </tab>
+</tabs>
+
+<tabs>
     <tab title="MacOS">
         <code-block lang="bash">
-            brew install tracy
-            tracy -a localhost
+            profiler/build/tracy-profiler -a localhost
             zig-out/bin/cetech1 # on separate terminal
             # Have fun
         </code-block>
@@ -170,7 +192,7 @@ CETech1 has builtin support for tracy profiler.
     <tab title="Linux">
         <code-block lang="bash">
             # install tracy by your way
-            tracy -a localhost
+            profiler/build/tracy-profiler -a localhost
             zig-out/bin/cetech1 # on separate terminal
             # Have fun
         </code-block>

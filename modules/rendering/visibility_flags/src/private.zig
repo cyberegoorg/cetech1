@@ -237,7 +237,7 @@ var tag_prop_aspect = editor_inspector.UiEmbedPropertyAspect.implement(struct {
                     const pos_a = _coreui.getItemRectMax()[0];
                     const text_size = _coreui.calcTextSize(iface.name, .{})[0] + 2 * style.frame_padding[0];
 
-                    if (pos_a + text_size + style.item_spacing[0] < _coreui.getWindowPos()[0] + _coreui.getWindowContentRegionMax()[0]) {
+                    if (pos_a + text_size + style.item_spacing[0] < _coreui.getWindowPos()[0] + _coreui.getContentRegionAvail()[0]) {
                         _coreui.sameLine(.{});
                     }
                 }
@@ -289,7 +289,7 @@ var color4f_properties_aspec = editor_inspector.UiEmbedPropertiesAspect.implemen
                     const pos_a = _coreui.getItemRectMax()[0];
                     const text_size = _coreui.calcTextSize(iface.name, .{})[0] + 2 * style.frame_padding[0];
 
-                    if (pos_a + text_size + style.item_spacing[0] < _coreui.getWindowPos()[0] + _coreui.getWindowContentRegionMax()[0]) {
+                    if (pos_a + text_size + style.item_spacing[0] < _coreui.getWindowPos()[0] + _coreui.getContentRegionAvail()[0]) {
                         _coreui.sameLine(.{});
                     }
                 }
@@ -422,6 +422,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_visibility_flags(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_visibility_flags(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

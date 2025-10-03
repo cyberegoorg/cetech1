@@ -338,7 +338,7 @@ test "Can register module" {
     const Module1 = struct {
         var called: bool = false;
 
-        fn load_module(_apidb: *const cetech1.apidb.ApiDbAPI, _a: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+        fn load_module(_apidb: *const cetech1.apidb.ApiDbAPI, _a: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
             _ = _apidb;
             _ = _a;
             _ = reload;

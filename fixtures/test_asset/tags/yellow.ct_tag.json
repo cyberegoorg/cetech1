@@ -7,6 +7,8 @@
   "color": {
     "__type_name": "ct_color_4f",
     "__uuid": "018e03bf-fc2a-7ea9-af7b-e0e704bc824c",
-    "b": 0.0e+00
+    "r": 1,
+    "g": 1,
+    "a": 1
   }
 }

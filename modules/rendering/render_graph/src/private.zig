@@ -422,7 +422,7 @@ const GraphBuilder = struct {
         var z = _profiler.ZoneN(@src(), "RenderGraph - Compile");
         defer z.End();
 
-        const real_module: *Module = @alignCast(@ptrCast(module.ptr));
+        const real_module: *Module = @ptrCast(@alignCast(module.ptr));
         try self.compileModule(allocator, real_module);
 
         // Build DAG => flat array
@@ -649,7 +649,7 @@ const Module = struct {
     }
 
     pub fn addModule(self: *Module, module: public.Module) !void {
-        try self.passes.append(self.allocator, .{ .module = @alignCast(@ptrCast(module.ptr)) });
+        try self.passes.append(self.allocator, .{ .module = @ptrCast(@alignCast(module.ptr)) });
     }
 
     pub fn cleanup(self: *Module) !void {
@@ -696,7 +696,7 @@ pub fn createModule() !public.Module {
 }
 
 pub fn destroyModule(module: public.Module) void {
-    var real_module: *Module = @alignCast(@ptrCast(module.ptr));
+    var real_module: *Module = @ptrCast(@alignCast(module.ptr));
     real_module.deinit();
     _g.module_pool.destroy(real_module);
 }
@@ -708,7 +708,7 @@ pub fn createBuilder(allocator: std.mem.Allocator) !public.GraphBuilder {
 }
 
 pub fn destroyBuilder(builder: public.GraphBuilder) void {
-    const true_builder: *GraphBuilder = @alignCast(@ptrCast(builder.ptr));
+    const true_builder: *GraphBuilder = @ptrCast(@alignCast(builder.ptr));
     true_builder.deinit();
     _g.builder_pool.destroy(true_builder);
 }
@@ -801,6 +801,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_render_graph(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_render_graph(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

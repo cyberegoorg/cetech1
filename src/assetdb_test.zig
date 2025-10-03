@@ -127,8 +127,8 @@ test "asset: Should save asset to json" {
     FooAsset.setValue(bool, _cdb, asset_obj_w, .Bool, true);
     FooAsset.setValue(u32, _cdb, asset_obj_w, .U32, 10);
     FooAsset.setValue(i32, _cdb, asset_obj_w, .I32, 20);
-    FooAsset.setValue(f64, _cdb, asset_obj_w, .F64, 20.0);
-    FooAsset.setValue(f32, _cdb, asset_obj_w, .F32, 30.0);
+    FooAsset.setValue(f64, _cdb, asset_obj_w, .F64, 20.1);
+    FooAsset.setValue(f32, _cdb, asset_obj_w, .F32, 30.1);
 
     try FooAsset.setRef(_cdb, asset_obj_w, .Reference, ref_obj1);
     try FooAsset.addRefToSet(_cdb, asset_obj_w, .ReferenceSet, &.{ref_obj2});
@@ -151,52 +151,50 @@ test "asset: Should save asset to json" {
     const expected_fmt =
         \\{{
         \\  "__version": "0.1.0",
-        \\  "__asset_uuid": "{s}",
+        \\  "__asset_uuid": "{f}",
         \\  "__type_name": "ct_foo_asset",
-        \\  "__uuid": "{s}",
+        \\  "__uuid": "{f}",
         \\  "__prototype_uuid": "9c49cfdb-0d31-485f-8623-24248b53c30f",
         \\  "bool": true,
         \\  "u32": 10,
         \\  "i32": 20,
-        \\  "f32": 3e1,
-        \\  "f64": 2e1,
+        \\  "f32": 30.100000381469727,
+        \\  "f64": 20.1,
         \\  "str": "foo",
         \\  "blob": "{x}d667a6af",
         \\  "subobject": {{
         \\    "__type_name": "ct_foo_asset",
-        \\    "__uuid": "{s}"
+        \\    "__uuid": "{f}"
         \\  }},
-        \\  "reference": "ct_foo_asset:{s}",
+        \\  "reference": "ct_foo_asset:{f}",
         \\  "subobject_set": [
         \\    {{
         \\      "__type_name": "ct_foo_asset",
-        \\      "__uuid": "{s}"
+        \\      "__uuid": "{f}"
         \\    }}
         \\  ],
         \\  "subobject_set__instantiate": [
         \\    {{
         \\      "__type_name": "ct_foo_asset",
-        \\      "__uuid": "{s}",
-        \\      "__prototype_uuid": "{s}"
+        \\      "__uuid": "{f}",
+        \\      "__prototype_uuid": "{f}"
         \\    }}
         \\  ],
         \\  "reference_set": [
-        \\    "ct_foo_asset:{s}"
+        \\    "ct_foo_asset:{f}"
         \\  ],
         \\  "reference_set__removed": [
-        \\    "ct_foo_asset:{s}"
+        \\    "ct_foo_asset:{f}"
         \\  ]
         \\}}
     ;
 
-    var out_buffer: [2048]u8 = undefined;
-    var fixed_buffer_stream = std.io.fixedBufferStream(&out_buffer);
-    const out_stream = fixed_buffer_stream.writer();
+    var out_buffer: [2048]u8 = @splat(0);
+    var fixed_buffer_stream = std.io.Writer.fixed(&out_buffer);
 
     try private.writeCdbObjJson(
-        @TypeOf(out_stream),
         asset,
-        out_stream,
+        &fixed_buffer_stream,
         asset,
         WriteBlobToNull,
         "",
@@ -219,7 +217,7 @@ test "asset: Should save asset to json" {
                 private.api.getUuid(proto_ref_obj1).?,
             },
         ),
-        fixed_buffer_stream.getWritten(),
+        std.mem.sliceTo(&out_buffer, 0),
     );
 
     //std.debug.print("\n {s} \n", .{fixed_buffer_stream.getWritten()});
@@ -282,8 +280,8 @@ test "asset: Should read asset from json reader" {
         \\  "bool": true,
         \\  "u32": 10,
         \\  "i32": 20,
-        \\  "f32": 3e1,
-        \\  "f64": 2e1,
+        \\  "f32": 30.100000381469727,
+        \\  "f64": 20.1,
         \\  "str": "foo",
         \\  "subobject": {
         \\    "__type_name": "ct_foo_asset",
@@ -312,12 +310,10 @@ test "asset: Should read asset from json reader" {
         \\}
     ;
 
-    var fixed_buffer_stream = std.io.fixedBufferStream(input_json);
-    const in_stream = fixed_buffer_stream.reader();
+    var fixed_buffer_stream = std.io.Reader.fixed(input_json);
 
     const asset = try private.readAssetFromReader(
-        @TypeOf(in_stream),
-        in_stream,
+        &fixed_buffer_stream,
         "foo",
         folder1_asset,
         ReadBlobFromNull,
@@ -330,20 +326,18 @@ test "asset: Should read asset from json reader" {
 
     try std.testing.expectEqual(uuid.fromStr("018b5846-c2d5-712f-bb12-9d9d15321ecb").?, private.api.getUuid(asset_obj.?).?);
 
-    var out_buffer: [2048]u8 = undefined;
-    var fixed_out_buffer_stream = std.io.fixedBufferStream(&out_buffer);
-    const out_stream = fixed_out_buffer_stream.writer();
+    var out_buffer: [2048]u8 = @splat(0);
+    var fixed_out_buffer_stream = std.io.Writer.fixed(&out_buffer);
     try private.writeCdbObjJson(
-        @TypeOf(out_stream),
         asset,
-        out_stream,
+        &fixed_out_buffer_stream,
         asset,
         WriteBlobToNull,
         "",
         std.testing.allocator,
     );
 
-    try std.testing.expectEqualStrings(input_json, fixed_out_buffer_stream.getWritten());
+    try std.testing.expectEqualStrings(input_json, std.mem.sliceTo(&out_buffer, 0));
 
     _cdb.destroyObject(asset);
     _cdb.destroyObject(ref_obj1);

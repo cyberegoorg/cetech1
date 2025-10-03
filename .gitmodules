@@ -34,3 +34,6 @@
 [submodule "externals/shared/repo/znfde"]
 	path = externals/shared/repo/znfde
 	url = https://github.com/cyberegoorg/znfde.git
+[submodule "externals/shared/repo/tracy"]
+	path = externals/shared/repo/tracy
+	url = https://github.com/wolfpld/tracy.git

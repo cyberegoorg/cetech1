@@ -3,7 +3,7 @@ const builtin = @import("builtin");
 
 pub const generate_ide = @import("src/tools/generate_ide.zig");
 
-const min_zig_version = std.SemanticVersion.parse("0.14.0") catch @panic("Where is .zigversion?");
+const min_zig_version = std.SemanticVersion.parse("0.15.1") catch @panic("Where is .zigversion?");
 const cetech1_version = std.SemanticVersion.parse(@embedFile(".version")) catch @panic("Where is .version?");
 
 pub fn useSystemSDK(b: *std.Build, target: std.Build.ResolvedTarget, e: *std.Build.Step.Compile) void {
@@ -129,9 +129,12 @@ pub fn createKernelExe(
     const exe = b.addExecutable(.{
         .name = bin_name,
         .version = versionn,
-        .root_source_file = runner_main,
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = runner_main,
+            .target = target,
+            .optimize = optimize,
+        }),
+        .use_llvm = true,
     });
     exe.linkLibC();
     exe.root_module.addImport("kernel", cetech1_kernel);
@@ -246,6 +249,7 @@ pub fn build(b: *std.Build) !void {
             .with_node_editor = true,
             .with_te = true,
             .with_freetype = options.with_freetype,
+            // .disable_obsolete = false
         },
     );
 
@@ -289,20 +293,26 @@ pub fn build(b: *std.Build) !void {
 
     const generate_static_tool = b.addExecutable(.{
         .name = "generate_static",
-        .root_source_file = b.path("src/tools/generate_static.zig"),
-        .target = b.graph.host,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tools/generate_static.zig"),
+            .target = b.graph.host,
+        }),
     });
 
     const generate_externals_tool = b.addExecutable(.{
         .name = "generate_externals",
-        .root_source_file = b.path("src/tools/generate_externals.zig"),
-        .target = b.graph.host,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tools/generate_externals.zig"),
+            .target = b.graph.host,
+        }),
     });
 
     const generate_ide_tool = b.addExecutable(.{
         .name = "generate_ide",
-        .root_source_file = b.path("src/tools/generate_ide.zig"),
-        .target = b.graph.host,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tools/generate_ide.zig"),
+            .target = b.graph.host,
+        }),
     });
     b.installArtifact(generate_ide_tool);
 
@@ -452,7 +462,6 @@ pub fn build(b: *std.Build) !void {
             .name = "gamecontrollerdb",
             .module = b.createModule(.{ .root_source_file = b.path("externals/shared/lib/SDL_GameControllerDB/gamecontrollerdb.txt") }),
         },
-        .{ .name = "authors", .module = b.createModule(.{ .root_source_file = b.path("externals/shared/lib/SDL_GameControllerDB/gamecontrollerdb.txt") }) },
         .{
             .name = "fa-solid-900",
             .module = b.createModule(.{ .root_source_file = b.path("externals/shared/fonts/fa-solid-900.ttf") }),
@@ -466,12 +475,15 @@ pub fn build(b: *std.Build) !void {
     //
     // CETech1 kernel lib
     //
-    const kernel_lib = b.addStaticLibrary(.{
+    const kernel_lib = b.addLibrary(.{
+        .linkage = .static,
         .name = "cetech1_kernel",
         .version = cetech1_version,
-        .root_source_file = b.path("src/private.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/private.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     useSystemSDK(b, target, kernel_lib);
     b.installArtifact(kernel_lib);
@@ -513,15 +525,13 @@ pub fn build(b: *std.Build) !void {
     //
     const tests = b.addTest(.{
         .name = "cetech1_test",
-        .version = cetech1_version,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/tests.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &imports,
         }),
-        .target = target,
-        .optimize = optimize,
+        .use_llvm = true,
     });
     useSystemSDK(b, target, tests);
     b.installArtifact(tests);

@@ -55,7 +55,7 @@ pub fn deinit() void {
             .{ .affinity = 1 },
         ) catch undefined;
         while (!task.api.isDone(task_id)) {
-            std.time.sleep(1 * std.time.ns_per_ms);
+            std.Thread.sleep(1 * std.time.ns_per_ms);
             _ = bgfx.renderFrame(0);
         }
     }
@@ -302,7 +302,7 @@ fn addPaletteColor(color: u32) u8 {
 }
 
 fn getWindow(ctx: *public.GpuContext) ?cetech1.platform.Window {
-    const context: *GpuContext = @alignCast(@ptrCast(ctx));
+    const context: *GpuContext = @ptrCast(@alignCast(ctx));
     return context.window;
 }
 
@@ -466,7 +466,7 @@ fn createContext(
         .{ .affinity = 1 },
     );
     while (!task.api.isDone(task_id)) {
-        std.time.sleep(1 * std.time.ns_per_ms);
+        std.Thread.sleep(1 * std.time.ns_per_ms);
         _ = bgfx.renderFrame(0);
     }
 
@@ -474,7 +474,7 @@ fn createContext(
 }
 
 fn destroyContext(ctx: *public.GpuContext) void {
-    _allocator.destroy(@as(*GpuContext, @alignCast(@ptrCast(ctx))));
+    _allocator.destroy(@as(*GpuContext, @ptrCast(@alignCast(ctx))));
 }
 
 const encoder_vt = public.Encoder.VTable{
@@ -574,7 +574,7 @@ pub const dd_api = public.GpuDDApi{
 };
 
 pub fn ddBegin(dde: *anyopaque, _viewId: u16, _depthTestLess: bool, _encoder: ?*bgfx.Encoder) void {
-    zbgfx.debugdraw.Encoder.begin(@alignCast(@ptrCast(dde)), _viewId, _depthTestLess, @alignCast(@ptrCast(_encoder)));
+    zbgfx.debugdraw.Encoder.begin(@ptrCast(@alignCast(dde)), _viewId, _depthTestLess, @ptrCast(@alignCast(_encoder)));
 }
 
 pub fn getResolution() public.Resolution {

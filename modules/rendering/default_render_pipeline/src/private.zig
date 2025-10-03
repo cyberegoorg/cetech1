@@ -89,12 +89,12 @@ const bloom_shaderable = render_viewport.ShaderableComponentI.implement(BloomCom
 
         if (entites_idx) |idxs| {
             for (idxs, 0..) |ent_idx, idx| {
-                const gi: *BloomComponent = @alignCast(@ptrCast(data[ent_idx]));
+                const gi: *BloomComponent = @ptrCast(@alignCast(data[ent_idx]));
                 blooms.items[idx] = gi;
             }
         } else {
             for (data, 0..) |d, idx| {
-                const gi: *BloomComponent = @alignCast(@ptrCast(d));
+                const gi: *BloomComponent = @ptrCast(@alignCast(d));
                 blooms.items[idx] = gi;
             }
         }
@@ -163,7 +163,7 @@ const bloom_shaderable = render_viewport.ShaderableComponentI.implement(BloomCom
 
         var main_module = pipeline.getMainModule();
 
-        const bloom_component: *BloomComponent = @alignCast(@ptrCast(render_components[0]));
+        const bloom_component: *BloomComponent = @ptrCast(@alignCast(render_components[0]));
         if (!bloom_component.enabled) return;
 
         const bloom_module = try _render_graph.createModule();
@@ -344,7 +344,7 @@ fn screenSpaceQuad(e: gpu.Encoder, origin_mottom_left: bool, width: f32, height:
     if (3 == _gpu.getAvailTransientVertexBuffer(3, &_vertex_pos_layout)) {
         var vb: gpu.TransientVertexBuffer = undefined;
         _gpu.allocTransientVertexBuffer(&vb, 3, &_vertex_pos_layout);
-        var vertex: [*]PosVertex = @alignCast(@ptrCast(vb.data));
+        var vertex: [*]PosVertex = @ptrCast(@alignCast(vb.data));
 
         const zz: f32 = 0.0;
 
@@ -443,7 +443,7 @@ const BloomDownSampleParameters = struct {
 
 const bloom_downsample_pass_api = render_graph.PassApi.implement(struct {
     pub fn setup(pass: *render_graph.Pass, builder: render_graph.GraphBuilder) !void {
-        const params: *const BloomDownSampleParameters = @alignCast(@ptrCast(pass.data));
+        const params: *const BloomDownSampleParameters = @ptrCast(@alignCast(pass.data));
 
         try builder.createTexture2D(
             pass,
@@ -466,7 +466,7 @@ const bloom_downsample_pass_api = render_graph.PassApi.implement(struct {
     }
 
     pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_api: *const gpu.GpuApi, vp_size: [2]f32, viewid: gpu.ViewId) !void {
-        const params: *const BloomDownSampleParameters = @alignCast(@ptrCast(pass.data));
+        const params: *const BloomDownSampleParameters = @ptrCast(@alignCast(pass.data));
 
         _ = vp_size;
 
@@ -529,7 +529,7 @@ const BloomUpsampleParams = struct {
 
 const bloom_upsample_pass_api = render_graph.PassApi.implement(struct {
     pub fn setup(pass: *render_graph.Pass, builder: render_graph.GraphBuilder) !void {
-        const params: *const BloomUpsampleParams = @alignCast(@ptrCast(pass.data));
+        const params: *const BloomUpsampleParams = @ptrCast(@alignCast(pass.data));
 
         try builder.readTexture(pass, params.in_texture_name);
         try builder.writeTexture(pass, params.out_texture_name);
@@ -539,7 +539,7 @@ const bloom_upsample_pass_api = render_graph.PassApi.implement(struct {
     }
 
     pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_api: *const gpu.GpuApi, vp_size: [2]f32, viewid: gpu.ViewId) !void {
-        const params: *const BloomUpsampleParams = @alignCast(@ptrCast(pass.data));
+        const params: *const BloomUpsampleParams = @ptrCast(@alignCast(pass.data));
         _ = vp_size;
 
         if (gpu_api.getEncoder()) |e| {
@@ -621,7 +621,7 @@ const tonemap_pass = render_graph.PassApi.implement(struct {
     }
 
     pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_api: *const gpu.GpuApi, vp_size: [2]f32, viewid: gpu.ViewId) !void {
-        const params: *const TonemapParams = @alignCast(@ptrCast(pass.data));
+        const params: *const TonemapParams = @ptrCast(@alignCast(pass.data));
 
         _ = vp_size;
 
@@ -748,7 +748,7 @@ const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
     }
 
     pub fn destroy(pipeline: *anyopaque) void {
-        var inst: *DefaultPipelineInst = @alignCast(@ptrCast(pipeline));
+        var inst: *DefaultPipelineInst = @ptrCast(@alignCast(pipeline));
 
         const time_system_io = _shader.getSystemIO(inst.time_system);
         _shader.destroyUniformBuffer(time_system_io, inst.time_system_uniforms);
@@ -762,7 +762,7 @@ const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
     }
 
     pub fn fillModule(pipeline: *anyopaque, module: render_graph.Module) !void {
-        const inst: *DefaultPipelineInst = @alignCast(@ptrCast(pipeline));
+        const inst: *DefaultPipelineInst = @ptrCast(@alignCast(pipeline));
 
         try module.addExtensionPoint(render_pipeline.extensions.init);
         try module.addExtensionPoint(render_pipeline.extensions.render);
@@ -795,12 +795,12 @@ const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
     }
 
     pub fn getMainModule(pipeline: *anyopaque) render_graph.Module {
-        const inst: *DefaultPipelineInst = @alignCast(@ptrCast(pipeline));
+        const inst: *DefaultPipelineInst = @ptrCast(@alignCast(pipeline));
         return inst.main_module;
     }
 
     pub fn begin(pipeline: *anyopaque, context: *shader_system.SystemContext, now_s: f32) !void {
-        const inst: *DefaultPipelineInst = @alignCast(@ptrCast(pipeline));
+        const inst: *DefaultPipelineInst = @ptrCast(@alignCast(pipeline));
 
         try inst.main_module.cleanup();
         try @This().fillModule(pipeline, inst.main_module);
@@ -825,7 +825,7 @@ const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
     }
 
     pub fn uiDebugMenuItems(pipeline: *anyopaque, allocator: std.mem.Allocator) void {
-        const inst: *DefaultPipelineInst = @alignCast(@ptrCast(pipeline));
+        const inst: *DefaultPipelineInst = @ptrCast(@alignCast(pipeline));
 
         //
         // Bloom
@@ -861,7 +861,7 @@ const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
     }
 
     pub fn getGlobalSystem(pipeline: *anyopaque, name: cetech1.StrId32) ?*anyopaque {
-        const inst: *DefaultPipelineInst = @alignCast(@ptrCast(pipeline));
+        const inst: *DefaultPipelineInst = @ptrCast(@alignCast(pipeline));
 
         if (name.eql(.fromStr("light_system"))) {
             return &inst.light_system;
@@ -1388,6 +1388,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_default_render_pipeline(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_default_render_pipeline(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

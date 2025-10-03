@@ -259,7 +259,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try addPhase("PreStore", &[_]cetech1.StrId64{cetech1.kernel.PostUpdate});
     try addPhase("OnStore", &[_]cetech1.StrId64{cetech1.kernel.PreStore});
 
-    log.info("version: {}", .{cetech1_options.version});
+    log.info("version: {f}", .{cetech1_options.version});
 }
 
 pub fn deinit(allocator: std.mem.Allocator) !void {
@@ -388,7 +388,7 @@ pub fn quit() void {
 }
 var _can_quit_one = false;
 
-fn sigQuitHandler(signum: c_int) callconv(.C) void {
+fn sigQuitHandler(signum: c_int) callconv(.c) void {
     _ = signum;
 
     if (!_can_quit_one) {
@@ -406,7 +406,7 @@ fn registerSignals() !void {
     if (builtin.os.tag != .windows) {
         var sigaction = std.posix.Sigaction{
             .handler = .{ .handler = sigQuitHandler },
-            .mask = std.posix.empty_sigset,
+            .mask = std.posix.sigemptyset(),
             .flags = 0,
         };
         std.posix.sigaction(std.posix.SIG.TERM, &sigaction, null);
@@ -739,7 +739,7 @@ fn sleepIfNeed(allocator: std.mem.Allocator, last_call: i64, max_rate: u32, work
                 pub fn exec(self: *@This()) !void {
                     var task_zone_ctx = profiler_private.ztracy.ZoneN(@src(), "ShityFrameLimitSleeper");
                     defer task_zone_ctx.End();
-                    std.time.sleep(self.sleep_time);
+                    std.Thread.sleep(self.sleep_time);
                 }
             };
             const t = try task.api.schedule(
@@ -984,9 +984,10 @@ fn dumpKernelUpdatePhaseTreeD2() !void {
     var dot_file = try std.fs.createFileAbsolute(path.?, .{});
     defer dot_file.close();
 
-    var bw = std.io.bufferedWriter(dot_file.writer());
-    defer bw.flush() catch undefined;
-    const writer = bw.writer();
+    var buffer: [4096]u8 = undefined;
+    var bw = dot_file.writer(&buffer);
+    const writer = &bw.interface;
+    defer writer.flush() catch undefined;
 
     _ = try writer.write("vars: {d2-config: {layout-engine: elk}}\n\n");
 
@@ -1046,7 +1047,7 @@ fn shutdownKernelTasks() !void {
 //     if (builtin.os.tag == .linux) return error.SkipZigTest;
 //     const Module1 = struct {
 //         var called: bool = false;
-//         fn load_module(_apidb: *const cetech1.apidb.ApiDbAPI, _allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+//         fn load_module(_apidb: *const cetech1.apidb.ApiDbAPI, _allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
 //             _ = _apidb;
 //             _ = reload;
 //             _ = load;
