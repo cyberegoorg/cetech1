@@ -150,14 +150,14 @@ pub const ComponentI = struct {
 
     with: ?[]const cetech1.StrId32 = null,
 
-    onAdd: ?*const fn (iter: *IterO) callconv(.C) void = null,
-    onSet: ?*const fn (iter: *IterO) callconv(.C) void = null,
-    onRemove: ?*const fn (iter: *IterO) callconv(.C) void = null,
+    onAdd: ?*const fn (iter: *IterO) callconv(.c) void = null,
+    onSet: ?*const fn (iter: *IterO) callconv(.c) void = null,
+    onRemove: ?*const fn (iter: *IterO) callconv(.c) void = null,
 
-    onCreate: ?*const fn (ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void = null,
-    onDestroy: ?*const fn (ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void = null,
-    onCopy: ?*const fn (dst_ptr: *anyopaque, src_ptr: *const anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void = null,
-    onMove: ?*const fn (dst_ptr: *anyopaque, src_ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void = null,
+    onCreate: ?*const fn (ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void = null,
+    onDestroy: ?*const fn (ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void = null,
+    onCopy: ?*const fn (dst_ptr: *anyopaque, src_ptr: *const anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void = null,
+    onMove: ?*const fn (dst_ptr: *anyopaque, src_ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void = null,
 
     uiIcons: ?*const fn (
         buff: [:0]u8,
@@ -202,56 +202,56 @@ pub const ComponentI = struct {
             .with = args.with,
 
             .onAdd = if (std.meta.hasFn(Hooks, "onAdd")) struct {
-                fn f(iter: *IterO) callconv(.C) void {
+                fn f(iter: *IterO) callconv(.c) void {
                     Hooks.onAdd(iter) catch undefined;
                 }
             }.f else null,
 
             .onSet = if (std.meta.hasFn(Hooks, "onSet")) struct {
-                fn f(iter: *IterO) callconv(.C) void {
+                fn f(iter: *IterO) callconv(.c) void {
                     Hooks.onSet(iter) catch undefined;
                 }
             }.f else null,
 
             .onRemove = if (std.meta.hasFn(Hooks, "onRemove")) struct {
-                fn f(iter: *IterO) callconv(.C) void {
+                fn f(iter: *IterO) callconv(.c) void {
                     Hooks.onRemove(iter) catch undefined;
                 }
             }.f else null,
 
             .onCreate = if (std.meta.hasFn(Hooks, "onCreate")) struct {
-                fn f(ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void {
+                fn f(ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void {
                     _ = type_info;
                     var tptr: []T = undefined;
                     tptr.len = @intCast(count);
-                    tptr.ptr = @alignCast(@ptrCast(ptr));
+                    tptr.ptr = @ptrCast(@alignCast(ptr));
 
                     Hooks.onCreate(tptr) catch undefined;
                 }
             }.f else null,
 
             .onDestroy = if (std.meta.hasFn(Hooks, "onDestroy")) struct {
-                fn f(ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void {
+                fn f(ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void {
                     _ = type_info;
                     var tptr: []T = undefined;
                     tptr.len = @intCast(count);
-                    tptr.ptr = @alignCast(@ptrCast(ptr));
+                    tptr.ptr = @ptrCast(@alignCast(ptr));
 
                     Hooks.onDestroy(tptr) catch undefined;
                 }
             }.f else null,
 
             .onCopy = if (std.meta.hasFn(Hooks, "onCopy")) struct {
-                fn f(dst_ptr: *anyopaque, src_ptr: *const anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void {
+                fn f(dst_ptr: *anyopaque, src_ptr: *const anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void {
                     _ = type_info;
 
                     var dst_tptr: []T = undefined;
                     dst_tptr.len = @intCast(count);
-                    dst_tptr.ptr = @alignCast(@ptrCast(dst_ptr));
+                    dst_tptr.ptr = @ptrCast(@alignCast(dst_ptr));
 
                     var src_tptr: []const T = undefined;
                     src_tptr.len = @intCast(count);
-                    src_tptr.ptr = @alignCast(@ptrCast(src_ptr));
+                    src_tptr.ptr = @ptrCast(@alignCast(src_ptr));
 
                     Hooks.onCopy(dst_tptr, src_tptr) catch |err| {
                         log.err("OnCopy erro {}", .{err});
@@ -260,16 +260,16 @@ pub const ComponentI = struct {
             }.f else null,
 
             .onMove = if (std.meta.hasFn(Hooks, "onMove")) struct {
-                fn f(dst_ptr: *anyopaque, src_ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.C) void {
+                fn f(dst_ptr: *anyopaque, src_ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void {
                     _ = type_info;
 
                     var dst_tptr: []T = undefined;
                     dst_tptr.len = @intCast(count);
-                    dst_tptr.ptr = @alignCast(@ptrCast(dst_ptr));
+                    dst_tptr.ptr = @ptrCast(@alignCast(dst_ptr));
 
                     var src_tptr: []T = undefined;
                     src_tptr.len = @intCast(count);
-                    src_tptr.ptr = @alignCast(@ptrCast(src_ptr));
+                    src_tptr.ptr = @ptrCast(@alignCast(src_ptr));
 
                     Hooks.onMove(dst_tptr, src_tptr) catch undefined;
                 }
@@ -424,12 +424,12 @@ pub const World = struct {
 
     pub inline fn getMutComponent(self: World, comptime T: type, entity: EntityId) ?*T {
         const ptr = self.vtable.getMutComponent(self.ptr, entity, id(T));
-        return @alignCast(@ptrCast(ptr));
+        return @ptrCast(@alignCast(ptr));
     }
 
     pub inline fn getComponent(self: World, comptime T: type, entity: EntityId) ?*const T {
         const ptr = self.vtable.getComponent(self.ptr, entity, id(T));
-        return @alignCast(@ptrCast(ptr));
+        return @ptrCast(@alignCast(ptr));
     }
 
     pub inline fn setIdRaw(self: World, entity: EntityId, cid: cetech1.StrId32, size: usize, ptr: ?*const anyopaque) EntityId {
@@ -542,7 +542,7 @@ pub const Iter = struct {
     }
 
     pub inline fn getParam(self: *Iter, comptime T: type) ?*T {
-        const p: *T = @alignCast(@ptrCast(self.vtable.getParam(&self.data) orelse return null));
+        const p: *T = @ptrCast(@alignCast(self.vtable.getParam(&self.data) orelse return null));
         return p;
     }
 

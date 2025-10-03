@@ -121,7 +121,7 @@ pub fn VirtualArray(comptime T: type) type {
             if (max_items != 0) {
                 switch (builtin.os.tag) {
                     .windows => {
-                        new.reservation.ptr = @alignCast(@ptrCast(try windows.VirtualAlloc(
+                        new.reservation.ptr = @ptrCast(@alignCast(try windows.VirtualAlloc(
                             null,
                             max_size,
                             windows.MEM_RESERVE | windows.MEM_COMMIT, // TODO: SHIT we need commit on page level
@@ -142,7 +142,7 @@ pub fn VirtualArray(comptime T: type) type {
                     },
                 }
 
-                new.items.ptr = @alignCast(@ptrCast(new.reservation.ptr));
+                new.items.ptr = @ptrCast(@alignCast(new.reservation.ptr));
                 new.items.len = max_items;
 
                 std.debug.assert(std.mem.isAligned(@intFromPtr(new.items.ptr), @alignOf(T)));
@@ -324,7 +324,7 @@ pub const TmpAllocatorPool = struct {
     }
 
     pub fn destroy(self: *Self, alloc: std.mem.Allocator) void {
-        var true_alloc: *InnerAllocator = @alignCast(@ptrCast(alloc.ptr));
+        var true_alloc: *InnerAllocator = @ptrCast(@alignCast(alloc.ptr));
         _ = true_alloc.reset(.retain_capacity);
         self.pool.destroy(true_alloc);
     }

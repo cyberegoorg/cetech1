@@ -131,11 +131,11 @@ pub const SaveReasonFlags = packed struct(u32) {
     _pad: u25,
 };
 
-const SaveNodeSettings = fn (nodeId: NodeId, data: [*]const u8, size: usize, reason: SaveReasonFlags, userPointer: *anyopaque) callconv(.C) bool;
-const LoadNodeSettings = fn (nodeId: NodeId, data: [*]u8, userPointer: *anyopaque) callconv(.C) usize;
-const SaveSettings = fn (data: [*]const u8, size: usize, reason: SaveReasonFlags, userPointer: *anyopaque) callconv(.C) bool;
-const LoadSettings = fn (data: [*]u8, userPointer: *anyopaque) callconv(.C) usize;
-const ConfigSession = fn (userPointer: *anyopaque) callconv(.C) void;
+const SaveNodeSettings = fn (nodeId: NodeId, data: [*]const u8, size: usize, reason: SaveReasonFlags, userPointer: *anyopaque) callconv(.c) bool;
+const LoadNodeSettings = fn (nodeId: NodeId, data: [*]u8, userPointer: *anyopaque) callconv(.c) usize;
+const SaveSettings = fn (data: [*]const u8, size: usize, reason: SaveReasonFlags, userPointer: *anyopaque) callconv(.c) bool;
+const LoadSettings = fn (data: [*]u8, userPointer: *anyopaque) callconv(.c) usize;
+const ConfigSession = fn (userPointer: *anyopaque) callconv(.c) void;
 
 pub const Config = extern struct {
     SettingsFile: ?*const u8 = null,

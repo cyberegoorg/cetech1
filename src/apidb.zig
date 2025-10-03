@@ -333,9 +333,11 @@ pub fn writeApiGraphD2(out_path: []const u8) !void {
     var dot_file = try std.fs.cwd().createFile(out_path, .{});
     defer dot_file.close();
 
-    var bw = std.io.bufferedWriter(dot_file.writer());
-    defer bw.flush() catch undefined;
-    const writer = bw.writer();
+    var buffer: [4096]u8 = undefined;
+
+    var bw = dot_file.writer(&buffer);
+    const writer = &bw.interface;
+    defer writer.flush() catch undefined;
 
     // write header
     _ = try writer.write("vars: {d2-config: {layout-engine: elk}}\n\n");

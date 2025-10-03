@@ -5,13 +5,13 @@ pub const Uuid = struct {
     bytes: [16]u8 = .{0} ** 16,
 
     /// support for zig std fmt
-    pub fn format(self: Uuid, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) (@TypeOf(writer).Error)!void {
-        try std.fmt.format(writer, "{}-{}-{}-{}-{}", .{
-            std.fmt.fmtSliceHexLower(self.bytes[0..4]),
-            std.fmt.fmtSliceHexLower(self.bytes[4..6]),
-            std.fmt.fmtSliceHexLower(self.bytes[6..8]),
-            std.fmt.fmtSliceHexLower(self.bytes[8..10]),
-            std.fmt.fmtSliceHexLower(self.bytes[10..16]),
+    pub fn format(self: Uuid, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print("{s}-{s}-{s}-{s}-{s}", .{
+            std.fmt.bytesToHex(self.bytes[0..4], .lower),
+            std.fmt.bytesToHex(self.bytes[4..6], .lower),
+            std.fmt.bytesToHex(self.bytes[6..8], .lower),
+            std.fmt.bytesToHex(self.bytes[8..10], .lower),
+            std.fmt.bytesToHex(self.bytes[10..16], .lower),
         });
     }
 };

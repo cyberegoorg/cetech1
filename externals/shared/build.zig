@@ -39,9 +39,11 @@ pub fn build(b: *std.Build) !void {
     const sync_local_step = b.step("sync-local", "Copy files from repo to lib");
     const copy_tool = b.addExecutable(.{
         .name = "copy",
-        .root_source_file = b.path("src/copy.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/copy.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     const copy_run = b.addRunArtifact(copy_tool);
     sync_local_step.dependOn(&copy_run.step);

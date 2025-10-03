@@ -194,14 +194,14 @@ fn createViewport(name: [:0]const u8, world: ?ecs.World, camera_ent: ecs.EntityI
 }
 
 fn destroyViewport(viewport: public.Viewport) void {
-    const true_viewport: *Viewport = @alignCast(@ptrCast(viewport.ptr));
+    const true_viewport: *Viewport = @ptrCast(@alignCast(viewport.ptr));
     _ = _g.viewport_set.swapRemove(true_viewport);
     true_viewport.deinit();
     _g.viewport_pool.destroy(true_viewport);
 }
 
 fn uiDebugMenuItems(allocator: std.mem.Allocator, viewport: public.Viewport) void {
-    const true_viewport: *Viewport = @alignCast(@ptrCast(viewport.ptr));
+    const true_viewport: *Viewport = @ptrCast(@alignCast(viewport.ptr));
 
     // if (_coreui.beginMenu(allocator, coreui.Icons.Debug ++ "  " ++ "Viewport", true, null)) {
     //     defer _coreui.endMenu();
@@ -223,7 +223,7 @@ fn uiDebugMenuItems(allocator: std.mem.Allocator, viewport: public.Viewport) voi
                 var dd_enabled = true_viewport.enabled_dd_set.contains(iface.id);
                 if (_coreui.menuItemPtr(
                     allocator,
-                    std.fmt.allocPrintZ(allocator, "{s} {s}", .{ icon, iface.name }) catch undefined,
+                    std.fmt.allocPrintSentinel(allocator, "{s} {s}", .{ icon, iface.name }, 0) catch undefined,
                     .{ .selected = &dd_enabled },
                     null,
                 )) {
@@ -282,46 +282,46 @@ pub const api = public.RenderViewportApi{
 
 pub const viewport_vt = public.Viewport.VTable.implement(struct {
     pub fn setSize(viewport: *anyopaque, size: [2]f32) void {
-        const true_viewport: *Viewport = @alignCast(@ptrCast(viewport));
+        const true_viewport: *Viewport = @ptrCast(@alignCast(viewport));
         true_viewport.new_size[0] = @max(size[0], 1);
         true_viewport.new_size[1] = @max(size[1], 1);
     }
 
     pub fn getTexture(viewport: *anyopaque) ?gpu.TextureHandle {
-        const true_viewport: *Viewport = @alignCast(@ptrCast(viewport));
+        const true_viewport: *Viewport = @ptrCast(@alignCast(viewport));
 
         const txt = true_viewport.output;
         return if (txt.isValid()) txt else null;
     }
 
     pub fn getSize(viewport: *anyopaque) [2]f32 {
-        const true_viewport: *Viewport = @alignCast(@ptrCast(viewport));
+        const true_viewport: *Viewport = @ptrCast(@alignCast(viewport));
         return true_viewport.size;
     }
 
     pub fn requestRender(viewport: *anyopaque, pipeline: render_pipeline.RenderPipeline) void {
-        const true_viewport: *Viewport = @alignCast(@ptrCast(viewport));
+        const true_viewport: *Viewport = @ptrCast(@alignCast(viewport));
         true_viewport.renderMe = true;
         true_viewport.render_pipeline = pipeline;
     }
 
     pub fn setMainCamera(viewport: *anyopaque, camera_ent: ?ecs.EntityId) void {
-        const true_viewport: *Viewport = @alignCast(@ptrCast(viewport));
+        const true_viewport: *Viewport = @ptrCast(@alignCast(viewport));
         true_viewport.main_camera_entity = camera_ent;
     }
 
     pub fn getMainCamera(viewport: *anyopaque) ?ecs.EntityId {
-        const true_viewport: *Viewport = @alignCast(@ptrCast(viewport));
+        const true_viewport: *Viewport = @ptrCast(@alignCast(viewport));
         return true_viewport.main_camera_entity;
     }
 
     pub fn getDebugCulling(viewport: *anyopaque) bool {
-        const true_viewport: *Viewport = @alignCast(@ptrCast(viewport));
+        const true_viewport: *Viewport = @ptrCast(@alignCast(viewport));
         return true_viewport.renderables_culling.draw_culling_sphere_debug;
     }
 
     pub fn setDebugCulling(viewport: *anyopaque, enable: bool) void {
-        const true_viewport: *Viewport = @alignCast(@ptrCast(viewport));
+        const true_viewport: *Viewport = @ptrCast(@alignCast(viewport));
         true_viewport.renderables_culling.draw_culling_sphere_debug = enable;
         true_viewport.renderables_culling.draw_culling_box_debug = enable;
     }
@@ -1002,6 +1002,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_render_viewport(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_render_viewport(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

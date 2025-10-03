@@ -38,7 +38,7 @@ const flow_value_type_i = public.GraphValueTypeI.implement(
             return @intFromBool(v.*);
         }
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(bool, value)});
+            return std.fmt.allocPrintSentinel(allocator, "{any}", .{std.mem.bytesToValue(bool, value)}, 0);
         }
     },
 );
@@ -64,7 +64,7 @@ const i32_value_type_i = public.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(i32, value)});
+            return std.fmt.allocPrintSentinel(allocator, "{any}", .{std.mem.bytesToValue(i32, value)}, 0);
         }
     },
 );
@@ -90,7 +90,7 @@ const u32_value_type_i = public.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(u32, value)});
+            return std.fmt.allocPrintSentinel(allocator, "{any}", .{std.mem.bytesToValue(u32, value)}, 0);
         }
     },
 );
@@ -116,7 +116,7 @@ const f32_value_type_i = public.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(f32, value)});
+            return std.fmt.allocPrintSentinel(allocator, "{any}", .{std.mem.bytesToValue(f32, value)}, 0);
         }
     },
 );
@@ -142,7 +142,7 @@ const i64_value_type_i = public.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(i64, value)});
+            return std.fmt.allocPrintSentinel(allocator, "{any}", .{std.mem.bytesToValue(i64, value)}, 0);
         }
     },
 );
@@ -168,7 +168,7 @@ const u64_value_type_i = public.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(u64, value)});
+            return std.fmt.allocPrintSentinel(allocator, "{any}", .{std.mem.bytesToValue(u64, value)}, 0);
         }
     },
 );
@@ -194,7 +194,7 @@ const f64_value_type_i = public.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(f64, value)});
+            return std.fmt.allocPrintSentinel(allocator, "{any}", .{std.mem.bytesToValue(f64, value)}, 0);
         }
     },
 );
@@ -220,7 +220,7 @@ const bool_value_type_i = public.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(bool, value)});
+            return std.fmt.allocPrintSentinel(allocator, "{any}", .{std.mem.bytesToValue(bool, value)}, 0);
         }
     },
 );
@@ -245,7 +245,7 @@ const string_value_type_i = public.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            return std.fmt.allocPrintZ(allocator, "{s}", .{std.mem.bytesToValue([:0]u8, value)});
+            return std.fmt.allocPrintSentinel(allocator, "{s}", .{std.mem.bytesToValue([:0]u8, value)}, 0);
         }
     },
 );
@@ -269,8 +269,8 @@ const vec2f_value_type_i = public.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            const v = std.mem.bytesAsValue([2]f32, value);
-            return std.fmt.allocPrintZ(allocator, "{any}", .{v});
+            const v = std.mem.bytesToValue([2]f32, value);
+            return std.fmt.allocPrintSentinel(allocator, "{any}", .{v}, 0);
         }
     },
 );
@@ -294,8 +294,8 @@ const vec3f_value_type_i = public.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            const v = std.mem.bytesAsValue([3]f32, value);
-            return std.fmt.allocPrintZ(allocator, "{any}", .{v});
+            const v = std.mem.bytesToValue([3]f32, value);
+            return std.fmt.allocPrintSentinel(allocator, "{any}", .{v}, 0);
         }
     },
 );
@@ -319,8 +319,8 @@ const vec4f_value_type_i = public.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            const v = std.mem.bytesAsValue([4]f32, value);
-            return std.fmt.allocPrintZ(allocator, "{any}", .{v});
+            const v = std.mem.bytesToValue([4]f32, value);
+            return std.fmt.allocPrintSentinel(allocator, "{any}", .{v}, 0);
         }
     },
 );
@@ -344,8 +344,8 @@ const quatf_value_type_i = public.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            const v = std.mem.bytesAsValue([4]f32, value);
-            return std.fmt.allocPrintZ(allocator, "{any}", .{v});
+            const v = std.mem.bytesToValue([4]f32, value);
+            return std.fmt.allocPrintSentinel(allocator, "{any}", .{v}, 0);
         }
     },
 );
@@ -369,8 +369,8 @@ const color4f_value_type_i = public.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            const v = std.mem.bytesAsValue([4]f32, value);
-            return std.fmt.allocPrintZ(allocator, "{any}", .{v});
+            const v = std.mem.bytesToValue([4]f32, value);
+            return std.fmt.allocPrintSentinel(allocator, "{any}", .{v}, 0);
         }
     },
 );
@@ -542,7 +542,7 @@ const print_node_i = public.NodeI.implement(
             _ = reload; // autofix
             _ = allocator; // autofix
             _ = node_obj; // autofix
-            const real_state: *PrintNodeState = @alignCast(@ptrCast(state));
+            const real_state: *PrintNodeState = @ptrCast(@alignCast(state));
             real_state.* = .{};
         }
 
@@ -623,7 +623,7 @@ const const_node_i = public.NodeI.implement(
             _ = transpile_state; // autofix
             _ = reload; // autofix
             _ = allocator; // autofix
-            const real_state: *ConstNodeState = @alignCast(@ptrCast(state));
+            const real_state: *ConstNodeState = @ptrCast(@alignCast(state));
             real_state.* = .{};
 
             const db = _cdb.getDbFromObjid(node_obj);
@@ -643,7 +643,7 @@ const const_node_i = public.NodeI.implement(
         pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
             _ = self; // autofix
             _ = in_pins;
-            const real_state: *ConstNodeState = @alignCast(@ptrCast(args.state));
+            const real_state: *ConstNodeState = @ptrCast(@alignCast(args.state));
 
             // TODO: SHIT
             var value: [2048]u8 = undefined;
@@ -705,13 +705,13 @@ const random_f32_node_i = public.NodeI.implement(
             _ = reload; // autofix
             _ = allocator; // autofix
 
-            const real_state: *RandomF32NodeState = @alignCast(@ptrCast(state));
+            const real_state: *RandomF32NodeState = @ptrCast(@alignCast(state));
             real_state.* = .{};
         }
 
         pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
             _ = self; // autofix
-            const real_state: *RandomF32NodeState = @alignCast(@ptrCast(args.state));
+            const real_state: *RandomF32NodeState = @ptrCast(@alignCast(args.state));
 
             _, const min = in_pins.read(f32, 0) orelse .{ 0, 0 };
             _, const max = in_pins.read(f32, 1) orelse .{ 0, 0 };

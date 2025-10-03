@@ -51,7 +51,7 @@ fn addToFirst(allocator: std.mem.Allocator, db: cdb.DbId, obj: coreui.SelectionI
         const tabs = try _editor.getAllTabsByType(allocator, _g.tab_vt.tab_hash);
         defer allocator.free(tabs);
         for (tabs) |t| {
-            tab = @alignCast(@ptrCast(t.inst));
+            tab = @ptrCast(@alignCast(t.inst));
             break;
         }
     }
@@ -112,7 +112,7 @@ var obj_buffer_tab = editor.TabTypeI.implement(
 
         // Destroy ObjBufferTab instantce
         pub fn destroy(tab_inst: *editor.TabI) !void {
-            const tab_o: *ObjBufferTab = @alignCast(@ptrCast(tab_inst.inst));
+            const tab_o: *ObjBufferTab = @ptrCast(@alignCast(tab_inst.inst));
 
             tab_o.inter_selection.deinit();
             tab_o.obj_buffer.deinit();
@@ -127,7 +127,7 @@ var obj_buffer_tab = editor.TabTypeI.implement(
         }
 
         pub fn focused(inst: *editor.TabO) !void {
-            const tab_o: *ObjBufferTab = @alignCast(@ptrCast(inst));
+            const tab_o: *ObjBufferTab = @ptrCast(@alignCast(inst));
 
             const allocator = try _tempalloc.create();
             defer _tempalloc.destroy(allocator);
@@ -143,7 +143,7 @@ var obj_buffer_tab = editor.TabTypeI.implement(
 
         // Draw tab menu
         pub fn menu(inst: *editor.TabO) !void {
-            var tab_o: *ObjBufferTab = @alignCast(@ptrCast(inst));
+            var tab_o: *ObjBufferTab = @ptrCast(@alignCast(inst));
 
             if (_coreui.beginMenu(_allocator, coreui.Icons.ContextMenu, !tab_o.inter_selection.isEmpty(), null)) {
                 defer _coreui.endMenu();
@@ -158,7 +158,7 @@ var obj_buffer_tab = editor.TabTypeI.implement(
         pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
             _ = kernel_tick; // autofix
             _ = dt; // autofix
-            const tab_o: *ObjBufferTab = @alignCast(@ptrCast(inst));
+            const tab_o: *ObjBufferTab = @ptrCast(@alignCast(inst));
 
             const allocator = try _tempalloc.create();
             defer _tempalloc.destroy(allocator);
@@ -258,7 +258,7 @@ var buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
         filter: ?[:0]const u8,
     ) !void {
         _ = contexts;
-        const tab_o: *ObjBufferTab = @alignCast(@ptrCast(tab));
+        const tab_o: *ObjBufferTab = @ptrCast(@alignCast(tab));
 
         _coreui.separatorText("Obj buffer");
         objContextMenu(allocator, &tab_o.obj_buffer, &tab_o.inter_selection, selection, filter) catch undefined;
@@ -310,7 +310,7 @@ var add_to_buffer_context_menu_i = editor.ObjContextMenuI.implement(struct {
             const label = std.fmt.bufPrintZ(&label_buff, coreui.Icons.Buffer ++ "  " ++ "In buffer {d}" ++ "###EditInObjBuffer{d}", .{ tab.tabid, tab.tabid }) catch undefined;
 
             if (_coreui.menuItem(allocator, label, .{}, filter)) {
-                const tab_o: *ObjBufferTab = @alignCast(@ptrCast(tab.inst));
+                const tab_o: *ObjBufferTab = @ptrCast(@alignCast(tab.inst));
 
                 for (selection, 0..) |obj, idx| {
                     try tab_o.obj_buffer.add(&.{obj});
@@ -416,6 +416,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_obj_buffer(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor_obj_buffer(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

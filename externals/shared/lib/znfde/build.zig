@@ -26,10 +26,13 @@ pub fn build(b: *std.Build) void {
     });
 
     var lib: *std.Build.Step.Compile = undefined;
-    lib = b.addStaticLibrary(.{
+    lib = b.addLibrary(.{
+        .linkage = .static,
         .name = "nfde",
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     const cflags = [_][]const u8{};

@@ -105,7 +105,7 @@ pub const ApiDbAPI = struct {
     pub inline fn getImpl(self: Self, allocator: std.mem.Allocator, comptime T: type) ![]*const T {
         const impls = try self.getImplFn(allocator, T.name_hash);
         var result: []*const T = undefined;
-        result.ptr = @alignCast(@ptrCast(impls.ptr));
+        result.ptr = @ptrCast(@alignCast(impls.ptr));
         result.len = impls.len;
         return result;
     }

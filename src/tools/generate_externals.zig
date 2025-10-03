@@ -27,7 +27,7 @@ pub fn main() !void {
     };
     defer output_file.close();
 
-    const w = output_file.writer();
+    const w = output_file.deprecatedWriter();
 
     try w.print("# Thanks to all ;)\n\n", .{});
 
@@ -44,11 +44,11 @@ pub fn main() !void {
         var config_file = try std.fs.openFileAbsolute(config_path, .{});
         defer config_file.close();
 
-        var config_file_data = std.ArrayList(u8).init(allocator);
+        var config_file_data = std.array_list.Managed(u8).init(allocator);
         defer config_file_data.deinit();
 
         const config_file_size = try config_file.getEndPos();
-        try config_file.reader().readAllArrayList(&config_file_data, config_file_size);
+        try config_file.deprecatedReader().readAllArrayList(&config_file_data, config_file_size);
         try config_file_data.append(0);
 
         const config = try std.zon.parse.fromSlice(
@@ -68,7 +68,7 @@ pub fn main() !void {
 
             try w.print("## {s}\n\n", .{external.name});
 
-            try output_file.writeFileAll(f, .{});
+            // TODO: try output_file.writeAll(f, .{});
 
             try w.print("\n", .{});
         }

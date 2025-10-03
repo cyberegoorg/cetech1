@@ -1,6 +1,7 @@
 const std = @import("std");
 const assert = std.debug.assert;
 const builtin = @import("builtin");
+const build_options = @import("build-options");
 
 pub const flecs_version = std.SemanticVersion{
     .major = 4,
@@ -8,11 +9,20 @@ pub const flecs_version = std.SemanticVersion{
     .patch = 5,
 };
 
-// TODO: flecs_is_sanitize should come from flecs build flags.
-const flecs_is_sanitize = builtin.mode == .Debug;
-const flecs_is_debug = flecs_is_sanitize or builtin.mode == .Debug;
+const flecs_is_sanitize = build_options.debug_mode == .sanitize or
+    (build_options.debug_mode == .depends_on_build and builtin.mode == .Debug);
+const flecs_is_debug = flecs_is_sanitize or build_options.debug_mode == .debug;
 
-pub const ftime_t = f32;
+fn FloatPrecisionType(precision: anytype) type {
+    return switch (precision) {
+        .fp32 => f32,
+        .fp64 => f64,
+        // .fp128 => f128, // TODO: Is this a valid precision for flecs (translates to long double on c)???
+    };
+}
+
+pub const float_t = FloatPrecisionType(build_options.float_precision);
+pub const ftime_t = FloatPrecisionType(build_options.scalar_time_precision);
 pub const size_t = i32;
 pub const flags8_t = u8;
 pub const flags16_t = u16;
@@ -57,17 +67,20 @@ pub const EcsEntityIsTraversable = 1 << 29;
 pub const EcsIdOnDeleteRemove = 1 << 0;
 pub const EcsIdOnDeleteDelete = 1 << 1;
 pub const EcsIdOnDeletePanic = 1 << 2;
-pub const EcsIdOnDeleteMask = (EcsIdOnDeletePanic | EcsIdOnDeleteRemove | EcsIdOnDeleteDelete);
+pub const EcsIdOnDeleteMask =
+    (EcsIdOnDeletePanic | EcsIdOnDeleteRemove | EcsIdOnDeleteDelete);
 
 pub const EcsIdOnDeleteObjectRemove = 1 << 3;
 pub const EcsIdOnDeleteObjectDelete = 1 << 4;
 pub const EcsIdOnDeleteObjectPanic = 1 << 5;
-pub const EcsIdOnDeleteObjectMask = (EcsIdOnDeleteObjectPanic | EcsIdOnDeleteObjectRemove | EcsIdOnDeleteObjectDelete);
+pub const EcsIdOnDeleteObjectMask =
+    (EcsIdOnDeleteObjectPanic | EcsIdOnDeleteObjectRemove | EcsIdOnDeleteObjectDelete);
 
 pub const EcsIdOnInstantiateOverride = 1 << 6;
 pub const EcsIdOnInstantiateInherit = 1 << 7;
 pub const EcsIdOnInstantiateDontInherit = 1 << 8;
-pub const EcsIdOnInstantiateMask = (EcsIdOnInstantiateOverride | EcsIdOnInstantiateInherit | EcsIdOnInstantiateDontInherit);
+pub const EcsIdOnInstantiateMask =
+    (EcsIdOnInstantiateOverride | EcsIdOnInstantiateInherit | EcsIdOnInstantiateDontInherit);
 
 pub const EcsIdExclusive = 1 << 9;
 pub const EcsIdTraversable = 1 << 10;
@@ -84,7 +97,8 @@ pub const EcsIdHasOnTableCreate = 1 << 21;
 pub const EcsIdHasOnTableDelete = 1 << 22;
 pub const EcsIdIsSparse = 1 << 23;
 pub const EcsIdIsUnion = 1 << 24;
-pub const EcsIdEventMask = (EcsIdHasOnAdd | EcsIdHasOnRemove | EcsIdHasOnSet | EcsIdHasOnTableCreate | EcsIdHasOnTableDelete | EcsIdIsSparse | EcsIdIsUnion);
+pub const EcsIdEventMask = (EcsIdHasOnAdd | EcsIdHasOnRemove | EcsIdHasOnSet |
+    EcsIdHasOnTableCreate | EcsIdHasOnTableDelete | EcsIdIsSparse | EcsIdIsUnion);
 
 pub const EcsIdMarkedForDelete = 1 << 30;
 
@@ -194,9 +208,11 @@ pub const EcsTableMarkedForDelete = 1 << 30;
 // Composite table flags
 pub const EcsTableHasLifecycle = EcsTableHasCtors | EcsTableHasDtors;
 pub const EcsTableIsComplex = EcsTableHasLifecycle | EcsTableHasToggle | EcsTableHasSparse;
-pub const EcsTableHasAddActions = EcsTableHasIsA | EcsTableHasCtors | EcsTableHasOnAdd | EcsTableHasOnSet;
+pub const EcsTableHasAddActions =
+    EcsTableHasIsA | EcsTableHasCtors | EcsTableHasOnAdd | EcsTableHasOnSet;
 pub const EcsTableHasRemoveActions = EcsTableHasIsA | EcsTableHasDtors | EcsTableHasOnRemove;
-pub const EcsTableEdgeFlags = EcsTableHasOnAdd | EcsTableHasOnRemove | EcsTableHasSparse | EcsTableHasUnion;
+pub const EcsTableEdgeFlags =
+    EcsTableHasOnAdd | EcsTableHasOnRemove | EcsTableHasSparse | EcsTableHasUnion;
 pub const EcsTableAddEdgeFlags = EcsTableHasOnAdd | EcsTableHasSparse | EcsTableHasUnion;
 pub const EcsTableRemoveEdgeFlags = EcsTableHasOnRemove | EcsTableHasSparse | EcsTableHasUnion;
 
@@ -407,20 +423,20 @@ pub const table_record_t = anyopaque;
 // Function types.
 //
 //--------------------------------------------------------------------------------------------------
-pub const run_action_t = *const fn (it: *iter_t) callconv(.C) void;
+pub const run_action_t = *const fn (it: *iter_t) callconv(.c) void;
 
-pub const iter_action_t = *const fn (it: *iter_t) callconv(.C) void;
+pub const iter_action_t = *const fn (it: *iter_t) callconv(.c) void;
 
-pub const iter_next_action_t = *const fn (it: *iter_t) callconv(.C) bool;
+pub const iter_next_action_t = *const fn (it: *iter_t) callconv(.c) bool;
 
-pub const iter_fini_action_t = *const fn (it: *iter_t) callconv(.C) void;
+pub const iter_fini_action_t = *const fn (it: *iter_t) callconv(.c) void;
 
 pub const order_by_action_t = *const fn (
     e1: entity_t,
     ptr1: *const anyopaque,
     e2: entity_t,
     ptr2: *const anyopaque,
-) callconv(.C) i32;
+) callconv(.c) i32;
 
 pub const sort_table_action_t = *const fn (
     world: *world_t,
@@ -431,74 +447,74 @@ pub const sort_table_action_t = *const fn (
     lo: i32,
     hi: i32,
     order_by: ?order_by_action_t,
-) callconv(.C) void;
+) callconv(.c) void;
 
 pub const group_by_action_t = *const fn (
     world: *world_t,
     table: *table_t,
     group_id: id_t,
     ctx: ?*anyopaque,
-) callconv(.C) u64;
+) callconv(.c) u64;
 
 pub const group_create_action_t = *const fn (
     world: *world_t,
     group_id: u64,
     group_by_ctx: ?*anyopaque,
-) callconv(.C) ?*anyopaque;
+) callconv(.c) ?*anyopaque;
 
 pub const group_delete_action_t = *const fn (
     world: *world_t,
     group_id: u64,
     group_ctx: ?*anyopaque,
     group_by_ctx: ?*anyopaque,
-) callconv(.C) void;
+) callconv(.c) void;
 
-pub const module_action_t = *const fn (world: *world_t) callconv(.C) void;
+pub const module_action_t = *const fn (world: *world_t) callconv(.c) void;
 
-pub const fini_action_t = *const fn (world: *world_t, ctx: ?*anyopaque) callconv(.C) void;
+pub const fini_action_t = *const fn (world: *world_t, ctx: ?*anyopaque) callconv(.c) void;
 
-pub const ctx_free_t = *const fn (ctx: ?*anyopaque) callconv(.C) void;
+pub const ctx_free_t = *const fn (ctx: ?*anyopaque) callconv(.c) void;
 
 pub const compare_action_t = *const fn (
     ptr1: *const anyopaque,
     ptr2: *const anyopaque,
-) callconv(.C) i32;
+) callconv(.c) i32;
 
-pub const hash_value_action_t = *const fn (ptr: ?*const anyopaque) callconv(.C) u64;
+pub const hash_value_action_t = *const fn (ptr: ?*const anyopaque) callconv(.c) u64;
 
 pub const xtor_t = *const fn (
     ptr: *anyopaque,
     count: i32,
     type_info: *const type_info_t,
-) callconv(.C) void;
+) callconv(.c) void;
 
 pub const copy_t = *const fn (
     dst_ptr: *anyopaque,
     src_ptr: *const anyopaque,
     count: i32,
     type_info: *const type_info_t,
-) callconv(.C) void;
+) callconv(.c) void;
 
 pub const move_t = *const fn (
     dst_ptr: *anyopaque,
     src_ptr: *anyopaque,
     count: i32,
     type_info: *const type_info_t,
-) callconv(.C) void;
+) callconv(.c) void;
 
 pub const cmp_t = *const fn (
     a_ptr: *const anyopaque,
     b_ptr: *const anyopaque,
     type_info: *const type_info_t,
-) callconv(.C) c_int;
+) callconv(.c) c_int;
 
 pub const equals_t = *const fn (
     a_ptr: *const anyopaque,
     b_ptr: *const anyopaque,
     type_info: *const type_info_t,
-) callconv(.C) bool;
+) callconv(.c) bool;
 
-pub const poly_dtor_t = *const fn (poly: *poly_t) callconv(.C) void;
+pub const poly_dtor_t = *const fn (poly: *poly_t) callconv(.c) void;
 
 pub const system_desc_t = extern struct {
     _canary: i32 = 0,
@@ -701,8 +717,16 @@ pub const ECS_TYPE_HOOK_MOVE_DTOR_ILLEGAL: flags32_t = 1 << 18;
 pub const ECS_TYPE_HOOK_CMP_ILLEGAL: flags32_t = 1 << 19;
 pub const ECS_TYPE_HOOK_EQUALS_ILLEGAL: flags32_t = 1 << 20;
 
-pub const ECS_TYPE_HOOKS: flags32_t = (ECS_TYPE_HOOK_CTOR | ECS_TYPE_HOOK_DTOR | ECS_TYPE_HOOK_COPY | ECS_TYPE_HOOK_MOVE | ECS_TYPE_HOOK_COPY_CTOR | ECS_TYPE_HOOK_MOVE_CTOR | ECS_TYPE_HOOK_CTOR_MOVE_DTOR | ECS_TYPE_HOOK_MOVE_DTOR | ECS_TYPE_HOOK_CMP | ECS_TYPE_HOOK_EQUALS);
-pub const ECS_TYPE_HOOKS_ILLEGAL: flags32_t = (ECS_TYPE_HOOK_CTOR_ILLEGAL | ECS_TYPE_HOOK_DTOR_ILLEGAL | ECS_TYPE_HOOK_COPY_ILLEGAL | ECS_TYPE_HOOK_MOVE_ILLEGAL | ECS_TYPE_HOOK_COPY_CTOR_ILLEGAL | ECS_TYPE_HOOK_MOVE_CTOR_ILLEGAL | ECS_TYPE_HOOK_CTOR_MOVE_DTOR_ILLEGAL | ECS_TYPE_HOOK_MOVE_DTOR_ILLEGAL | ECS_TYPE_HOOK_CMP_ILLEGAL | ECS_TYPE_HOOK_EQUALS_ILLEGAL);
+pub const ECS_TYPE_HOOKS: flags32_t = (ECS_TYPE_HOOK_CTOR | ECS_TYPE_HOOK_DTOR |
+    ECS_TYPE_HOOK_COPY | ECS_TYPE_HOOK_MOVE | ECS_TYPE_HOOK_COPY_CTOR | ECS_TYPE_HOOK_MOVE_CTOR |
+    ECS_TYPE_HOOK_CTOR_MOVE_DTOR | ECS_TYPE_HOOK_MOVE_DTOR | ECS_TYPE_HOOK_CMP |
+    ECS_TYPE_HOOK_EQUALS);
+
+pub const ECS_TYPE_HOOKS_ILLEGAL: flags32_t = (ECS_TYPE_HOOK_CTOR_ILLEGAL |
+    ECS_TYPE_HOOK_DTOR_ILLEGAL | ECS_TYPE_HOOK_COPY_ILLEGAL | ECS_TYPE_HOOK_MOVE_ILLEGAL |
+    ECS_TYPE_HOOK_COPY_CTOR_ILLEGAL | ECS_TYPE_HOOK_MOVE_CTOR_ILLEGAL |
+    ECS_TYPE_HOOK_CTOR_MOVE_DTOR_ILLEGAL | ECS_TYPE_HOOK_MOVE_DTOR_ILLEGAL |
+    ECS_TYPE_HOOK_CMP_ILLEGAL | ECS_TYPE_HOOK_EQUALS_ILLEGAL);
 
 pub const type_hooks_t = extern struct {
     ctor: ?xtor_t = null,
@@ -969,15 +993,18 @@ pub const value_t = extern struct {
     ptr: ?*anyopaque = null,
 };
 
-pub const FLECS_HI_COMPONENT_ID = 256;
-pub const FLECS_HI_ID_RECORD_ID = 1024;
-pub const FLECS_ID_DESC_MAX = 32;
-pub const FLECS_EVENT_DESC_MAX = 8;
-pub const FLECS_VARIABLE_COUNT_MAX = 64;
-pub const FLECS_TERM_COUNT_MAX = 32;
-pub const FLECS_TERM_ARG_COUNT_MAX = 16;
-pub const FLECS_QUERY_VARIABLE_COUNT_MAX = 64;
-pub const FLECS_QUERY_SCOPE_NESTING_MAX = 8;
+pub const FLECS_HI_COMPONENT_ID = build_options.hi_component_id orelse 256;
+pub const FLECS_HI_ID_RECORD_ID = build_options.hi_id_record_id orelse 1024;
+pub const FLECS_SPARSE_PAGE_BITS = build_options.sparse_page_bits orelse 6;
+pub const FLECS_ENTITY_PAGE_BITS = build_options.entity_page_bits orelse 12;
+pub const FLECS_ID_DESC_MAX = build_options.id_desc_max orelse 32;
+pub const FLECS_EVENT_DESC_MAX = build_options.event_desc_max orelse 8;
+pub const FLECS_VARIABLE_COUNT_MAX = build_options.variable_count_max orelse 64;
+pub const FLECS_TERM_COUNT_MAX = build_options.term_count_max orelse 32;
+pub const FLECS_TERM_ARG_COUNT_MAX = build_options.term_arg_count_max orelse 16;
+pub const FLECS_QUERY_VARIABLE_COUNT_MAX = build_options.query_variable_count_max orelse 64;
+pub const FLECS_QUERY_SCOPE_NESTING_MAX = build_options.query_scope_nesting_max orelse 8;
+pub const FLECS_DAG_DEPTH_MAX = build_options.dag_depth_max orelse 128;
 
 pub const entity_desc_t = extern struct {
     _canary: i32 = 0,
@@ -1045,8 +1072,8 @@ pub const iter_t = extern struct {
     callback_ctx: ?*anyopaque,
     run_ctx: ?*anyopaque,
 
-    delta_time: f32,
-    delta_system_time: f32,
+    delta_time: ftime_t,
+    delta_system_time: ftime_t,
 
     frame_offset: i32,
     offset: i32,
@@ -1057,7 +1084,7 @@ pub const iter_t = extern struct {
     priv_: iter_private_t,
 
     next: iter_next_action_t,
-    callback: *const fn (it: *iter_t) callconv(.C) void, // TODO: Compiler bug. Should be `iter_action_t`.
+    callback: *const fn (it: *iter_t) callconv(.c) void, // TODO: Compiler bug. Should be `iter_action_t`.
     fini: iter_fini_action_t,
     chain_it: ?*iter_t,
 
@@ -1218,14 +1245,14 @@ const EcsAllocator = struct {
     var gpa: ?std.heap.GeneralPurposeAllocator(.{}) = null;
     var allocator: ?std.mem.Allocator = null;
 
-    fn alloc(size: i32) callconv(.C) ?*anyopaque {
+    fn alloc(size: i32) callconv(.c) ?*anyopaque {
         if (size < 0) {
             return null;
         }
 
         const allocation_size = Alignment + @as(usize, @intCast(size));
 
-        const data = allocator.?.alignedAlloc(u8, Alignment, allocation_size) catch {
+        const data = allocator.?.alignedAlloc(u8, .fromByteUnits(Alignment), allocation_size) catch {
             return null;
         };
 
@@ -1239,7 +1266,7 @@ const EcsAllocator = struct {
         return data.ptr + Alignment;
     }
 
-    fn free(ptr: ?*anyopaque) callconv(.C) void {
+    fn free(ptr: ?*anyopaque) callconv(.c) void {
         if (ptr == null) {
             return;
         }
@@ -1254,7 +1281,7 @@ const EcsAllocator = struct {
         );
     }
 
-    fn realloc(old: ?*anyopaque, size: i32) callconv(.C) ?*anyopaque {
+    fn realloc(old: ?*anyopaque, size: i32) callconv(.c) ?*anyopaque {
         if (old == null) {
             return alloc(size);
         }
@@ -1281,7 +1308,7 @@ const EcsAllocator = struct {
         return new_data.ptr + Alignment;
     }
 
-    fn calloc(size: i32) callconv(.C) ?*anyopaque {
+    fn calloc(size: i32) callconv(.c) ?*anyopaque {
         const data_maybe = alloc(size);
         if (data_maybe) |data| {
             @memset(@as([*]u8, @ptrCast(data))[0..@as(usize, @intCast(size))], 0);
@@ -1291,7 +1318,7 @@ const EcsAllocator = struct {
     }
 };
 
-fn flecs_abort() callconv(.C) noreturn {
+fn flecs_abort() callconv(.c) noreturn {
     std.debug.dumpCurrentStackTrace(@returnAddress());
     @breakpoint();
     std.posix.exit(1);
@@ -2087,9 +2114,14 @@ extern fn ecs_id_from_str(world: *const world_t, expr: [*:0]const u8) id_t;
 // Functions for working with `term_t` and `query_t`.
 //
 //--------------------------------------------------------------------------------------------------
-/// `pub fn term_iter(world: *const world_t, term: *term_t) iter_t`
-pub const each = ecs_each_id;
-extern fn ecs_each_id(world: *const world_t, term: *term_t) iter_t;
+
+pub fn each(world: *const world_t, comptime T: type) iter_t {
+    return each_id(world, id(T));
+}
+
+/// `pub fn ecs_each_id(world: *const world_t, id: id_t) iter_t`
+pub const each_id = ecs_each_id;
+extern fn ecs_each_id(world: *const world_t, id: id_t) iter_t;
 
 /// `pub fn term_chain_iter(world: *const world_t, term: *term_t) iter_t`
 pub const term_chain_iter = ecs_term_chain_iter;
@@ -2190,7 +2222,7 @@ pub const query_group_info_t = extern struct {
 pub const query_get_group_info = ecs_query_get_group_info;
 extern fn ecs_query_get_group_info(query: *const query_t, group_id: u64) ?*const query_group_info_t;
 
-pub const query_count_t = extern struct {
+pub const query_count_t = struct {
     results: i32,
     entities: i32,
     tables: i32,
@@ -2651,8 +2683,8 @@ pub fn COMPONENT(world: *world_t, comptime T: type) void {
             .hooks = .{
                 .dtor = switch (@typeInfo(T)) {
                     .@"struct" => if (@hasDecl(T, "dtor")) struct {
-                        pub fn dtor(ptr: *anyopaque, _: i32, _: *const type_info_t) callconv(.C) void {
-                            T.dtor(@as(*T, @alignCast(@ptrCast(ptr))).*);
+                        pub fn dtor(ptr: *anyopaque, _: i32, _: *const type_info_t) callconv(.c) void {
+                            T.dtor(@as(*T, @ptrCast(@alignCast(ptr))));
                         }
                     }.dtor else null,
                     else => null,
@@ -2714,7 +2746,7 @@ pub fn OBSERVER(
 ///     }
 /// }
 /// Would return the following implementation
-/// fn exec(it: *ecs.iter_t) callconv(.C) void {
+/// fn exec(it: *ecs.iter_t) callconv(.c) void {
 ///     const c1 = ecs.field(it, Position, 0).?;
 ///     const c2 = ecs.field(it, Velocity, 1).?;
 ///     move_system(c1, c2);//probably inlined
@@ -2726,7 +2758,7 @@ fn SystemImpl(comptime fn_system: anytype) type {
     }
 
     return struct {
-        fn exec(it: *iter_t) callconv(.C) void {
+        fn exec(it: *iter_t) callconv(.c) void {
             const ArgsTupleType = std.meta.ArgsTuple(@TypeOf(fn_system));
             var args_tuple: ArgsTupleType = undefined;
 
@@ -3062,42 +3094,42 @@ pub const os = struct {
     pub const dl_t = usize;
     pub const sock_t = usize;
     pub const thread_id_t = u64;
-    pub const proc_t = *const fn () callconv(.C) void;
-    pub const api_init_t = *const fn () callconv(.C) void;
-    pub const api_fini_t = *const fn () callconv(.C) void;
-    pub const api_malloc_t = *const fn (size_t) callconv(.C) ?*anyopaque;
-    pub const api_free_t = *const fn (?*anyopaque) callconv(.C) void;
-    pub const api_realloc_t = *const fn (?*anyopaque, size_t) callconv(.C) ?*anyopaque;
-    pub const api_calloc_t = *const fn (size_t) callconv(.C) ?*anyopaque;
-    pub const api_strdup_t = *const fn ([*:0]const u8) callconv(.C) [*c]u8;
-    pub const thread_callback_t = *const fn (?*anyopaque) callconv(.C) ?*anyopaque;
-    pub const api_thread_new_t = *const fn (thread_callback_t, ?*anyopaque) callconv(.C) thread_t;
-    pub const api_thread_join_t = *const fn (thread_t) callconv(.C) ?*anyopaque;
-    pub const api_thread_self_t = *const fn () callconv(.C) thread_id_t;
-    pub const api_task_new_t = *const fn (thread_callback_t, ?*anyopaque) callconv(.C) thread_t;
-    pub const api_task_join_t = *const fn (thread_t) callconv(.C) ?*anyopaque;
-    pub const api_ainc_t = *const fn (*i32) callconv(.C) i32;
-    pub const api_lainc_t = *const fn (*i64) callconv(.C) i64;
-    pub const api_mutex_new_t = *const fn () callconv(.C) mutex_t;
-    pub const api_mutex_lock_t = *const fn (mutex_t) callconv(.C) void;
-    pub const api_mutex_unlock_t = *const fn (mutex_t) callconv(.C) void;
-    pub const api_mutex_free_t = *const fn (mutex_t) callconv(.C) void;
-    pub const api_cond_new_t = *const fn () callconv(.C) cond_t;
-    pub const api_cond_free_t = *const fn (cond_t) callconv(.C) void;
-    pub const api_cond_signal_t = *const fn (cond_t) callconv(.C) void;
-    pub const api_cond_broadcast_t = *const fn (cond_t) callconv(.C) void;
-    pub const api_cond_wait_t = *const fn (cond_t, mutex_t) callconv(.C) void;
-    pub const api_sleep_t = *const fn (i32, i32) callconv(.C) void;
-    pub const api_enable_high_timer_resolution_t = *const fn (bool) callconv(.C) void;
-    pub const api_get_time_t = *const fn (*time_t) callconv(.C) void;
-    pub const api_now_t = *const fn () callconv(.C) u64;
-    pub const api_log_t = *const fn (i32, [*:0]const u8, i32, [*:0]const u8) callconv(.C) void;
-    pub const api_abort_t = *const fn () callconv(.C) void;
-    pub const api_dlopen_t = *const fn ([*:0]const u8) callconv(.C) dl_t;
-    pub const api_dlproc_t = *const fn (dl_t, [*:0]const u8) callconv(.C) proc_t;
-    pub const api_dlclose_t = *const fn (dl_t) callconv(.C) void;
-    pub const api_module_to_path_t = *const fn ([*:0]const u8) callconv(.C) [*:0]u8;
-    pub const api_perf_trace_t = *const fn ([*:0]const u8, usize, [*:0]const u8) callconv(.C) void;
+    pub const proc_t = *const fn () callconv(.c) void;
+    pub const api_init_t = *const fn () callconv(.c) void;
+    pub const api_fini_t = *const fn () callconv(.c) void;
+    pub const api_malloc_t = *const fn (size_t) callconv(.c) ?*anyopaque;
+    pub const api_free_t = *const fn (?*anyopaque) callconv(.c) void;
+    pub const api_realloc_t = *const fn (?*anyopaque, size_t) callconv(.c) ?*anyopaque;
+    pub const api_calloc_t = *const fn (size_t) callconv(.c) ?*anyopaque;
+    pub const api_strdup_t = *const fn ([*:0]const u8) callconv(.c) [*c]u8;
+    pub const thread_callback_t = *const fn (?*anyopaque) callconv(.c) ?*anyopaque;
+    pub const api_thread_new_t = *const fn (thread_callback_t, ?*anyopaque) callconv(.c) thread_t;
+    pub const api_thread_join_t = *const fn (thread_t) callconv(.c) ?*anyopaque;
+    pub const api_thread_self_t = *const fn () callconv(.c) thread_id_t;
+    pub const api_task_new_t = *const fn (thread_callback_t, ?*anyopaque) callconv(.c) thread_t;
+    pub const api_task_join_t = *const fn (thread_t) callconv(.c) ?*anyopaque;
+    pub const api_ainc_t = *const fn (*i32) callconv(.c) i32;
+    pub const api_lainc_t = *const fn (*i64) callconv(.c) i64;
+    pub const api_mutex_new_t = *const fn () callconv(.c) mutex_t;
+    pub const api_mutex_lock_t = *const fn (mutex_t) callconv(.c) void;
+    pub const api_mutex_unlock_t = *const fn (mutex_t) callconv(.c) void;
+    pub const api_mutex_free_t = *const fn (mutex_t) callconv(.c) void;
+    pub const api_cond_new_t = *const fn () callconv(.c) cond_t;
+    pub const api_cond_free_t = *const fn (cond_t) callconv(.c) void;
+    pub const api_cond_signal_t = *const fn (cond_t) callconv(.c) void;
+    pub const api_cond_broadcast_t = *const fn (cond_t) callconv(.c) void;
+    pub const api_cond_wait_t = *const fn (cond_t, mutex_t) callconv(.c) void;
+    pub const api_sleep_t = *const fn (i32, i32) callconv(.c) void;
+    pub const api_enable_high_timer_resolution_t = *const fn (bool) callconv(.c) void;
+    pub const api_get_time_t = *const fn (*time_t) callconv(.c) void;
+    pub const api_now_t = *const fn () callconv(.c) u64;
+    pub const api_log_t = *const fn (i32, [*:0]const u8, i32, [*:0]const u8) callconv(.c) void;
+    pub const api_abort_t = *const fn () callconv(.c) void;
+    pub const api_dlopen_t = *const fn ([*:0]const u8) callconv(.c) dl_t;
+    pub const api_dlproc_t = *const fn (dl_t, [*:0]const u8) callconv(.c) proc_t;
+    pub const api_dlclose_t = *const fn (dl_t) callconv(.c) void;
+    pub const api_module_to_path_t = *const fn ([*:0]const u8) callconv(.c) [*:0]u8;
+    pub const api_perf_trace_t = *const fn ([*:0]const u8, usize, [*:0]const u8) callconv(.c) void;
 
     const api_t = extern struct {
         init_: api_init_t,

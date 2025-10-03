@@ -193,12 +193,12 @@ const light_system_shaderable = render_viewport.ShaderableComponentI.implement(l
 
         if (entites_idx) |idxs| {
             for (idxs, 0..) |ent_idx, idx| {
-                const gi: *light_component.Light = @alignCast(@ptrCast(data[ent_idx]));
+                const gi: *light_component.Light = @ptrCast(@alignCast(data[ent_idx]));
                 lights.items[idx] = gi;
             }
         } else {
             for (data, 0..) |d, idx| {
-                const gi: *light_component.Light = @alignCast(@ptrCast(d));
+                const gi: *light_component.Light = @ptrCast(@alignCast(d));
                 lights.items[idx] = gi;
             }
         }
@@ -344,7 +344,7 @@ const light_system_shaderable = render_viewport.ShaderableComponentI.implement(l
         try lights.resize(allocator, entites_idx.len);
 
         for (entites_idx, 0..) |ent_idx, idx| {
-            const gi: *light_component.Light = @alignCast(@ptrCast(render_components[ent_idx]));
+            const gi: *light_component.Light = @ptrCast(@alignCast(render_components[ent_idx]));
             lights.items[idx] = gi;
         }
 
@@ -522,6 +522,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_light_system(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_light_system(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

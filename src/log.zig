@@ -22,14 +22,18 @@ const MAX_HANDLERS = 8;
 pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]const u8) void {
     const thread_id = task.api.getWorkerId();
     //const thread_name = task.getThreadName(thread_id);
+    var buffer: [4096]u8 = undefined;
 
     {
         const LOG_FORMAT = "[{s}|{d}|{s}]\t{s}";
         const args = .{ level.asText(), thread_id, scope, msg };
 
-        const stderr = std.io.getStdErr().writer();
+        var stderr_w = std.fs.File.stderr().writer(&buffer);
+        var stderr = &stderr_w.interface;
         std.debug.lockStdErr();
         defer std.debug.unlockStdErr();
+
+        defer stderr.flush() catch undefined;
 
         const color: std.io.tty.Color = switch (level) {
             .info => .reset,
@@ -39,7 +43,7 @@ pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]cons
             else => .reset,
         };
 
-        const cfg = std.io.tty.detectConfig(std.io.getStdErr());
+        const cfg = std.io.tty.detectConfig(std.fs.File.stderr());
         cfg.setColor(stderr, color) catch return;
         nosuspend stderr.print(LOG_FORMAT ++ "\n", args) catch return;
         cfg.setColor(stderr, .reset) catch return;
@@ -54,7 +58,6 @@ pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]cons
             .err => 0x00_ff_00_00,
             else => 0x00_ff_00_00,
         };
-        var buffer: [256:0]u8 = undefined;
         if (std.fmt.bufPrintZ(&buffer, LOG_FORMAT_TRACY, .{ scope, msg })) |_| {
             profiler.api.msgWithColor(&buffer, color);
         } else |err| switch (err) {

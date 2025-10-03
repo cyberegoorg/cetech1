@@ -26,7 +26,7 @@ pub fn main() !void {
         try output_file.writeFileAll(f, .{});
     }
 
-    var w = output_file.writer();
+    var w = output_file.deprecatedWriter();
     try w.print("extern const uint8_t* {s}_pssl;\n", .{name});
     try w.print("extern const uint32_t {s}_pssl_size;\n", .{name});
 }

@@ -12,12 +12,15 @@ pub fn build(b: *std.Build) void {
     // Library
     const lib_step = b.step("lib", "Install library");
 
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addLibrary(.{
+        .linkage = .static,
         .name = "Uuid",
-        .target = target,
         .version = version,
-        .optimize = optimize,
-        .root_source_file = root_source_file,
+        .root_module = b.createModule(.{
+            .root_source_file = root_source_file,
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     const lib_install = b.addInstallArtifact(lib, .{});
@@ -41,9 +44,11 @@ pub fn build(b: *std.Build) void {
 
     const benchs = b.addExecutable(.{
         .name = "bench",
-        .target = target,
-        .optimize = .ReleaseFast,
-        .root_source_file = b.path("src/bench.zig"),
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/bench.zig"),
+            .target = target,
+            .optimize = .ReleaseFast,
+        }),
     });
 
     const benchs_run = b.addRunArtifact(benchs);
@@ -57,9 +62,11 @@ pub fn build(b: *std.Build) void {
     const tests_step = b.step("test", "Run test suite");
 
     const tests = b.addTest(.{
-        .target = target,
-        .version = version,
-        .root_source_file = root_source_file,
+        .root_module = b.createModule(.{
+            .root_source_file = root_source_file,
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     const tests_run = b.addRunArtifact(tests);

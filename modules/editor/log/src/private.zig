@@ -130,7 +130,7 @@ var log_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
     // Destroy tab instantce
     pub fn destroy(tab_inst: *editor.TabI) !void {
-        const tab_o: *LogTab = @alignCast(@ptrCast(tab_inst.inst));
+        const tab_o: *LogTab = @ptrCast(@alignCast(tab_inst.inst));
         _allocator.destroy(tab_o);
     }
 
@@ -138,7 +138,7 @@ var log_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
         _ = kernel_tick; // autofix
         _ = dt; // autofix
-        const tab_o: *LogTab = @alignCast(@ptrCast(inst));
+        const tab_o: *LogTab = @ptrCast(@alignCast(inst));
         var scrollBotom = false;
 
         _ = _coreui.checkbox("###Autoscroll", .{ .v = &tab_o.autoscroll });
@@ -280,6 +280,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_log(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor_log(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

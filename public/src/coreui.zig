@@ -272,8 +272,8 @@ pub const CheckFlags = packed struct(c_int) {
     _padding: u31 = 0,
 };
 
-pub const ImGuiTestGuiFunc = fn (context: *TestContext) callconv(.C) void;
-pub const ImGuiTestTestFunc = fn (context: *TestContext) callconv(.C) void;
+pub const ImGuiTestGuiFunc = fn (context: *TestContext) callconv(.c) void;
+pub const ImGuiTestTestFunc = fn (context: *TestContext) callconv(.c) void;
 pub const Test = anyopaque;
 pub const TestContext = opaque {
     pub inline fn setRef(ctx: *TestContext, coreui_api: *const CoreUIApi, ref: [:0]const u8) void {
@@ -374,7 +374,7 @@ pub const CoreUIApi = struct {
             @intCast(src.line),
             if (std.meta.hasFn(Callbacks, "gui"))
                 struct {
-                    fn f(context: *TestContext) callconv(.C) void {
+                    fn f(context: *TestContext) callconv(.c) void {
                         Callbacks.gui(context) catch undefined;
                     }
                 }.f
@@ -383,7 +383,7 @@ pub const CoreUIApi = struct {
 
             if (std.meta.hasFn(Callbacks, "run"))
                 struct {
-                    fn f(context: *TestContext) callconv(.C) void {
+                    fn f(context: *TestContext) callconv(.c) void {
                         Callbacks.run(context) catch |err| {
                             std.log.err("Test failed: {}", .{err});
                         };
@@ -598,8 +598,7 @@ pub const CoreUIApi = struct {
     getCursorScreenPos: *const fn () [2]f32,
     calcTextSize: *const fn (txt: []const u8, args: CalcTextSize) [2]f32,
     getWindowPos: *const fn () [2]f32,
-    getWindowContentRegionMax: *const fn () [2]f32,
-    getContentRegionMax: *const fn () [2]f32,
+    getWindowSize: *const fn () [2]f32,
     getContentRegionAvail: *const fn () [2]f32,
     setCursorPosX: *const fn (x: f32) void,
     setCursorPosY: *const fn (y: f32) void,
@@ -756,7 +755,7 @@ pub const DrawCmd = extern struct {
     user_callback_data_offset: c_int,
 };
 
-pub const DrawCallback = *const fn (*const anyopaque, *const DrawCmd) callconv(.C) void;
+pub const DrawCallback = *const fn (*const anyopaque, *const DrawCmd) callconv(.c) void;
 
 pub const DrawFlags = packed struct(c_int) {
     closed: bool = false,
@@ -1678,14 +1677,10 @@ pub const DrawList = struct {
 };
 
 pub const Image = struct {
-    flags: u8,
-    mip: u8,
     w: f32,
     h: f32,
     uv0: [2]f32 = .{ 0.0, 0.0 },
     uv1: [2]f32 = .{ 1.0, 1.0 },
-    tint_col: [4]f32 = .{ 1.0, 1.0, 1.0, 1.0 },
-    border_col: [4]f32 = .{ 0.0, 0.0, 0.0, 0.0 },
 };
 
 // Copy from zgui (THc a.k.a Temp hack)
@@ -1819,10 +1814,15 @@ pub const TreeNodeFlags = packed struct(c_int) {
     frame_padding: bool = false,
     span_avail_width: bool = false,
     span_full_width: bool = false,
-    span_text_width: bool = false,
+    span_label_width: bool = false,
     span_all_columns: bool = false,
-    nav_left_jumps_back_here: bool = false,
-    _padding: u16 = 0,
+    label_span_all_columns: bool = false,
+    _padding0: u1 = 0,
+    nav_left_jumps_to_parent: bool = false,
+    draw_lines_none: bool = false,
+    draw_lines_full: bool = false,
+    draw_lines_to_nodes: bool = false,
+    _padding1: u11 = 0,
 
     pub const collapsing_header = TreeNodeFlags{
         .framed = true,
@@ -2331,6 +2331,7 @@ pub const StyleCol = enum(c_int) {
     resize_grip,
     resize_grip_hovered,
     resize_grip_active,
+    input_text_cursor,
     tab_hovered,
     tab,
     tab_selected,
@@ -2351,8 +2352,9 @@ pub const StyleCol = enum(c_int) {
     table_row_bg_alt,
     text_link,
     text_selected_bg,
+    tree_lines,
     drag_drop_target,
-    nav_highlight,
+    nav_cursor,
     nav_windowing_highlight,
     nav_windowing_dim_bg,
     modal_window_dim_bg,
@@ -2449,11 +2451,15 @@ pub const Direction = enum(c_int) {
 };
 
 pub const Style = extern struct {
+    font_size_base: f32,
+    font_scale_main: f32,
+    font_scale_dpi: f32,
     alpha: f32,
     disabled_alpha: f32,
     window_padding: [2]f32,
     window_rounding: f32,
     window_border_size: f32,
+    window_border_hover_padding: f32,
     window_min_size: [2]f32,
     window_title_align: [2]f32,
     window_menu_button_position: Direction,
@@ -2475,13 +2481,18 @@ pub const Style = extern struct {
     grab_min_size: f32,
     grab_rounding: f32,
     log_slider_deadzone: f32,
+    image_border_size: f32,
     tab_rounding: f32,
     tab_border_size: f32,
-    tab_min_width_for_close_button: f32,
+    tab_close_button_min_width_selected: f32,
+    tab_close_button_min_width_unselected: f32,
     tab_bar_border_size: f32,
     tab_bar_overline_size: f32,
     table_angled_header_angle: f32,
     table_angled_headers_text_align: [2]f32,
+    tree_lines_flags: TreeNodeFlags,
+    tree_lines_size: f32,
+    tree_lines_rounding: f32,
     color_button_position: Direction,
     button_text_align: [2]f32,
     selectable_text_align: [2]f32,
@@ -2506,6 +2517,9 @@ pub const Style = extern struct {
 
     hover_flags_for_tooltip_mouse: HoveredFlags,
     hover_flags_for_tooltip_nav: HoveredFlags,
+
+    _main_scale: f32,
+    _next_frame_font_size_base: f32,
 
     /// `pub fn init() Style`
     pub const init = zguiStyle_Init;

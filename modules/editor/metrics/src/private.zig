@@ -84,7 +84,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
     // Destroy tab instantce
     pub fn destroy(tab_inst: *editor.TabI) !void {
-        const tab_o: *MetricsTab = @alignCast(@ptrCast(tab_inst.inst));
+        const tab_o: *MetricsTab = @ptrCast(@alignCast(tab_inst.inst));
         tab_o.selected_metrics.deinit(_allocator);
         _allocator.destroy(tab_o);
     }
@@ -93,7 +93,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
         _ = kernel_tick; // autofix
         _ = dt; // autofix
-        const tab_o: *MetricsTab = @alignCast(@ptrCast(inst));
+        const tab_o: *MetricsTab = @ptrCast(@alignCast(inst));
 
         const allocator = try _tempalloc.create();
         defer _tempalloc.destroy(allocator);
@@ -153,7 +153,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
     // Draw tab menu
     pub fn menu(inst: *editor.TabO) !void {
-        const tab_o: *MetricsTab = @alignCast(@ptrCast(inst));
+        const tab_o: *MetricsTab = @ptrCast(@alignCast(inst));
 
         const allocator = try _tempalloc.create();
         defer _tempalloc.destroy(allocator);
@@ -265,6 +265,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_metrics(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor_metrics(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

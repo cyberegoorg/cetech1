@@ -235,9 +235,14 @@ const AnalyzeInfo = struct {
         var file = try std.fs.openFileAbsolute(path, .{ .mode = .read_only });
         defer file.close();
 
-        var json_reader = std.json.reader(allocator, file.reader());
+        var buffer: [4096]u8 = undefined;
+        var file_r = file.reader(&buffer);
+        const reader = &file_r.interface;
+
+        var json_reader = std.json.Reader.init(allocator, reader);
         defer json_reader.deinit();
-        var parsed = try std.json.parseFromTokenSource(std.json.Value, allocator, &json_reader, .{});
+
+        var parsed = try std.json.parseFromTokenSource(std.json.Value, allocator, &json_reader, .{ .parse_numbers = false });
         defer parsed.deinit();
 
         const version_str = parsed.value.object.get(JSON_ASSET_VERSION).?;
@@ -799,10 +804,10 @@ const AssetRootFS = struct {
         }
 
         for (self.asset_dag.output.keys()) |asset_uuid| {
-            const asset_path = self.analyzer.asset_uuid2path.getPtr(asset_uuid).?;
-            const filename = std.fs.path.basename(asset_path.*);
-            const extension = std.fs.path.extension(asset_path.*);
-            const dirname = std.fs.path.dirname(asset_path.*).?;
+            const asset_path = self.analyzer.asset_uuid2path.get(asset_uuid).?;
+            const filename = std.fs.path.basename(asset_path);
+            const extension = std.fs.path.extension(asset_path);
+            const dirname = std.fs.path.dirname(asset_path).?;
             const parent_folder = self.analyzer.path2folder.get(dirname).?;
 
             // skip
@@ -818,7 +823,7 @@ const AssetRootFS = struct {
                     if (self.tmp_taskid_map.get(d)) |task_id| {
                         try self.tmp_depend_array.append(self.allocator, task_id);
                     } else {
-                        log.err("No task for UUID {s}", .{d});
+                        log.err("No task for UUID {f}", .{d});
                     }
                 }
                 prereq = try task.api.combine(self.tmp_depend_array.items);
@@ -862,10 +867,12 @@ const AssetRootFS = struct {
         var dot_file = try root_dir.createFile(public.CT_TEMP_FOLDER ++ "/" ++ "assetdb_graph.d2", .{});
         defer dot_file.close();
 
-        var bw = std.io.bufferedWriter(dot_file.writer());
-        defer bw.flush() catch undefined;
+        var buffer: [4096]u8 = undefined;
 
-        var writer = bw.writer();
+        var bw = dot_file.writer(&buffer);
+        defer bw.interface.flush() catch undefined;
+
+        var writer = &bw.interface;
 
         // write header
         _ = try writer.write("vars: {d2-config: {layout-engine: elk}}\n\n");
@@ -875,14 +882,14 @@ const AssetRootFS = struct {
             const path = try std.fs.path.relative(_allocator, _assetroot_fs.asset_root_path.?, asset_path);
             defer _allocator.free(path);
 
-            try writer.print("{s}: {s}\n", .{ asset_uuid, path });
+            try writer.print("{f}: {s}\n", .{ asset_uuid, path });
         }
         try writer.print("\n", .{});
 
         // Edges
         for (self.analyzer.asset_uuid2depend.keys(), self.analyzer.asset_uuid2depend.values()) |asset_uuid, depends| {
             for (depends.unmanaged.keys()) |depend| {
-                try writer.print("{s}->{s}\n", .{ asset_uuid, self.analyzer.uuid2asset_uuid.get(depend).? });
+                try writer.print("{f}->{f}\n", .{ asset_uuid, self.analyzer.uuid2asset_uuid.get(depend).? });
             }
         }
     }
@@ -984,14 +991,15 @@ const AssetRootFS = struct {
         var obj_file = try root_dir.createFile(sub_path, .{});
         defer obj_file.close();
 
-        var bw = std.io.bufferedWriter(obj_file.writer());
-        defer bw.flush() catch undefined;
-        const writer = bw.writer();
+        var buffer: [4096]u8 = undefined;
+
+        var bw = obj_file.writer(&buffer);
+        const writer = &bw.interface;
+        defer writer.flush() catch undefined;
 
         log.info("Creating folder asset in {s}.", .{sub_path});
 
         try writeCdbObjJson(
-            @TypeOf(writer),
             folder_asset,
             writer,
             folder_asset,
@@ -1081,11 +1089,12 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
                 defer asset_file.close();
                 defer self.dir.close();
 
-                var rb = std.io.bufferedReader(asset_file.reader());
-                const asset_reader = rb.reader();
+                var buffer: [4096]u8 = undefined;
+
+                var rb = asset_file.reader(&buffer);
+                const asset_reader = &rb.interface;
 
                 const asset = readAssetFromReader(
-                    @TypeOf(asset_reader),
                     asset_reader,
                     std.fs.path.stem(std.fs.path.stem(self.filename)),
                     self.folder,
@@ -1474,11 +1483,12 @@ fn loadProject(allocator: std.mem.Allocator, db: cdb.DbId, asset_root_path: []co
     };
     defer asset_file.close();
 
-    const asset_reader = asset_file.reader();
+    var buffer: [4096]u8 = undefined;
+    var asset_reader = asset_file.reader(&buffer);
+    const asset_r = &asset_reader.interface;
 
     const asset = readAssetFromReader(
-        @TypeOf(asset_reader),
-        asset_reader,
+        asset_r,
         "project",
         asset_root_folder,
         ReadBlobFromFile,
@@ -1513,10 +1523,13 @@ fn getOrCreateFolder(
     if (exist_marker) {
         var asset_file = try dir.openFile(FOLDER_FILENAME, .{ .mode = .read_only });
         defer asset_file.close();
-        const asset_reader = asset_file.reader();
+
+        var buffer: [128]u8 = undefined;
+        var asset_reader = asset_file.reader(&buffer);
+        const asset_r = &asset_reader.interface;
+
         folder_asset = try readAssetFromReader(
-            @TypeOf(asset_reader),
-            asset_reader,
+            asset_r,
             name orelse "",
             parent_folder orelse .{},
             ReadBlobFromFile,
@@ -1779,13 +1792,14 @@ fn saveCdbObj(obj: cdb.ObjId, root_path: []const u8, sub_path: []const u8, alloc
     var obj_file = try root_dir.createFile(sub_path, .{});
     defer obj_file.close();
 
-    var bw = std.io.bufferedWriter(obj_file.writer());
-    defer bw.flush() catch undefined;
-    const writer = bw.writer();
+    var buffer: [4096]u8 = undefined;
+
+    var bw = obj_file.writer(&buffer);
+    const writer = &bw.interface;
+    defer writer.flush() catch undefined;
 
     //const folder = public.Asset.readRef(_cdb, _db.readObj(obj).?, .Folder).?;
     try writeCdbObjJson(
-        @TypeOf(writer),
         obj,
         writer,
         obj,
@@ -1823,9 +1837,8 @@ fn existFolderMarker(root_folder: std.fs.Dir, dir_name: []const u8) bool {
 }
 
 pub fn writeCdbObjJson(
-    comptime Writer: type,
     obj: cdb.ObjId,
-    writer: Writer,
+    writer: *std.io.Writer,
     asset: cdb.ObjId,
     write_blob: WriteBlobFn,
     root_path: []const u8,
@@ -1834,7 +1847,7 @@ pub fn writeCdbObjJson(
     var zone_ctx = profiler.ztracy.Zone(@src());
     defer zone_ctx.End();
 
-    var ws = std.json.writeStream(writer, .{ .whitespace = .indent_2 });
+    var ws = std.json.Stringify{ .writer = writer, .options = .{ .whitespace = .indent_2 } };
     try ws.beginObject();
 
     const obj_r = _cdb.readObj(obj).?;
@@ -1847,7 +1860,7 @@ pub fn writeCdbObjJson(
         asset_obj = public.Asset.readSubObj(_cdb, obj_r, .Object);
 
         try ws.objectField(JSON_ASSET_UUID_TOKEN);
-        try ws.print("\"{s}\"", .{try getOrCreateUuid(obj)});
+        try ws.print("\"{f}\"", .{try getOrCreateUuid(obj)});
 
         if (public.Asset.readStr(_cdb, obj_r, .Description)) |desc| {
             try ws.objectField(JSON_DESCRIPTION_TOKEN);
@@ -1860,7 +1873,7 @@ pub fn writeCdbObjJson(
             try ws.objectField(JSON_TAGS_TOKEN);
             try ws.beginArray();
             for (added) |item| {
-                try ws.print("\"{s}:{s}\"", .{ _cdb.getTypeName(_db, item.type_idx).?, try getOrCreateUuid(item) });
+                try ws.print("\"{s}:{f}\"", .{ _cdb.getTypeName(_db, item.type_idx).?, try getOrCreateUuid(item) });
             }
             try ws.endArray();
         }
@@ -1869,7 +1882,6 @@ pub fn writeCdbObjJson(
     }
 
     try writeCdbObjJsonBody(
-        @TypeOf(ws),
         asset_obj.?,
         &ws,
         asset,
@@ -1882,9 +1894,8 @@ pub fn writeCdbObjJson(
 }
 
 fn writeCdbObjJsonBody(
-    comptime Writer: type,
     obj: cdb.ObjId,
-    writer: *Writer,
+    writer: *std.json.Stringify,
     asset: cdb.ObjId,
     write_blob: WriteBlobFn,
     root_path: []const u8,
@@ -1902,12 +1913,12 @@ fn writeCdbObjJsonBody(
 
     // UUID
     try writer.objectField(JSON_UUID_TOKEN);
-    try writer.print("\"{s}\"", .{try getOrCreateUuid(obj)});
+    try writer.print("\"{f}\"", .{try getOrCreateUuid(obj)});
 
     const prototype_id = _cdb.getPrototype(obj_r);
     if (!prototype_id.isEmpty()) {
         try writer.objectField(JSON_PROTOTYPE_UUID);
-        try writer.print("\"{s}\"", .{try getOrCreateUuid(prototype_id)});
+        try writer.print("\"{f}\"", .{try getOrCreateUuid(prototype_id)});
     }
 
     const prop_defs = _cdb.getTypePropDef(_db, obj.type_idx).?;
@@ -2050,7 +2061,6 @@ fn writeCdbObjJsonBody(
 
                     try writer.beginObject();
                     try writeCdbObjJsonBody(
-                        Writer,
                         subobj.?,
                         writer,
                         asset,
@@ -2066,7 +2076,7 @@ fn writeCdbObjJsonBody(
                 if (has_prototype and !property_overided) continue;
                 if (ref_obj != null) {
                     try writer.objectField(prop_def.name);
-                    try writer.print("\"{s}:{s}\"", .{ _cdb.getTypeName(_db, ref_obj.?.type_idx).?, try getOrCreateUuid(ref_obj.?) });
+                    try writer.print("\"{s}:{f}\"", .{ _cdb.getTypeName(_db, ref_obj.?.type_idx).?, try getOrCreateUuid(ref_obj.?) });
                 }
             },
             cdb.PropType.SUBOBJECT_SET => {
@@ -2079,7 +2089,7 @@ fn writeCdbObjJsonBody(
                     try writer.beginArray();
                     for (added) |item| {
                         try writer.beginObject();
-                        try writeCdbObjJsonBody(Writer, item, writer, asset, write_blob, root_path, allocator);
+                        try writeCdbObjJsonBody(item, writer, asset, write_blob, root_path, allocator);
                         try writer.endObject();
                     }
                     try writer.endArray();
@@ -2115,7 +2125,7 @@ fn writeCdbObjJsonBody(
                         try writer.beginArray();
                         for (added_set.unmanaged.keys()) |item| {
                             try writer.beginObject();
-                            try writeCdbObjJsonBody(Writer, item, writer, asset, write_blob, root_path, allocator);
+                            try writeCdbObjJsonBody(item, writer, asset, write_blob, root_path, allocator);
                             try writer.endObject();
                         }
                         try writer.endArray();
@@ -2130,7 +2140,7 @@ fn writeCdbObjJsonBody(
                         try writer.beginArray();
                         for (inisiate_set.unmanaged.keys()) |item| {
                             try writer.beginObject();
-                            try writeCdbObjJsonBody(Writer, item, writer, asset, write_blob, root_path, allocator);
+                            try writeCdbObjJsonBody(item, writer, asset, write_blob, root_path, allocator);
                             try writer.endObject();
                         }
                         try writer.endArray();
@@ -2143,7 +2153,7 @@ fn writeCdbObjJsonBody(
                         try writer.objectField(field_name);
                         try writer.beginArray();
                         for (deleted_set.unmanaged.keys()) |item| {
-                            try writer.print("\"{s}:{s}\"", .{ type_name, try getOrCreateUuid(item) });
+                            try writer.print("\"{s}:{f}\"", .{ type_name, try getOrCreateUuid(item) });
                         }
                         try writer.endArray();
                     }
@@ -2157,7 +2167,7 @@ fn writeCdbObjJsonBody(
                     try writer.objectField(prop_def.name);
                     try writer.beginArray();
                     for (added) |item| {
-                        try writer.print("\"{s}:{s}\"", .{ _cdb.getTypeName(_db, item.type_idx).?, try getOrCreateUuid(item) });
+                        try writer.print("\"{s}:{f}\"", .{ _cdb.getTypeName(_db, item.type_idx).?, try getOrCreateUuid(item) });
                     }
                     try writer.endArray();
                 } else {
@@ -2188,7 +2198,7 @@ fn writeCdbObjJsonBody(
                         try writer.objectField(prop_def.name);
                         try writer.beginArray();
                         for (added_set.unmanaged.keys()) |item| {
-                            try writer.print("\"{s}:{s}\"", .{ _cdb.getTypeName(_db, item.type_idx).?, try getOrCreateUuid(item) });
+                            try writer.print("\"{s}:{f}\"", .{ _cdb.getTypeName(_db, item.type_idx).?, try getOrCreateUuid(item) });
                         }
                         try writer.endArray();
                     }
@@ -2200,7 +2210,7 @@ fn writeCdbObjJsonBody(
                         try writer.objectField(field_name);
                         try writer.beginArray();
                         for (deleted_set.unmanaged.keys()) |item| {
-                            try writer.print("\"{s}:{s}\"", .{ _cdb.getTypeName(_db, item.type_idx).?, try getOrCreateUuid(item) });
+                            try writer.print("\"{s}:{f}\"", .{ _cdb.getTypeName(_db, item.type_idx).?, try getOrCreateUuid(item) });
                         }
                         try writer.endArray();
                     }
@@ -2226,8 +2236,7 @@ fn writeCdbObjJsonBody(
 }
 
 pub fn readAssetFromReader(
-    comptime Reader: type,
-    reader: Reader,
+    reader: *std.io.Reader,
     asset_name: []const u8,
     asset_folder: cdb.ObjId,
     read_blob: ReadBlobFn,
@@ -2236,9 +2245,9 @@ pub fn readAssetFromReader(
     var zone_ctx = profiler.ztracy.Zone(@src());
     defer zone_ctx.End();
 
-    var json_reader = std.json.reader(allocator, reader);
+    var json_reader = std.json.Reader.init(allocator, reader);
     defer json_reader.deinit();
-    var parsed = try std.json.parseFromTokenSource(std.json.Value, allocator, &json_reader, .{});
+    var parsed = try std.json.parseFromTokenSource(std.json.Value, allocator, &json_reader, .{ .parse_numbers = false });
     defer parsed.deinit();
 
     const version = parsed.value.object.get(JSON_ASSET_VERSION).?;
@@ -2296,7 +2305,7 @@ fn readObjFromJson(
 
     var json_reader = std.json.reader(allocator, reader);
     defer json_reader.deinit();
-    var parsed = try std.json.parseFromTokenSource(std.json.Value, allocator, &json_reader, .{});
+    var parsed = try std.json.parseFromTokenSource(std.json.Value, allocator, &json_reader, .{ .parse_numbers = false });
     defer parsed.deinit();
     const obj = try readCdbObjFromJsonValue(parsed.value, .{}, read_blob, allocator);
     return obj;
@@ -2360,22 +2369,22 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cdb.ObjId, read_blob: 
                 _cdb.setValue(bool, obj_w, prop_idx, value.bool);
             },
             cdb.PropType.U64 => {
-                _cdb.setValue(u64, obj_w, prop_idx, @intCast(value.integer));
+                _cdb.setValue(u64, obj_w, prop_idx, try std.fmt.parseInt(u64, value.number_string, 10));
             },
             cdb.PropType.I64 => {
-                _cdb.setValue(i64, obj_w, prop_idx, @intCast(value.integer));
+                _cdb.setValue(i64, obj_w, prop_idx, try std.fmt.parseInt(i64, value.number_string, 10));
             },
             cdb.PropType.U32 => {
-                _cdb.setValue(u32, obj_w, prop_idx, @intCast(value.integer));
+                _cdb.setValue(u32, obj_w, prop_idx, try std.fmt.parseInt(u32, value.number_string, 10));
             },
             cdb.PropType.I32 => {
-                _cdb.setValue(i32, obj_w, prop_idx, @intCast(value.integer));
+                _cdb.setValue(i32, obj_w, prop_idx, try std.fmt.parseInt(i32, value.number_string, 10));
             },
             cdb.PropType.F64 => {
-                _cdb.setValue(f64, obj_w, prop_idx, @floatCast(value.float));
+                _cdb.setValue(f64, obj_w, prop_idx, try std.fmt.parseFloat(f64, value.number_string));
             },
             cdb.PropType.F32 => {
-                _cdb.setValue(f32, obj_w, prop_idx, @floatCast(value.float));
+                _cdb.setValue(f32, obj_w, prop_idx, try std.fmt.parseFloat(f32, value.number_string));
             },
             cdb.PropType.STR => {
                 var buffer: [128]u8 = undefined;

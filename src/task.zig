@@ -303,7 +303,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
                     //self.job_signal.timedWait(queue_config.idle_sleep_ns) catch undefined;
                     // self.job_signal.wait();
                     //std.Thread.yield() catch undefined;
-                    std.time.sleep(queue_config.idle_sleep_ns);
+                    std.Thread.sleep(queue_config.idle_sleep_ns);
                 }
             }
         }
@@ -350,7 +350,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
 
                     // TODO: SHIT
                     if (slot.combine) {
-                        const d: *CombineTask = @alignCast(@ptrCast(&slot.data));
+                        const d: *CombineTask = @ptrCast(@alignCast(&slot.data));
                         var done = true;
                         for (d.prereqs) |p| {
                             if (!self.isDone(p)) {
@@ -409,7 +409,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
 
                     // TODO: SHIT
                     if (slot.combine) {
-                        const d: *CombineTask = @alignCast(@ptrCast(&slot.data));
+                        const d: *CombineTask = @ptrCast(@alignCast(&slot.data));
                         var done = true;
                         for (d.prereqs) |p| {
                             if (!self.isDone(p)) {
@@ -463,7 +463,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
                         // self.job_signal.timedWait(queue_config.idle_sleep_ns) catch undefined;
                         // self.job_signal.wait();
                     }
-                    std.time.sleep(queue_config.idle_sleep_ns);
+                    std.Thread.sleep(queue_config.idle_sleep_ns);
                 }
             }
         }
@@ -475,7 +475,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
                     self.freeTaskIdx(t.index());
                 }
             }
-            std.time.sleep(queue_config.idle_sleep_ns);
+            std.Thread.sleep(queue_config.idle_sleep_ns);
         }
 
         pub fn isDone(self: *Self, task: public.TaskID) bool {
@@ -722,7 +722,7 @@ test "task: spawn task from task" {
     const TaskDep1 = struct {
         pub fn exec(self: *@This()) void {
             _ = self;
-            std.time.sleep(std.time.ns_per_ms * 5);
+            std.Thread.sleep(std.time.ns_per_ms * 5);
         }
     };
 

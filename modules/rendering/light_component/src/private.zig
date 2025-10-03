@@ -120,7 +120,7 @@ const light_c = ecs.ComponentI.implement(
         pub fn debugdraw(dd: gpu.DDEncoder, world: ecs.World, entites: []const ecs.EntityId, data: []const u8, size: [2]f32) !void {
             _ = size;
             var lights: []const public.Light = undefined;
-            lights.ptr = @alignCast(@ptrCast(data.ptr));
+            lights.ptr = @ptrCast(@alignCast(data.ptr));
             lights.len = data.len / @sizeOf(public.Light);
 
             for (entites, lights) |ent, light| {
@@ -274,6 +274,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_light_component(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_light_component(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

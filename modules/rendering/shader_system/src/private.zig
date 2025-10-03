@@ -357,13 +357,13 @@ const Shader = struct {
 const SystemToIdx = cetech1.AutoArrayHashMap(cetech1.StrId32, usize);
 
 fn setUniform(shader: public.ShaderIO, uniformbuffer: public.UniformBufferInstance, items: []const public.UpdateUniformItem) !void {
-    const sh: *ShaderIO = @alignCast(@ptrCast(shader.ptr));
+    const sh: *ShaderIO = @ptrCast(@alignCast(shader.ptr));
     var true_buffer = sh.uniform_buffer_pool.get(uniformbuffer.idx);
     try true_buffer.setUniforms(items);
 }
 
 fn setResource(shader: public.ShaderIO, uniformbuffer: public.ResourceBufferInstance, items: []const public.UpdateResourceItem) !void {
-    const sh: *ShaderIO = @alignCast(@ptrCast(shader.ptr));
+    const sh: *ShaderIO = @ptrCast(@alignCast(shader.ptr));
     var true_buffer: *ResourceBuffer = sh.resource_buffer_pool.get(uniformbuffer.idx);
     for (items) |item| {
         const get_or_put = true_buffer.data.getOrPutAssumeCapacity(item.name);
@@ -408,7 +408,7 @@ fn _bindResource(encoder: gpu.Encoder, true_shader_io: *ShaderIO, keys: []const 
 }
 
 fn bindConstant(shader: public.ShaderIO, uniformbuffer: public.UniformBufferInstance, encoder: gpu.Encoder) void {
-    const true_shader_io: *ShaderIO = @alignCast(@ptrCast(shader.ptr));
+    const true_shader_io: *ShaderIO = @ptrCast(@alignCast(shader.ptr));
     var true_buffer = true_shader_io.uniform_buffer_pool.get(uniformbuffer.idx);
 
     _bindUniform(encoder, true_shader_io, true_buffer.data.keys(), true_buffer.data.values());
@@ -416,14 +416,14 @@ fn bindConstant(shader: public.ShaderIO, uniformbuffer: public.UniformBufferInst
 
 fn bindSystemConstant(shader: public.ShaderIO, system: public.System, uniformbuffer: public.UniformBufferInstance, encoder: gpu.Encoder) void {
     const true_system = &_g.system_pool[system.idx];
-    const true_shader_io: *ShaderIO = @alignCast(@ptrCast(shader.ptr));
+    const true_shader_io: *ShaderIO = @ptrCast(@alignCast(shader.ptr));
     var true_buffer = true_system.shader_io.uniform_buffer_pool.get(uniformbuffer.idx);
 
     _bindUniform(encoder, true_shader_io, true_buffer.data.keys(), true_buffer.data.values());
 }
 
 fn bindResource(shader: public.ShaderIO, resourcebuffer: public.ResourceBufferInstance, encoder: gpu.Encoder) void {
-    const true_shader_io: *ShaderIO = @alignCast(@ptrCast(shader.ptr));
+    const true_shader_io: *ShaderIO = @ptrCast(@alignCast(shader.ptr));
     var true_buffer = true_shader_io.resource_buffer_pool.get(resourcebuffer.idx);
 
     _bindResource(encoder, true_shader_io, true_buffer.data.keys(), true_buffer.data.values());
@@ -431,7 +431,7 @@ fn bindResource(shader: public.ShaderIO, resourcebuffer: public.ResourceBufferIn
 
 fn bindSystemResource(shader: public.ShaderIO, system: public.System, resourcebuffer: public.ResourceBufferInstance, encoder: gpu.Encoder) void {
     const true_system = &_g.system_pool[system.idx];
-    const true_shader_io: *ShaderIO = @alignCast(@ptrCast(shader.ptr));
+    const true_shader_io: *ShaderIO = @ptrCast(@alignCast(shader.ptr));
 
     var true_buffer = true_system.shader_io.resource_buffer_pool.get(resourcebuffer.idx);
     _bindResource(encoder, true_shader_io, true_buffer.data.keys(), true_buffer.data.values());
@@ -440,14 +440,14 @@ fn bindSystemResource(shader: public.ShaderIO, system: public.System, resourcebu
 const system_context_vt = public.SystemContext.VTable.implement(struct {
     pub fn addSystem(self: *anyopaque, system: public.System, uniforms: ?public.UniformBufferInstance, resources: ?public.ResourceBufferInstance) !void {
         const system_pack = SystemInstance{ .system = system, .uniforms = uniforms, .resources = resources };
-        const true_context: *ShaderContext = @alignCast(@ptrCast(self));
+        const true_context: *ShaderContext = @ptrCast(@alignCast(self));
 
         true_context.system_set.set(system.idx);
         true_context.systems[system.idx] = system_pack;
     }
 
     pub fn getSystem(self: *anyopaque, system: public.System) ?public.SystemInstnace {
-        const true_context: *const ShaderContext = @alignCast(@ptrCast(self));
+        const true_context: *const ShaderContext = @ptrCast(@alignCast(self));
 
         if (!true_context.system_set.isSet(system.idx)) return null;
 
@@ -460,7 +460,7 @@ const system_context_vt = public.SystemContext.VTable.implement(struct {
     }
 
     pub fn bind(self: *const anyopaque, shader_io: public.ShaderIO, encoder: gpu.Encoder) void {
-        const true_buffer: *const ShaderContext = @alignCast(@ptrCast(self));
+        const true_buffer: *const ShaderContext = @ptrCast(@alignCast(self));
 
         var system_it = true_buffer.system_set.iterator(.{ .kind = .set });
         while (system_it.next()) |system_idx| {
@@ -843,7 +843,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                         _ = reload; // autofix
                         _ = allocator; // autofix
                         _ = node_obj; // autofix
-                        const real_state: *public.GpuShaderValue = @alignCast(@ptrCast(state));
+                        const real_state: *public.GpuShaderValue = @ptrCast(@alignCast(state));
                         real_state.* = .{};
 
                         if (transpile_state) |ts| {
@@ -1259,10 +1259,10 @@ fn createExportedNode(alloc: std.mem.Allocator, graph_node: public.DefGraphNode,
         const iface = try _allocator.create(graphvm.NodeI);
         get_or_put.value_ptr.* = iface;
 
-        const name = try std.fmt.allocPrintZ(alloc, "gpu_shader_exported_var_{s}", .{export_def.name});
+        const name = try std.fmt.allocPrintSentinel(alloc, "gpu_shader_exported_var_{s}", .{export_def.name}, 0);
         defer alloc.free(name);
 
-        const display_name = try std.fmt.allocPrintZ(alloc, "Shader export: {s}", .{export_def.name});
+        const display_name = try std.fmt.allocPrintSentinel(alloc, "Shader export: {s}", .{export_def.name}, 0);
         defer alloc.free(display_name);
 
         const type_hash = cetech1.strId32(name);
@@ -1538,7 +1538,7 @@ fn compileShaderVariant(
             const shader_def = _g.shader_def_map.get(cetech1.strId32(system)) orelse @panic("where shader def?");
             all_definitions.appendAssumeCapacity(shader_def);
 
-            try defines.put(allocator, try std.fmt.allocPrintZ(allocator, "CT_SYSTEM_ACTIVATED_{s}", .{system}), {});
+            try defines.put(allocator, try std.fmt.allocPrintSentinel(allocator, "CT_SYSTEM_ACTIVATED_{s}", .{system}, 0), {});
         }
     }
 
@@ -1645,7 +1645,7 @@ fn compileShaderVariant(
                                 try main_imports_w.print("uniform {s} {s};\n", .{ @tagName(import.type), import.name });
 
                                 try main_imports_w.print(
-                                    \\{s[val_type]} load_{[name]s}() {{
+                                    \\{[val_type]s} load_{[name]s}() {{
                                     \\  return {[name]s};
                                     \\}}
                                     \\
@@ -2028,7 +2028,7 @@ fn selectShaderVariant(
         const variants = inst.variants.get(context) orelse return try result.toOwnedSlice(allocator);
         try result.ensureTotalCapacity(allocator, variants.items.len);
 
-        const true_system_context: *const ShaderContext = @alignCast(@ptrCast(system_context.ptr));
+        const true_system_context: *const ShaderContext = @ptrCast(@alignCast(system_context.ptr));
         const context_system_set = true_system_context.system_set;
 
         for (variants.items) |*variant| {
@@ -2082,22 +2082,22 @@ fn findSystemByName(name: cetech1.StrId32) ?public.System {
 }
 
 fn createUniformBuffer(shader: public.ShaderIO) anyerror!?public.UniformBufferInstance {
-    const shader_io: *ShaderIO = @alignCast(@ptrCast(shader.ptr));
+    const shader_io: *ShaderIO = @ptrCast(@alignCast(shader.ptr));
     return try shader_io.createUniformBuffer();
 }
 
 fn destroyUniformBuffer(shader: public.ShaderIO, buffer: public.UniformBufferInstance) void {
-    const shader_io: *ShaderIO = @alignCast(@ptrCast(shader.ptr));
+    const shader_io: *ShaderIO = @ptrCast(@alignCast(shader.ptr));
     shader_io.destroyUniformBuffer(buffer);
 }
 
 fn createResourceBuffer(shader: public.ShaderIO) anyerror!?public.ResourceBufferInstance {
-    const shader_io: *ShaderIO = @alignCast(@ptrCast(shader.ptr));
+    const shader_io: *ShaderIO = @ptrCast(@alignCast(shader.ptr));
     return try shader_io.createResourceBuffer();
 }
 
 fn destroyResourceBuffer(shader: public.ShaderIO, buffer: public.ResourceBufferInstance) void {
-    const shader_io: *ShaderIO = @alignCast(@ptrCast(shader.ptr));
+    const shader_io: *ShaderIO = @ptrCast(@alignCast(shader.ptr));
     shader_io.destroyResourceBuffer(buffer);
 }
 
@@ -2114,15 +2114,15 @@ fn createSystemContext() !public.SystemContext {
     return .{ .ptr = buffer, .vtable = &system_context_vt };
 }
 fn destroySystemContext(buffer: public.SystemContext) void {
-    const true_buffer: *ShaderContext = @alignCast(@ptrCast(buffer.ptr));
+    const true_buffer: *ShaderContext = @ptrCast(@alignCast(buffer.ptr));
     _g.system_context_pool.destroy(true_buffer);
 }
 
 fn cloneSystemContext(context: public.SystemContext) !public.SystemContext {
     const new = try createSystemContext();
 
-    const true_new: *ShaderContext = @alignCast(@ptrCast(new.ptr));
-    const true_context: *ShaderContext = @alignCast(@ptrCast(context.ptr));
+    const true_new: *ShaderContext = @ptrCast(@alignCast(new.ptr));
+    const true_context: *ShaderContext = @ptrCast(@alignCast(context.ptr));
 
     true_new.* = true_context.*;
 
@@ -2403,7 +2403,7 @@ const gpu_shader_value_type_i = graphvm.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(u32, value)});
+            return std.fmt.allocPrintSentinel(allocator, "{any}", .{std.mem.bytesToValue(u32, value)}, 0);
         }
     },
 );
@@ -2429,7 +2429,7 @@ const gpu_vec4_value_type_i = graphvm.GraphValueTypeI.implement(
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
             const gv = std.mem.bytesAsValue(public.GpuValue, value);
-            return std.fmt.allocPrintZ(allocator, "{s}", .{gv.str});
+            return std.fmt.allocPrintSentinel(allocator, "{s}", .{gv.str}, 0);
         }
     },
 );
@@ -2455,7 +2455,7 @@ const gpu_vec2_value_type_i = graphvm.GraphValueTypeI.implement(
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
             const gv = std.mem.bytesAsValue(public.GpuValue, value);
-            return std.fmt.allocPrintZ(allocator, "{s}", .{gv.str});
+            return std.fmt.allocPrintSentinel(allocator, "{s}", .{gv.str}, 0);
         }
     },
 );
@@ -2481,7 +2481,7 @@ const gpu_vec3_value_type_i = graphvm.GraphValueTypeI.implement(
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
             const gv = std.mem.bytesAsValue(public.GpuValue, value);
-            return std.fmt.allocPrintZ(allocator, "{s}", .{gv.str});
+            return std.fmt.allocPrintSentinel(allocator, "{s}", .{gv.str}, 0);
         }
     },
 );
@@ -2508,7 +2508,7 @@ const gpu_float_value_type_i = graphvm.GraphValueTypeI.implement(
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
             const gv = std.mem.bytesAsValue(public.GpuValue, value);
-            return std.fmt.allocPrintZ(allocator, "{s}", .{gv.str});
+            return std.fmt.allocPrintSentinel(allocator, "{s}", .{gv.str}, 0);
         }
     },
 );
@@ -2818,7 +2818,7 @@ const gpu_construct_node_i = graphvm.NodeI.implement(
             _ = node_obj_r; // autofix
             const header_label = "Make";
 
-            return std.fmt.allocPrintZ(allocator, header_label, .{});
+            return std.fmt.allocPrintSentinel(allocator, header_label, .{}, 0);
         }
 
         pub fn transpile(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, state: []u8, stage: ?cetech1.StrId32, context: ?[]const u8, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
@@ -2932,7 +2932,7 @@ const gpu_const_node_i = graphvm.NodeI.implement(
             _ = node_obj_r; // autofix
             const header_label = "GPU const";
 
-            return std.fmt.allocPrintZ(allocator, header_label, .{});
+            return std.fmt.allocPrintSentinel(allocator, header_label, .{}, 0);
         }
 
         pub fn transpile(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, state: []u8, stage: ?cetech1.StrId32, context: ?[]const u8, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
@@ -3091,7 +3091,7 @@ const gpu_uniform_node_i = graphvm.NodeI.implement(
             _ = node_obj_r; // autofix
             const header_label = "Uniform";
 
-            return std.fmt.allocPrintZ(allocator, header_label, .{});
+            return std.fmt.allocPrintSentinel(allocator, header_label, .{}, 0);
         }
 
         pub fn create(self: *const graphvm.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {
@@ -3100,7 +3100,7 @@ const gpu_uniform_node_i = graphvm.NodeI.implement(
             _ = reload; // autofix
             _ = allocator; // autofix
             _ = node_obj; // autofix
-            const real_state: *UniformNodeState = @alignCast(@ptrCast(state));
+            const real_state: *UniformNodeState = @ptrCast(@alignCast(state));
             real_state.* = .{};
         }
 
@@ -3142,7 +3142,7 @@ const gpu_uniform_node_i = graphvm.NodeI.implement(
         pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
             _ = self; // autofix
             _ = out_pins; // autofix
-            const cs_state: *public.GpuShaderValue = @alignCast(@ptrCast(args.transpiler_node_state.?));
+            const cs_state: *public.GpuShaderValue = @ptrCast(@alignCast(args.transpiler_node_state.?));
 
             const settings_r = public.UniformNodeSettings.read(_cdb, args.settings.?).?;
 
@@ -3467,6 +3467,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_shader_system(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_shader_system(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

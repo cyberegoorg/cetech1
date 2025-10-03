@@ -21,6 +21,7 @@ pub fn addCetechModule(
             .target = target,
             .optimize = optimize,
         }),
+        .use_llvm = true,
     });
     lib.root_module.addImport("cetech1", cetech1_module);
     b.installArtifact(lib);

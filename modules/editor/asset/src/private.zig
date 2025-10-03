@@ -251,7 +251,7 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
             if (_coreui.menuItem(allocator, "Asset UUID", .{}, filter)) {
                 const uuid = try _assetdb.getOrCreateUuid(obj.obj);
                 var buff: [128]u8 = undefined;
-                const uuid_str = std.fmt.bufPrintZ(&buff, "{s}", .{uuid}) catch undefined;
+                const uuid_str = std.fmt.bufPrintZ(&buff, "{f}", .{uuid}) catch undefined;
                 _coreui.setClipboardText(uuid_str);
             }
         }
@@ -552,7 +552,7 @@ var asset_visual_aspect = editor.UiVisualAspect.implement(struct {
     ) !void {
         if (_assetdb.getUuid(obj)) |uuuid| {
             var buff: [256:0]u8 = undefined;
-            const uuid_str = try std.fmt.bufPrintZ(&buff, "Asset UUID: {s}", .{uuuid});
+            const uuid_str = try std.fmt.bufPrintZ(&buff, "Asset UUID: {f}", .{uuuid});
             _coreui.text(uuid_str);
         }
 
@@ -808,12 +808,17 @@ fn formatTagsToLabel(allocator: std.mem.Allocator, obj: cdb.ObjId, tag_prop_idx:
                     tag_color = cetech1.cdb_types.Color4f.f.toSlice(_cdb, c);
                 }
             }
+            tag_color[3] = 1.0;
+
             const tag_name = assetdb.Tag.readStr(_cdb, tag_r, .Name) orelse "No name =/";
 
             _coreui.pushObjUUID(tag);
             defer _coreui.popId();
 
-            const max_region = _coreui.getContentRegionMax();
+            const max_region = .{
+                _coreui.getContentRegionAvail()[0] + _coreui.getCursorScreenPos()[0] - _coreui.getWindowPos()[0],
+                _coreui.getContentRegionAvail()[1] + _coreui.getCursorScreenPos()[1] - _coreui.getWindowPos()[1],
+            };
 
             const begin_offset = _coreui.getFontSize() / 2;
             const item_size = _coreui.getFontSize() / 3;
@@ -1257,6 +1262,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_asset(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor_asset(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

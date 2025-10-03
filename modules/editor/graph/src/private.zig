@@ -120,8 +120,8 @@ const GraphEditorTab = struct {
 };
 
 const SaveJson = struct { group_size: struct { x: f32, y: f32 } };
-fn saveNodeSettings(nodeId: node_editor.NodeId, data: [*]const u8, size: usize, reason: node_editor.SaveReasonFlags, userPointer: *anyopaque) callconv(.C) bool {
-    const tab_o: *GraphEditorTab = @alignCast(@ptrCast(userPointer));
+fn saveNodeSettings(nodeId: node_editor.NodeId, data: [*]const u8, size: usize, reason: node_editor.SaveReasonFlags, userPointer: *anyopaque) callconv(.c) bool {
+    const tab_o: *GraphEditorTab = @ptrCast(@alignCast(userPointer));
     _ = tab_o; // autofix
 
     if (reason.Position or reason.Size) {
@@ -300,7 +300,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
     // Destroy tab instantce
     pub fn destroy(tab_inst: *editor.TabI) !void {
-        const tab_o: *GraphEditorTab = @alignCast(@ptrCast(tab_inst.inst));
+        const tab_o: *GraphEditorTab = @ptrCast(@alignCast(tab_inst.inst));
 
         tab_o.pinhash_map.deinit(_allocator);
         tab_o.pindata_map.deinit(_allocator);
@@ -320,7 +320,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
         _ = kernel_tick;
         _ = dt;
-        const tab_o: *GraphEditorTab = @alignCast(@ptrCast(inst));
+        const tab_o: *GraphEditorTab = @ptrCast(@alignCast(inst));
 
         const allocator = try _tempalloc.create();
         defer _tempalloc.destroy(allocator);
@@ -1311,7 +1311,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
     // Draw tab menu
     pub fn menu(inst: *editor.TabO) !void {
-        const tab_o: *GraphEditorTab = @alignCast(@ptrCast(inst));
+        const tab_o: *GraphEditorTab = @ptrCast(@alignCast(inst));
 
         const allocator = try _tempalloc.create();
         defer _tempalloc.destroy(allocator);
@@ -1363,7 +1363,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
                     break :blk "Subgraph";
                 };
-                const label = try std.fmt.allocPrintZ(allocator, "{s}###{s}", .{ name, uuid });
+                const label = try std.fmt.allocPrintSentinel(allocator, "{s}###{f}", .{ name, uuid }, 0);
                 defer allocator.free(label);
 
                 if (_coreui.button(label, .{})) {
@@ -1387,7 +1387,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     pub fn focused(inst: *editor.TabO) !void {
-        const tab_o: *GraphEditorTab = @alignCast(@ptrCast(inst));
+        const tab_o: *GraphEditorTab = @ptrCast(@alignCast(inst));
 
         const allocator = try _tempalloc.create();
         defer _tempalloc.destroy(allocator);
@@ -1405,7 +1405,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     // Selected object
     pub fn objSelected(inst: *editor.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) !void {
         _ = sender_tab_hash; // autofix
-        var tab_o: *GraphEditorTab = @alignCast(@ptrCast(inst));
+        var tab_o: *GraphEditorTab = @ptrCast(@alignCast(inst));
 
         if (tab_o.inter_selection.isSelectedAll(selection)) return;
 
@@ -1985,6 +1985,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_graph(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor_graph(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

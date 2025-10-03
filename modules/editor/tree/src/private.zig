@@ -63,6 +63,7 @@ fn cdbTreeNode(
         .no_tree_push_on_open = no_push,
         .selected = selected,
         .leaf = leaf,
+        .draw_lines_full = true,
     });
 }
 
@@ -90,6 +91,7 @@ fn cdbObjTreeNode(
         .no_tree_push_on_open = no_push,
         .selected = selection.isSelected(obj),
         .leaf = leaf,
+        .draw_lines_full = true,
     });
     _coreui.popStyleColor(.{});
 
@@ -264,7 +266,7 @@ fn cdbTreeView(
     var prop_name_buff: [128:0]u8 = undefined;
 
     for (prop_defs, 0..) |prop_def, idx| {
-        const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
+        const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionAvail()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
 
         const prop_idx: u32 = @truncate(idx);
         const prop_name = if (visible) try formatedPropNameToBuff(&prop_name_buff, prop_def.name) else "";
@@ -424,7 +426,7 @@ fn cdbTreeView(
                                 try inisiated_prototypes.put(_cdb.getPrototype(_cdb.readObj(subobj).?), {});
                             }
 
-                            const visible_item = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
+                            const visible_item = _coreui.isRectVisible(.{ _coreui.getContentRegionAvail()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
                             const set_state = if (visible_item) _cdb.getRelation(obj.top_level_obj, obj.obj, prop_idx, subobj) else .not_owned;
                             const set_color = _editor.getStateColor(set_state);
 
@@ -475,7 +477,7 @@ fn cdbTreeView(
 
                             var label: ?[:0]u8 = null;
                             if (_assetdb.getUuid(subobj)) |uuid| {
-                                label = try std.fmt.bufPrintZ(&buff, coreui.Icons.Deleted ++ "  " ++ "{s}###{}", .{ uuid, uuid });
+                                label = try std.fmt.bufPrintZ(&buff, coreui.Icons.Deleted ++ "  " ++ "{f}###{f}", .{ uuid, uuid });
                             } else {
                                 label = try std.fmt.bufPrintZ(&buff, coreui.Icons.Deleted ++ "  " ++ "{d}:{d}###{d}{d}", .{ subobj.id, subobj.type_idx.idx, subobj.id, subobj.type_idx.idx });
                             }
@@ -549,7 +551,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_tree(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor_tree(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }
 

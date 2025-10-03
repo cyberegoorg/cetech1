@@ -28,9 +28,10 @@ pub fn main() !void {
     };
     defer output_file.close();
 
-    var bw = std.io.bufferedWriter(output_file.writer());
-    defer bw.flush() catch undefined;
-    const w = bw.writer();
+    var stdout_buffer: [4096]u8 = undefined;
+    var bw = output_file.writer(&stdout_buffer);
+    defer bw.interface.flush() catch undefined;
+    var w = &bw.interface;
 
     try w.print("// GENERATED - DO NOT EDIT\n", .{});
     try w.print("const cetech1 = @import(\"cetech1\");\n\n", .{});
@@ -38,7 +39,7 @@ pub fn main() !void {
 
     for (modules.items) |m| {
         if (m.len == 0) continue;
-        try w.print("extern fn ct_load_module_{s}(apidb: *const cetech1.apidb.ApiDbAPI, _allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool;\n", .{m});
+        try w.print("extern fn ct_load_module_{s}(apidb: *const cetech1.apidb.ApiDbAPI, _allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool;\n", .{m});
     }
 
     try w.print("\npub const descs = [_]cetech1.modules.ModuleDesc{{\n", .{});

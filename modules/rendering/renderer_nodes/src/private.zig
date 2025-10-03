@@ -222,7 +222,7 @@ const gpu_geometry_value_type_i = graphvm.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(vertex_system.GPUGeometry, value)});
+            return std.fmt.allocPrintSentinel(allocator, "{any}", .{std.mem.bytesToValue(vertex_system.GPUGeometry, value)}, 0);
         }
     },
 );
@@ -247,7 +247,7 @@ const gpu_index_buffer_value_type_i = graphvm.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            return std.fmt.allocPrintZ(allocator, "{any}", .{std.mem.bytesToValue(u32, value)});
+            return std.fmt.allocPrintSentinel(allocator, "{any}", .{std.mem.bytesToValue(u32, value)}, 0);
         }
     },
 );
@@ -284,7 +284,7 @@ const culling_volume_node_i = graphvm.NodeI.implement(
             _ = reload; // autofix
             _ = allocator; // autofix
             _ = node_obj; // autofix
-            const real_state: *render_viewport.CullingVolume = @alignCast(@ptrCast(state));
+            const real_state: *render_viewport.CullingVolume = @ptrCast(@alignCast(state));
             real_state.* = .{};
         }
 
@@ -350,7 +350,7 @@ const draw_call_node_i = graphvm.NodeI.implement(
             _ = reload; // autofix
             _ = allocator; // autofix
             _ = node_obj; // autofix
-            const real_state: *renderer.DrawCall = @alignCast(@ptrCast(state));
+            const real_state: *renderer.DrawCall = @ptrCast(@alignCast(state));
 
             real_state.* = .{
                 .shader = .{},
@@ -748,7 +748,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_renderer_nodes(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_renderer_nodes(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }
 

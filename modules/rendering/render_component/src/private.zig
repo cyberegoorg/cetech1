@@ -179,7 +179,7 @@ const UpdateHashesTask = struct {
 
 pub fn toInstanceSlice(from: anytype) []const graphvm.GraphInstance {
     var containers: []const graphvm.GraphInstance = undefined;
-    containers.ptr = @alignCast(@ptrCast(from.ptr));
+    containers.ptr = @ptrCast(@alignCast(from.ptr));
     containers.len = from.len;
     return containers;
 }
@@ -304,7 +304,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
         try containers.resize(allocator, data.len);
 
         for (data, 0..) |d, idx| {
-            const gi: *graphvm.GraphInstance = @alignCast(@ptrCast(d));
+            const gi: *graphvm.GraphInstance = @ptrCast(@alignCast(d));
             containers.items[idx] = gi.*;
         }
 
@@ -333,12 +333,12 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
 
         if (entites_idx) |idxs| {
             for (idxs, 0..) |ent_idx, idx| {
-                const gi: *graphvm.GraphInstance = @alignCast(@ptrCast(data[ent_idx]));
+                const gi: *graphvm.GraphInstance = @ptrCast(@alignCast(data[ent_idx]));
                 containers.items[idx] = gi.*;
             }
         } else {
             for (data, 0..) |d, idx| {
-                const gi: *graphvm.GraphInstance = @alignCast(@ptrCast(d));
+                const gi: *graphvm.GraphInstance = @ptrCast(@alignCast(d));
                 containers.items[idx] = gi.*;
             }
         }
@@ -440,7 +440,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
         try containers.resize(allocator, entites_idx.len);
 
         for (entites_idx, 0..) |ent_idx, idx| {
-            const gi: *graphvm.GraphInstance = @alignCast(@ptrCast(render_components[ent_idx]));
+            const gi: *graphvm.GraphInstance = @ptrCast(@alignCast(render_components[ent_idx]));
             containers.items[idx] = gi.*;
         }
 
@@ -642,6 +642,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_render_component(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_render_component(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

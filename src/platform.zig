@@ -105,7 +105,7 @@ fn createWindow(width: i32, height: i32, title: [:0]const u8, monitor: ?public.M
 }
 
 fn destroyWindow(window: public.Window) void {
-    const true_w: *Window = @alignCast(@ptrCast(window.ptr));
+    const true_w: *Window = @ptrCast(@alignCast(window.ptr));
 
     backend.destroyWindow(window);
 

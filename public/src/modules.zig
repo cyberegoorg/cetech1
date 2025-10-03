@@ -5,7 +5,7 @@ const std = @import("std");
 const apidb = @import("apidb.zig");
 const LogAPI = @import("log.zig").LogAPI;
 
-pub const LoadModuleFn = fn (apidb: *const apidb.ApiDbAPI, _allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool;
+pub const LoadModuleFn = fn (apidb: *const apidb.ApiDbAPI, _allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool;
 pub const LoadModuleZigFn = fn (apidb: *const apidb.ApiDbAPI, allocator: std.mem.Allocator, _log: *const LogAPI, load: bool, reload: bool) anyerror!bool;
 
 const module_name = .modules;

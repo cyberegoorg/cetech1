@@ -761,7 +761,7 @@ fn uiPropInput(obj: cdb.ObjId, prop_idx: u32, enabled: bool, args: public.cdbPro
 fn uiPropInputRaw(obj: cdb.ObjId, prop_idx: u32, args: public.cdbPropertiesViewArgs) !void {
     _ = args; // autofix
 
-    const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
+    const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionAvail()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
     if (!visible) {
         _coreui.dummy(.{ .w = -1, .h = _coreui.getFontSize() * _coreui.getScaleFactor() });
         return;
@@ -952,7 +952,7 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
             if (_assetdb.getUuid(obj)) |asset_uuid| {
                 if (api.uiPropLabel(allocator, "UUID", null, true, args)) {
                     _coreui.tableNextColumn();
-                    _ = try std.fmt.bufPrintZ(&buf, "{s}", .{asset_uuid});
+                    _ = try std.fmt.bufPrintZ(&buf, "{f}", .{asset_uuid});
 
                     _coreui.setNextItemWidth(-std.math.floatMin(f32));
                     _ = _coreui.inputText("", .{
@@ -1111,13 +1111,13 @@ var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
     // Destroy FooTab instantce
     pub fn destroy(tab_inst: *editor.TabI) !void {
-        const tab_o: *PropertyTab = @alignCast(@ptrCast(tab_inst.inst));
+        const tab_o: *PropertyTab = @ptrCast(@alignCast(tab_inst.inst));
         _allocator.destroy(tab_o);
     }
 
     // Draw tab menu
     pub fn menu(inst: *editor.TabO) !void {
-        const tab_o: *PropertyTab = @alignCast(@ptrCast(inst));
+        const tab_o: *PropertyTab = @ptrCast(@alignCast(inst));
         _ = tab_o;
     }
 
@@ -1125,7 +1125,7 @@ var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
         _ = kernel_tick; // autofix
         _ = dt; // autofix
-        var tab_o: *PropertyTab = @alignCast(@ptrCast(inst));
+        var tab_o: *PropertyTab = @ptrCast(@alignCast(inst));
 
         if (tab_o.selected_obj.isEmpty()) {
             return;
@@ -1148,7 +1148,7 @@ var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     // Selected object
     pub fn objSelected(inst: *editor.TabO, obj: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) !void {
         _ = sender_tab_hash; // autofix
-        var tab_o: *PropertyTab = @alignCast(@ptrCast(inst));
+        var tab_o: *PropertyTab = @ptrCast(@alignCast(inst));
         tab_o.selected_obj = obj[0];
     }
 
@@ -1868,7 +1868,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_inspector(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor_inspector(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }
 

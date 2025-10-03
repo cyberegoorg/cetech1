@@ -184,7 +184,7 @@ fn buffFormatObjLabel(allocator: std.mem.Allocator, buff: [:0]u8, obj: cdb.ObjId
 
             if (with_id) {
                 if (uuid_id) {
-                    return std.fmt.bufPrintZ(buff, "{s}" ++ "  " ++ "{s}###{s}", .{ icon, name, _assetdb.getOrCreateUuid(obj) catch return null }) catch return null;
+                    return std.fmt.bufPrintZ(buff, "{s}" ++ "  " ++ "{s}###{f}", .{ icon, name, _assetdb.getOrCreateUuid(obj) catch return null }) catch return null;
                 } else {
                     return std.fmt.bufPrintZ(buff, "{s}" ++ "  " ++ "{s}###{s}", .{ icon, name, name }) catch return null;
                 }
@@ -194,7 +194,7 @@ fn buffFormatObjLabel(allocator: std.mem.Allocator, buff: [:0]u8, obj: cdb.ObjId
         } else {
             if (with_id) {
                 if (uuid_id) {
-                    return std.fmt.bufPrintZ(buff, "{s}###{s}", .{ name, _assetdb.getOrCreateUuid(obj) catch return null }) catch return null;
+                    return std.fmt.bufPrintZ(buff, "{s}###{f}", .{ name, _assetdb.getOrCreateUuid(obj) catch return null }) catch return null;
                 } else {
                     return std.fmt.bufPrintZ(buff, "{s}###{s}", .{ name, name }) catch return null;
                 }
@@ -1094,7 +1094,7 @@ pub fn load_module_zig(apidb_: *const apidb.ApiDbAPI, allocator: Allocator, log_
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor(__apidb: *const apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor(__apidb: *const apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
 }
 

@@ -1,7 +1,7 @@
 .{
     .name = .cetech1_kernel,
     .version = "0.1.0",
-    .minimum_zig_version = "0.14.1",
+    .minimum_zig_version = "0.15.1",
     .fingerprint = 0x999557f3ebfaa97a,
     .paths = .{
         "docs",

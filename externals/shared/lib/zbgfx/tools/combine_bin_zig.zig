@@ -25,7 +25,7 @@ pub fn main() !void {
     };
     defer output_file.close();
 
-    var w = output_file.writer();
+    var w = output_file.deprecatedWriter();
 
     try w.print("//\n", .{});
     try w.print("// GENERATED - DO NOT EDIT\n", .{});

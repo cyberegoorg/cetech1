@@ -92,13 +92,13 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
     // Destroy FooTab instantce
     pub fn destroy(tab_inst: *editor.TabI) !void {
-        const tab_o: *ExplorerTab = @alignCast(@ptrCast(tab_inst.inst));
+        const tab_o: *ExplorerTab = @ptrCast(@alignCast(tab_inst.inst));
         tab_o.inter_selection.deinit();
         _allocator.destroy(tab_o);
     }
 
     pub fn focused(inst: *editor.TabO) !void {
-        const tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
+        const tab_o: *ExplorerTab = @ptrCast(@alignCast(inst));
 
         const allocator = try _tempalloc.create();
         defer _tempalloc.destroy(allocator);
@@ -111,7 +111,7 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
     // Draw tab menu
     pub fn menu(inst: *editor.TabO) !void {
-        var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
+        var tab_o: *ExplorerTab = @ptrCast(@alignCast(inst));
 
         if (_coreui.beginMenu(_allocator, coreui.Icons.ContextMenu ++ "###ObjContextMenu", !tab_o.selection.isEmpty(), null)) {
             defer _coreui.endMenu();
@@ -138,7 +138,7 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         _ = kernel_tick;
         _ = dt;
 
-        var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
+        var tab_o: *ExplorerTab = @ptrCast(@alignCast(inst));
 
         var allocator = try _tempalloc.create();
         defer _tempalloc.destroy(allocator);
@@ -186,7 +186,7 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     pub fn objSelected(inst: *editor.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) !void {
         _ = sender_tab_hash; // autofix
 
-        var tab_o: *ExplorerTab = @alignCast(@ptrCast(inst));
+        var tab_o: *ExplorerTab = @ptrCast(@alignCast(inst));
 
         if (tab_o.inter_selection.isSelectedAll(selection)) return;
         try tab_o.inter_selection.set(selection);
@@ -433,6 +433,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_explorer(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.C) bool {
+pub export fn ct_load_module_editor_explorer(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
     return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
 }

@@ -468,7 +468,7 @@ pub const CdbAPI = struct {
     /// Read property value for basic types.
     pub inline fn readValue(self: Self, comptime T: type, reader: *Obj, prop_idx: u32) T {
         const value_ptr = self.readGenericFn(reader, prop_idx, getCDBTypeFromT(T));
-        const typed_ptr: *const T = @alignCast(@ptrCast(value_ptr.ptr));
+        const typed_ptr: *const T = @ptrCast(@alignCast(value_ptr.ptr));
         return typed_ptr.*;
     }
 
@@ -646,7 +646,7 @@ pub const CdbAPI = struct {
 
     /// Get type aspect.
     pub inline fn getAspect(self: Self, comptime T: type, db: DbId, type_idx: TypeIdx) ?*T {
-        return @alignCast(@ptrCast(self.getAspectFn(db, type_idx, T.name_hash)));
+        return @ptrCast(@alignCast(self.getAspectFn(db, type_idx, T.name_hash)));
     }
 
     /// Add aspect to property.
@@ -656,7 +656,7 @@ pub const CdbAPI = struct {
 
     /// Get aspect for property.
     pub inline fn getPropertyAspect(self: Self, comptime T: type, db: DbId, type_idx: TypeIdx, prop_idx: u32) ?*T {
-        return @alignCast(@ptrCast(self.getPropertyAspectFn(db, type_idx, prop_idx, T.name_hash)));
+        return @ptrCast(@alignCast(self.getPropertyAspectFn(db, type_idx, prop_idx, T.name_hash)));
     }
 
     pub inline fn hasTypeSet(self: Self, db: DbId, type_idx: TypeIdx) bool {
