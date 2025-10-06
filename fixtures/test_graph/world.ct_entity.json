@@ -8,6 +8,7 @@
       "__type_name": "ct_entity",
       "__uuid": "0198d6b0-b390-77d1-994f-f0a3fdf746a9",
       "__prototype_uuid": "0191e6d1-830a-73d8-992a-aa6f9add6d1e",
+      "name": "Cube1",
       "components": [
         {
           "__type_name": "ct_rotation",
@@ -19,8 +20,9 @@
           "__type_name": "ct_position",
           "__uuid": "0198d6b0-caa8-776d-9dd5-8576f2818540",
           "__prototype_uuid": "0191e6d1-b2e2-7508-9b3e-f6f9de03ab92",
-          "x": -2e0,
-          "y": 1e0
+          "x": -2,
+          "y": 1,
+          "z": 0
         }
       ]
     },
@@ -28,6 +30,7 @@
       "__type_name": "ct_entity",
       "__uuid": "0198d6b0-c100-7ea6-bd34-823d3c275aee",
       "__prototype_uuid": "01989447-fee6-7e42-bc47-f67421e06157",
+      "name": "Cube2",
       "components": [
         {
           "__type_name": "ct_rotation",
@@ -39,8 +42,8 @@
           "__type_name": "ct_position",
           "__uuid": "0198d6b0-f9f2-7266-928a-a9bcbd53a0d5",
           "__prototype_uuid": "01989448-1c71-7a33-8bda-9b55c6ea4eac",
-          "x": 2e0,
-          "y": 1e0
+          "x": 2,
+          "y": 1
         }
       ]
     },
@@ -48,19 +51,20 @@
       "__type_name": "ct_entity",
       "__uuid": "0198f9fb-b090-7e10-a44d-27fa46d8edf7",
       "__prototype_uuid": "0198f9db-b41e-743c-817c-1c1fb5db1c59",
+      "name": "Point light",
       "components__instantiate": [
         {
           "__type_name": "ct_position",
           "__uuid": "0198f9fb-bc6f-725d-a0f6-9277ba251ef6",
           "__prototype_uuid": "0198f9db-f31d-7fb3-9830-1babb2858b7a",
-          "y": 3e0
+          "y": 3
         },
         {
           "__type_name": "ct_light_component",
           "__uuid": "01990024-e27e-7fea-b6e2-18df69b0fdf8",
           "__prototype_uuid": "0198f9fb-70ca-7cf1-9c8f-8d77a4434245",
-          "radius": 5e0,
-          "power": 4e2
+          "radius": 5,
+          "power": 400
         }
       ]
     },
@@ -68,20 +72,21 @@
       "__type_name": "ct_entity",
       "__uuid": "01990064-40df-71cd-b12d-d93819e76a41",
       "__prototype_uuid": "01990060-eb2c-724d-a353-bc93abe3e7c0",
+      "name": "Plane",
       "components__instantiate": [
         {
           "__type_name": "ct_position",
           "__uuid": "01990064-5861-7ef3-adfb-1a8416a3e5c2",
           "__prototype_uuid": "01990061-225c-7069-b02a-5eafa6df56cb",
-          "y": 1.0000000149011612e-1
+          "y": 0.10000000149011612
         },
         {
           "__type_name": "ct_scale",
           "__uuid": "01990064-8e13-72ac-9ea7-241dbc473ebe",
           "__prototype_uuid": "01990061-3c17-7dc7-9d08-a1443edfde9f",
-          "x": 5e1,
-          "y": 1e0,
-          "z": 5e1
+          "x": 50,
+          "y": 1,
+          "z": 50
         }
       ]
     },
@@ -89,12 +94,13 @@
       "__type_name": "ct_entity",
       "__uuid": "0199391a-d1b6-7ced-bcc3-052b87572c3a",
       "__prototype_uuid": "0198f9db-b41e-743c-817c-1c1fb5db1c59",
+      "name": "Spot light",
       "components": [
         {
           "__type_name": "ct_rotation",
           "__uuid": "0199391b-818e-7dac-8f01-94f8708c8435",
-          "x": 1.24e2,
-          "y": 5e1
+          "x": 124,
+          "y": 50
         }
       ],
       "components__instantiate": [
@@ -102,26 +108,26 @@
           "__type_name": "ct_position",
           "__uuid": "0199391a-dd55-755e-a3f1-1cfe212e2067",
           "__prototype_uuid": "0198f9db-f31d-7fb3-9830-1babb2858b7a",
-          "x": 5e0,
-          "y": 5e0
+          "x": 5,
+          "y": 5
         },
         {
           "__type_name": "ct_light_component",
           "__uuid": "0199391a-e198-760b-861c-de66b009257c",
           "__prototype_uuid": "0198f9fb-70ca-7cf1-9c8f-8d77a4434245",
           "type": "spot",
-          "radius": 1.7e1,
+          "radius": 17,
           "color": {
             "__type_name": "ct_color_3f",
             "__uuid": "0199391a-f7e2-7287-be8e-8d1f2dda000f",
             "__prototype_uuid": "0198f9fb-7daf-71f9-b9a4-fa6ac5a36ad0",
-            "r": 1e0,
-            "g": 0e0,
-            "b": 0e0
+            "r": 1,
+            "g": 0,
+            "b": 0
           },
-          "power": 1e2,
-          "angle_inner": 3.5e1,
-          "angle_outer": 4.5e1
+          "power": 100,
+          "angle_inner": 35,
+          "angle_outer": 45
         }
       ]
     },
@@ -129,11 +135,12 @@
       "__type_name": "ct_entity",
       "__uuid": "019968a5-933e-734f-a186-d1ec6703fc85",
       "__prototype_uuid": "0198f9db-b41e-743c-817c-1c1fb5db1c59",
+      "name": "Direction light",
       "components": [
         {
           "__type_name": "ct_rotation",
           "__uuid": "019968a6-43af-7222-b1b7-04dcfee9840e",
-          "x": 1.295e2
+          "x": 129.5
         }
       ],
       "components__instantiate": [
@@ -141,23 +148,23 @@
           "__type_name": "ct_position",
           "__uuid": "019968a5-9b56-78c0-87fc-aec8febb35e6",
           "__prototype_uuid": "0198f9db-f31d-7fb3-9830-1babb2858b7a",
-          "y": 8e0
+          "y": 8
         },
         {
           "__type_name": "ct_light_component",
           "__uuid": "019968a5-a2c9-72a2-8d7d-f92a3574f245",
           "__prototype_uuid": "0198f9fb-70ca-7cf1-9c8f-8d77a4434245",
           "type": "direction",
-          "radius": 1e3,
+          "radius": 1000,
           "color": {
             "__type_name": "ct_color_3f",
             "__uuid": "019968a5-aec9-78f8-a176-009b9a418bf5",
             "__prototype_uuid": "0198f9fb-7daf-71f9-b9a4-fa6ac5a36ad0",
-            "r": 1e0,
-            "g": 8.769999742507935e-1,
-            "b": 8.220000267028809e-1
+            "r": 1,
+            "g": 0.8769999742507935,
+            "b": 0.8220000267028809
           },
-          "power": 1.0000000149011612e-1
+          "power": 0.10000000149011612
         }
       ]
     },
@@ -165,13 +172,14 @@
       "__type_name": "ct_entity",
       "__uuid": "01999101-299f-7fac-9eb2-4eca790135b4",
       "__prototype_uuid": "019990fe-3ba7-7110-9ce3-eef8568cc994",
+      "name": "Emissive cube",
       "components__instantiate": [
         {
           "__type_name": "ct_position",
           "__uuid": "01999101-3736-71e1-8d9c-7c887990eddd",
           "__prototype_uuid": "019990fe-65a8-7082-9110-ed51bd819977",
-          "y": 1e0,
-          "z": 3e0
+          "y": 1,
+          "z": 3
         },
         {
           "__type_name": "ct_rotation",

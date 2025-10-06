@@ -130,6 +130,13 @@ struct TSampler {   // misnomer now; includes images, textures without sampler, 
 
     bool isTileAttachmentQCOM() const { return tileQCOM; }
 
+    // For combined sampler, returns the underlying texture. Otherwise, returns identity.
+    TSampler removeCombined() const {
+        TSampler result = *this;
+        result.combined = false;
+        return result;
+    }
+
     void clear()
     {
         type = EbtVoid;
@@ -238,9 +245,9 @@ struct TSampler {   // misnomer now; includes images, textures without sampler, 
         return ! operator==(right);
     }
 
-    TString getString() const
+    std::string getString() const
     {
-        TString s;
+        std::string s;
 
         if (isPureSampler()) {
             s.append("sampler");
@@ -252,6 +259,8 @@ struct TSampler {   // misnomer now; includes images, textures without sampler, 
         case EbtUint:   s.append("u");   break;
         case EbtFloat16: s.append("f16"); break;
         case EbtBFloat16: s.append("bf16"); break;
+        case EbtFloatE5M2: s.append("fe5m2"); break;
+        case EbtFloatE4M3: s.append("fe4m3"); break;
         case EbtInt8:   s.append("i8");  break;
         case EbtUint16: s.append("u8");  break;
         case EbtInt16:  s.append("i16"); break;
@@ -816,6 +825,9 @@ public:
     bool isHitObjectAttrNV() const {
         return storage == EvqHitObjectAttrNV;
     }
+    bool isHitObjectAttrEXT() const {
+        return storage == EvqHitObjectAttrEXT;
+    }
 
     // True if this type of IO is supposed to be arrayed with extra level for per-vertex data
     bool isArrayedIo(EShLanguage language) const
@@ -852,6 +864,7 @@ public:
         layoutFullQuads = false;
         layoutQuadDeriv = false;
         layoutHitObjectShaderRecordNV = false;
+        layoutHitObjectShaderRecordEXT = false;
         layoutBindlessSampler = false;
         layoutBindlessImage = false;
         layoutBufferReferenceAlign = layoutBufferReferenceAlignEnd;
@@ -952,6 +965,7 @@ public:
     bool layoutFullQuads;
     bool layoutQuadDeriv;
     bool layoutHitObjectShaderRecordNV;
+    bool layoutHitObjectShaderRecordEXT;
 
     // GL_EXT_spirv_intrinsics
     int spirvStorageClass;
@@ -1063,6 +1077,7 @@ public:
     bool isFullQuads() const { return layoutFullQuads; }
     bool isQuadDeriv() const { return layoutQuadDeriv; }
     bool hasHitObjectShaderRecordNV() const { return layoutHitObjectShaderRecordNV; }
+    bool hasHitObjectShaderRecordEXT() const { return layoutHitObjectShaderRecordEXT; }
     bool hasBufferReference() const { return layoutBufferReference; }
     bool hasBufferReferenceAlign() const
     {
@@ -1500,6 +1515,7 @@ public:
     bool coopmatKHR : 1;
     bool coopvecNV  : 1;
     bool tileAttachmentQCOM: 1;
+    uint32_t tensorRankARM : 4;
     TArraySizes* arraySizes;
     const TType* userDef;
     TSourceLoc loc;
@@ -1511,7 +1527,8 @@ public:
     bool isCoopmatNV() const { return coopmatNV; }
     bool isCoopmatKHR() const { return coopmatKHR; }
     bool isCoopvecNV() const { return coopvecNV; }
-    bool isCoopmatOrvec() const { return isCoopmat() || isCoopvecNV(); }
+    bool isTensorARM() const { return tensorRankARM; }
+    bool hasTypeParameter() const { return isCoopmat() || isCoopvecNV() || isTensorARM(); }
 
     bool isTensorLayoutNV() const { return basicType == EbtTensorLayoutNV; }
     bool isTensorViewNV() const { return basicType == EbtTensorViewNV; }
@@ -1530,6 +1547,7 @@ public:
         coopmatKHR = false;
         coopvecNV = false;
         tileAttachmentQCOM = false;
+        tensorRankARM = 0;
         spirvType = nullptr;
     }
 
@@ -1590,7 +1608,7 @@ public:
     explicit TType(TBasicType t = EbtVoid, TStorageQualifier q = EvqTemporary, int vs = 1, int mc = 0, int mr = 0,
                    bool isVector = false) :
                             basicType(t), vectorSize(static_cast<uint32_t>(vs) & 0b1111), matrixCols(static_cast<uint32_t>(mc) & 0b1111), matrixRows(static_cast<uint32_t>(mr) & 0b1111), vector1(isVector && vs == 1), coopmatNV(false), coopmatKHR(false), coopmatKHRuse(0), coopmatKHRUseValid(false), coopvecNV(false),
-                            tileAttachmentQCOM(false), arraySizes(nullptr), structure(nullptr), fieldName(nullptr), typeName(nullptr), typeParameters(nullptr),
+                            tileAttachmentQCOM(false), tensorRankARM(0), arraySizes(nullptr), structure(nullptr), fieldName(nullptr), typeName(nullptr), typeParameters(nullptr),
                             spirvType(nullptr)
                             {
                                 assert(vs >= 0);
@@ -1606,7 +1624,7 @@ public:
     TType(TBasicType t, TStorageQualifier q, TPrecisionQualifier p, int vs = 1, int mc = 0, int mr = 0,
           bool isVector = false) :
                             basicType(t), vectorSize(static_cast<uint32_t>(vs) & 0b1111), matrixCols(static_cast<uint32_t>(mc) & 0b1111), matrixRows(static_cast<uint32_t>(mr) & 0b1111), vector1(isVector && vs == 1), coopmatNV(false), coopmatKHR(false), coopmatKHRuse(0), coopmatKHRUseValid(false), coopvecNV(false),
-                            tileAttachmentQCOM(false), arraySizes(nullptr), structure(nullptr), fieldName(nullptr), typeName(nullptr), typeParameters(nullptr),
+                            tileAttachmentQCOM(false), tensorRankARM(0), arraySizes(nullptr), structure(nullptr), fieldName(nullptr), typeName(nullptr), typeParameters(nullptr),
                             spirvType(nullptr)
                             {
                                 assert(vs >= 0);
@@ -1624,7 +1642,7 @@ public:
     explicit TType(const TPublicType& p) :
                             basicType(p.basicType),
                             vectorSize(p.vectorSize), matrixCols(p.matrixCols), matrixRows(p.matrixRows), vector1(false), coopmatNV(p.coopmatNV), coopmatKHR(p.coopmatKHR), coopmatKHRuse(0), coopmatKHRUseValid(false), coopvecNV(p.coopvecNV),
-                            tileAttachmentQCOM(p.tileAttachmentQCOM), arraySizes(p.arraySizes), structure(nullptr), fieldName(nullptr), typeName(nullptr), typeParameters(p.typeParameters),
+                            tileAttachmentQCOM(p.tileAttachmentQCOM), tensorRankARM(p.tensorRankARM), arraySizes(p.arraySizes), structure(nullptr), fieldName(nullptr), typeName(nullptr), typeParameters(p.typeParameters),
                             spirvType(p.spirvType)
                             {
                                 if (basicType == EbtSampler)
@@ -1677,11 +1695,17 @@ public:
                                 if (p.isCoopvecNV() && p.typeParameters) {
                                     basicType = p.typeParameters->basicType;
                                 }
+                                if (p.isTensorARM() && p.typeParameters) {
+                                    basicType = p.typeParameters->basicType;
+                                    if (p.typeParameters->arraySizes->getNumDims() > 0) {
+                                        tensorRankARM = static_cast<uint32_t>(p.typeParameters->arraySizes->getDimSize(0)) & 0b1111;
+                                    }
+                                }
                             }
     // for construction of sampler types
     TType(const TSampler& sampler, TStorageQualifier q = EvqUniform, TArraySizes* as = nullptr) :
         basicType(EbtSampler), vectorSize(1u), matrixCols(0u), matrixRows(0u), vector1(false), coopmatNV(false), coopmatKHR(false), coopmatKHRuse(0), coopmatKHRUseValid(false), coopvecNV(false),
-        tileAttachmentQCOM(false), arraySizes(as), structure(nullptr), fieldName(nullptr), typeName(nullptr),
+        tileAttachmentQCOM(false), tensorRankARM(0), arraySizes(as), structure(nullptr), fieldName(nullptr), typeName(nullptr),
         sampler(sampler), typeParameters(nullptr), spirvType(nullptr)
     {
         qualifier.clear();
@@ -1739,7 +1763,7 @@ public:
     // for making structures, ...
     TType(TTypeList* userDef, const TString& n) :
                             basicType(EbtStruct), vectorSize(1), matrixCols(0), matrixRows(0), vector1(false), coopmatNV(false), coopmatKHR(false), coopmatKHRuse(0), coopmatKHRUseValid(false), coopvecNV(false),
-                            tileAttachmentQCOM(false), arraySizes(nullptr), structure(userDef), fieldName(nullptr), typeParameters(nullptr),
+                            tileAttachmentQCOM(false), tensorRankARM(0), arraySizes(nullptr), structure(userDef), fieldName(nullptr), typeParameters(nullptr),
                             spirvType(nullptr)
                             {
                                 sampler.clear();
@@ -1749,7 +1773,7 @@ public:
     // For interface blocks
     TType(TTypeList* userDef, const TString& n, const TQualifier& q) :
                             basicType(EbtBlock), vectorSize(1), matrixCols(0), matrixRows(0), vector1(false), coopmatNV(false), coopmatKHR(false), coopmatKHRuse(0), coopmatKHRUseValid(false), coopvecNV(false),
-                            tileAttachmentQCOM(false), qualifier(q), arraySizes(nullptr), structure(userDef), fieldName(nullptr), typeParameters(nullptr),
+                            tileAttachmentQCOM(false), tensorRankARM(0), qualifier(q), arraySizes(nullptr), structure(userDef), fieldName(nullptr), typeParameters(nullptr),
                             spirvType(nullptr)
                             {
                                 sampler.clear();
@@ -1758,7 +1782,7 @@ public:
     // for block reference (first parameter must be EbtReference)
     explicit TType(TBasicType t, const TType &p, const TString& n) :
                             basicType(t), vectorSize(1), matrixCols(0), matrixRows(0), vector1(false), coopmatNV(false), coopmatKHR(false), coopmatKHRuse(0), coopmatKHRUseValid(false),
-                            tileAttachmentQCOM(false), arraySizes(nullptr), structure(nullptr), fieldName(nullptr), typeName(nullptr), typeParameters(nullptr),
+                            tileAttachmentQCOM(false), tensorRankARM(0), arraySizes(nullptr), structure(nullptr), fieldName(nullptr), typeName(nullptr), typeParameters(nullptr),
                             spirvType(nullptr)
                             {
                                 assert(t == EbtReference);
@@ -1798,6 +1822,7 @@ public:
         coopmatKHRUseValid = copyOf.coopmatKHRUseValid;
         coopvecNV = copyOf.isCoopVecNV();
         tileAttachmentQCOM = copyOf.tileAttachmentQCOM;
+        tensorRankARM = copyOf.tensorRankARM;
     }
 
     // Make complete copy of the whole type graph rooted at 'copyOf'.
@@ -1837,6 +1862,7 @@ public:
         return *typeName;
     }
 
+    virtual bool hasFieldName() const { return (fieldName != nullptr); }
     virtual const TString& getFieldName() const
     {
         assert(fieldName);
@@ -1895,7 +1921,8 @@ public:
     virtual void updateImplicitArraySize(int size) { assert(isArray()); arraySizes->updateImplicitSize(size); }
     virtual void setImplicitlySized(bool isImplicitSized) { arraySizes->setImplicitlySized(isImplicitSized); }
     virtual bool isStruct() const { return basicType == EbtStruct || basicType == EbtBlock; }
-    virtual bool isFloatingDomain() const { return basicType == EbtFloat || basicType == EbtDouble || basicType == EbtFloat16 || basicType == EbtBFloat16; }
+    virtual bool isFloatingDomain() const { return basicType == EbtFloat || basicType == EbtDouble || basicType == EbtFloat16 ||
+                                                   basicType == EbtBFloat16 || basicType == EbtFloatE5M2 || basicType == EbtFloatE4M3; }
     virtual bool isIntegerDomain() const
     {
         switch (basicType) {
@@ -1916,7 +1943,9 @@ public:
     }
     virtual bool isOpaque() const { return basicType == EbtSampler
             || basicType == EbtAtomicUint || basicType == EbtAccStruct || basicType == EbtRayQuery
-            || basicType == EbtHitObjectNV || isTileAttachmentQCOM(); }
+            || basicType == EbtHitObjectNV || basicType == EbtHitObjectEXT || isTileAttachmentQCOM()
+            || isTensorARM();
+    }
     virtual bool isBuiltIn() const { return getQualifier().builtIn != EbvNone; }
 
     virtual bool isAttachmentEXT() const { return basicType == EbtSampler && getSampler().isAttachmentEXT(); }
@@ -1933,8 +1962,10 @@ public:
     bool isCoopMatNV() const { return coopmatNV; }
     bool isCoopMatKHR() const { return coopmatKHR; }
     bool isCoopVecNV() const { return coopvecNV; }
-    bool isCoopMatOrVec() const { return isCoopMat() || isCoopVecNV(); }
     bool isTileAttachmentQCOM() const { return tileAttachmentQCOM; }
+    bool isTensorARM() const { return tensorRankARM; }
+    bool hasTypeParameter() const { return isCoopMat() || isCoopVecNV() || isTensorARM(); }
+    int getTensorRankARM() const { return static_cast<int>(tensorRankARM); }
     bool isReference() const { return getBasicType() == EbtReference; }
     bool isSpirvType() const { return getBasicType() == EbtSpirvType; }
     int getCoopMatKHRuse() const { return static_cast<int>(coopmatKHRuse); }
@@ -1996,6 +2027,11 @@ public:
 
     virtual bool containsNonOpaque() const
     {
+        if (isTensorARM()) {
+            // Tensors have a numerical basicType even though it is Opaque
+            return false;
+        }
+
         const auto nonOpaque = [](const TType* t) {
             switch (t->basicType) {
             case EbtVoid:
@@ -2003,6 +2039,8 @@ public:
             case EbtDouble:
             case EbtFloat16:
             case EbtBFloat16:
+            case EbtFloatE5M2:
+            case EbtFloatE4M3:
             case EbtInt8:
             case EbtUint8:
             case EbtInt16:
@@ -2038,6 +2076,10 @@ public:
     bool containsBFloat16() const
     {
         return containsBasicType(EbtBFloat16);
+    }
+    bool contains8BitFloat() const
+    {
+        return containsBasicType(EbtFloatE5M2) || containsBasicType(EbtFloatE4M3);
     }
     bool contains64BitInt() const
     {
@@ -2161,6 +2203,8 @@ public:
         case EbtDouble:            return "double";
         case EbtFloat16:           return "float16_t";
         case EbtBFloat16:          return "bfloat16_t";
+        case EbtFloatE5M2:         return "floate5m2_t";
+        case EbtFloatE4M3:         return "floate4m3_t";
         case EbtInt8:              return "int8_t";
         case EbtUint8:             return "uint8_t";
         case EbtInt16:             return "int16_t";
@@ -2180,6 +2224,7 @@ public:
         case EbtTensorLayoutNV:    return "tensorLayoutNV";
         case EbtTensorViewNV:      return "tensorViewNV";
         case EbtCoopvecNV:         return "coopvecNV";
+        case EbtTensorARM:         return "tensorARM";
         default:                   return "unknown type";
         }
     }
@@ -2294,6 +2339,8 @@ public:
                 appendStr(" quad_derivatives");
               if (qualifier.layoutHitObjectShaderRecordNV)
                 appendStr(" hitobjectshaderrecordnv");
+              if (qualifier.layoutHitObjectShaderRecordEXT)
+                appendStr(" hitobjectshaderrecordext");
 
               if (qualifier.layoutBindlessSampler)
                   appendStr(" layoutBindlessSampler");
@@ -2563,7 +2610,7 @@ public:
     TString getBasicTypeString() const
     {
         if (basicType == EbtSampler)
-            return sampler.getString();
+            return TString{sampler.getString()};
         else
             return getBasicString();
     }
@@ -2792,6 +2839,7 @@ public:
               isCoopMatNV() == right.isCoopMatNV() &&
               isCoopMatKHR() == right.isCoopMatKHR() &&
               isCoopVecNV() == right.isCoopVecNV() &&
+               isTensorARM() == right.isTensorARM() &&
                sameStructType(right, lpidx, rpidx) &&
                sameReferenceType(right);
     }
@@ -2839,8 +2887,8 @@ public:
             else
                 rv = false;
         } else if (isCoopMatKHR() && right.isCoopMatKHR()) {
-            if (getBasicType() == EbtFloat || getBasicType() == EbtFloat16 || getBasicType() == EbtBFloat16)
-                rv = right.getBasicType() == EbtFloat || right.getBasicType() == EbtFloat16 || right.getBasicType() == EbtBFloat16 || right.getBasicType() == EbtCoopmat;
+            if (isFloatingDomain())
+                rv = right.isFloatingDomain() || right.getBasicType() == EbtCoopmat;
             else if (getBasicType() == EbtUint || getBasicType() == EbtUint8 || getBasicType() == EbtUint16)
                 rv = right.getBasicType() == EbtUint || right.getBasicType() == EbtUint8 || right.getBasicType() == EbtUint16 || right.getBasicType() == EbtCoopmat;
             else if (getBasicType() == EbtInt || getBasicType() == EbtInt8 || getBasicType() == EbtInt16)
@@ -2859,7 +2907,16 @@ public:
         if (isTensorViewNV()) {
             return right.isTensorViewNV() && right.typeParameters == nullptr && typeParameters != nullptr;
         }
+        if (isTensorARM()) {
+            return right.isTensorARM() && right.typeParameters == nullptr && typeParameters != nullptr;
+        }
+
         return false;
+    }
+
+    bool sameTensorBaseTypeARM(const TType &right) const {
+        return (typeParameters == nullptr || right.typeParameters == nullptr ||
+                (tensorRankARM == right.tensorRankARM && getBasicType() == right.getBasicType()));
     }
 
     bool sameCoopVecBaseType(const TType &right) const {
@@ -3009,6 +3066,7 @@ protected:
     bool coopmatKHRUseValid   : 1;  // True if coopmatKHRuse has been set
     bool coopvecNV       : 1;
     bool tileAttachmentQCOM : 1;
+    uint32_t tensorRankARM       : 4;  // 0 means not a tensor; non-zero indicates the tensor rank.
     TQualifier qualifier;
 
     TArraySizes* arraySizes;    // nullptr unless an array; can be shared across types

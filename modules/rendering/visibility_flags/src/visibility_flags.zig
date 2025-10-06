@@ -33,7 +33,7 @@ pub const VisibilityFlagI = struct {
 
     pub fn implement(args: VisibilityFlagI) VisibilityFlagI {
         var result = args;
-        result.hash = cetech1.strId32(result.name);
+        result.hash = .fromStr(result.name);
         return result;
     }
 };

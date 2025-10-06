@@ -77,7 +77,7 @@ const ObjBufferTab = struct {
 var obj_buffer_tab = editor.TabTypeI.implement(
     editor.TabTypeIArgs{
         .tab_name = TAB_NAME,
-        .tab_hash = cetech1.strId32(TAB_NAME),
+        .tab_hash = .fromStr(TAB_NAME),
 
         .create_on_init = true,
         .show_pin_object = false,

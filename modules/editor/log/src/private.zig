@@ -97,7 +97,7 @@ pub fn levelColor(level: cetech1.log.LogAPI.Level) [4]f32 {
 // Fill editor tab interface
 var log_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
-    .tab_hash = cetech1.strId32(TAB_NAME),
+    .tab_hash = .fromStr(TAB_NAME),
     .create_on_init = true,
     .category = "Debug",
 }, struct {

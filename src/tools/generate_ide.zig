@@ -34,6 +34,13 @@ pub fn genZlsPath(allocator: std.mem.Allocator, base_path: []const u8, is_projec
         try std.fs.path.join(allocator, &.{ base_path, "externals", "shared", "repo", "zls", "zig-out", "bin", "zls" ++ comptime osBasedProgramExtension() });
 }
 
+pub fn genLddbScriptPath(allocator: std.mem.Allocator, base_path: []const u8, is_project: bool) ![]u8 {
+    return if (is_project)
+        try std.fs.path.join(allocator, &.{ base_path, "externals", "cetech1", "lldb_pretty_printers.py" })
+    else
+        try std.fs.path.join(allocator, &.{ base_path, "lldb_pretty_printers.py" });
+}
+
 pub fn generateEditorConfigs(allocator: std.mem.Allocator, editor_type: EditorType, project_dir: std.fs.Dir, args: ParseArgsResult, launch_cmds: []const LaunchCmd) !void {
     switch (editor_type) {
         .vscode => try generateEditorConfigsVSCode(allocator, project_dir, args, launch_cmds),
@@ -307,6 +314,22 @@ pub fn createOrUpdateSettingsJsonVSCode(allocator: std.mem.Allocator, project_di
     const zls_path = try genZlsPath(allocator, base_path, args.is_project);
     defer allocator.free(zls_path);
     try parsed.value.object.put("zig.zls.path", .{ .string = zls_path });
+
+    // LLDB
+    const lldb_script_path = try genLddbScriptPath(allocator, base_path, args.is_project);
+    defer allocator.free(lldb_script_path);
+    const cmd_script = try std.fmt.allocPrint(allocator, "command script import {s}", .{lldb_script_path});
+    defer allocator.free(cmd_script);
+
+    // lldb.launch.initCommands
+    {
+        var array = std.json.Value{ .array = std.json.Array.init(parsed.arena.allocator()) };
+        try array.array.append(std.json.Value{ .string = cmd_script });
+        try array.array.append(std.json.Value{ .string = "type category enable zig.lang" });
+        try array.array.append(std.json.Value{ .string = "type category enable zig.std" });
+
+        try parsed.value.object.put("lldb.launch.initCommands", array);
+    }
 
     // Write back
     var obj_file = try vscode_dir.createFile("settings.json", .{});

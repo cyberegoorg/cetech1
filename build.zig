@@ -38,13 +38,13 @@ pub fn useSystemSDK(b: *std.Build, target: std.Build.ResolvedTarget, e: *std.Bui
     }
 }
 
-pub fn createRunStep(b: *std.Build, exe: *std.Build.Step.Compile) void {
+pub fn createRunStep(b: *std.Build, exe: *std.Build.Step.Compile, name: []const u8, description: []const u8) void {
     const run_exe = b.addRunArtifact(exe);
     run_exe.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         run_exe.addArgs(args);
     }
-    const run_step = b.step("run", "Run Forest run");
+    const run_step = b.step(name, description);
     run_step.dependOn(&run_exe.step);
 }
 
@@ -141,7 +141,7 @@ pub fn createKernelExe(
     exe.linkLibrary(cetech1_kernel_lib);
     b.installArtifact(exe);
     useSystemSDK(b, target, exe);
-    createRunStep(b, exe);
+    createRunStep(b, exe, "run", "Run Forest run");
 
     return exe;
 }
@@ -277,7 +277,6 @@ pub fn build(b: *std.Build) !void {
         .{
             .target = target,
             .optimize = options.externals_optimize,
-            .imgui_include = zgui.path("libs").getPath(b),
         },
     );
 
@@ -316,14 +315,14 @@ pub fn build(b: *std.Build) !void {
     });
     b.installArtifact(generate_ide_tool);
 
-    const ModulesSet = std.StringHashMapUnmanaged(void);
+    // Modules
+    const ModulesSet = std.StringArrayHashMapUnmanaged(void);
     var module_set = ModulesSet{};
     defer module_set.deinit(b.allocator);
     for (all_modules) |module| {
         try module_set.put(b.allocator, module, {});
     }
 
-    // Modules
     var enabled_modules = std.ArrayListUnmanaged([]const u8){};
     defer enabled_modules.deinit(b.allocator);
 
@@ -336,6 +335,31 @@ pub fn build(b: *std.Build) !void {
         if (options.enable_editor) try enabled_modules.appendSlice(b.allocator, &editor_modules);
     }
 
+    // Static modules.
+    var static_modules = ModulesSet{};
+    defer static_modules.deinit(b.allocator);
+
+    // TODO: Problem with debugdraw in dll on windows.
+    if (target.result.os.tag == .windows) {
+        try static_modules.put(b.allocator, "gpu_bgfx", {});
+    }
+
+    // Dynamic modules.
+    var dynamic_modules = ModulesSet{};
+    defer dynamic_modules.deinit(b.allocator);
+
+    if (options.static_modules) {
+        for (enabled_modules.items) |m| {
+            try static_modules.put(b.allocator, m, {});
+        }
+    } else if (options.dynamic_modules) {
+        for (enabled_modules.items) |m| {
+            if (static_modules.contains(m)) continue;
+
+            try dynamic_modules.put(b.allocator, m, {});
+        }
+    }
+
     //
     // Generated content
     //
@@ -345,8 +369,8 @@ pub fn build(b: *std.Build) !void {
     const gen_static = b.addRunArtifact(generate_static_tool);
     const _static_output_file = gen_static.addOutputFileArg("_static.zig");
 
-    if (options.static_modules) {
-        const modules_arg = try std.mem.join(b.allocator, ",", enabled_modules.items);
+    if (static_modules.count() != 0) {
+        const modules_arg = try std.mem.join(b.allocator, ",", static_modules.keys());
         defer b.allocator.free(modules_arg);
         gen_static.addArg(modules_arg);
     } else {
@@ -416,21 +440,20 @@ pub fn build(b: *std.Build) !void {
         b.installArtifact(zbgfx.artifact("shaderc"));
     }
 
-    if (options.dynamic_modules) {
-        var buff: [256:0]u8 = undefined;
-        for (enabled_modules.items) |m| {
-            if (!module_set.contains(m)) continue;
+    //
+    // Dynamic modules
+    //
+    var buff: [256:0]u8 = undefined;
+    for (dynamic_modules.keys()) |m| {
+        const artifact_name = try std.fmt.bufPrintZ(&buff, "ct_{s}", .{m});
+        const art = b.lazyDependency(m, .{
+            .target = target,
+            .optimize = optimize,
+            .link_mode = .dynamic,
+        }).?.artifact(artifact_name);
 
-            const artifact_name = try std.fmt.bufPrintZ(&buff, "ct_{s}", .{m});
-            const art = b.lazyDependency(m, .{
-                .target = target,
-                .optimize = optimize,
-                .link_mode = .dynamic,
-            }).?.artifact(artifact_name);
-
-            const step = b.addInstallArtifact(art, .{});
-            b.default_step.dependOn(&step.step);
-        }
+        const step = b.addInstallArtifact(art, .{});
+        b.default_step.dependOn(&step.step);
     }
 
     const imports = [_]std.Build.Module.Import{
@@ -446,7 +469,6 @@ pub fn build(b: *std.Build) !void {
         .{ .name = "zflecs", .module = zflecs.module("root") },
         .{ .name = "zf", .module = zf.module("zf") },
         .{ .name = "Uuid", .module = uuid.module("Uuid") },
-        .{ .name = "zbgfx", .module = zbgfx.module("zbgfx") },
         .{ .name = "znfde", .module = znfde.module("root") },
 
         // Generated stuff
@@ -491,7 +513,6 @@ pub fn build(b: *std.Build) !void {
     kernel_lib.linkLibrary(ztracy.artifact("tracy"));
     kernel_lib.linkLibrary(zglfw.artifact("glfw"));
     kernel_lib.linkLibrary(zgui.artifact("imgui"));
-    kernel_lib.linkLibrary(zbgfx.artifact("bgfx"));
     kernel_lib.linkLibrary(zflecs.artifact("flecs"));
 
     if (options.enable_nfd) {
@@ -517,6 +538,7 @@ pub fn build(b: *std.Build) !void {
         target,
         optimize,
     );
+    try linkStaticModules(b, exe, target, optimize, static_modules.keys());
     // Make exe depends on generated files.
     exe.step.dependOn(&generated_files.step);
 
@@ -538,6 +560,7 @@ pub fn build(b: *std.Build) !void {
     tests.linkLibC();
     tests.linkLibrary(kernel_lib);
     tests.step.dependOn(&generated_files.step);
+    try linkStaticModules(b, tests, target, optimize, static_modules.keys());
 
     const run_unit_tests = b.addRunArtifact(tests);
     run_unit_tests.step.dependOn(b.getInstallStep());
@@ -549,24 +572,24 @@ pub fn build(b: *std.Build) !void {
     run_tests_ui.step.dependOn(b.getInstallStep());
     const testui_step = b.step("test-ui", "Run UI headless test");
     testui_step.dependOn(&run_tests_ui.step);
+}
 
-    //
-    // Static modules linking
-    //
-    inline for (.{ tests, kernel_lib }) |e| {
-        if (options.static_modules) {
-            var buff: [256:0]u8 = undefined;
-            for (enabled_modules.items) |m| {
-                if (!module_set.contains(m)) continue;
+fn linkStaticModules(
+    b: *std.Build,
+    e: *std.Build.Step.Compile,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    static_modules: []const []const u8,
+) !void {
+    var buff: [256:0]u8 = undefined;
 
-                const artifact_name = try std.fmt.bufPrintZ(&buff, "ct_{s}", .{m});
-                e.linkLibrary(b.lazyDependency(m, .{
-                    .target = target,
-                    .optimize = optimize,
-                    .link_mode = .static,
-                }).?.artifact(artifact_name));
-            }
-        }
+    for (static_modules) |m| {
+        const artifact_name = try std.fmt.bufPrintZ(&buff, "ct_{s}", .{m});
+        e.linkLibrary(b.lazyDependency(m, .{
+            .target = target,
+            .optimize = optimize,
+            .link_mode = .static,
+        }).?.artifact(artifact_name));
     }
 }
 
@@ -614,6 +637,7 @@ pub const editor_modules = [_][]const u8{
 };
 
 pub const core_modules = [_][]const u8{
+    "gpu_bgfx",
     "graphvm",
     "render_viewport",
     "render_graph",
@@ -630,6 +654,7 @@ pub const core_modules = [_][]const u8{
     "visibility_flags",
     "light_component",
     "light_system",
+    "physics",
 };
 
 pub const samples_modules = [_][]const u8{

@@ -32,7 +32,7 @@ var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _gpu: *const cetech1.gpu.GpuApi = undefined;
+var _gpu: *const cetech1.gpu.GpuBackendApi = undefined;
 
 var _inspector: *const editor_inspector.InspectorAPI = undefined;
 
@@ -81,7 +81,7 @@ const camera_c = ecs.ComponentI.implement(
             };
         }
 
-        pub fn debugdraw(dd: gpu.DDEncoder, world: ecs.World, entites: []const ecs.EntityId, data: []const u8, size: [2]f32) !void {
+        pub fn debugdraw(gpu_backend: gpu.GpuBackend, dd: gpu.DDEncoder, world: ecs.World, entites: []const ecs.EntityId, data: []const u8, size: [2]f32) !void {
             const aspect_ratio = size[0] / size[1];
 
             var cameras: []const public.Camera = undefined;
@@ -97,12 +97,14 @@ const camera_c = ecs.ComponentI.implement(
                         aspect_ratio,
                         camera.near,
                         camera.far,
+                        gpu_backend.isHomogenousDepth(),
                     ),
                     .ortho => orthographic(
                         size[0],
                         size[1],
                         camera.near,
                         camera.far,
+                        gpu_backend.isHomogenousDepth(),
                     ),
                 };
 
@@ -181,8 +183,8 @@ fn selectMainCameraMenu(allocator: std.mem.Allocator, world: ecs.World, camera_e
     return null;
 }
 
-fn perspectiveFov(fovy: f32, aspect: f32, near: f32, far: f32) zm.Mat {
-    return if (_gpu.isHomogenousDepth()) zm.perspectiveFovLhGl(
+fn perspectiveFov(fovy: f32, aspect: f32, near: f32, far: f32, homogenous_depth: bool) zm.Mat {
+    return if (homogenous_depth) zm.perspectiveFovLhGl(
         fovy,
         aspect,
         near,
@@ -195,8 +197,8 @@ fn perspectiveFov(fovy: f32, aspect: f32, near: f32, far: f32) zm.Mat {
     );
 }
 
-fn orthographic(w: f32, h: f32, near: f32, far: f32) zm.Mat {
-    return if (_gpu.isHomogenousDepth()) zm.orthographicLh(
+fn orthographic(w: f32, h: f32, near: f32, far: f32, homogenous_depth: bool) zm.Mat {
+    return if (homogenous_depth) zm.orthographicLh(
         w,
         h,
         near,
@@ -264,7 +266,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _gpu = apidb.getZigApi(module_name, cetech1.gpu.GpuApi).?;
+    _gpu = apidb.getZigApi(module_name, cetech1.gpu.GpuBackendApi).?;
 
     _inspector = apidb.getZigApi(module_name, editor_inspector.InspectorAPI).?;
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;

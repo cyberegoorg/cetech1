@@ -44,7 +44,7 @@ var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
 var _log: *const cetech1.log.LogAPI = undefined;
 var _cdb: *const cdb.CdbAPI = undefined;
 var _coreui: *const coreui.CoreUIApi = undefined;
-var _gpu: *const gpu.GpuApi = undefined;
+
 var _render_graph: *const render_graph.RenderGraphApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _ecs: *const ecs.EcsAPI = undefined;
@@ -93,13 +93,13 @@ const SimulationTab = struct {
 // Fill editor tab interface
 var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
-    .tab_hash = cetech1.strId32(TAB_NAME),
+    .tab_hash = .fromStr(TAB_NAME),
 
     //    .create_on_init = true,
     .show_sel_obj_in_title = true,
     .show_pin_object = true,
 
-    .ignore_selection_from_tab = &.{cetech1.strId32("ct_editor_asset_browser_tab")},
+    .ignore_selection_from_tab = &.{.fromStr("ct_editor_asset_browser_tab")},
 }, struct {
 
     // Return name for menu /Tabs/
@@ -126,12 +126,14 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         _ = w.setId(transform.Rotation, camera_ent, &transform.Rotation{});
         _ = w.setId(camera.Camera, camera_ent, &camera.Camera{});
 
+        const gpu_backend = _kernel.getGpuBackend().?;
+
         var tab_inst = _allocator.create(SimulationTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _render_viewport.createViewport(name, w, camera_ent),
+            .viewport = try _render_viewport.createViewport(name, gpu_backend, w, camera_ent),
             .world = w,
             .camera_ent = camera_ent,
-            .render_pipeline = try _render_pipeline.createDefault(_allocator, w),
+            .render_pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w),
             .tab_i = .{
                 .vt = _g.test_tab_vt_ptr,
                 .inst = @ptrCast(tab_inst),
@@ -328,7 +330,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _apidb = apidb;
     _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
     _coreui = apidb.getZigApi(module_name, coreui.CoreUIApi).?;
-    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
+
     _render_graph = apidb.getZigApi(module_name, render_graph.RenderGraphApi).?;
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;

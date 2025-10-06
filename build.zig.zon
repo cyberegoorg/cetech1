@@ -1,7 +1,7 @@
 .{
     .name = .cetech1_kernel,
     .version = "0.1.0",
-    .minimum_zig_version = "0.15.1",
+    .minimum_zig_version = "0.15.2",
     .fingerprint = 0x999557f3ebfaa97a,
     .paths = .{
         "docs",
@@ -47,6 +47,9 @@
         .editor_simulation = .{ .path = "modules/editor/simulation", .lazy = true },
         .editor_renderer = .{ .path = "modules/editor/renderer", .lazy = true },
 
+        // PHYSICS
+        .physics = .{ .path = "modules/physics/physics", .lazy = true },
+
         // SCRIPTING
         .graphvm = .{ .path = "modules/scripting/graphvm", .lazy = true },
         .entity_logic_component = .{ .path = "modules/scripting/entity_logic_component", .lazy = true },
@@ -67,6 +70,7 @@
         .visibility_flags = .{ .path = "modules/rendering/visibility_flags", .lazy = true },
         .light_component = .{ .path = "modules/rendering/light_component", .lazy = true },
         .light_system = .{ .path = "modules/rendering/light_system", .lazy = true },
+        .gpu_bgfx = .{ .path = "modules/rendering/gpu_bgfx", .lazy = true },
 
         //
         // Externals
@@ -80,6 +84,7 @@
         .system_sdk = .{
             .url = "https://github.com/zig-gamedev/system_sdk/archive/c0dbf11cdc17da5904ea8a17eadc54dee26567ec.tar.gz",
             .hash = "system_sdk-0.3.0-dev-alwUNnYaaAJAtIdE2fg4NQfDqEKs7QCXy_qYukAOBfmF",
+            .lazy = true,
         },
         .zglfw = .{ .path = "externals/shared/lib/zglfw" },
         .zflecs = .{ .path = "externals/shared/lib/zflecs" },

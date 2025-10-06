@@ -26,6 +26,7 @@ const camera = @import("camera");
 const editor_entity = @import("editor_entity");
 const render_graph = @import("render_graph");
 const light_component = @import("light_component");
+const physics = @import("physics");
 
 const module_name = .editor_foo_viewport_tab;
 
@@ -44,7 +45,7 @@ var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
 var _log: *const cetech1.log.LogAPI = undefined;
 var _cdb: *const cdb.CdbAPI = undefined;
 var _coreui: *const coreui.CoreUIApi = undefined;
-var _gpu: *const gpu.GpuApi = undefined;
+
 var _render_graph: *const render_graph.RenderGraphApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _ecs: *const ecs.EcsAPI = undefined;
@@ -87,85 +88,15 @@ const FooViewportTab = struct {
     flecs_port: ?u16 = null,
 };
 
-// Some components and systems
-
-const Velocity = struct {
-    x: f32,
-    y: f32,
-    z: f32,
-};
-const velocity_c = ecs.ComponentI.implement(
-    Velocity,
-    .{
-        .cdb_type_hash = VelocityCdb.type_hash,
-        .category = "Physics",
-    },
-    struct {
-        pub fn uiIcons(
-            buff: [:0]u8,
-            allocator: std.mem.Allocator,
-            obj: cdb.ObjId,
-        ) ![:0]const u8 {
-            _ = allocator; // autofix
-            _ = obj; // autofix
-            return std.fmt.bufPrintZ(buff, "{s}", .{coreui.CoreIcons.FA_ANGLES_RIGHT});
-        }
-
-        pub fn fromCdb(
-            allocator: std.mem.Allocator,
-            obj: cdb.ObjId,
-            data: []u8,
-        ) anyerror!void {
-            _ = allocator; // autofix
-
-            const r = _cdb.readObj(obj) orelse return;
-
-            const position = std.mem.bytesAsValue(Velocity, data);
-            position.* = Velocity{
-                .x = VelocityCdb.readValue(f32, _cdb, r, .X),
-                .y = VelocityCdb.readValue(f32, _cdb, r, .Y),
-                .z = VelocityCdb.readValue(f32, _cdb, r, .Z),
-            };
-        }
-    },
-);
-
-const move_system_i = ecs.SystemI.implement(
-    .{
-        .name = "move_system",
-        .multi_threaded = true,
-        .phase = ecs.OnUpdate,
-        .simulation = true,
-        .query = &.{
-            .{ .id = ecs.id(transform.Position), .inout = .InOut },
-            .{ .id = ecs.id(Velocity), .inout = .In },
-        },
-    },
-    struct {
-        pub fn update(world: ecs.World, it: *ecs.Iter) !void {
-            _ = world;
-
-            const p = it.field(transform.Position, 0).?;
-            const v = it.field(Velocity, 1).?;
-
-            for (0..it.count()) |i| {
-                p[i].x += v[i].x;
-                p[i].y += v[i].y;
-                p[i].z += v[i].z;
-            }
-        }
-    },
-);
-
 // Rendering component
 
-const ECS_WORLD_CONTEXT = cetech1.strId32("ecs_world_context");
-const ECS_ENTITY_CONTEXT = cetech1.strId32("ecs_entity_context");
+const ECS_WORLD_CONTEXT = .fromStr("ecs_world_context");
+const ECS_ENTITY_CONTEXT = .fromStr("ecs_entity_context");
 
 // Fill editor tab interface
 var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
-    .tab_hash = cetech1.strId32(TAB_NAME),
+    .tab_hash = .fromStr(TAB_NAME),
     .category = "Examples",
 }, struct {
 
@@ -192,17 +123,19 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         _ = w.setId(transform.Rotation, camera_ent, &transform.Rotation{});
         _ = w.setId(camera.Camera, camera_ent, &camera.Camera{});
 
+        const gpu_backend = _kernel.getGpuBackend().?;
         var tab_inst = _allocator.create(FooViewportTab) catch undefined;
         tab_inst.* = .{
             .viewport = try _render_viewport.createViewport(
                 name,
+                gpu_backend,
                 w,
                 camera_ent,
             ),
             .camera_ent = camera_ent,
             .world = w,
 
-            .render_pipeline = try _render_pipeline.createDefault(_allocator, w),
+            .render_pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w),
             .tab_i = .{
                 .vt = _g.test_tab_vt_ptr,
                 .inst = @ptrCast(tab_inst),
@@ -225,7 +158,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 for (entities, 0..) |ent, idx| {
                     _ = idx;
 
-                    _ = w.setId(Velocity, ent, &Velocity{
+                    _ = w.setId(physics.Velocity, ent, &physics.Velocity{
                         .x = (rnd.float(f32) * 2 - 1) * 0.1,
                         .y = (rnd.float(f32) * 2 - 1) * 0.1,
                         .z = (rnd.float(f32) * 2 - 1) * 0.1,
@@ -388,30 +321,9 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
 );
 
 // Register all cdb stuff in this method
-pub const VelocityCdb = cdb.CdbTypeDecl(
-    "ct_velocity",
-    enum(u32) {
-        X = 0,
-        Y,
-        Z,
-    },
-    struct {},
-);
-
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.DbId) !void {
-        // EntityLogicComponentCdb
-        {
-            _ = try _cdb.addType(
-                db,
-                VelocityCdb.name,
-                &[_]cdb.PropDef{
-                    .{ .prop_idx = VelocityCdb.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = VelocityCdb.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = VelocityCdb.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
-                },
-            );
-        }
+        _ = db;
     }
 });
 
@@ -424,7 +336,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _apidb = apidb;
     _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
     _coreui = apidb.getZigApi(module_name, coreui.CoreUIApi).?;
-    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
+
     _render_graph = apidb.getZigApi(module_name, render_graph.RenderGraphApi).?;
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
@@ -449,12 +361,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
     try apidb.implOrRemove(module_name, editor.TabTypeI, &foo_tab, load);
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
-
-    // Components
-    try apidb.implOrRemove(module_name, ecs.ComponentI, &velocity_c, load);
-
-    // System
-    try apidb.implOrRemove(module_name, ecs.SystemI, &move_system_i, load);
 
     return true;
 }

@@ -38,7 +38,6 @@ var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
 var _task: *const cetech1.task.TaskAPI = undefined;
 
-var _gpu: *const gpu.GpuApi = undefined;
 var _dd: *const gpu.GpuDDApi = undefined;
 var _shader_system: *const shader_system.ShaderSystemAPI = undefined;
 
@@ -57,14 +56,18 @@ pub const api = public.LightSystemApi{
 const light_system_header_strid = cetech1.strId32("light_system_header");
 const light_system_buffer_strid = cetech1.strId32("light_system_buffer");
 
-fn createLightSystem() !public.LightSystem {
+fn createLightSystem(gpu_backend: gpu.GpuBackend) !public.LightSystem {
     const vertex_system = _shader_system.findSystemByName(.fromStr("light_system")).?;
     const system_io = _shader_system.getSystemIO(vertex_system);
 
     const light_system_uniforms = (try _shader_system.createUniformBuffer(system_io)).?;
     const light_system_resources = (try _shader_system.createResourceBuffer(system_io)).?;
 
-    const light_buffer = _gpu.createDynamicVertexBuffer(MAX_LIGHTS * LIGHT_SIZE, _gpu.getFloatBufferLayout(), gpu.BufferFlags_ComputeRead);
+    const light_buffer = gpu_backend.createDynamicVertexBuffer(
+        MAX_LIGHTS * LIGHT_SIZE,
+        gpu_backend.getFloatBufferLayout(),
+        .{ .compute_access = .read },
+    );
 
     try _shader_system.updateResources(
         system_io,
@@ -92,11 +95,11 @@ fn createLightSystem() !public.LightSystem {
     };
 }
 
-fn destroyLightSystem(inst_system: public.LightSystem) void {
+fn destroyLightSystem(inst_system: public.LightSystem, gpu_backend: gpu.GpuBackend) void {
     const system_io = _shader_system.getSystemIO(inst_system.system);
     _shader_system.destroyResourceBuffer(system_io, inst_system.resources.?);
     _shader_system.destroyUniformBuffer(system_io, inst_system.uniforms.?);
-    _gpu.destroyDynamicVertexBuffer(inst_system.light_buffer);
+    gpu_backend.destroyDynamicVertexBuffer(inst_system.light_buffer);
 }
 
 // From: https://bartwronski.com/2017/04/13/cull-that-cone/
@@ -295,6 +298,7 @@ const light_system_shaderable = render_viewport.ShaderableComponentI.implement(l
 
     pub fn update(
         allocator: std.mem.Allocator,
+        gpu_backend: gpu.GpuBackend,
         builder: render_graph.GraphBuilder,
         world: ecs.World,
         viewport: render_viewport.Viewport,
@@ -423,10 +427,10 @@ const light_system_shaderable = render_viewport.ShaderableComponentI.implement(l
         }
 
         if (gpu_point_lights.items.len > 0) {
-            _gpu.updateDynamicVertexBuffer(
+            gpu_backend.updateDynamicVertexBuffer(
                 light_system_inst.light_buffer,
                 0,
-                _gpu.copy(gpu_point_lights.items.ptr, @truncate(@sizeOf([4]f32) * gpu_point_lights.items.len)),
+                gpu_backend.copy(gpu_point_lights.items.ptr, @truncate(@sizeOf([4]f32) * gpu_point_lights.items.len)),
             );
         }
 
@@ -503,7 +507,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
     _task = apidb.getZigApi(module_name, cetech1.task.TaskAPI).?;
 
-    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
     _dd = apidb.getZigApi(module_name, gpu.GpuDDApi).?;
     _shader_system = apidb.getZigApi(module_name, shader_system.ShaderSystemAPI).?;
 

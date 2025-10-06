@@ -2392,7 +2392,7 @@ fn readCdbObjFromJsonValue(parsed: std.json.Value, asset: cdb.ObjId, read_blob: 
                 try _cdb.setStr(obj_w, prop_idx, str);
             },
             cdb.PropType.BLOB => {
-                const blob = try read_blob(asset, obj_uuid, cetech1.strId32(prop_def.name), allocator);
+                const blob = try read_blob(asset, obj_uuid, .fromStr(prop_def.name), allocator);
                 defer allocator.free(blob);
                 const true_blob = try _cdb.createBlob(obj_w, prop_idx, blob.len);
                 @memcpy(true_blob.?, blob);

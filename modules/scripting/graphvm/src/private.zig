@@ -2763,7 +2763,7 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
 // Nodes
 //
 
-const PRINT_NODE_TYPE = cetech1.strId32("print");
+const PRINT_NODE_TYPE = .fromStr("print");
 
 // Inputs
 

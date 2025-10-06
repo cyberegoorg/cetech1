@@ -16,5 +16,6 @@
         .camera = .{ .path = "../../modules/rendering/camera" },
         .light_component = .{ .path = "../../modules/rendering/light_component" },
         .editor_entity = .{ .path = "../../modules/editor/entity_editor" },
+        .physics = .{ .path = "../../modules/physics/physics" },
     },
 }

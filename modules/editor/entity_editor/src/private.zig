@@ -47,7 +47,7 @@ var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
 var _log: *const cetech1.log.LogAPI = undefined;
 var _cdb: *const cdb.CdbAPI = undefined;
 var _coreui: *const coreui.CoreUIApi = undefined;
-var _gpu: *const gpu.GpuApi = undefined;
+
 var _render_graph: *const render_graph.RenderGraphApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _ecs: *const ecs.EcsAPI = undefined;
@@ -96,14 +96,14 @@ const EntityEditorTab = struct {
 // Fill editor tab interface
 var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
-    .tab_hash = cetech1.strId32(TAB_NAME),
+    .tab_hash = .fromStr(TAB_NAME),
 
     // TODO: Bug on linux CI
     .create_on_init = true,
     .show_sel_obj_in_title = true,
     .show_pin_object = true,
 
-    .ignore_selection_from_tab = &.{cetech1.strId32("ct_editor_asset_browser_tab")},
+    .ignore_selection_from_tab = &.{.fromStr("ct_editor_asset_browser_tab")},
 }, struct {
 
     // Return name for menu /Tabs/
@@ -130,12 +130,14 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         _ = w.setId(transform.Rotation, camera_ent, &transform.Rotation{});
         _ = w.setId(camera.Camera, camera_ent, &camera.Camera{});
 
+        const gpu_backend = _kernel.getGpuBackend().?;
+
         var tab_inst = _allocator.create(EntityEditorTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _render_viewport.createViewport(name, w, camera_ent),
+            .viewport = try _render_viewport.createViewport(name, gpu_backend, w, camera_ent),
             .world = w,
             .camera_ent = camera_ent,
-            .render_pipeline = try _render_pipeline.createDefault(_allocator, w),
+            .render_pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w),
             .tab_i = .{
                 .vt = _g.test_tab_vt_ptr,
                 .inst = @ptrCast(tab_inst),
@@ -341,7 +343,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         }
 
         if (_coreui.menuItem(allocator, cetech1.coreui.CoreIcons.FA_GAMEPAD, .{}, null)) {
-            _editor.openTabWithPinnedObj(cetech1.strId32("ct_editor_simulation"), .{
+            _editor.openTabWithPinnedObj(.fromStr("ct_editor_simulation"), .{
                 .top_level_obj = tab_o.selection.top_level_obj,
                 .obj = tab_o.selection.top_level_obj,
             });
@@ -425,52 +427,6 @@ const entity_value_type_i = graphvm.GraphValueTypeI.implement(
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
             return std.fmt.allocPrintSentinel(allocator, "{any}", .{std.mem.bytesToValue(u64, value)}, 0);
         }
-    },
-);
-
-// TODO: move out
-const get_entity_node_i = graphvm.NodeI.implement(
-    .{
-        .name = "Get entity",
-        .type_name = "get_entity",
-        .category = "ECS",
-    },
-    null,
-    struct {
-        pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
-            _ = self; // autofix
-
-            return .{
-                .in = try allocator.dupe(graphvm.NodePin, &.{}),
-                .out = try allocator.dupe(graphvm.NodePin, &.{
-                    graphvm.NodePin.init("Entity", graphvm.NodePin.pinHash("entity", true), graphvm.PinTypes.Entity, null),
-                }),
-            };
-        }
-
-        pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = in_pins; // autofix
-            _ = self; // autofix
-            if (_graphvm.getContext(anyopaque, args.instance, ecs.ECS_ENTITY_CONTEXT)) |ent| {
-                const ent_id = @intFromPtr(ent);
-                try out_pins.writeTyped(ecs.EntityId, 0, ent_id, ent_id);
-            }
-        }
-
-        // pub fn icon(
-        //     buff: [:0]u8,
-        //     allocator: std.mem.Allocator,
-        //     db: cdb.DbId,
-        //     node_obj: cdb.ObjId,
-        // ) ![:0]u8 {
-        //     _ = allocator; // autofix
-        //     _ = db; // autofix
-        //     _ = node_obj; // autofix
-
-        //     return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_STOP});
-        // }
     },
 );
 
@@ -591,7 +547,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
     _coreui = apidb.getZigApi(module_name, coreui.CoreUIApi).?;
-    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
+
     _render_graph = apidb.getZigApi(module_name, render_graph.RenderGraphApi).?;
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
@@ -619,8 +575,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
     try apidb.implOrRemove(module_name, editor.TabTypeI, &foo_tab, load);
 
-    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &entity_value_type_i, true);
-    try apidb.implOrRemove(module_name, graphvm.NodeI, &get_entity_node_i, true);
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &entity_value_type_i, load);
 
     return true;
 }

@@ -23,7 +23,7 @@ pub const std_options: std.Options = .{
 const log = std.log.scoped(module_name);
 
 const INSPECTOR_TAB_NAME = "ct_editor_inspector_tab";
-const INSPECTOR_TAB_NAME_HASH = cetech1.strId32(INSPECTOR_TAB_NAME);
+const INSPECTOR_TAB_NAME_HASH = .fromStr(INSPECTOR_TAB_NAME);
 
 const COLOR4F_PROPERTY_ASPECT_NAME = "ct_color_4f_properties_aspect";
 const FOLDER_NAME_PROPERTY_ASPECT_NAME = "ct_folder_name_property_aspect";
@@ -396,7 +396,7 @@ fn cdbPropertiesObj(
         defer endPropTabel();
 
         if (show_proto) {
-            if (api.uiPropLabel(allocator, "Prototype", null, enabled, args)) {
+            if (uiPropLabel(allocator, "Prototype", null, enabled, args)) {
                 _coreui.beginDisabled(.{ .disabled = !enabled });
                 defer _coreui.endDisabled();
                 try uiAssetInputProto(allocator, db, tab, obj, prototype_obj, false);
@@ -407,7 +407,7 @@ fn cdbPropertiesObj(
             const prop_idx: u32 = @truncate(idx);
             // const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
 
-            const prop_name = try api.formatedPropNameToBuff(&prop_name_buff, prop_def.name);
+            const prop_name = try formatedPropNameToBuff(&prop_name_buff, prop_def.name);
             const prop_state = _cdb.getRelation(top_level_obj, obj, prop_idx, null);
             const prop_color = _editor.getStateColor(prop_state);
 
@@ -486,13 +486,13 @@ fn cdbPropertiesObj(
                     }
 
                     const label = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
-                    if (api.uiPropLabel(allocator, label, prop_color, enabled, args)) {
+                    if (uiPropLabel(allocator, label, prop_color, enabled, args)) {
                         _coreui.beginDisabled(.{ .disabled = !enabled });
                         defer _coreui.endDisabled();
                         if (ui_prop_aspect) |aspect| {
                             try aspect.ui_property(allocator, obj, prop_idx, args);
                         } else {
-                            try api.uiPropInput(obj, prop_idx, enabled, args);
+                            try uiPropInput(obj, prop_idx, enabled, args);
                         }
                     }
                 },
@@ -514,7 +514,7 @@ fn cdbPropertiesObj(
 
         //const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
 
-        const prop_name = try api.formatedPropNameToBuff(&prop_name_buff, prop_def.name);
+        const prop_name = try formatedPropNameToBuff(&prop_name_buff, prop_def.name);
         const prop_state = _cdb.getRelation(top_level_obj, obj, prop_idx, null);
         const prop_color = _editor.getStateColor(prop_state);
 
@@ -950,7 +950,7 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
             defer endPropTabel();
             // Asset UUID
             if (_assetdb.getUuid(obj)) |asset_uuid| {
-                if (api.uiPropLabel(allocator, "UUID", null, true, args)) {
+                if (uiPropLabel(allocator, "UUID", null, true, args)) {
                     _coreui.tableNextColumn();
                     _ = try std.fmt.bufPrintZ(&buf, "{f}", .{asset_uuid});
 
@@ -973,17 +973,17 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
             const db = _cdb.getDbFromObjid(obj);
 
             // Asset name
-            if (!is_project and !_assetdb.isRootFolder(obj) and api.uiPropLabel(allocator, "Name", null, true, args)) {
-                try api.uiPropInput(obj, assetdb.Asset.propIdx(.Name), true, args);
+            if (!is_project and !_assetdb.isRootFolder(obj) and uiPropLabel(allocator, "Name", null, true, args)) {
+                try uiPropInput(obj, assetdb.Asset.propIdx(.Name), true, args);
             }
 
             // Asset name
-            if (!_assetdb.isRootFolder(obj) and api.uiPropLabel(allocator, "Description", null, true, args)) {
+            if (!_assetdb.isRootFolder(obj) and uiPropLabel(allocator, "Description", null, true, args)) {
                 try uiPropInput(obj, assetdb.Asset.propIdx(.Description), true, args);
             }
 
             // Folder
-            if (!is_project and !_assetdb.isRootFolder(obj) and api.uiPropLabel(allocator, "Folder", null, true, args)) {
+            if (!is_project and !_assetdb.isRootFolder(obj) and uiPropLabel(allocator, "Folder", null, true, args)) {
                 try uiAssetInput(allocator, tab, obj, assetdb.Asset.propIdx(.Folder), false, true);
             }
 
@@ -993,7 +993,7 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
                 const ui_prop_aspect = _cdb.getPropertyAspect(public.UiEmbedPropertyAspect, db, obj.type_idx, assetdb.Asset.propIdx(.Tags));
                 // If exist aspect and is empty hide property.
                 if (ui_prop_aspect) |aspect| {
-                    if (api.uiPropLabel(allocator, "Tags", null, true, args)) {
+                    if (uiPropLabel(allocator, "Tags", null, true, args)) {
                         try aspect.ui_properties(allocator, obj, assetdb.Asset.propIdx(.Tags), args);
                     }
                 }
@@ -1002,7 +1002,7 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
 
         // Asset object
         _coreui.separatorText("Asset object");
-        try api.cdbPropertiesObj(allocator, tab, top_level_obj, assetdb.Asset.readSubObj(_cdb, obj_r, .Object).?, depth + 1, args);
+        try cdbPropertiesObj(allocator, tab, top_level_obj, assetdb.Asset.readSubObj(_cdb, obj_r, .Object).?, depth + 1, args);
     }
 });
 
@@ -1068,12 +1068,12 @@ const PropertyTab = struct {
 // Fill editor tab interface
 var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = INSPECTOR_TAB_NAME,
-    .tab_hash = cetech1.strId32(INSPECTOR_TAB_NAME),
+    .tab_hash = .fromStr(INSPECTOR_TAB_NAME),
 
     .create_on_init = true,
     .show_pin_object = true,
     .show_sel_obj_in_title = true,
-    .ignore_selection_from_tab = &.{cetech1.strId32("ct_editor_asset_browser_tab")},
+    .ignore_selection_from_tab = &.{.fromStr("ct_editor_asset_browser_tab")},
 }, struct {
     pub fn menuName() ![:0]const u8 {
         return coreui.Icons.Properties ++ "  " ++ "Inspector";
@@ -1141,7 +1141,7 @@ var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         defer _coreui.endChild();
         if (_coreui.beginChild("Inspector", .{ .child_flags = .{ .border = true } })) {
             const obj: cdb.ObjId = tab_o.selected_obj.obj;
-            try api.cdbPropertiesView(allocator, tab_o, tab_o.selected_obj.top_level_obj, obj, 0, .{ .filter = tab_o.filter });
+            try cdbPropertiesView(allocator, tab_o, tab_o.selected_obj.top_level_obj, obj, 0, .{ .filter = tab_o.filter });
         }
     }
 

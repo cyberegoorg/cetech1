@@ -120,6 +120,9 @@ int32_t spvOpcodeIsSpecConstant(const spv::Op opcode) {
     case spv::Op::OpSpecConstantComposite:
     case spv::Op::OpSpecConstantCompositeReplicateEXT:
     case spv::Op::OpSpecConstantOp:
+    case spv::Op::OpSpecConstantArchitectureINTEL:
+    case spv::Op::OpSpecConstantTargetINTEL:
+    case spv::Op::OpSpecConstantCapabilitiesINTEL:
       return true;
     default:
       return false;
@@ -144,6 +147,12 @@ int32_t spvOpcodeIsConstant(const spv::Op opcode) {
     case spv::Op::OpSpecConstantCompositeReplicateEXT:
     case spv::Op::OpSpecConstantOp:
     case spv::Op::OpSpecConstantStringAMDX:
+    case spv::Op::OpGraphConstantARM:
+    case spv::Op::OpAsmTargetINTEL:
+    case spv::Op::OpAsmINTEL:
+    case spv::Op::OpSpecConstantArchitectureINTEL:
+    case spv::Op::OpSpecConstantTargetINTEL:
+    case spv::Op::OpSpecConstantCapabilitiesINTEL:
       return true;
     default:
       return false;
@@ -258,12 +267,14 @@ int32_t spvOpcodeGeneratesType(spv::Op op) {
     // spv::Op::OpTypeAccelerationStructureNV
     case spv::Op::OpTypeRayQueryKHR:
     case spv::Op::OpTypeHitObjectNV:
+    case spv::Op::OpTypeHitObjectEXT:
     case spv::Op::OpTypeUntypedPointerKHR:
     case spv::Op::OpTypeNodePayloadArrayAMDX:
     case spv::Op::OpTypeTensorLayoutNV:
     case spv::Op::OpTypeTensorViewNV:
     case spv::Op::OpTypeTensorARM:
     case spv::Op::OpTypeTaskSequenceINTEL:
+    case spv::Op::OpTypeGraphARM:
       return true;
     default:
       // In particular, OpTypeForwardPointer does not generate a type,

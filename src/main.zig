@@ -9,7 +9,7 @@ pub const std_options = std.Options{
 };
 
 pub fn main() anyerror!u8 {
-    const descs = if (!cetech1_options.static_modules) .{} else kernel.static_module.descs;
+    const descs = kernel.static_module.descs;
     try kernel.kernel.boot(&descs, .{});
     return 0;
 }

@@ -310,13 +310,13 @@ fn lessThanAsset(_: void, lhs: cdb.ObjId, rhs: cdb.ObjId) bool {
 
     const l_order = blk: {
         const component = _ecs.findComponentIByCdbHash(_cdb.getTypeHash(db, lhs.type_idx).?) orelse break :blk std.math.inf(f32);
-        const category = _ecs.findCategoryById(cetech1.strId32(component.category orelse break :blk std.math.inf(f32))) orelse break :blk std.math.inf(f32);
+        const category = _ecs.findCategoryById(.fromStr(component.category orelse break :blk std.math.inf(f32))) orelse break :blk std.math.inf(f32);
         break :blk category.order + component.category_order;
     };
 
     const r_order = blk: {
         const component = _ecs.findComponentIByCdbHash(_cdb.getTypeHash(db, rhs.type_idx).?) orelse break :blk std.math.inf(f32);
-        const category = _ecs.findCategoryById(cetech1.strId32(component.category orelse break :blk std.math.inf(f32))) orelse break :blk std.math.inf(f32);
+        const category = _ecs.findCategoryById(.fromStr(component.category orelse break :blk std.math.inf(f32))) orelse break :blk std.math.inf(f32);
         break :blk category.order + component.category_order;
     };
 

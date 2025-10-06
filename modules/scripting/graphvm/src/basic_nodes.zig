@@ -5,6 +5,7 @@ const cetech1 = @import("cetech1");
 
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
+const ecs = cetech1.ecs;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
@@ -743,6 +744,51 @@ const random_f32_node_i = public.NodeI.implement(
     },
 );
 
+const get_entity_node_i = public.NodeI.implement(
+    .{
+        .name = "Get entity",
+        .type_name = "get_entity",
+        .category = "ECS",
+    },
+    null,
+    struct {
+        pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
+            _ = node_obj; // autofix
+            _ = graph_obj; // autofix
+            _ = self; // autofix
+
+            return .{
+                .in = try allocator.dupe(public.NodePin, &.{}),
+                .out = try allocator.dupe(public.NodePin, &.{
+                    public.NodePin.init("Entity", public.NodePin.pinHash("entity", true), public.PinTypes.Entity, null),
+                }),
+            };
+        }
+
+        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
+            _ = in_pins; // autofix
+            _ = self; // autofix
+            if (_graphvm.getContext(anyopaque, args.instance, ecs.ECS_ENTITY_CONTEXT)) |ent| {
+                const ent_id = @intFromPtr(ent);
+                try out_pins.writeTyped(ecs.EntityId, 0, ent_id, ent_id);
+            }
+        }
+
+        // pub fn icon(
+        //     buff: [:0]u8,
+        //     allocator: std.mem.Allocator,
+        //     db: cdb.DbId,
+        //     node_obj: cdb.ObjId,
+        // ) ![:0]u8 {
+        //     _ = allocator; // autofix
+        //     _ = db; // autofix
+        //     _ = node_obj; // autofix
+
+        //     return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_STOP});
+        // }
+    },
+);
+
 pub fn addOrRemove(
     comptime module_name: @Type(.enum_literal),
     apidb: *const cetech1.apidb.ApiDbAPI,
@@ -776,6 +822,7 @@ pub fn addOrRemove(
     try apidb.implOrRemove(module_name, public.NodeI, &print_node_i, load);
     try apidb.implOrRemove(module_name, public.NodeI, &const_node_i, load);
     try apidb.implOrRemove(module_name, public.NodeI, &random_f32_node_i, load);
+    try apidb.implOrRemove(module_name, public.NodeI, &get_entity_node_i, load);
 }
 
 pub fn createTypes(db: cdb.DbId) !void {

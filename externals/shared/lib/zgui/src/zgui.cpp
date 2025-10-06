@@ -1611,6 +1611,11 @@ extern "C"
         ImGui::GetIO().BackendFlags = flags;
     }
 
+    ZGUI_API ImGuiBackendFlags zguiIoGetBackendFlags()
+    {
+        return ImGui::GetIO().BackendFlags;
+    }
+
     ZGUI_API void zguiIoSetDisplaySize(float width, float height)
     {
         ImGui::GetIO().DisplaySize = {width, height};
@@ -1671,6 +1676,11 @@ extern "C"
     ZGUI_API void zguiIoAddCharacterEvent(unsigned int c)
     {
         ImGui::GetIO().AddInputCharacter(c);
+    }
+
+    ZGUI_API ImVector<ImTextureData*>* zguiPlatformIoGetTextures()
+    {
+        return &ImGui::GetPlatformIO().Textures;
     }
 
     ZGUI_API bool zguiIsItemHovered(ImGuiHoveredFlags flags)
@@ -2529,7 +2539,7 @@ extern "C"
 
     ZGUI_API void zguiDrawList_AddImage(
         ImDrawList *draw_list,
-        ImTextureID user_texture_id,
+        ImTextureRef user_texture_id,
         const float pmin[2],
         const float pmax[2],
         const float uvmin[2],
@@ -2547,7 +2557,7 @@ extern "C"
 
     ZGUI_API void zguiDrawList_AddImageQuad(
         ImDrawList *draw_list,
-        ImTextureID user_texture_id,
+        ImTextureRef user_texture_id,
         const float p1[2],
         const float p2[2],
         const float p3[2],
@@ -2573,7 +2583,7 @@ extern "C"
 
     ZGUI_API void zguiDrawList_AddImageRounded(
         ImDrawList *draw_list,
-        ImTextureID user_texture_id,
+        ImTextureRef user_texture_id,
         const float pmin[2],
         const float pmax[2],
         const float uvmin[2],

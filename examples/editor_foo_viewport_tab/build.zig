@@ -26,4 +26,5 @@ pub fn build(b: *std.Build) !void {
     lib.root_module.addImport("render_graph", b.dependency("render_graph", .{}).module("render_graph"));
     lib.root_module.addImport("render_pipeline", b.dependency("render_pipeline", .{}).module("render_pipeline"));
     lib.root_module.addImport("light_component", b.dependency("light_component", .{}).module("light_component"));
+    lib.root_module.addImport("physics", b.dependency("physics", .{}).module("physics"));
 }

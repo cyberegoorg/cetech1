@@ -38,21 +38,21 @@
                 ]
               }
             },
-            "pos_x": 9e0
+            "pos_x": 9
           },
           {
             "__type_name": "ct_graph_node",
             "__uuid": "019990ff-be50-76ee-8fb6-f47acbaf81ef",
             "node_type": "node_unlit",
-            "pos_x": -3.91e2,
-            "pos_y": -2e0
+            "pos_x": -391,
+            "pos_y": -2
           },
           {
             "__type_name": "ct_graph_node",
             "__uuid": "019990ff-be50-7e57-bc5d-1390e3af222b",
             "node_type": "culling_volume",
-            "pos_x": 1.2e1,
-            "pos_y": 1.5e2
+            "pos_x": 12,
+            "pos_y": 150
           },
           {
             "__type_name": "ct_graph_node",
@@ -62,8 +62,8 @@
               "__type_name": "ct_gpu_simple_mesh_settings",
               "__uuid": "019990ff-88d5-723c-84c3-84f03ac5e104"
             },
-            "pos_x": -1.98e2,
-            "pos_y": 5.4e1
+            "pos_x": -198,
+            "pos_y": 54
           },
           {
             "__type_name": "ct_graph_node",
@@ -72,50 +72,51 @@
             "settings": {
               "__type_name": "ct_gpu_const_node_settings",
               "__uuid": "01999163-4ec7-76d8-a2b6-a53ad84eee8d",
-              "result_type": "vec3",
+              "result_type": "color",
               "value": {
-                "__type_name": "ct_vec_3f",
-                "__uuid": "01999163-62f2-7eaf-a644-7a2c831bed0b",
-                "y": 1e0
+                "__type_name": "ct_color_4f",
+                "__uuid": "019ab0d2-96de-737a-bc55-cc6ad8d96064",
+                "g": 1,
+                "a": 1
               }
             },
-            "pos_x": -1.069e3,
-            "pos_y": 3e1
+            "pos_x": -1069,
+            "pos_y": 30
           },
           {
             "__type_name": "ct_graph_node",
             "__uuid": "0199917c-3852-77b2-8579-ac525a731ab5",
             "node_type": "gpu_mul",
-            "pos_x": -7.66e2,
-            "pos_y": 2.6e1
+            "pos_x": -766,
+            "pos_y": 26
           },
           {
             "__type_name": "ct_graph_node",
             "__uuid": "0199917c-3852-75cf-ae9f-a1027ee0bbfc",
             "node_type": "gpu_time",
-            "pos_x": -1.663e3,
-            "pos_y": 1.26e2
+            "pos_x": -1663,
+            "pos_y": 126
           },
           {
             "__type_name": "ct_graph_node",
             "__uuid": "0199917c-3852-701d-a1b3-487e28b20748",
             "node_type": "gpu_sin",
-            "pos_x": -1.469e3,
-            "pos_y": 1.26e2
+            "pos_x": -1469,
+            "pos_y": 126
           },
           {
             "__type_name": "ct_graph_node",
             "__uuid": "0199917c-3852-7d3d-ae66-7d5cf7f24192",
             "node_type": "gpu_mix",
-            "pos_x": -1.069e3,
-            "pos_y": 1.26e2
+            "pos_x": -1069,
+            "pos_y": 126
           },
           {
             "__type_name": "ct_graph_node",
             "__uuid": "0199917c-3852-702a-bd37-d566fc9db16e",
             "node_type": "gpu_abs",
-            "pos_x": -1.277e3,
-            "pos_y": 1.26e2
+            "pos_x": -1277,
+            "pos_y": 126
           }
         ],
         "connections": [
@@ -217,7 +218,7 @@
             "value": {
               "__type_name": "ct_f32",
               "__uuid": "019990ff-1212-71f2-a07e-4a5ed7c30ee8",
-              "value": 1e0
+              "value": 1
             }
           },
           {
@@ -228,9 +229,9 @@
             "value": {
               "__type_name": "ct_vec_3f",
               "__uuid": "019990ff-29e4-71f3-aeb2-6232866395ff",
-              "x": -5e-1,
-              "y": -5e-1,
-              "z": -5e-1
+              "x": -0.5,
+              "y": -0.5,
+              "z": -0.5
             }
           },
           {
@@ -241,9 +242,9 @@
             "value": {
               "__type_name": "ct_vec_3f",
               "__uuid": "019990ff-45f6-7aee-843b-b1ad5c170ca0",
-              "x": 5e-1,
-              "y": 5e-1,
-              "z": 5e-1
+              "x": 0.5,
+              "y": 0.5,
+              "z": 0.5
             }
           },
           {
@@ -254,7 +255,7 @@
             "value": {
               "__type_name": "ct_gpu_f32",
               "__uuid": "0199917b-5bc4-71cb-962d-83970be351ed",
-              "value": 1e0
+              "value": 1
             }
           },
           {
@@ -265,7 +266,7 @@
             "value": {
               "__type_name": "ct_gpu_f32",
               "__uuid": "0199917b-3caa-7cee-a07e-a902fdffba05",
-              "value": 5e0
+              "value": 5
             }
           }
         ]

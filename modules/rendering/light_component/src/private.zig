@@ -32,7 +32,7 @@ var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _gpu: *const cetech1.gpu.GpuApi = undefined;
+var _gpu: *const cetech1.gpu.GpuBackendApi = undefined;
 
 var _inspector: *const editor_inspector.InspectorAPI = undefined;
 
@@ -117,8 +117,10 @@ const light_c = ecs.ComponentI.implement(
             // log.debug("LIGHT: {any}", .{light.*});
         }
 
-        pub fn debugdraw(dd: gpu.DDEncoder, world: ecs.World, entites: []const ecs.EntityId, data: []const u8, size: [2]f32) !void {
+        pub fn debugdraw(gpu_backend: gpu.GpuBackend, dd: gpu.DDEncoder, world: ecs.World, entites: []const ecs.EntityId, data: []const u8, size: [2]f32) !void {
             _ = size;
+            _ = gpu_backend;
+
             var lights: []const public.Light = undefined;
             lights.ptr = @ptrCast(@alignCast(data.ptr));
             lights.len = data.len / @sizeOf(public.Light);
@@ -151,7 +153,7 @@ const light_c = ecs.ComponentI.implement(
                     },
                     .direction => {
                         {
-                            dd.setTransform(&zm.matToArr(wt.mtx));
+                            dd.pushTransform(&zm.matToArr(wt.mtx));
                             defer dd.popTransform();
 
                             const r = 0.1;
@@ -253,7 +255,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _gpu = apidb.getZigApi(module_name, cetech1.gpu.GpuApi).?;
+    _gpu = apidb.getZigApi(module_name, cetech1.gpu.GpuBackendApi).?;
 
     _inspector = apidb.getZigApi(module_name, editor_inspector.InspectorAPI).?;
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;

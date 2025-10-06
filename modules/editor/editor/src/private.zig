@@ -902,7 +902,7 @@ var coreui_ui_i = coreui.CoreUII.implement(struct {
 
 var editor_kernel_task = cetech1.kernel.KernelTaskI.implement(
     "Editor",
-    &[_]cetech1.StrId64{ cetech1.strId64("RenderViewport"), cetech1.strId64("GraphVMInit") }, // TODO: =(
+    &[_]cetech1.StrId64{ .fromStr("RenderViewport"), .fromStr("GraphVMInit") }, // TODO: =(
     struct {
         pub fn init() !void {
             _g.main_db = _kernel.getDb();
@@ -1086,8 +1086,8 @@ pub fn load_module_zig(apidb_: *const apidb.ApiDbAPI, allocator: Allocator, log_
     try _apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &editor_kernel_task, load);
     try _apidb.implOrRemove(module_name, coreui.CoreUII, &coreui_ui_i, load);
     try _apidb.implOrRemove(module_name, public.ObjContextMenuI, &open_in_context_menu_i, load);
-    try _apidb.implOrRemove(module_name, assetdb.AssetRootOpenedI, &asset_root_opened_i, true);
-    try _apidb.implOrRemove(module_name, cdb.PostCreateTypesI, &post_create_types_i, true);
+    try _apidb.implOrRemove(module_name, assetdb.AssetRootOpenedI, &asset_root_opened_i, load);
+    try _apidb.implOrRemove(module_name, cdb.PostCreateTypesI, &post_create_types_i, load);
 
     _kernel.setCanQuit(kernelQuitHandler);
     return true;

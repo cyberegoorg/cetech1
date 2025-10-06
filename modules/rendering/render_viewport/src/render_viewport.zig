@@ -78,6 +78,7 @@ pub const RendereableComponentI = struct {
 
     render: *const fn (
         allocator: std.mem.Allocator,
+        gpu_backend: gpu.GpuBackend,
         builder: render_graph.GraphBuilder,
         world: ecs.World,
         viewport: Viewport,
@@ -128,6 +129,7 @@ pub const ShaderableComponentI = struct {
 
     update: *const fn (
         allocator: std.mem.Allocator,
+        gpu_backend: gpu.GpuBackend,
         builder: render_graph.GraphBuilder,
         world: ecs.World,
         viewport: Viewport,
@@ -228,7 +230,7 @@ pub const Viewport = struct {
 pub const ColorResource = "viewport_color";
 
 pub const RenderViewportApi = struct {
-    createViewport: *const fn (name: [:0]const u8, world: ?ecs.World, camera_ent: ecs.EntityId) anyerror!Viewport,
+    createViewport: *const fn (name: [:0]const u8, gpu_backend: gpu.GpuBackend, world: ?ecs.World, camera_ent: ecs.EntityId) anyerror!Viewport,
     destroyViewport: *const fn (viewport: Viewport) void,
 
     uiDebugMenuItems: *const fn (allocator: std.mem.Allocator, viewport: Viewport) void,

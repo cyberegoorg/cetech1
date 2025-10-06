@@ -82,6 +82,14 @@ typedef enum {
     Spv_1_6 = (1 << 16) | (6 << 8),
 } SpvVersion;
 
+struct StructMemberDebugInfo {
+    std::string name {};
+    int line {0};
+    int column {0};
+    // Set if the caller knows a better debug type than what is associated with the functional SPIR-V type.
+    spv::Id debugTypeOverride {0};
+};
+
 class Builder {
 public:
     Builder(unsigned int spvVersion, unsigned int userNumber, SpvBuildLogger* logger);
@@ -130,7 +138,7 @@ public:
         if (trackDebugInfo) {
             dirtyLineTracker = true;
             if (line != 0) {
-                // TODO: This is special handling of some AST nodes having (untracked) line 0. 
+                // TODO: This is special handling of some AST nodes having (untracked) line 0.
                 //       But they should have a valid line number.
                 currentLine = line;
                 if (filename) {
@@ -198,6 +206,14 @@ public:
         return id;
     }
 
+    // Maps the given OpType Id to a Non-Semantic DebugType Id.
+    Id getDebugType(Id type) {
+        if (emitNonSemanticShaderDebugInfo) {
+            return debugId[type];
+        }
+        return 0;
+    }
+
     // For creating new types (will return old type if the requested one was already made).
     Id makeVoidType();
     Id makeBoolType();
@@ -209,29 +225,27 @@ public:
     Id makeUintType(int width) { return makeIntegerType(width, false); }
     Id makeFloatType(int width);
     Id makeBFloat16Type();
-    Id makeStructType(const std::vector<Id>& members, const char* name, bool const compilerGenerated = true);
+    Id makeFloatE5M2Type();
+    Id makeFloatE4M3Type();
+    Id makeStructType(const std::vector<Id>& members, const std::vector<spv::StructMemberDebugInfo>& memberDebugInfo,
+                      const char* name, bool const compilerGenerated = true);
     Id makeStructResultType(Id type0, Id type1);
     Id makeVectorType(Id component, int size);
     Id makeMatrixType(Id component, int cols, int rows);
     Id makeArrayType(Id element, Id sizeId, int stride);  // 0 stride means no stride decoration
     Id makeRuntimeArray(Id element);
     Id makeFunctionType(Id returnType, const std::vector<Id>& paramTypes);
-    Id makeImageType(Id sampledType, Dim, bool depth, bool arrayed, bool ms, unsigned sampled, ImageFormat format);
-    Id makeSamplerType();
-    Id makeSampledImageType(Id imageType);
+    Id makeImageType(Id sampledType, Dim, bool depth, bool arrayed, bool ms, unsigned sampled, ImageFormat format, const char* debugNames);
+    Id makeSamplerType(const char* debugName);
+    Id makeSampledImageType(Id imageType, const char* debugName);
     Id makeCooperativeMatrixTypeKHR(Id component, Id scope, Id rows, Id cols, Id use);
     Id makeCooperativeMatrixTypeNV(Id component, Id scope, Id rows, Id cols);
     Id makeCooperativeMatrixTypeWithSameShape(Id component, Id otherType);
     Id makeCooperativeVectorTypeNV(Id componentType, Id components);
+    Id makeTensorTypeARM(Id elementType, Id rank);
     Id makeGenericType(spv::Op opcode, std::vector<spv::IdImmediate>& operands);
 
     // SPIR-V NonSemantic Shader DebugInfo Instructions
-    struct DebugTypeLoc {
-        std::string name {};
-        int line {0};
-        int column {0};
-    };
-    std::unordered_map<Id, DebugTypeLoc> debugTypeLocs;
     Id makeDebugInfoNone();
     Id makeBoolDebugType(int const size);
     Id makeIntegerDebugType(int const width, bool const hasSign);
@@ -240,9 +254,10 @@ public:
     Id makeArrayDebugType(Id const baseType, Id const componentCount);
     Id makeVectorDebugType(Id const baseType, int const componentCount);
     Id makeMatrixDebugType(Id const vectorType, int const vectorCount, bool columnMajor = true);
-    Id makeMemberDebugType(Id const memberType, DebugTypeLoc const& debugTypeLoc);
-    Id makeCompositeDebugType(std::vector<Id> const& memberTypes, char const*const name,
-        NonSemanticShaderDebugInfo100DebugCompositeType const tag, bool const isOpaqueType = false);
+    Id makeMemberDebugType(Id const memberType, StructMemberDebugInfo const& debugTypeLoc);
+    Id makeCompositeDebugType(std::vector<Id> const& memberTypes, std::vector<StructMemberDebugInfo> const& memberDebugInfo,
+                              char const* const name, NonSemanticShaderDebugInfo100DebugCompositeType const tag);
+    Id makeOpaqueDebugType(char const* const name);
     Id makePointerDebugType(StorageClass storageClass, Id const baseType);
     Id makeForwardPointerDebugType(StorageClass storageClass);
     Id makeDebugSource(const Id fileName);
@@ -269,6 +284,8 @@ public:
     Id makeRayQueryType();
     // hitObjectNV type
     Id makeHitObjectNVType();
+    // hitObjectEXT type
+    Id makeHitObjectEXTType();
 
     // For querying about types.
     Id getTypeId(Id resultId) const { return module.getTypeId(resultId); }
@@ -320,6 +337,7 @@ public:
     }
     bool isTensorViewType(Id typeId) const { return getTypeClass(typeId) == Op::OpTypeTensorViewNV; }
     bool isCooperativeVectorType(Id typeId) const { return getTypeClass(typeId) == Op::OpTypeCooperativeVectorNV; }
+    bool isTensorTypeARM(Id typeId)    const { return getTypeClass(typeId) == Op::OpTypeTensorARM; }
     bool isAggregateType(Id typeId)    const
         { return isArrayType(typeId) || isStructType(typeId) || isCooperativeMatrixType(typeId); }
     bool isImageType(Id typeId)        const { return getTypeClass(typeId) == Op::OpTypeImage; }
@@ -414,6 +432,8 @@ public:
     Id makeDoubleConstant(double d, bool specConstant = false);
     Id makeFloat16Constant(float f16, bool specConstant = false);
     Id makeBFloat16Constant(float bf16, bool specConstant = false);
+    Id makeFloatE5M2Constant(float fe5m2, bool specConstant = false);
+    Id makeFloatE4M3Constant(float fe4m3, bool specConstant = false);
     Id makeFpConstant(Id type, double d, bool specConstant = false);
 
     Id importNonSemanticShaderDebugInfoInstructions();
@@ -493,6 +513,10 @@ public:
     // such as OpEmitMeshTasksEXT
     void makeStatementTerminator(spv::Op opcode, const std::vector<Id>& operands, const char* name);
 
+    // Create a global/local constant. Because OpConstant is automatically emitted by getting the constant
+    // ids, this function only handles debug info.
+    void createConstVariable(Id type, const char* name, Id constant, bool isGlobal);
+
     // Create a global or function local or IO variable.
     Id createVariable(Decoration precision, StorageClass storageClass, Id type, const char* name = nullptr,
         Id initializer = NoResult, bool const compilerGenerated = true);
@@ -513,7 +537,7 @@ public:
     Id createAccessChain(StorageClass, Id base, const std::vector<Id>& offsets);
 
     // Create an OpArrayLength instruction
-    Id createArrayLength(Id base, unsigned int member);
+    Id createArrayLength(Id base, unsigned int member, unsigned int bits);
 
     // Create an OpCooperativeMatrixLengthKHR instruction
     Id createCooperativeMatrixLengthKHR(Id type);
@@ -918,7 +942,11 @@ public:
 
     void setUseReplicatedComposites(bool use) { useReplicatedComposites = use; }
 
- protected:
+private:
+    // Helper to get size of a scalar (in bytes)
+    unsigned int postProcessGetLargestScalarSize(const Instruction& type);
+
+protected:
     Id findScalarConstant(Op typeClass, Op opcode, Id typeId, unsigned value);
     Id findScalarConstant(Op typeClass, Op opcode, Id typeId, unsigned v1, unsigned v2);
     Id findCompositeConstant(Op typeClass, Op opcode, Id typeId, const std::vector<Id>& comps, size_t numMembers);
@@ -984,6 +1012,8 @@ public:
     Block* buildPoint;
     Id uniqueId;
     Function* entryPointFunction;
+    // This tracks the current function being built, or nullptr if not in a function.
+    Function const* currentFunction { nullptr };
     bool generatingOpCodeForSpecConst;
     bool useReplicatedComposites { false };
     AccessChain accessChain;

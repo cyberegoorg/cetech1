@@ -33,7 +33,6 @@ var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
 var _task: *const cetech1.task.TaskAPI = undefined;
 
-var _gpu: *const gpu.GpuApi = undefined;
 var _dd: *const gpu.GpuDDApi = undefined;
 var _shader_system: *const shader_system.ShaderSystemAPI = undefined;
 
@@ -43,6 +42,7 @@ const MTX_SIZE = 64;
 const G = struct {
     instance_mtx_buffer: gpu.DynamicVertexBufferHandle = undefined,
     instance_mtx_buffer_offset: std.atomic.Value(u32) = .init(0),
+    gpu: gpu.GpuBackend = undefined,
 };
 var _g: *G = undefined;
 
@@ -68,10 +68,10 @@ fn createInstanceSystem(mtxs: []const transform.WorldTransform) !public.Instance
 
     const offset = _g.instance_mtx_buffer_offset.fetchAdd(@truncate(mtxs.len * 16), .monotonic);
 
-    _gpu.updateDynamicVertexBuffer(
+    _g.gpu.updateDynamicVertexBuffer(
         _g.instance_mtx_buffer,
         offset,
-        _gpu.copy(mtxs.ptr, @truncate(@sizeOf(transform.WorldTransform) * mtxs.len)),
+        _g.gpu.copy(mtxs.ptr, @truncate(@sizeOf(transform.WorldTransform) * mtxs.len)),
     );
 
     try _shader_system.updateUniforms(system_io, isntance_system_uniforms, &.{
@@ -110,7 +110,13 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
     &[_]cetech1.StrId64{.fromStr("ShaderSystem")},
     struct {
         pub fn init() !void {
-            _g.instance_mtx_buffer = _gpu.createDynamicVertexBuffer(MAX_INSTNACE_MTX * 16, _gpu.getFloatBufferLayout(), gpu.BufferFlags_ComputeRead);
+            _g.gpu = _kernel.getGpuBackend().?;
+
+            _g.instance_mtx_buffer = _g.gpu.createDynamicVertexBuffer(
+                MAX_INSTNACE_MTX * 16,
+                _g.gpu.getFloatBufferLayout(),
+                .{ .compute_access = .read },
+            );
 
             // Viewer system
             try _shader_system.addSystemDefiniton(
@@ -132,7 +138,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
         }
 
         pub fn shutdown() !void {
-            _gpu.destroyDynamicVertexBuffer(_g.instance_mtx_buffer);
+            _g.gpu.destroyDynamicVertexBuffer(_g.instance_mtx_buffer);
         }
     },
 );
@@ -166,7 +172,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
     _task = apidb.getZigApi(module_name, cetech1.task.TaskAPI).?;
 
-    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
     _dd = apidb.getZigApi(module_name, gpu.GpuDDApi).?;
     _shader_system = apidb.getZigApi(module_name, shader_system.ShaderSystemAPI).?;
 

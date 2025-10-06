@@ -5,6 +5,7 @@ const zglfw = @import("zglfw");
 
 const apidb = @import("apidb.zig");
 const kernel = @import("kernel.zig");
+const task = @import("task.zig");
 
 const cetech1 = @import("cetech1");
 const public = cetech1.platform;
@@ -44,7 +45,26 @@ pub const window_vt = public.Window.VTable.implement(struct {
     pub fn setCursorMode(window: *anyopaque, mode: public.CursorMode) void {
         const true_w: *Window = @ptrCast(@alignCast(window));
         const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
-        glfw_w.setInputMode(.cursor, cursorModeTOGlfw(mode)) catch undefined;
+
+        // TODO: this is HOTFIX
+        const Task = struct {
+            mode: public.CursorMode,
+            glfw_w: *zglfw.Window,
+
+            pub fn exec(s: *@This()) !void {
+                try s.glfw_w.setInputMode(.cursor, cursorModeTOGlfw(s.mode));
+            }
+        };
+        const task_id = task.api.schedule(
+            cetech1.task.TaskID.none,
+            Task{
+                .mode = mode,
+                .glfw_w = glfw_w,
+            },
+            .{ .affinity = 0 },
+        ) catch undefined;
+        _ = task_id;
+        //task.api.wait(task_id);
     }
 
     pub fn getKey(window: *anyopaque, key: public.Key) public.Action {
