@@ -353,7 +353,7 @@ pub fn writeApiGraphD2(out_path: []const u8) !void {
         try writer.print("}}\n", .{});
 
         for (module_info.need_api.unmanaged.keys()) |api_str| {
-            if (_api2module.get(cetech1.strId64(api_str))) |api_module_name| {
+            if (_api2module.get(.fromStr(api_str))) |api_module_name| {
                 try writer.print("{s}->{s}: {s}\n", .{ name, api_module_name, api_str });
             }
         }

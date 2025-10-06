@@ -59,7 +59,6 @@ jobs:
           wget https://github.com/SimonKagstrom/kcov/releases/download/v42/kcov-amd64.tar.gz
           sudo tar xf kcov-amd64.tar.gz -C /
 
-
           # KCOV_VERSION=v43 && \
           # sudo apt install -y git cmake g++ libcurl4-openssl-dev zlib1g-dev libdw-dev libiberty-dev binutils-dev && \
           # git clone https://github.com/SimonKagstrom/kcov.git && \
@@ -120,8 +119,10 @@ jobs:
   x86-64-macos:
     needs: ["validation"]
     name: x86-64 Macos
-    runs-on: macos-13-large # macos-latest
+    runs-on: macos-15-large # macos-latest
     timeout-minutes: 10
+    env:
+      TRACY_NO_INVARIANT_CHECK: "1" #TODO: remove
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -145,17 +146,17 @@ jobs:
           retention-days: 1
 
       - name: Test unit
-        run: TRACY_NO_INVARIANT_CHECK=1 zig-out/bin/cetech1_test
+        run: zig-out/bin/cetech1_test
         #run: kcov --include-pattern=/cetech1/src/,/cetech/public/ kcov-output zig-out/bin/cetech1_test
 
       - name: Test headless standalone
-        run: TRACY_NO_INVARIANT_CHECK=1 zig-out/bin/cetech1 --headless --max-kernel-tick 5 
+        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 
 
       - name: Test headless standalone with asset root
-        run: TRACY_NO_INVARIANT_CHECK=1 zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
+        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
 
       - name: Test UI headless 
-        run: TRACY_NO_INVARIANT_CHECK=1 zig-out/bin/cetech1 --headless --test-ui --test-ui-junit ./result.xml
+        run: zig-out/bin/cetech1 --headless --test-ui --test-ui-junit ./result.xml
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4
@@ -201,7 +202,8 @@ jobs:
       - name: Test unit
         shell: bash
         run: zig-out/bin/cetech1_test
-
+      
+      # FIXME: Windows
       - name: Test headless standalone
         shell: bash
         run: zig-out/bin/cetech1 --headless --max-kernel-tick 5
@@ -210,16 +212,16 @@ jobs:
         shell: bash
         run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
 
-      # - name: Test UI headless 
-      #   shell: bash
-      #   run: zig-out/bin/cetech1 --headless --test-ui --test-ui-junit ./result.xml
+      - name: Test UI headless 
+        shell: bash
+        run: zig-out/bin/cetech1 --headless --test-ui --test-ui-junit ./result.xml
 
-      # - name: Publish Test Report
-      #   uses: mikepenz/action-junit-report@v4
-      #   if: success() || failure() # always run even if the previous step fails
-      #   with:
-      #     report_paths: "./result.xml"
-      #     fail_on_failure: true
-      #     require_passed_tests: true
-      #     require_tests: true
-      #     detailed_summary: true
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@v4
+        if: success() || failure() # always run even if the previous step fails
+        with:
+          report_paths: "./result.xml"
+          fail_on_failure: true
+          require_passed_tests: true
+          require_tests: true
+          detailed_summary: true

@@ -248,11 +248,11 @@ fn drawIcon(drawlist: coreui.DrawList, icon_type: PinIconType, a: [2]f32, b: [2]
 // Fill editor tab interface
 var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
-    .tab_hash = cetech1.strId32(TAB_NAME),
+    .tab_hash = .fromStr(TAB_NAME),
     .create_on_init = true,
     .show_pin_object = true,
     .show_sel_obj_in_title = true,
-    .ignore_selection_from_tab = &.{cetech1.strId32("ct_editor_asset_browser_tab")},
+    .ignore_selection_from_tab = &.{.fromStr("ct_editor_asset_browser_tab")},
 }, struct {
 
     // Return name for menu /Tabs/

@@ -42,7 +42,7 @@ var _task: *const cetech1.task.TaskAPI = undefined;
 
 var _ecs: *const ecs.EcsAPI = undefined;
 var _graphvm: *const graphvm.GraphVMApi = undefined;
-var _gpu: *const gpu.GpuApi = undefined;
+
 var _dd: *const gpu.GpuDDApi = undefined;
 var _shader_system: *const shader_system.ShaderSystemAPI = undefined;
 var _visibility_flags: *const visibility_flags.VisibilityFlagsApi = undefined;
@@ -241,7 +241,7 @@ fn clusterByDrawCall(allocator: std.mem.Allocator, sorted_instances: []?*rendere
 
 fn submitDrawcall(
     allocator: std.mem.Allocator,
-    e: gpu.Encoder,
+    e: gpu.GpuEncoder,
     dc: *const renderer.DrawCall,
     builder: render_graph.GraphBuilder,
     system_context: *shader_system.SystemContext,
@@ -284,8 +284,11 @@ fn submitDrawcall(
             if (variant.prg) |prg| {
                 const viewid = if (variant.layer) |l| builder.getLayerById(l) else viewer.viewid.?; // TODO: SHIT
 
-                e.setState(variant.state | dc.geometry.?.primitive_type.toState(), variant.rgba);
-                e.submit(viewid, prg, 0, gpu.DiscardFlags_None);
+                var s = variant.state;
+                s.primitive_type = dc.geometry.?.primitive_type;
+
+                e.setState(variant.state, variant.rgba);
+                e.submit(viewid, prg, 0, .{});
             }
         }
     }
@@ -420,6 +423,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
 
     pub fn render(
         allocator: std.mem.Allocator,
+        gpu_backend: gpu.GpuBackend,
         builder: render_graph.GraphBuilder,
         world: ecs.World,
         viewport: render_viewport.Viewport,
@@ -526,8 +530,8 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
         const clusters = try clusterByDrawCall(allocator, draw_calls, hashes, 256);
         defer allocator.free(clusters);
 
-        if (_gpu.getEncoder()) |e| {
-            defer _gpu.endEncoder(e);
+        if (gpu_backend.getEncoder()) |e| {
+            defer gpu_backend.endEncoder(e);
 
             var contexts = try cetech1.StrId32List.initCapacity(allocator, visibility_flags.MAX_FLAGS);
             defer contexts.deinit(allocator);
@@ -557,7 +561,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
                     }
 
                     // TODO: Set empty VB.. need this?
-                    e.setVertexBuffer(0, _gpu.getNullVb(), 0, 0);
+                    e.setVertexBuffer(0, gpu_backend.getNullVb(), 0, 0);
                     // e.setVertexCount(dc.vertex_count);
 
                     if (dc.index_buffer) |gpu_index_buffer| {
@@ -576,6 +580,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
                         viewers,
                         visibility,
                     );
+                    e.discard(.all);
                 } else {
                     log.err("null draw call", .{});
                 }
@@ -620,7 +625,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
     _graphvm = apidb.getZigApi(module_name, graphvm.GraphVMApi).?;
-    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
+
     _dd = apidb.getZigApi(module_name, gpu.GpuDDApi).?;
     _shader_system = apidb.getZigApi(module_name, shader_system.ShaderSystemAPI).?;
     _visibility_flags = apidb.getZigApi(module_name, visibility_flags.VisibilityFlagsApi).?;

@@ -140,7 +140,7 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
 var update_task2 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "FooUpdate2",
-    &[_]cetech1.StrId64{cetech1.strId64("FooUpdate")},
+    &[_]cetech1.StrId64{.fromStr("FooUpdate")},
     null,
     KernelTask,
 );
@@ -148,7 +148,7 @@ var update_task2 = cetech1.kernel.KernelTaskUpdateI.implment(
 var update_task3 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "FooUpdate3",
-    &[_]cetech1.StrId64{cetech1.strId64("FooUpdate2")},
+    &[_]cetech1.StrId64{.fromStr("FooUpdate2")},
     null,
     KernelTask,
 );
@@ -157,8 +157,8 @@ var update_task4 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnUpdate,
     "FooUpdate4",
     &[_]cetech1.StrId64{
-        cetech1.strId64("FooUpdate2"),
-        cetech1.strId64("FooUpdate"),
+        .fromStr("FooUpdate2"),
+        .fromStr("FooUpdate"),
     },
     null,
     KernelTask,
@@ -168,7 +168,7 @@ var update_task5 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnStore,
     "FooUpdate5",
     &[_]cetech1.StrId64{
-        //cetech1.strId64("FooUpdate4"),
+        //.fromStr("FooUpdate4"),
     },
     null,
     KernelTask,
@@ -177,7 +177,7 @@ var update_task6 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnStore,
     "FooUpdate6",
     &[_]cetech1.StrId64{
-        //cetech1.strId64("FooUpdate5"),
+        //.fromStr("FooUpdate5"),
     },
     null,
     KernelTask,
@@ -186,7 +186,7 @@ var update_task7 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnStore,
     "FooUpdate7",
     &[_]cetech1.StrId64{
-        //cetech1.strId64("FooUpdate5"),
+        //.fromStr("FooUpdate5"),
     },
     null,
     KernelTask,
@@ -195,7 +195,7 @@ var update_task8 = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnStore,
     "FooUpdate8",
     &[_]cetech1.StrId64{
-        //cetech1.strId64("FooUpdate7"),
+        //.fromStr("FooUpdate7"),
     },
     null,
     KernelTask,

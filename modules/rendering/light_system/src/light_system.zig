@@ -14,6 +14,6 @@ pub const LightSystem = struct {
 };
 
 pub const LightSystemApi = struct {
-    createLightSystem: *const fn () anyerror!LightSystem,
-    destroyLightSystem: *const fn (inst_system: LightSystem) void,
+    createLightSystem: *const fn (gpu_backend: gpu.GpuBackend) anyerror!LightSystem,
+    destroyLightSystem: *const fn (inst_system: LightSystem, gpu_backend: gpu.GpuBackend) void,
 };

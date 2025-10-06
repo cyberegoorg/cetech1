@@ -52,7 +52,8 @@ pub const Panic = cetech1.strId32("Panic");
 pub const PredEq = cetech1.strId32("PredEq");
 pub const PredMatch = cetech1.strId32("PredMatch");
 pub const PredLookup = cetech1.strId32("PredLookup");
-pub const Union = cetech1.strId32("Union");
+pub const Singleton = cetech1.strId32("Singleton");
+pub const DontFragment = cetech1.strId32("DontFragment");
 pub const Alias = cetech1.strId32("Alias");
 pub const Prefab = cetech1.strId32("Prefab");
 pub const Disabled = cetech1.strId32("Disabled");
@@ -82,7 +83,7 @@ pub const OnTableFill = cetech1.strId32("OnTableFill");
 pub fn id(comptime T: type) cetech1.StrId32 {
     var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
     const name = name_iter.first();
-    return cetech1.strId32(name);
+    return .fromStr(name);
 }
 
 pub const Self_ = 1 << 63;
@@ -172,6 +173,7 @@ pub const ComponentI = struct {
     ) anyerror!void = null,
 
     debugdraw: ?*const fn (
+        gpu_backend: gpu.GpuBackend,
         dd: gpu.DDEncoder,
         world: World,
         entites: []const EntityId,
@@ -566,7 +568,7 @@ pub const Iter = struct {
         return self.vtable.getSystem();
     }
 
-    data: [384]u8,
+    data: [360]u8,
     vtable: *const VTable,
 
     pub const VTable = struct {

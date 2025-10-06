@@ -4,7 +4,7 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const gpu = cetech1.gpu;
 
-pub const RENDERER_KERNEL_TASK = cetech1.strId64("Renderer nodes");
+pub const RENDERER_KERNEL_TASK = .fromStr("Renderer nodes");
 pub const CULLING_VOLUME_NODE_TYPE_STR = "culling_volume";
 pub const CULLING_VOLUME_NODE_TYPE = cetech1.strId32(CULLING_VOLUME_NODE_TYPE_STR);
 

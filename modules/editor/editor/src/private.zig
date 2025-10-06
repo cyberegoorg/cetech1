@@ -902,7 +902,7 @@ var coreui_ui_i = coreui.CoreUII.implement(struct {
 
 var editor_kernel_task = cetech1.kernel.KernelTaskI.implement(
     "Editor",
-    &[_]cetech1.StrId64{ cetech1.strId64("RenderViewport"), cetech1.strId64("GraphVMInit") }, // TODO: =(
+    &[_]cetech1.StrId64{ .fromStr("RenderViewport"), .fromStr("GraphVMInit") }, // TODO: =(
     struct {
         pub fn init() !void {
             _g.main_db = _kernel.getDb();
