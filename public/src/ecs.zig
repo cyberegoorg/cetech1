@@ -172,6 +172,7 @@ pub const ComponentI = struct {
     ) anyerror!void = null,
 
     debugdraw: ?*const fn (
+        gpu_backend: gpu.GpuBackend,
         dd: gpu.DDEncoder,
         world: World,
         entites: []const EntityId,

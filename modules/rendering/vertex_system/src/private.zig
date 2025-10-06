@@ -32,7 +32,6 @@ var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
 var _task: *const cetech1.task.TaskAPI = undefined;
 
-var _gpu: *const gpu.GpuApi = undefined;
 var _dd: *const gpu.GpuDDApi = undefined;
 var _shader_system: *const shader_system.ShaderSystemAPI = undefined;
 
@@ -64,7 +63,7 @@ fn createVertexSystemFromVertexBuffer(allocator: std.mem.Allocator, vertex_buffe
     var channel_stride: [4]zm.Vec = @splat(@splat(0));
     var channel_buffer_idx: [4]zm.Vec = @splat(@splat(0));
 
-    var buffer_idx_map: cetech1.AutoArrayHashMap(shader_system.BufferHandle, void) = .{};
+    var buffer_idx_map: cetech1.AutoArrayHashMap(gpu.BufferHandle, void) = .{};
     defer buffer_idx_map.deinit(allocator);
     try buffer_idx_map.ensureTotalCapacity(allocator, public.MAX_BUFFERS);
 
@@ -167,7 +166,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
     _task = apidb.getZigApi(module_name, cetech1.task.TaskAPI).?;
 
-    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
     _dd = apidb.getZigApi(module_name, gpu.GpuDDApi).?;
     _shader_system = apidb.getZigApi(module_name, shader_system.ShaderSystemAPI).?;
 

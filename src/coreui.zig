@@ -15,7 +15,7 @@ const cdb_private = @import("cdb.zig");
 
 const node_editor = zgui.node_editor;
 
-const backend = @import("backend_glfw_bgfx.zig");
+const backend = @import("coreui_backend.zig");
 
 const apidb = @import("apidb.zig");
 
@@ -37,7 +37,6 @@ var _cdb = &cdb_private.api;
 
 const _main_font = @embedFile("Roboto-Medium");
 const _fa_solid_font = @embedFile("fa-solid-900");
-
 const DEFAULT_IMGUI_INI = @embedFile("embed/imgui.ini");
 
 var _allocator: std.mem.Allocator = undefined;
@@ -69,34 +68,11 @@ var ui_being_task = cetech1.kernel.KernelTaskUpdateI.implment(
             }
 
             if (_enabled_ui) {
-                // if (_new_scale_factor) |nsf| {
-                //     initFonts(16, nsf);
-                //     _scale_factor = nsf;
-                //     _new_scale_factor = null;
-                //     return;
-                // }
-
                 newFrame(255);
             }
         }
     },
 );
-
-// var ui_draw_task = cetech1.kernel.KernelTaskUpdateI.implment(
-//     cetech1.kernel.PostUpdate,
-//     "CoreUI: draw",
-//     &[_]cetech1.StrId64{},
-//     1,
-//     struct {
-//         pub fn update(kernel_tick: u64, dt: f32) !void {
-//             const tmp = try tempalloc.api.create();
-//             defer tempalloc.api.destroy(tmp);
-//             _ = kernel_tick;
-//             _ = dt;
-//             //try coreUI(tmp, kernel_tick, dt);
-//         }
-//     },
-// );
 
 var ui_end_task = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.PreStore,
@@ -166,10 +142,8 @@ pub fn init(allocator: std.mem.Allocator) !void {
     if (cetech1_options.enable_nfd) try znfde.init();
 
     try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &ui_being_task, true);
-    // try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &ui_draw_task, true);
     try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &ui_end_task, true);
     try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTestingI, &kernel_testing, true);
-    //try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task, true);
 }
 
 pub fn deinit() void {

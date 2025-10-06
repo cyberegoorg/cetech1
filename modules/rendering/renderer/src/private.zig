@@ -38,7 +38,6 @@ var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 
 var _ecs: *const ecs.EcsAPI = undefined;
-var _gpu: *const gpu.GpuApi = undefined;
 
 var _dd: *const gpu.GpuDDApi = undefined;
 var _metrics: *const cetech1.metrics.MetricsAPI = undefined;
@@ -70,8 +69,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
 
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-
-    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
 
     _dd = apidb.getZigApi(module_name, gpu.GpuDDApi).?;
     _metrics = apidb.getZigApi(module_name, cetech1.metrics.MetricsAPI).?;

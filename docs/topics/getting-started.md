@@ -84,22 +84,23 @@ Get ZIG `0.15.1`.
 > Bool arguments does not need value 1 for true value. ex.: `--fullscreen` is equal `--fullscreen 1`
 > {style="note"}
 
-| Args                     | Value                          | Default   | Description                                 |
-|--------------------------|--------------------------------|-----------|---------------------------------------------|
-| `--load-dynamic`         | `1` or `0`                     | `1`       | Load dynamic modules?                       |
-| `--max-kernel-tick`      | `n`                            | `null`    | Quit after kernel make n ticks.             |
-| `--max-kernel-tick-rate` | `n`                            | `60`      | Kernel frame rate.                          |
-| `--headless`             | `1` or `0`                     | `0`       | Without creating real window.               |
-| `--asset-root`           | `str`                          | `null`    | Path to asset root. (project path)          |
-| `--renderer-debug`       | `1` or `0`                     | `0`       | Render backed debug. (shaders)              |
-| `--renderer-profile`     | `1` or `0`                     | `0`       | Render backed profile. (shaders)            |
-| `--vsync`                | `1` or `0`                     | `0`       | Vsync.                                      |
-| `--fullscreen`           | `1` or `0`                     | `0`       | Force full-screen mode, nice for SteamDeck. |
-| `--worker-count`         | number                         | cpu count | Max threads for task system.                |
-| `--test-ui`              | `1` or `0`                     | `0`       | Run UI tests and quit.                      |
-| `--test-ui-filter`       | `str`                          | `all`     | Run only ui tests that pass this filter.    |
-| `--test-ui-speed`        | `fast`, `normal`,  `cinematic` | `fast`    | UI test speed.                              |
-| `--test-ui-junit`        | `str`                          | `null`    | UI test JUnit result filename.              |
+| Args                     | Value                                                 | Default         | Description                                 |
+|--------------------------|-------------------------------------------------------|-----------------|---------------------------------------------|
+| `--asset-root`           | `str`                                                 | `null`          | Path to asset root. (project path)          |
+| `--load-dynamic`         | `1` or `0`                                            | `1`             | Load dynamic modules?                       |
+| `--max-kernel-tick`      | `n`                                                   | `null`          | Quit after kernel make n ticks.             |
+| `--max-kernel-tick-rate` | `n`                                                   | `60`            | Kernel frame rate.                          |
+| `--worker-count`         | number                                                | CPU count       | Max threads for task system.                |
+| `--renderer`             | `bgfx_metal`, `bgfx_vulkan`, `bgfx_dx12`, `bgfx_noop` | Autoselect best | Render backed.                              |
+| `--renderer-debug`       | `1` or `0`                                            | `0`             | Render backed debug. (shaders)              |
+| `--renderer-profile`     | `1` or `0`                                            | `0`             | Render backed profile. (shaders)            |
+| `--headless`             | `1` or `0`                                            | `0`             | Without creating real window.               |
+| `--vsync`                | `1` or `0`                                            | `0`             | Vsync.                                      |
+| `--fullscreen`           | `1` or `0`                                            | `0`             | Force full-screen mode, nice for SteamDeck. |
+| `--test-ui`              | `1` or `0`                                            | `0`             | Run UI tests and quit.                      |
+| `--test-ui-filter`       | `str`                                                 | `all`           | Run only ui tests that pass this filter.    |
+| `--test-ui-speed`        | `fast`, `normal`,  `cinematic`                        | `fast`          | UI test speed.                              |
+| `--test-ui-junit`        | `str`                                                 | `null`          | UI test JUnit result filename.              |
 
 ## ZLS
 
@@ -121,40 +122,6 @@ CETech provide ZLS as submodule, but you must build it.
         </code-block>
     </tab>
 </tabs>
-
-## VSCode
-
-> Repository contain recommended extension.
-
-1. Create vscode configs.
-    <code-block lang="bash">
-        # This generate vscode launch.json with predefined cases
-        # create or update settings.json
-        # and set zls path to locally builded
-        zig build gen-ide -Dide=vscode
-    </code-block>
-2. Install extension `ziglang.vscode-zig` (or install all recommended)
-
-## Fleet
-
-1. Create fleet configs.
-    <code-block lang="bash">
-        # This generate fleet run.json with predefined cases
-        # create or update settings.json
-        # and set zls path to locally builded
-        zig build gen-ide -Dide=fleet
-    </code-block>
-
-## Idea
-
-Need [zigbrains](https://plugins.jetbrains.com/plugin/22456-zigbrains)
-
-1. Create idea configs.
-    <code-block lang="bash">
-        # This generate basic files in .idea and run configuration predefined cases
-        # and set zls path to locally builded
-        zig build gen-ide -Dide=idea
-    </code-block>
 
 ## Tracy profiler
 
@@ -198,3 +165,37 @@ CETech1 has builtin support for tracy profiler and provide Tracy as submodule, b
         </code-block>
     </tab>
 </tabs>
+
+## VSCode
+
+> Repository contain recommended extension.
+
+1. Create vscode configs.
+    <code-block lang="bash">
+        # This generate vscode launch.json with predefined cases
+        # create or update settings.json
+        # and set zls path to locally builded
+        zig build gen-ide -Dide=vscode
+    </code-block>
+2. Install extension `ziglang.vscode-zig` (or install all recommended)
+
+## Fleet
+
+1. Create fleet configs.
+    <code-block lang="bash">
+        # This generate fleet run.json with predefined cases
+        # create or update settings.json
+        # and set zls path to locally builded
+        zig build gen-ide -Dide=fleet
+    </code-block>
+
+## Idea
+
+Need [zigbrains](https://plugins.jetbrains.com/plugin/22456-zigbrains)
+
+1. Create idea configs.
+    <code-block lang="bash">
+        # This generate basic files in .idea and run configuration predefined cases
+        # and set zls path to locally builded
+        zig build gen-ide -Dide=idea
+    </code-block>
