@@ -40,7 +40,6 @@ var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 
 var _ecs: *const ecs.EcsAPI = undefined;
-var _gpu: *const gpu.GpuApi = undefined;
 
 var _dd: *const gpu.GpuDDApi = undefined;
 var _metrics: *const cetech1.metrics.MetricsAPI = undefined;
@@ -82,22 +81,24 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
     &[_]cetech1.StrId64{.fromStr("VertexSystem")},
     struct {
         pub fn init() !void {
-            _vertex_pos_layout = PosVertex.layoutInit();
-            _vertex_col_layout = ColorVertex.layoutInit();
-            _vertex_col_normal_layout = ColorNormalVertex.layoutInit();
+            const gpu_backend = _kernel.getGpuBackend().?;
+
+            _vertex_pos_layout = PosVertex.layoutInit(gpu_backend);
+            _vertex_col_layout = ColorVertex.layoutInit(gpu_backend);
+            _vertex_col_normal_layout = ColorNormalVertex.layoutInit(gpu_backend);
 
             //
             // Cube
             //
-            _g.cube_pos_vb = _gpu.createVertexBuffer(
-                _gpu.makeRef(&cube_positions, cube_positions.len * @sizeOf(PosVertex)),
+            _g.cube_pos_vb = gpu_backend.createVertexBuffer(
+                gpu_backend.makeRef(&cube_positions, cube_positions.len * @sizeOf(PosVertex)),
                 &_vertex_pos_layout,
-                gpu.BufferFlags_ComputeRead,
+                .{ .compute_access = .read },
             );
-            _g.cube_col_vb = _gpu.createVertexBuffer(
-                _gpu.makeRef(&cube_cololrs, cube_cololrs.len * @sizeOf(ColorNormalVertex)),
+            _g.cube_col_vb = gpu_backend.createVertexBuffer(
+                gpu_backend.makeRef(&cube_cololrs, cube_cololrs.len * @sizeOf(ColorNormalVertex)),
                 &_vertex_col_normal_layout,
-                gpu.BufferFlags_ComputeRead,
+                .{ .compute_access = .read },
             );
 
             _g.cube_vb.num_vertices = cube_positions.len;
@@ -119,24 +120,24 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
 
             _g.cube_geometry = try _vertex_system.createVertexSystemFromVertexBuffer(_allocator, _g.cube_vb);
 
-            _g.cube_ib = _gpu.createIndexBuffer(
-                // _gpu.makeRef(&cube_tri_strip, cube_tri_strip.len * @sizeOf(u16)),
-                _gpu.makeRef(&cube_tri_list, cube_tri_list.len * @sizeOf(u16)),
-                gpu.BufferFlags_None,
+            _g.cube_ib = gpu_backend.createIndexBuffer(
+                // gpu_backend.makeRef(&cube_tri_strip, cube_tri_strip.len * @sizeOf(u16)),
+                gpu_backend.makeRef(&cube_tri_list, cube_tri_list.len * @sizeOf(u16)),
+                .{},
             );
 
             //
             // Bunny
             //
-            _g.bunny_pos_vb = _gpu.createVertexBuffer(
-                _gpu.makeRef(&bunny_position, bunny_position.len * @sizeOf(PosVertex)),
+            _g.bunny_pos_vb = gpu_backend.createVertexBuffer(
+                gpu_backend.makeRef(&bunny_position, bunny_position.len * @sizeOf(PosVertex)),
                 &_vertex_pos_layout,
-                gpu.BufferFlags_ComputeRead,
+                .{ .compute_access = .read },
             );
-            _g.bunny_col_vb = _gpu.createVertexBuffer(
-                _gpu.makeRef(&bunny_colors, bunny_colors.len * @sizeOf(ColorVertex)),
+            _g.bunny_col_vb = gpu_backend.createVertexBuffer(
+                gpu_backend.makeRef(&bunny_colors, bunny_colors.len * @sizeOf(ColorVertex)),
                 &_vertex_col_layout,
-                gpu.BufferFlags_ComputeRead,
+                .{ .compute_access = .read },
             );
 
             _g.bunny_vb.num_vertices = bunny_position.len;
@@ -152,18 +153,18 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
 
             _g.bunny_geometry = try _vertex_system.createVertexSystemFromVertexBuffer(_allocator, _g.bunny_vb);
 
-            _g.bunny_ib = _gpu.createIndexBuffer(
-                _gpu.makeRef(&bunny_tri_list, bunny_tri_list.len * @sizeOf(u16)),
-                gpu.BufferFlags_None,
+            _g.bunny_ib = gpu_backend.createIndexBuffer(
+                gpu_backend.makeRef(&bunny_tri_list, bunny_tri_list.len * @sizeOf(u16)),
+                .{},
             );
 
             //
             // Bunny
             //
-            _g.plane_pos_vb = _gpu.createVertexBuffer(
-                _gpu.makeRef(&plan_positions, plan_positions.len * @sizeOf(PosVertex)),
+            _g.plane_pos_vb = gpu_backend.createVertexBuffer(
+                gpu_backend.makeRef(&plan_positions, plan_positions.len * @sizeOf(PosVertex)),
                 &_vertex_pos_layout,
-                gpu.BufferFlags_ComputeRead,
+                .{ .compute_access = .read },
             );
 
             _g.plane_vb.num_vertices = bunny_position.len;
@@ -175,16 +176,18 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
 
             _g.plane_geometry = try _vertex_system.createVertexSystemFromVertexBuffer(_allocator, _g.plane_vb);
 
-            _g.plane_ib = _gpu.createIndexBuffer(
-                _gpu.makeRef(&plane_tri_list, plane_tri_list.len * @sizeOf(u16)),
-                gpu.BufferFlags_None,
+            _g.plane_ib = gpu_backend.createIndexBuffer(
+                gpu_backend.makeRef(&plane_tri_list, plane_tri_list.len * @sizeOf(u16)),
+                .{},
             );
         }
 
         pub fn shutdown() !void {
-            _gpu.destroyIndexBuffer(_g.cube_ib);
-            _gpu.destroyVertexBuffer(_g.cube_pos_vb);
-            _gpu.destroyVertexBuffer(_g.cube_col_vb);
+            const gpu_backend = _kernel.getGpuBackend().?;
+
+            gpu_backend.destroyIndexBuffer(_g.cube_ib);
+            gpu_backend.destroyVertexBuffer(_g.cube_pos_vb);
+            gpu_backend.destroyVertexBuffer(_g.cube_col_vb);
 
             const cube_io = _shader.getSystemIO(_g.cube_geometry.system);
             if (_g.cube_geometry.uniforms) |u| _shader.destroyUniformBuffer(cube_io, u);
@@ -194,9 +197,9 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             if (_g.bunny_geometry.uniforms) |u| _shader.destroyUniformBuffer(bunny_io, u);
             if (_g.bunny_geometry.resources) |r| _shader.destroyResourceBuffer(bunny_io, r);
 
-            _gpu.destroyVertexBuffer(_g.bunny_pos_vb);
-            _gpu.destroyVertexBuffer(_g.bunny_col_vb);
-            _gpu.destroyIndexBuffer(_g.bunny_ib);
+            gpu_backend.destroyVertexBuffer(_g.bunny_pos_vb);
+            gpu_backend.destroyVertexBuffer(_g.bunny_col_vb);
+            gpu_backend.destroyIndexBuffer(_g.bunny_ib);
         }
     },
 );
@@ -515,15 +518,15 @@ const PosVertex = struct {
         };
     }
 
-    fn layoutInit() gpu.VertexLayout {
+    fn layoutInit(gpu_backend: gpu.GpuBackend) gpu.VertexLayout {
         // static local
         const L = struct {
             var posColorLayout = std.mem.zeroes(gpu.VertexLayout);
         };
-        _ = _gpu.layoutBegin(&L.posColorLayout, _gpu.getBackendType());
-        _ = _gpu.layoutAdd(&L.posColorLayout, gpu.Attrib.Position, 3, gpu.AttribType.Float, false, false);
-        //_ = _gpu.layoutAdd(&L.posColorLayout, gpu.Attrib.Color0, 4, gpu.AttribType.Uint8, true, false);
-        _gpu.layoutEnd(&L.posColorLayout);
+        _ = gpu_backend.layoutBegin(&L.posColorLayout);
+        _ = gpu_backend.layoutAdd(&L.posColorLayout, gpu.Attrib.Position, 3, gpu.AttribType.Float, false, false);
+        //_ = gpu_backend.layoutAdd(&L.posColorLayout, gpu.Attrib.Color0, 4, gpu.AttribType.Uint8, true, false);
+        gpu_backend.layoutEnd(&L.posColorLayout);
 
         return L.posColorLayout;
     }
@@ -544,15 +547,15 @@ const ColorVertex = struct {
         };
     }
 
-    fn layoutInit() gpu.VertexLayout {
+    fn layoutInit(gpu_backend: gpu.GpuBackend) gpu.VertexLayout {
         // static local
         const L = struct {
             var posColorLayout = std.mem.zeroes(gpu.VertexLayout);
         };
-        _ = _gpu.layoutBegin(&L.posColorLayout, _gpu.getBackendType());
-        //_ = _gpu.layoutAdd(&L.posColorLayout, gpu.Attrib.Position, 3, gpu.AttribType.Float, false, false);
-        _ = _gpu.layoutAdd(&L.posColorLayout, gpu.Attrib.Color0, 4, gpu.AttribType.Float, true, false);
-        _gpu.layoutEnd(&L.posColorLayout);
+        _ = gpu_backend.layoutBegin(&L.posColorLayout);
+        //_ = gpu_backend.layoutAdd(&L.posColorLayout, gpu.Attrib.Position, 3, gpu.AttribType.Float, false, false);
+        _ = gpu_backend.layoutAdd(&L.posColorLayout, gpu.Attrib.Color0, 4, gpu.AttribType.Float, true, false);
+        gpu_backend.layoutEnd(&L.posColorLayout);
 
         return L.posColorLayout;
     }
@@ -579,15 +582,15 @@ const ColorNormalVertex = struct {
         };
     }
 
-    fn layoutInit() gpu.VertexLayout {
+    fn layoutInit(gpu_backend: gpu.GpuBackend) gpu.VertexLayout {
         // static local
         const L = struct {
             var posColorLayout = std.mem.zeroes(gpu.VertexLayout);
         };
-        _ = _gpu.layoutBegin(&L.posColorLayout, _gpu.getBackendType());
-        _ = _gpu.layoutAdd(&L.posColorLayout, gpu.Attrib.Color0, 4, gpu.AttribType.Float, true, false);
-        _ = _gpu.layoutAdd(&L.posColorLayout, gpu.Attrib.Normal, 3, gpu.AttribType.Float, true, false);
-        _gpu.layoutEnd(&L.posColorLayout);
+        _ = gpu_backend.layoutBegin(&L.posColorLayout);
+        _ = gpu_backend.layoutAdd(&L.posColorLayout, gpu.Attrib.Color0, 4, gpu.AttribType.Float, true, false);
+        _ = gpu_backend.layoutAdd(&L.posColorLayout, gpu.Attrib.Normal, 3, gpu.AttribType.Float, true, false);
+        gpu_backend.layoutEnd(&L.posColorLayout);
 
         return L.posColorLayout;
     }
@@ -713,8 +716,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
 
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-
-    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
 
     _dd = apidb.getZigApi(module_name, gpu.GpuDDApi).?;
     _metrics = apidb.getZigApi(module_name, cetech1.metrics.MetricsAPI).?;

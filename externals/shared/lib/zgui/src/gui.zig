@@ -72,7 +72,7 @@ pub fn initWithExistingContext(allocator: std.mem.Allocator, ctx: Context) void 
     zguiSetCurrentContext(ctx);
 
     temp_buffer = std.ArrayList(u8){};
-    temp_buffer.?.resize(3 * 1024 + 1) catch unreachable;
+    temp_buffer.?.resize(mem_allocator.?, 3 * 1024 + 1) catch unreachable;
 
     if (te_enabled) {
         te.init();
@@ -112,15 +112,16 @@ pub fn deinit() void {
         mem_allocator = null;
     }
 }
-pub fn initNoContext() void {
+pub fn initNoContext(allocator: std.mem.Allocator) void {
+    mem_allocator = allocator;
     if (temp_buffer == null) {
         temp_buffer = std.ArrayList(u8){};
-        temp_buffer.?.resize(3 * 1024 + 1) catch unreachable;
+        temp_buffer.?.resize(mem_allocator.?, 3 * 1024 + 1) catch unreachable;
     }
 }
 pub fn deinitNoContext() void {
-    if (temp_buffer) |buf| {
-        buf.deinit();
+    if (temp_buffer) |*buf| {
+        buf.deinit(mem_allocator.?);
     }
 }
 extern fn zguiCreateContext(shared_font_atlas: ?*const anyopaque) Context;
@@ -990,12 +991,12 @@ pub const DockNodeFlags = packed struct(c_int) {
 };
 extern fn zguiDockSpace(str_id: [*:0]const u8, size: *const [2]f32, flags: DockNodeFlags) Ident;
 
-pub fn DockSpace(str_id: [:0]const u8, size: [2]f32, flags: DockNodeFlags) Ident {
+pub fn dockSpace(str_id: [:0]const u8, size: [2]f32, flags: DockNodeFlags) Ident {
     return zguiDockSpace(str_id.ptr, &size, flags);
 }
 
-extern fn zguiDockSpaceOverViewport(dockspace_id: Ident, viewport: Viewport, flags: DockNodeFlags) Ident;
-pub const DockSpaceOverViewport = zguiDockSpaceOverViewport;
+extern fn zguiDockSpaceOverViewport(dockspace_id: Ident, viewport: *Viewport, flags: DockNodeFlags) Ident;
+pub const dockSpaceOverViewport = zguiDockSpaceOverViewport;
 
 //--------------------------------------------------------------------------------------------------
 //
@@ -1393,9 +1394,9 @@ extern fn zguiGetFont() Font;
 /// `pub fn getFontSize() f32`
 pub const getFontSize = zguiGetFontSize;
 extern fn zguiGetFontSize() f32;
-/// `void pushFont(font: Font, font_size_base_unscaled: f32) void`
+/// `void pushFont(font: ?Font, font_size_base_unscaled: f32) void`
 pub const pushFont = zguiPushFont;
-extern fn zguiPushFont(font: Font, font_size_base_unscaled: f32) void;
+extern fn zguiPushFont(font: ?Font, font_size_base_unscaled: f32) void;
 /// `void popFont() void`
 pub const popFont = zguiPopFont;
 extern fn zguiPopFont() void;
@@ -3890,41 +3891,79 @@ pub const tabItemButton = zguiTabItemButton;
 // Viewport
 //
 //--------------------------------------------------------------------------------------------------
-pub const Viewport = *opaque {
-    pub fn getId(viewport: Viewport) Ident {
+pub const ViewportFlags = packed struct(c_int) {
+    none: bool = false,
+    is_platform_window: bool = false,
+    is_platform_monitor: bool = false,
+    owned_by_app: bool = false,
+    no_decoration: bool = false,
+    no_task_bar_icon: bool = false,
+    no_focus_on_appearing: bool = false,
+    no_focus_on_click: bool = false,
+    no_inputs: bool = false,
+    no_renderer_clear: bool = false,
+    no_auto_merge: bool = false,
+    top_most: bool = false,
+    can_host_other_windows: bool = false,
+    is_minimized: bool = false,
+    is_focused: bool = false,
+    _: u17 = 0,
+};
+
+pub const Viewport = extern struct {
+    id: Ident,
+    flags: ViewportFlags,
+    pos: [2]f32,
+    size: [2]f32,
+    framebuffer_scale: [2]f32,
+    work_pos: [2]f32,
+    work_size: [2]f32,
+    dpi_scale: f32,
+    parent_viewport_id: Ident,
+    draw_data: *DrawData,
+    renderer_user_data: *anyopaque,
+    platform_user_data: *anyopaque,
+    platform_handle: *anyopaque,
+    platform_handle_raw: *anyopaque,
+    platform_window_created: bool,
+    platform_request_move: bool,
+    platform_request_resize: bool,
+    platform_request_close: bool,
+
+    pub fn getId(viewport: *Viewport) Ident {
         return zguiViewport_GetId(viewport);
     }
-    extern fn zguiViewport_GetId(viewport: Viewport) Ident;
+    extern fn zguiViewport_GetId(viewport: *Viewport) Ident;
 
-    pub fn getPos(viewport: Viewport) [2]f32 {
+    pub fn getPos(viewport: *Viewport) [2]f32 {
         var pos: [2]f32 = undefined;
         zguiViewport_GetPos(viewport, &pos);
         return pos;
     }
-    extern fn zguiViewport_GetPos(viewport: Viewport, pos: *[2]f32) void;
+    extern fn zguiViewport_GetPos(viewport: *Viewport, pos: *[2]f32) void;
 
-    pub fn getSize(viewport: Viewport) [2]f32 {
+    pub fn getSize(viewport: *Viewport) [2]f32 {
         var pos: [2]f32 = undefined;
         zguiViewport_GetSize(viewport, &pos);
         return pos;
     }
-    extern fn zguiViewport_GetSize(viewport: Viewport, size: *[2]f32) void;
+    extern fn zguiViewport_GetSize(viewport: *Viewport, size: *[2]f32) void;
 
-    pub fn getWorkPos(viewport: Viewport) [2]f32 {
+    pub fn getWorkPos(viewport: *Viewport) [2]f32 {
         var pos: [2]f32 = undefined;
         zguiViewport_GetWorkPos(viewport, &pos);
         return pos;
     }
-    extern fn zguiViewport_GetWorkPos(viewport: Viewport, pos: *[2]f32) void;
+    extern fn zguiViewport_GetWorkPos(viewport: *Viewport, pos: *[2]f32) void;
 
-    pub fn getWorkSize(viewport: Viewport) [2]f32 {
+    pub fn getWorkSize(viewport: *Viewport) [2]f32 {
         var pos: [2]f32 = undefined;
         zguiViewport_GetWorkSize(viewport, &pos);
         return pos;
     }
-    extern fn zguiViewport_GetWorkSize(viewport: Viewport, size: *[2]f32) void;
+    extern fn zguiViewport_GetWorkSize(viewport: *Viewport, size: *[2]f32) void;
 
-    pub fn getCenter(viewport: Viewport) [2]f32 {
+    pub fn getCenter(viewport: *Viewport) [2]f32 {
         const pos = viewport.getPos();
         const size = viewport.getSize();
         return .{
@@ -3933,7 +3972,7 @@ pub const Viewport = *opaque {
         };
     }
 
-    pub fn getWorkCenter(viewport: Viewport) [2]f32 {
+    pub fn getWorkCenter(viewport: *Viewport) [2]f32 {
         const pos = viewport.getWorkPos();
         const size = viewport.getWorkSize();
         return .{
@@ -3943,7 +3982,7 @@ pub const Viewport = *opaque {
     }
 };
 pub const getMainViewport = zguiGetMainViewport;
-extern fn zguiGetMainViewport() Viewport;
+extern fn zguiGetMainViewport() *Viewport;
 
 pub const updatePlatformWindows = zguiUpdatePlatformWindows;
 extern fn zguiUpdatePlatformWindows() void;

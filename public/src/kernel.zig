@@ -115,7 +115,7 @@ pub const KernelApi = struct {
     isTestigMode: *const fn () bool,
 
     getMainWindow: *const fn () ?platform.Window,
-    getGpuCtx: *const fn () ?*gpu.GpuContext,
+    getGpuBackend: *const fn () ?gpu.GpuBackend,
 
     getExternalsCredit: *const fn () [:0]const u8,
     getAuthors: *const fn () [:0]const u8,

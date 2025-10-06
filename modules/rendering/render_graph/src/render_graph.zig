@@ -10,7 +10,7 @@ const camera = @import("camera");
 const shader_system = @import("shader_system");
 const visibility_flags = @import("visibility_flags");
 
-const GpuApi = gpu.GpuApi;
+const GpuBackendApi = gpu.GpuBackendApi;
 
 pub const RENDERER_GRAPH_KERNEL_TASK = cetech1.strId64("Renderer graph");
 
@@ -28,7 +28,7 @@ pub const Viewer = struct {
 
 pub const PassApi = struct {
     setup: *const fn (pass: *Pass, builder: GraphBuilder) anyerror!void,
-    execute: *const fn (pass: *const Pass, builder: GraphBuilder, gpu_api: *const GpuApi, vp_size: [2]f32, viewid: gpu.ViewId) anyerror!void,
+    execute: *const fn (pass: *const Pass, builder: GraphBuilder, gpu_backend: gpu.GpuBackend, vp_size: [2]f32, viewid: gpu.ViewId) anyerror!void,
 
     pub fn implement(comptime T: type) PassApi {
         if (!std.meta.hasFn(T, "setup")) @compileError("implement me");
@@ -101,37 +101,13 @@ pub const Module = struct {
 
 pub const ResourceId = cetech1.StrId32;
 
-pub const BackbufferRatio = enum(c_int) {
-    /// Equal to backbuffer.
-    Equal,
-
-    /// One half size of backbuffer.
-    Half,
-
-    /// One quarter size of backbuffer.
-    Quarter,
-
-    /// One eighth size of backbuffer.
-    Eighth,
-
-    /// One sixteenth size of backbuffer.
-    Sixteenth,
-
-    /// One thirtysecond size of backbuffer.
-    Thirtysecond,
-
-    /// Double size of backbuffer.
-    Double,
-
-    Count,
-};
-
 pub const TextureInfo = struct {
     has_mip: bool = false,
     num_layers: u16 = 1,
     format: gpu.TextureFormat,
     flags: gpu.TextureFlags,
-    ratio: BackbufferRatio = .Equal,
+    sampler_flags: gpu.SamplerFlags = .{},
+    ratio: f32 = 1,
     clear_color: ?u32 = null,
     clear_depth: ?f32 = null,
 
@@ -139,7 +115,8 @@ pub const TextureInfo = struct {
         return self.has_mip == other.has_mip and
             self.num_layers == other.num_layers and
             self.format == other.format and
-            self.flags == other.flags and
+            std.meta.eql(self.flags, other.flags) and
+            std.meta.eql(self.sampler_flags, other.sampler_flags) and
             self.ratio == other.ratio and
             self.clear_color == other.clear_color and
             self.clear_depth == other.clear_depth;
@@ -260,6 +237,6 @@ pub const RenderGraphApi = struct {
     createModule: *const fn () anyerror!Module,
     destroyModule: *const fn (module: Module) void,
 
-    createBuilder: *const fn (allocator: std.mem.Allocator) anyerror!GraphBuilder,
+    createBuilder: *const fn (allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend) anyerror!GraphBuilder,
     destroyBuilder: *const fn (builder: GraphBuilder) void,
 };

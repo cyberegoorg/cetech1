@@ -52,7 +52,7 @@ pub const RenderPipelineI = struct {
     pub const c_name = "ct_render_pipeline_i";
     pub const name_hash = cetech1.strId64(@This().c_name);
 
-    create: *const fn (allocator: std.mem.Allocator, world: ecs.World) anyerror!*anyopaque = undefined,
+    create: *const fn (allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, world: ecs.World) anyerror!*anyopaque = undefined,
     destroy: *const fn (pipeline: *anyopaque) void = undefined,
 
     getMainModule: *const fn (pipeline: *anyopaque) render_graph.Module = undefined,
@@ -85,5 +85,5 @@ pub const RenderPipelineI = struct {
 };
 
 pub const RenderPipelineApi = struct {
-    createDefault: *const fn (allocator: std.mem.Allocator, world: ecs.World) anyerror!RenderPipeline,
+    createDefault: *const fn (allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, world: ecs.World) anyerror!RenderPipeline,
 };
