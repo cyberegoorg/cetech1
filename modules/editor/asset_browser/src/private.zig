@@ -74,7 +74,7 @@ const AssetBrowserTab = struct {
 // Fill editor tab interface
 var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = ASSET_BROWSER_NAME,
-    .tab_hash = cetech1.strId32(ASSET_BROWSER_NAME),
+    .tab_hash = .fromStr(ASSET_BROWSER_NAME),
     .create_on_init = true,
 }, struct {
     pub fn menuName() ![:0]const u8 {

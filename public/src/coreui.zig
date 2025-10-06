@@ -450,7 +450,7 @@ pub const CoreUIApi = struct {
         return result;
     }
 
-    draw: *const fn (allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) anyerror!void,
+    draw: *const fn (allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, kernel_tick: u64, dt: f32) anyerror!void,
 
     showDemoWindow: *const fn () void,
     showMetricsWindow: *const fn () void,

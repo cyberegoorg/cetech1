@@ -277,7 +277,6 @@ pub fn build(b: *std.Build) !void {
         .{
             .target = target,
             .optimize = options.externals_optimize,
-            .imgui_include = zgui.path("libs").getPath(b),
         },
     );
 
@@ -446,7 +445,6 @@ pub fn build(b: *std.Build) !void {
         .{ .name = "zflecs", .module = zflecs.module("root") },
         .{ .name = "zf", .module = zf.module("zf") },
         .{ .name = "Uuid", .module = uuid.module("Uuid") },
-        .{ .name = "zbgfx", .module = zbgfx.module("zbgfx") },
         .{ .name = "znfde", .module = znfde.module("root") },
 
         // Generated stuff
@@ -491,7 +489,6 @@ pub fn build(b: *std.Build) !void {
     kernel_lib.linkLibrary(ztracy.artifact("tracy"));
     kernel_lib.linkLibrary(zglfw.artifact("glfw"));
     kernel_lib.linkLibrary(zgui.artifact("imgui"));
-    kernel_lib.linkLibrary(zbgfx.artifact("bgfx"));
     kernel_lib.linkLibrary(zflecs.artifact("flecs"));
 
     if (options.enable_nfd) {
@@ -614,6 +611,7 @@ pub const editor_modules = [_][]const u8{
 };
 
 pub const core_modules = [_][]const u8{
+    "gpu_bgfx",
     "graphvm",
     "render_viewport",
     "render_graph",

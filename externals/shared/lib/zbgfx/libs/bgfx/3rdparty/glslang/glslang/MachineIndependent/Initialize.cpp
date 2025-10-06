@@ -4025,6 +4025,47 @@ void TBuiltIns::initialize(int version, EProfile profile, const SpvVersion& spvV
             "bf16vec3   uintBitsToBFloat16EXT(u16vec3 value);"
             "bf16vec4   uintBitsToBFloat16EXT(u16vec4 value);"
 
+            "int8_t  floate5m2BitsToIntEXT(floate5m2_t value);"
+            "i8vec2  floate5m2BitsToIntEXT(fe5m2vec2 value);"
+            "i8vec3  floate5m2BitsToIntEXT(fe5m2vec3 value);"
+            "i8vec4  floate5m2BitsToIntEXT(fe5m2vec4 value);"
+
+            "uint8_t floate5m2BitsToUintEXT(floate5m2_t value);"
+            "u8vec2  floate5m2BitsToUintEXT(fe5m2vec2 value);"
+            "u8vec3  floate5m2BitsToUintEXT(fe5m2vec3 value);"
+            "u8vec4  floate5m2BitsToUintEXT(fe5m2vec4 value);"
+
+            "floate5m2_t intBitsToFloate5m2EXT(int8_t value);"
+            "fe5m2vec2   intBitsToFloate5m2EXT(i8vec2 value);"
+            "fe5m2vec3   intBitsToFloate5m2EXT(i8vec3 value);"
+            "fe5m2vec4   intBitsToFloate5m2EXT(i8vec4 value);"
+
+            "floate5m2_t uintBitsToFloate5m2EXT(uint8_t value);"
+            "fe5m2vec2   uintBitsToFloate5m2EXT(u8vec2 value);"
+            "fe5m2vec3   uintBitsToFloate5m2EXT(u8vec3 value);"
+            "fe5m2vec4   uintBitsToFloate5m2EXT(u8vec4 value);"
+
+            "int8_t  floate4m3BitsToIntEXT(floate4m3_t value);"
+            "i8vec2  floate4m3BitsToIntEXT(fe4m3vec2 value);"
+            "i8vec3  floate4m3BitsToIntEXT(fe4m3vec3 value);"
+            "i8vec4  floate4m3BitsToIntEXT(fe4m3vec4 value);"
+
+            "uint8_t floate4m3BitsToUintEXT(floate4m3_t value);"
+            "u8vec2  floate4m3BitsToUintEXT(fe4m3vec2 value);"
+            "u8vec3  floate4m3BitsToUintEXT(fe4m3vec3 value);"
+            "u8vec4  floate4m3BitsToUintEXT(fe4m3vec4 value);"
+
+            "floate4m3_t intBitsToFloate4m3EXT(int8_t value);"
+            "fe4m3vec2   intBitsToFloate4m3EXT(i8vec2 value);"
+            "fe4m3vec3   intBitsToFloate4m3EXT(i8vec3 value);"
+            "fe4m3vec4   intBitsToFloate4m3EXT(i8vec4 value);"
+
+            "floate4m3_t uintBitsToFloate4m3EXT(uint8_t value);"
+            "fe4m3vec2   uintBitsToFloate4m3EXT(u8vec2 value);"
+            "fe4m3vec3   uintBitsToFloate4m3EXT(u8vec3 value);"
+            "fe4m3vec4   uintBitsToFloate4m3EXT(u8vec4 value);"
+
+            "void saturatedConvertEXT();"
             "\n");
     }
 
@@ -4777,6 +4818,8 @@ void TBuiltIns::initialize(int version, EProfile profile, const SpvVersion& spvV
                 "float", "vec2", "vec4",
                 "float16_t", "f16vec2", "f16vec4",
                 "bfloat16_t", "bf16vec2", "bf16vec4",
+                "floate5m2_t", "fe5m2vec2", "fe5m2vec4",
+                "floate4m3_t", "fe4m3vec2", "fe4m3vec4",
                 "double", "dvec2", "dvec4",
                 "int8_t", "i8vec2", "i8vec4",
                 "int16_t", "i16vec2", "i16vec4",
@@ -4787,17 +4830,19 @@ void TBuiltIns::initialize(int version, EProfile profile, const SpvVersion& spvV
                 "uint", "uvec2", "uvec4",
                 "uint64_t", "u64vec2", "u64vec4",
             };
-            for (auto t : allTypes) {
-                cooperativeMatrixFuncs << "void coopMatLoad(out coopmat m, volatile coherent nontemporal " << t << "[] buf, uint element, uint stride, int matrixLayout);\n";
-                cooperativeMatrixFuncs << "void coopMatStore(coopmat m, volatile coherent nontemporal " << t << "[] buf, uint element, uint stride, int matrixLayout);\n";
+            for (auto elemTy : {"uint", "uint64_t"}) {
+                for (auto t : allTypes) {
+                    cooperativeMatrixFuncs << "void coopMatLoad(out coopmat m, volatile coherent nontemporal " << t << "[] buf, " << elemTy << " element, uint stride, int matrixLayout);\n";
+                    cooperativeMatrixFuncs << "void coopMatStore(coopmat m, volatile coherent nontemporal " << t << "[] buf, " << elemTy << " element, uint stride, int matrixLayout);\n";
+                }
+                // Just use uint8_t for buffer type, we have special matching rules to allow any conversion
+                cooperativeMatrixFuncs << "void coopMatLoadTensorNV(inout coopmat m, volatile coherent nontemporal uint8_t[] buf, " << elemTy << " element, tensorLayoutNV t);\n";
+                cooperativeMatrixFuncs << "void coopMatLoadTensorNV(inout coopmat m, volatile coherent nontemporal uint8_t[] buf, " << elemTy << " element, tensorLayoutNV t, tensorViewNV v);\n";
+                cooperativeMatrixFuncs << "void coopMatLoadTensorNV(inout coopmat m, volatile coherent nontemporal uint8_t[] buf, " << elemTy << " element, tensorLayoutNV t, __function f);\n";
+                cooperativeMatrixFuncs << "void coopMatLoadTensorNV(inout coopmat m, volatile coherent nontemporal uint8_t[] buf, " << elemTy << " element, tensorLayoutNV t, tensorViewNV v, __function f);\n";
+                cooperativeMatrixFuncs << "void coopMatStoreTensorNV(coopmat m, volatile coherent nontemporal uint8_t[] buf, " << elemTy << " element, tensorLayoutNV t);\n";
+                cooperativeMatrixFuncs << "void coopMatStoreTensorNV(coopmat m, volatile coherent nontemporal uint8_t[] buf, " << elemTy << " element, tensorLayoutNV t, tensorViewNV v);\n";
             }
-            // Just use uint8_t for buffer type, we have special matching rules to allow any conversion
-            cooperativeMatrixFuncs << "void coopMatLoadTensorNV(inout coopmat m, volatile coherent nontemporal uint8_t[] buf, uint element, tensorLayoutNV t);\n";
-            cooperativeMatrixFuncs << "void coopMatLoadTensorNV(inout coopmat m, volatile coherent nontemporal uint8_t[] buf, uint element, tensorLayoutNV t, tensorViewNV v);\n";
-            cooperativeMatrixFuncs << "void coopMatLoadTensorNV(inout coopmat m, volatile coherent nontemporal uint8_t[] buf, uint element, tensorLayoutNV t, __function f);\n";
-            cooperativeMatrixFuncs << "void coopMatLoadTensorNV(inout coopmat m, volatile coherent nontemporal uint8_t[] buf, uint element, tensorLayoutNV t, tensorViewNV v, __function f);\n";
-            cooperativeMatrixFuncs << "void coopMatStoreTensorNV(coopmat m, volatile coherent nontemporal uint8_t[] buf, uint element, tensorLayoutNV t);\n";
-            cooperativeMatrixFuncs << "void coopMatStoreTensorNV(coopmat m, volatile coherent nontemporal uint8_t[] buf, uint element, tensorLayoutNV t, tensorViewNV v);\n";
         }
 
         cooperativeMatrixFuncs <<
@@ -4840,6 +4885,31 @@ void TBuiltIns::initialize(int version, EProfile profile, const SpvVersion& spvV
             "const int gl_CooperativeMatrixClampModeMirrorRepeatNV = 0x4;\n"
             "\n"
             );
+
+        {
+          std::stringstream coopMatConvFuncs;
+
+          const std::string eltTypes[] = {"uint32_t", "uint", "int32_t", "int", "float32_t", "float", "float16_t"};
+
+          for (auto srcEltTy : eltTypes) {
+            for (auto dstEltTy : eltTypes) {
+              coopMatConvFuncs << "void bitcastQCOM(" << srcEltTy.c_str() << " SrcArr[], " << dstEltTy.c_str()
+                << " DstArr[]);\n";
+            }
+          }
+          coopMatConvFuncs << "\n";
+
+          for (auto eltTy : {"float32_t", "float16_t", "int8_t", "uint8_t", "uint32_t", "uint", "int32_t", "int"}) {
+            coopMatConvFuncs << "void vectorToCoopmatQCOM(" << eltTy << " SrcVec[], coopmat CM);\n";
+            coopMatConvFuncs << "void coopmatToVectorQCOM(coopmat CM, " << eltTy << " Dstvec[]);\n";
+          }
+
+          for (auto eltTy : {"uint32_t", "uint", "int32_t", "int", "float32_t", "float", "float16_t"}) {
+            coopMatConvFuncs << "void extractSubArrayQCOM(" << eltTy << " arr[], uint index, " << eltTy << " subarr[]);\n";
+          }
+
+          commonBuiltins.append(coopMatConvFuncs.str().c_str());
+        }
 
         commonBuiltins.append(
             "tensorLayoutNV createTensorLayoutNV(uint Dim);\n"
@@ -4894,6 +4964,29 @@ void TBuiltIns::initialize(int version, EProfile profile, const SpvVersion& spvV
             "tensorViewNV setTensorViewClipNV(tensorViewNV v, uint clipRowOffset, uint clipRowSpan, uint clipColOffset, uint clipColSpan);\n"
             "\n"
         );
+
+        // GL_ARM_tensors builtins.
+        static const char *tensorDataTypesARM[] = {
+            "bool",
+            "int8_t", "int16_t", "int32_t", "int64_t",
+            "uint8_t", "uint16_t", "uint32_t", "uint64_t",
+            "float16_t", "float32_t", "float64_t",
+        };
+        std::ostringstream ostream;
+        for (auto t : tensorDataTypesARM) {
+            // Scalar
+            ostream << "void tensorReadARM(readonly tensorARM t, uint coords[], out "
+                    << t << " data, uint tensorOperands = 0U, ...);\n";
+            ostream << "void tensorWriteARM(writeonly tensorARM t, uint coords[], "
+                    << t << " data, uint tensorOperands = 0U, ...);\n";
+            // Array
+            ostream << "void tensorReadARM(readonly tensorARM t, uint coords[], "
+                    << t << " data[], uint tensorOperands = 0U, ...);\n";
+            ostream << "void tensorWriteARM(writeonly tensorARM t, uint coords[], "
+                    << t << " data[], uint tensorOperands = 0U, ...);\n";
+        }
+        ostream << "uint tensorSizeARM(readonly writeonly tensorARM t, uint dim);\n";
+        commonBuiltins.append(ostream.str());
     }
 
     if (profile != EEsProfile && version >= 450) {
@@ -4910,49 +5003,54 @@ void TBuiltIns::initialize(int version, EProfile profile, const SpvVersion& spvV
             "float32_t",
             "float64_t",
         };
-        for (uint32_t i = 0; i < sizeof(basicTypes)/sizeof(basicTypes[0]); ++i) {
-            std::string func = std::string("void coopVecMatMulNV(out coopvecNV result, ") +
-                               std::string("coopvecNV v, ") +
-                               std::string("int inputInterpretation, ") +
-                               std::string(basicTypes[i]) + std::string("[] matrix, ") +
-                               std::string("uint matrixOffset, ") +
-                               std::string("int matrixInterpretation, ") +
-                               std::string("uint M, ") +
-                               std::string("uint K, ") +
-                               std::string("int matrixLayout, ") +
-                               std::string("bool transpose, ") +
-                               std::string("uint matrixStride);\n");
-            commonBuiltins.append(func.c_str());
+        std::string coopVecOffsetTypes[] = {
+            "uint",
+            "uint64_t",
+        };
+        for (auto offsetTy : coopVecOffsetTypes) {
+            for (uint32_t i = 0; i < sizeof(basicTypes)/sizeof(basicTypes[0]); ++i) {
+                std::string func = std::string("void coopVecMatMulNV(out coopvecNV result, ") +
+                                   std::string("coopvecNV v, ") +
+                                   std::string("int inputInterpretation, ") +
+                                   std::string(basicTypes[i]) + std::string("[] matrix, ") +
+                                   offsetTy + std::string(" matrixOffset, ") +
+                                   std::string("int matrixInterpretation, ") +
+                                   std::string("uint M, ") +
+                                   std::string("uint K, ") +
+                                   std::string("int matrixLayout, ") +
+                                   std::string("bool transpose, ") +
+                                   std::string("uint matrixStride);\n");
+                commonBuiltins.append(func.c_str());
 
-            for (uint32_t j = 0; j < sizeof(basicTypes)/sizeof(basicTypes[0]); ++j) {
-                func = std::string("void coopVecMatMulAddNV(out coopvecNV result, ") +
-                       std::string("coopvecNV v, ") +
-                       std::string("int inputInterpretation, ") +
-                       std::string(basicTypes[i]) + std::string("[] matrix, ") +
-                       std::string("uint matrixOffset, ") +
-                       std::string("int matrixInterpretation, ") +
-                       std::string(basicTypes[j]) + std::string("[] bias, ") +
-                       std::string("uint biasOffset, ") +
-                       std::string("int biasInterpretation, ") +
-                       std::string("uint M, ") +
-                       std::string("uint K, ") +
-                       std::string("int matrixLayout, ") +
-                       std::string("bool transpose, ") +
-                       std::string("uint matrixStride);\n");
+                for (uint32_t j = 0; j < sizeof(basicTypes)/sizeof(basicTypes[0]); ++j) {
+                    func = std::string("void coopVecMatMulAddNV(out coopvecNV result, ") +
+                           std::string("coopvecNV v, ") +
+                           std::string("int inputInterpretation, ") +
+                           std::string(basicTypes[i]) + std::string("[] matrix, ") +
+                           offsetTy + std::string(" matrixOffset, ") +
+                           std::string("int matrixInterpretation, ") +
+                           std::string(basicTypes[j]) + std::string("[] bias, ") +
+                           offsetTy + std::string(" biasOffset, ") +
+                           std::string("int biasInterpretation, ") +
+                           std::string("uint M, ") +
+                           std::string("uint K, ") +
+                           std::string("int matrixLayout, ") +
+                           std::string("bool transpose, ") +
+                           std::string("uint matrixStride);\n");
+                    commonBuiltins.append(func.c_str());
+                }
+
+                func = std::string("void coopVecOuterProductAccumulateNV(coopvecNV v1, coopvecNV v2, ") +
+                       std::string(basicTypes[i]) +
+                       std::string("[] buf, ") + offsetTy + std::string(" offset, uint stride, int matrixLayout, int matrixInterpretation);\n");
+                commonBuiltins.append(func.c_str());
+            
+                func = std::string("void coopVecReduceSumAccumulateNV(coopvecNV v, ") +
+                       std::string(basicTypes[i]) +
+                       std::string("[] buf, ") + offsetTy + std::string(" offset);\n");
                 commonBuiltins.append(func.c_str());
             }
-
-            func = std::string("void coopVecOuterProductAccumulateNV(coopvecNV v1, coopvecNV v2, ") +
-                   std::string(basicTypes[i]) +
-                   std::string("[] buf, uint offset, uint stride, int matrixLayout, int matrixInterpretation);\n");
-            commonBuiltins.append(func.c_str());
-            
-            func = std::string("void coopVecReduceSumAccumulateNV(coopvecNV v, ") +
-                   std::string(basicTypes[i]) +
-                   std::string("[] buf, uint offset);\n");
-            commonBuiltins.append(func.c_str());
         }
-
         std::string cooperativeVectorFuncs =
             "coopvecNV fma(coopvecNV, coopvecNV, coopvecNV);\n"
             "coopvecNV min(coopvecNV, coopvecNV);\n"
@@ -5014,13 +5112,16 @@ void TBuiltIns::initialize(int version, EProfile profile, const SpvVersion& spvV
             "f32vec4",
             "f64vec4",
         };
-        for (uint32_t i = 0; i < sizeof(scalarAndVectorTypes)/sizeof(scalarAndVectorTypes[0]); ++i) {
-            std::string load = std::string("void coopVecLoadNV(out coopvecNV v, volatile coherent ") +
-                               std::string(scalarAndVectorTypes[i]) + std::string("[] buf, uint offset);");
-            std::string store = std::string("void coopVecStoreNV(coopvecNV v, volatile coherent ") +
-                               std::string(scalarAndVectorTypes[i]) + std::string("[] buf, uint offset);");
-            commonBuiltins.append(load.c_str());
-            commonBuiltins.append(store.c_str());
+
+        for (auto offsetTy : coopVecOffsetTypes) {
+            for (uint32_t i = 0; i < sizeof(scalarAndVectorTypes)/sizeof(scalarAndVectorTypes[0]); ++i) {
+                std::string load = std::string("void coopVecLoadNV(out coopvecNV v, volatile coherent ") +
+                                   std::string(scalarAndVectorTypes[i]) + std::string("[] buf, ") + offsetTy + std::string(" offset);");
+                std::string store = std::string("void coopVecStoreNV(coopvecNV v, volatile coherent ") +
+                                   std::string(scalarAndVectorTypes[i]) + std::string("[] buf, ") + offsetTy + std::string(" offset);");
+                commonBuiltins.append(load.c_str());
+                commonBuiltins.append(store.c_str());
+            }
         }
 
         commonBuiltins.append(
@@ -5306,6 +5407,45 @@ void TBuiltIns::initialize(int version, EProfile profile, const SpvVersion& spvV
             "void hitObjectGetLSSRadiiNV(hitObjectNV, out float[2]);"
             "bool hitObjectIsSphereHitNV(hitObjectNV);"
             "bool hitObjectIsLSSHitNV(hitObjectNV);"
+            "void hitObjectTraceRayEXT(hitObjectEXT,accelerationStructureEXT,uint,uint,uint,uint,uint,vec3,float,vec3,float,int);"
+            "void hitObjectTraceRayMotionEXT(hitObjectEXT,accelerationStructureEXT,uint,uint,uint,uint,uint,vec3,float,vec3,float,float,int);"
+            "void hitObjectRecordMissEXT(hitObjectEXT,uint,uint,vec3,float,vec3,float);"
+            "void hitObjectRecordMissMotionEXT(hitObjectEXT,uint,uint,vec3,float,vec3,float,float);"
+            "void hitObjectRecordEmptyEXT(hitObjectEXT);"
+            "void hitObjectExecuteShaderEXT(hitObjectEXT,int);"
+            "bool hitObjectIsEmptyEXT(hitObjectEXT);"
+            "bool hitObjectIsMissEXT(hitObjectEXT);"
+            "bool hitObjectIsHitEXT(hitObjectEXT);"
+            "float hitObjectGetRayTMinEXT(hitObjectEXT);"
+            "float hitObjectGetRayTMaxEXT(hitObjectEXT);"
+            "uint hitObjectGetRayFlagsEXT(hitObjectEXT);"
+            "vec3 hitObjectGetWorldRayOriginEXT(hitObjectEXT);"
+            "vec3 hitObjectGetWorldRayDirectionEXT(hitObjectEXT);"
+            "vec3 hitObjectGetObjectRayOriginEXT(hitObjectEXT);"
+            "vec3 hitObjectGetObjectRayDirectionEXT(hitObjectEXT);"
+            "mat4x3 hitObjectGetWorldToObjectEXT(hitObjectEXT);"
+            "mat4x3 hitObjectGetObjectToWorldEXT(hitObjectEXT);"
+            "int hitObjectGetInstanceCustomIndexEXT(hitObjectEXT);"
+            "int hitObjectGetInstanceIdEXT(hitObjectEXT);"
+            "int hitObjectGetGeometryIndexEXT(hitObjectEXT);"
+            "int hitObjectGetPrimitiveIndexEXT(hitObjectEXT);"
+            "uint hitObjectGetHitKindEXT(hitObjectEXT);"
+            "void hitObjectGetAttributesEXT(hitObjectEXT,int);"
+            "float hitObjectGetCurrentTimeEXT(hitObjectEXT);"
+            "uint hitObjectGetShaderBindingTableRecordIndexEXT(hitObjectEXT);"
+            "uvec2 hitObjectGetShaderRecordBufferHandleEXT(hitObjectEXT);"
+            "void hitObjectSetShaderBindingTableRecordIndexEXT(hitObjectEXT, uint);"
+            "void hitObjectReorderExecuteEXT(hitObjectEXT,int);"
+            "void hitObjectReorderExecuteEXT(hitObjectEXT,uint,uint,int);"
+            "void hitObjectTraceReorderExecuteEXT(hitObjectEXT,accelerationStructureEXT,uint,uint,uint,uint,uint,vec3,float,vec3,float,int);"
+            "void hitObjectTraceReorderExecuteEXT(hitObjectEXT,accelerationStructureEXT,uint,uint,uint,uint,uint,vec3,float,vec3,float,uint,uint,int);"
+            "void hitObjectTraceMotionReorderExecuteEXT(hitObjectEXT,accelerationStructureEXT,uint,uint,uint,uint,uint,vec3,float,vec3,float,float,int);"
+            "void hitObjectTraceMotionReorderExecuteEXT(hitObjectEXT,accelerationStructureEXT,uint,uint,uint,uint,uint,vec3,float,vec3,float,float,uint,uint,int);"
+            "void hitObjectRecordFromQueryEXT(hitObjectEXT, rayQueryEXT, uint, int);"
+            "void hitObjectGetIntersectionTriangleVertexPositionsEXT(hitObjectEXT, out vec3[3]);"
+            "void reorderThreadEXT(uint, uint);"
+            "void reorderThreadEXT(hitObjectEXT);"
+            "void reorderThreadEXT(hitObjectEXT, uint, uint);"
             "\n");
         stageBuiltins[EShLangIntersect].append(
             "bool reportIntersectionNV(float, uint);"
@@ -5358,6 +5498,36 @@ void TBuiltIns::initialize(int version, EProfile profile, const SpvVersion& spvV
             "void hitObjectGetLSSRadiiNV(hitObjectNV, out float[2]);"
             "bool hitObjectIsSphereHitNV(hitObjectNV);"
             "bool hitObjectIsLSSHitNV(hitObjectNV);"
+            "void hitObjectTraceRayEXT(hitObjectEXT,accelerationStructureEXT,uint,uint,uint,uint,uint,vec3,float,vec3,float,int);"
+            "void hitObjectTraceRayMotionEXT(hitObjectEXT,accelerationStructureEXT,uint,uint,uint,uint,uint,vec3,float,vec3,float,float,int);"
+            "void hitObjectRecordMissEXT(hitObjectEXT,uint,uint,vec3,float,vec3,float);"
+            "void hitObjectRecordMissMotionEXT(hitObjectEXT,uint,uint,vec3,float,vec3,float,float);"
+            "void hitObjectRecordEmptyEXT(hitObjectEXT);"
+            "void hitObjectExecuteShaderEXT(hitObjectEXT,int);"
+            "bool hitObjectIsEmptyEXT(hitObjectEXT);"
+            "bool hitObjectIsMissEXT(hitObjectEXT);"
+            "bool hitObjectIsHitEXT(hitObjectEXT);"
+            "float hitObjectGetRayTMinEXT(hitObjectEXT);"
+            "float hitObjectGetRayTMaxEXT(hitObjectEXT);"
+            "uint hitObjectGetRayFlagsEXT(hitObjectEXT);"
+            "vec3 hitObjectGetWorldRayOriginEXT(hitObjectEXT);"
+            "vec3 hitObjectGetWorldRayDirectionEXT(hitObjectEXT);"
+            "vec3 hitObjectGetObjectRayOriginEXT(hitObjectEXT);"
+            "vec3 hitObjectGetObjectRayDirectionEXT(hitObjectEXT);"
+            "mat4x3 hitObjectGetWorldToObjectEXT(hitObjectEXT);"
+            "mat4x3 hitObjectGetObjectToWorldEXT(hitObjectEXT);"
+            "int hitObjectGetInstanceCustomIndexEXT(hitObjectEXT);"
+            "int hitObjectGetInstanceIdEXT(hitObjectEXT);"
+            "int hitObjectGetGeometryIndexEXT(hitObjectEXT);"
+            "int hitObjectGetPrimitiveIndexEXT(hitObjectEXT);"
+            "uint hitObjectGetHitKindEXT(hitObjectEXT);"
+            "void hitObjectGetAttributesEXT(hitObjectEXT,int);"
+            "float hitObjectGetCurrentTimeEXT(hitObjectEXT);"
+            "uint hitObjectGetShaderBindingTableRecordIndexEXT(hitObjectEXT);"
+            "uvec2 hitObjectGetShaderRecordBufferHandleEXT(hitObjectEXT);"
+            "void hitObjectSetShaderBindingTableRecordIndexEXT(hitObjectEXT, uint);"
+            "void hitObjectRecordFromQueryEXT(hitObjectEXT, rayQueryEXT,uint, int);"
+            "void hitObjectGetIntersectionTriangleVertexPositionsEXT(hitObjectEXT, out vec3[3]);"
             "\n");
         stageBuiltins[EShLangMiss].append(
             "void traceNV(accelerationStructureNV,uint,uint,uint,uint,uint,vec3,float,vec3,float,int);"
@@ -5402,6 +5572,36 @@ void TBuiltIns::initialize(int version, EProfile profile, const SpvVersion& spvV
             "void hitObjectGetLSSRadiiNV(hitObjectNV, out float[2]);"
             "bool hitObjectIsSphereHitNV(hitObjectNV);"
             "bool hitObjectIsLSSHitNV(hitObjectNV);"
+            "void hitObjectTraceRayEXT(hitObjectEXT,accelerationStructureEXT,uint,uint,uint,uint,uint,vec3,float,vec3,float,int);"
+            "void hitObjectTraceRayMotionEXT(hitObjectEXT,accelerationStructureEXT,uint,uint,uint,uint,uint,vec3,float,vec3,float,float,int);"
+            "void hitObjectRecordMissEXT(hitObjectEXT,uint,uint,vec3,float,vec3,float);"
+            "void hitObjectRecordMissMotionEXT(hitObjectEXT,uint,uint,vec3,float,vec3,float,float);"
+            "void hitObjectRecordEmptyEXT(hitObjectEXT);"
+            "void hitObjectExecuteShaderEXT(hitObjectEXT,int);"
+            "bool hitObjectIsEmptyEXT(hitObjectEXT);"
+            "bool hitObjectIsMissEXT(hitObjectEXT);"
+            "bool hitObjectIsHitEXT(hitObjectEXT);"
+            "float hitObjectGetRayTMinEXT(hitObjectEXT);"
+            "float hitObjectGetRayTMaxEXT(hitObjectEXT);"
+            "uint hitObjectGetRayFlagsEXT(hitObjectEXT);"
+            "vec3 hitObjectGetWorldRayOriginEXT(hitObjectEXT);"
+            "vec3 hitObjectGetWorldRayDirectionEXT(hitObjectEXT);"
+            "vec3 hitObjectGetObjectRayOriginEXT(hitObjectEXT);"
+            "vec3 hitObjectGetObjectRayDirectionEXT(hitObjectEXT);"
+            "mat4x3 hitObjectGetWorldToObjectEXT(hitObjectEXT);"
+            "mat4x3 hitObjectGetObjectToWorldEXT(hitObjectEXT);"
+            "int hitObjectGetInstanceCustomIndexEXT(hitObjectEXT);"
+            "int hitObjectGetInstanceIdEXT(hitObjectEXT);"
+            "int hitObjectGetGeometryIndexEXT(hitObjectEXT);"
+            "int hitObjectGetPrimitiveIndexEXT(hitObjectEXT);"
+            "uint hitObjectGetHitKindEXT(hitObjectEXT);"
+            "void hitObjectGetAttributesEXT(hitObjectEXT,int);"
+            "float hitObjectGetCurrentTimeEXT(hitObjectEXT);"
+            "uint hitObjectGetShaderBindingTableRecordIndexEXT(hitObjectEXT);"
+            "uvec2 hitObjectGetShaderRecordBufferHandleEXT(hitObjectEXT);"
+            "void hitObjectSetShaderBindingTableRecordIndexEXT(hitObjectEXT, uint);"
+            "void hitObjectRecordFromQueryEXT(hitObjectEXT, rayQueryEXT, uint, int);"
+            "void hitObjectGetIntersectionTriangleVertexPositionsEXT(hitObjectEXT, out vec3[3]);"
             "\n");
         stageBuiltins[EShLangCallable].append(
             "void executeCallableNV(uint, int);"
@@ -6874,7 +7074,7 @@ void TBuiltIns::initialize(int version, EProfile profile, const SpvVersion& spvV
                                                                           false,
                                                                           ms      ? true : false);
 
-                        TString typeName = sampler.getString();
+                        TString typeName = TString{sampler.getString()};
 
                         addQueryFunctions(sampler, typeName, version, profile);
                         addImageFunctions(sampler, typeName, version, profile);
@@ -6977,7 +7177,7 @@ void TBuiltIns::add2ndGenerationSamplingImaging(int version, EProfile profile, c
                                                                              ms      ? true : false);
                             }
 
-                            TString typeName = sampler.getString();
+                            TString typeName = TString{sampler.getString()};
 
                             if (dim == EsdSubpass) {
                                 addSubpassSampling(sampler, typeName, version, profile);
@@ -7001,7 +7201,7 @@ void TBuiltIns::add2ndGenerationSamplingImaging(int version, EProfile profile, c
                                     // texture types.
                                     sampler.setTexture(sampler.type, sampler.dim, sampler.arrayed, sampler.shadow,
                                                        sampler.ms);
-                                    TString textureTypeName = sampler.getString();
+                                    TString textureTypeName = TString{sampler.getString()};
                                     addSamplingFunctions(sampler, textureTypeName, version, profile);
                                     addQueryFunctions(sampler, textureTypeName, version, profile);
                                 }
@@ -8283,6 +8483,12 @@ void TBuiltIns::initialize(const TBuiltInResource &resources, int version, EProf
         snprintf(builtInConstant, maxSize, "const int gl_MaxComputeUniformComponents = %d;", resources.maxComputeUniformComponents);
         s.append(builtInConstant);
         snprintf(builtInConstant, maxSize, "const int gl_MaxComputeTextureImageUnits = %d;", resources.maxComputeTextureImageUnits);
+        s.append(builtInConstant);
+
+        // GL_ARM_tensors operands.
+        snprintf(builtInConstant, maxSize, "const uint gl_TensorOperandsNonTemporalARM = 0x1U;");
+        s.append(builtInConstant);
+        snprintf(builtInConstant, maxSize, "const uint gl_TensorOperandsOutOfBoundsValueARM = 0x2U;");
         s.append(builtInConstant);
 
         s.append("\n");
@@ -9685,9 +9891,31 @@ void TBuiltIns::identifyBuiltIns(int version, EProfile profile, const SpvVersion
         }
 
         {
-            symbolTable.setFunctionExtensions("coopMatLoad",   1, &E_GL_KHR_cooperative_matrix);
-            symbolTable.setFunctionExtensions("coopMatStore",  1, &E_GL_KHR_cooperative_matrix);
+            auto coopMatKHRCallback = [](const char *name) -> std::vector<const char *> {
+                std::vector<const char *> ret;
+                if (strstr(name, "u64") != nullptr) {
+                    ret.push_back(E_GL_EXT_shader_64bit_indexing);
+                } else {
+                    ret.push_back(E_GL_KHR_cooperative_matrix);
+                }
+                return ret;
+            };
+            auto coopMat2NVCallback = [](const char *name) -> std::vector<const char *> {
+                std::vector<const char *> ret;
+                if (strstr(name, "u64") != nullptr) {
+                    ret.push_back(E_GL_EXT_shader_64bit_indexing);
+                } else {
+                    ret.push_back(E_GL_NV_cooperative_matrix2);
+                }
+                return ret;
+            };
+
+            symbolTable.setFunctionExtensionsCallback("coopMatLoad",   coopMatKHRCallback);
+            symbolTable.setFunctionExtensionsCallback("coopMatStore",  coopMatKHRCallback);
             symbolTable.setFunctionExtensions("coopMatMulAdd", 1, &E_GL_KHR_cooperative_matrix);
+
+            symbolTable.setFunctionExtensionsCallback("coopMatLoadTensorNV",   coopMat2NVCallback);
+            symbolTable.setFunctionExtensionsCallback("coopMatStoreTensorNV",   coopMat2NVCallback);
 
             symbolTable.setFunctionExtensions("coopMatReduceNV",   1, &E_GL_NV_cooperative_matrix2);
             symbolTable.setFunctionExtensions("coopMatPerElementNV",  1, &E_GL_NV_cooperative_matrix2);
@@ -9707,10 +9935,34 @@ void TBuiltIns::identifyBuiltIns(int version, EProfile profile, const SpvVersion
         }
 
         {
-            symbolTable.setFunctionExtensions("coopVecMatMulNV",                    1, &E_GL_NV_cooperative_vector);
-            symbolTable.setFunctionExtensions("coopVecMatMulAddNV",                 1, &E_GL_NV_cooperative_vector);
-            symbolTable.setFunctionExtensions("coopVecOuterProductAccumulateNV",    1, &E_GL_NV_cooperative_vector);
-            symbolTable.setFunctionExtensions("coopVecReduceSumAccumulateNV",       1, &E_GL_NV_cooperative_vector);
+            symbolTable.setFunctionExtensions("tensorReadARM",   1, &E_GL_ARM_tensors);
+            symbolTable.setFunctionExtensions("tensorWriteARM",  1, &E_GL_ARM_tensors);
+            symbolTable.setFunctionExtensions("tensorSizeARM",   1, &E_GL_ARM_tensors);
+        }
+        {
+            auto coopVecCallback = [](const char *name) -> std::vector<const char *> {
+                std::vector<const char *> ret;
+                // This looks for u64 as the last parameter (the offset)
+                if (strstr(name, "u641;") != nullptr) {
+                    ret.push_back(E_GL_EXT_shader_64bit_indexing);
+                } else {
+                    ret.push_back(E_GL_NV_cooperative_vector);
+                }
+                return ret;
+            };
+            symbolTable.setFunctionExtensionsCallback("coopVecMatMulNV", coopVecCallback);
+            symbolTable.setFunctionExtensionsCallback("coopVecMatMulAddNV", coopVecCallback);
+            symbolTable.setFunctionExtensionsCallback("coopVecLoadNV", coopVecCallback);
+            symbolTable.setFunctionExtensionsCallback("coopVecStoreNV", coopVecCallback);
+            symbolTable.setFunctionExtensionsCallback("coopVecOuterProductAccumulateNV", coopVecCallback);
+            symbolTable.setFunctionExtensionsCallback("coopVecReduceSumAccumulateNV", coopVecCallback);
+        }
+
+        {
+          symbolTable.setFunctionExtensions("bitcastQCOM", 1, &E_GL_QCOM_cooperative_matrix_conversion);
+          symbolTable.setFunctionExtensions("extractSubArrayQCOM", 1, &E_GL_QCOM_cooperative_matrix_conversion);
+          symbolTable.setFunctionExtensions("vectorToCoopmatQCOM", 1, &E_GL_QCOM_cooperative_matrix_conversion);
+          symbolTable.setFunctionExtensions("coopmatToVectorQCOM", 1, &E_GL_QCOM_cooperative_matrix_conversion);
         }
 
         if ((profile != EEsProfile && version >= 450) || (profile == EEsProfile && version >= 320)) {
@@ -9752,6 +10004,19 @@ void TBuiltIns::identifyBuiltIns(int version, EProfile profile, const SpvVersion
             symbolTable.setFunctionExtensions("bfloat16BitsToUintEXT", 1, &E_GL_EXT_bfloat16);
             symbolTable.setFunctionExtensions("intBitsToBFloat16EXT", 1, &E_GL_EXT_bfloat16);
             symbolTable.setFunctionExtensions("uintBitsToBFloat16EXT", 1, &E_GL_EXT_bfloat16);
+
+            symbolTable.setFunctionExtensions("floate5m2BitsToIntEXT", 1, &E_GL_EXT_float_e5m2);
+            symbolTable.setFunctionExtensions("floate5m2BitsToUintEXT", 1, &E_GL_EXT_float_e5m2);
+            symbolTable.setFunctionExtensions("intBitsToFloate5m2EXT", 1, &E_GL_EXT_float_e5m2);
+            symbolTable.setFunctionExtensions("uintBitsToFloate5m2EXT", 1, &E_GL_EXT_float_e5m2);
+
+            symbolTable.setFunctionExtensions("floate4m3BitsToIntEXT", 1, &E_GL_EXT_float_e4m3);
+            symbolTable.setFunctionExtensions("floate4m3BitsToUintEXT", 1, &E_GL_EXT_float_e4m3);
+            symbolTable.setFunctionExtensions("intBitsToFloate4m3EXT", 1, &E_GL_EXT_float_e4m3);
+            symbolTable.setFunctionExtensions("uintBitsToFloate4m3EXT", 1, &E_GL_EXT_float_e4m3);
+
+            const char *float8exts[] = {E_GL_EXT_float_e5m2, E_GL_EXT_float_e4m3};
+            symbolTable.setFunctionExtensions("saturatedConvertEXT", 2, float8exts);
         }
 
         // E_SPV_QCOM_tile_shading
@@ -9874,6 +10139,40 @@ void TBuiltIns::identifyBuiltIns(int version, EProfile profile, const SpvVersion
             symbolTable.setFunctionExtensions("hitObjectGetLSSRadiiNV", 1, &E_GL_NV_linear_swept_spheres);
             symbolTable.setFunctionExtensions("hitObjectIsSphereHitNV", 1, &E_GL_NV_linear_swept_spheres);
             symbolTable.setFunctionExtensions("hitObjectIsLSSHitNV", 1, &E_GL_NV_linear_swept_spheres);
+            symbolTable.setFunctionExtensions("hitObjectTraceRayEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectTraceRayMotionEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectRecordMissEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectRecordMissMotionEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectRecordEmptyEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectExecuteShaderEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectIsEmptyEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectIsMissEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectIsHitEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetRayTMinEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetRayTMaxEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetRayFlagsEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetObjectRayOriginEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetObjectRayDirectionEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetWorldRayOriginEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetWorldRayDirectionEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetWorldToObjectEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetObjectToWorldEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetInstanceCustomIndexEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetInstanceIdEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetGeometryIndexEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetPrimitiveIndexEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetHitKindEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetAttributesEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetCurrentTimeEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetShaderBindingTableRecordIndexEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetShaderRecordBufferHandleEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectSetShaderBindingTableRecordIndexEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("reorderThreadEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectReorderExecuteEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectTraceReorderExecuteEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectTraceMotionReorderExecuteEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectRecordFromQueryEXT", 1, &E_GL_EXT_shader_invocation_reorder);
+            symbolTable.setFunctionExtensions("hitObjectGetIntersectionTriangleVertexPositionsEXT", 1, &E_GL_EXT_shader_invocation_reorder);
 
 
             BuiltInVariable("gl_LaunchIDNV",             EbvLaunchId,           symbolTable);
@@ -10750,6 +11049,18 @@ void TBuiltIns::identifyBuiltIns(int version, EProfile profile, const SpvVersion
             symbolTable.relateToOperator("bfloat16BitsToUintEXT", EOpFloatBitsToUint);
             symbolTable.relateToOperator("intBitsToBFloat16EXT",  EOpIntBitsToFloat);
             symbolTable.relateToOperator("uintBitsToBFloat16EXT", EOpUintBitsToFloat);
+
+            symbolTable.relateToOperator("floate5m2BitsToIntEXT",  EOpFloatBitsToInt);
+            symbolTable.relateToOperator("floate5m2BitsToUintEXT", EOpFloatBitsToUint);
+            symbolTable.relateToOperator("intBitsToFloate5m2EXT",  EOpIntBitsToFloat);
+            symbolTable.relateToOperator("uintBitsToFloate5m2EXT", EOpUintBitsToFloat);
+
+            symbolTable.relateToOperator("floate4m3BitsToIntEXT",  EOpFloatBitsToInt);
+            symbolTable.relateToOperator("floate4m3BitsToUintEXT", EOpFloatBitsToUint);
+            symbolTable.relateToOperator("intBitsToFloate4m3EXT",  EOpIntBitsToFloat);
+            symbolTable.relateToOperator("uintBitsToFloate4m3EXT", EOpUintBitsToFloat);
+
+            symbolTable.relateToOperator("saturatedConvertEXT", EOpConstructSaturated);
         }
 
         // GL_KHR_shader_subgroup
@@ -10997,6 +11308,15 @@ void TBuiltIns::identifyBuiltIns(int version, EProfile profile, const SpvVersion
         symbolTable.relateToOperator("setTensorViewStrideNV",        EOpTensorViewSetStrideNV);
         symbolTable.relateToOperator("setTensorViewClipNV",          EOpTensorViewSetClipNV);
 
+        symbolTable.relateToOperator("tensorReadARM",                EOpTensorReadARM);
+        symbolTable.relateToOperator("tensorWriteARM",               EOpTensorWriteARM);
+        symbolTable.relateToOperator("tensorSizeARM",                EOpTensorSizeARM);
+
+        symbolTable.relateToOperator("bitcastQCOM", EOpBitCastArrayQCOM);
+        symbolTable.relateToOperator("extractSubArrayQCOM", EOpExtractSubArrayQCOM);
+        symbolTable.relateToOperator("vectorToCoopmatQCOM", EOpCompositeConstructCoopMatQCOM);
+        symbolTable.relateToOperator("coopmatToVectorQCOM", EOpCompositeExtractCoopMatQCOM);
+
         if (profile != EEsProfile && version >= 460) {
             symbolTable.relateToOperator("fetchMicroTriangleVertexPositionNV", EOpFetchMicroTriangleVertexPositionNV);
             symbolTable.relateToOperator("fetchMicroTriangleVertexBarycentricNV", EOpFetchMicroTriangleVertexBarycentricNV);
@@ -11056,6 +11376,40 @@ void TBuiltIns::identifyBuiltIns(int version, EProfile profile, const SpvVersion
             symbolTable.relateToOperator("hitObjectGetLSSRadiiNV", EOpHitObjectGetLSSRadiiNV);
             symbolTable.relateToOperator("hitObjectIsSphereHitNV", EOpHitObjectIsSphereHitNV);
             symbolTable.relateToOperator("hitObjectIsLSSHitNV", EOpHitObjectIsLSSHitNV);
+            symbolTable.relateToOperator("hitObjectTraceRayEXT", EOpHitObjectTraceRayEXT);
+            symbolTable.relateToOperator("hitObjectTraceRayMotionEXT", EOpHitObjectTraceRayMotionEXT);
+            symbolTable.relateToOperator("hitObjectRecordMissEXT", EOpHitObjectRecordMissEXT);
+            symbolTable.relateToOperator("hitObjectRecordMissMotionEXT", EOpHitObjectRecordMissMotionEXT);
+            symbolTable.relateToOperator("hitObjectRecordEmptyEXT", EOpHitObjectRecordEmptyEXT);
+            symbolTable.relateToOperator("hitObjectExecuteShaderEXT", EOpHitObjectExecuteShaderEXT);
+            symbolTable.relateToOperator("hitObjectIsEmptyEXT", EOpHitObjectIsEmptyEXT);
+            symbolTable.relateToOperator("hitObjectIsMissEXT", EOpHitObjectIsMissEXT);
+            symbolTable.relateToOperator("hitObjectIsHitEXT", EOpHitObjectIsHitEXT);
+            symbolTable.relateToOperator("hitObjectGetRayTMinEXT", EOpHitObjectGetRayTMinEXT);
+            symbolTable.relateToOperator("hitObjectGetRayTMaxEXT", EOpHitObjectGetRayTMaxEXT);
+            symbolTable.relateToOperator("hitObjectGetRayFlagsEXT", EOpHitObjectGetRayFlagsEXT);
+            symbolTable.relateToOperator("hitObjectGetObjectRayOriginEXT", EOpHitObjectGetObjectRayOriginEXT);
+            symbolTable.relateToOperator("hitObjectGetObjectRayDirectionEXT", EOpHitObjectGetObjectRayDirectionEXT);
+            symbolTable.relateToOperator("hitObjectGetWorldRayOriginEXT", EOpHitObjectGetWorldRayOriginEXT);
+            symbolTable.relateToOperator("hitObjectGetWorldRayDirectionEXT", EOpHitObjectGetWorldRayDirectionEXT);
+            symbolTable.relateToOperator("hitObjectGetWorldToObjectEXT", EOpHitObjectGetWorldToObjectEXT);
+            symbolTable.relateToOperator("hitObjectGetObjectToWorldEXT", EOpHitObjectGetObjectToWorldEXT);
+            symbolTable.relateToOperator("hitObjectGetInstanceCustomIndexEXT", EOpHitObjectGetInstanceCustomIndexEXT);
+            symbolTable.relateToOperator("hitObjectGetInstanceIdEXT", EOpHitObjectGetInstanceIdEXT);
+            symbolTable.relateToOperator("hitObjectGetGeometryIndexEXT", EOpHitObjectGetGeometryIndexEXT);
+            symbolTable.relateToOperator("hitObjectGetPrimitiveIndexEXT", EOpHitObjectGetPrimitiveIndexEXT);
+            symbolTable.relateToOperator("hitObjectGetHitKindEXT", EOpHitObjectGetHitKindEXT);
+            symbolTable.relateToOperator("hitObjectGetAttributesEXT", EOpHitObjectGetAttributesEXT);
+            symbolTable.relateToOperator("hitObjectGetCurrentTimeEXT", EOpHitObjectGetCurrentTimeEXT);
+            symbolTable.relateToOperator("hitObjectGetShaderBindingTableRecordIndexEXT", EOpHitObjectGetShaderBindingTableRecordIndexEXT);
+            symbolTable.relateToOperator("hitObjectGetShaderRecordBufferHandleEXT", EOpHitObjectGetShaderRecordBufferHandleEXT);
+            symbolTable.relateToOperator("hitObjectSetShaderBindingTableRecordIndexEXT", EOpHitObjectSetShaderBindingTableRecordIndexEXT);
+            symbolTable.relateToOperator("reorderThreadEXT", EOpReorderThreadEXT);
+            symbolTable.relateToOperator("hitObjectReorderExecuteEXT", EOpHitObjectReorderExecuteEXT);
+            symbolTable.relateToOperator("hitObjectTraceReorderExecuteEXT", EOpHitObjectTraceReorderExecuteEXT);
+            symbolTable.relateToOperator("hitObjectTraceMotionReorderExecuteEXT", EOpHitObjectTraceMotionReorderExecuteEXT);
+            symbolTable.relateToOperator("hitObjectRecordFromQueryEXT", EOpHitObjectRecordFromQueryEXT);
+            symbolTable.relateToOperator("hitObjectGetIntersectionTriangleVertexPositionsEXT", EOpHitObjectGetIntersectionTriangleVertexPositionsEXT);
         }
         break;
     case EShLangIntersect:

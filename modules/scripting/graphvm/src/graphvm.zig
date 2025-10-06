@@ -49,7 +49,7 @@ pub const NodeType = cdb.CdbTypeDecl(
     struct {
         pub fn getNodeTypeId(db: *const cdb.CdbAPI, reader: *cdb.Obj) cetech1.StrId32 {
             const str = NodeType.readStr(db, reader, .node_type) orelse return .{};
-            return cetech1.strId32(str);
+            return .fromStr(str);
         }
     },
 );
@@ -78,12 +78,12 @@ pub const ConnectionType = cdb.CdbTypeDecl(
     struct {
         pub fn getFromPinId(db: *const cdb.CdbAPI, reader: *cdb.Obj) cetech1.StrId32 {
             const str = ConnectionType.readStr(db, reader, .from_pin) orelse return .{};
-            return cetech1.strId32(str);
+            return .fromStr(str);
         }
 
         pub fn getToPinId(db: *const cdb.CdbAPI, reader: *cdb.Obj) cetech1.StrId32 {
             const str = ConnectionType.readStr(db, reader, .to_pin) orelse return .{};
-            return cetech1.strId32(str);
+            return .fromStr(str);
         }
     },
 );
@@ -194,9 +194,9 @@ pub const NodePin = struct {
         return .{
             .name = name,
             .pin_name = pin_name,
-            .pin_hash = cetech1.strId32(pin_name),
+            .pin_hash = .fromStr(pin_name),
             .type_hash = type_hash,
-            .type_of = if (type_of) |t| cetech1.strId32(t) else null,
+            .type_of = if (type_of) |t| .fromStr(t) else null,
         };
     }
 
@@ -204,7 +204,7 @@ pub const NodePin = struct {
         return .{
             .name = name,
             .pin_name = pin_name,
-            .pin_hash = cetech1.strId32(pin_name),
+            .pin_hash = .fromStr(pin_name),
             .type_hash = type_hash,
         };
     }
@@ -296,7 +296,7 @@ pub const NodeI = struct {
 
     pub fn implement(args: NodeI, comptime S: ?type, comptime T: type) NodeI {
         var self = args;
-        self.type_hash = cetech1.strId32(args.type_name);
+        self.type_hash = .fromStr(args.type_name);
         self.getPinsDef = T.getPinsDef;
         self.execute = T.execute;
 

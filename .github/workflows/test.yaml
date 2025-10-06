@@ -120,7 +120,7 @@ jobs:
   x86-64-macos:
     needs: ["validation"]
     name: x86-64 Macos
-    runs-on: macos-13-large # macos-latest
+    runs-on: macos-15-large # macos-latest
     timeout-minutes: 10
     steps:
       - name: Checkout

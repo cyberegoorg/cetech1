@@ -32,19 +32,19 @@ pub const MAX_CHANNELS = 16;
 pub const VertexChannel = struct {
     offset: u32 = 0,
     stride: u32 = 0,
-    buffer: shader_system.BufferHandle = .{ .vb = .{ .idx = 0 } },
+    buffer: gpu.BufferHandle = .{ .vb = .{ .idx = 0 } },
 };
 
 pub const VertexBuffer = struct {
     active_channels: VertexActiveChannels = .initEmpty(),
     num_vertices: u32 = 0,
     num_sets: u32 = 0,
-    primitive_type: shader_system.PrimitiveType = .triangles,
+    primitive_type: gpu.PrimitiveType = .triangles,
     channels: [MAX_CHANNELS]VertexChannel = @splat(.{}),
 };
 
 pub const GPUGeometry = struct {
-    primitive_type: shader_system.PrimitiveType = .triangles,
+    primitive_type: gpu.PrimitiveType = .triangles,
     system: shader_system.System = .{},
     uniforms: ?shader_system.UniformBufferInstance = null,
     resources: ?shader_system.ResourceBufferInstance = null,

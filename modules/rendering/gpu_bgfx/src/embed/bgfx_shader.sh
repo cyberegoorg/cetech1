@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2024 Branimir Karadzic. All rights reserved.
+ * Copyright 2011-2025 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bgfx/blob/master/LICENSE
  */
 
@@ -721,6 +721,7 @@ uniform mat4  u_viewProj;
 uniform mat4  u_invViewProj;
 uniform mat4  u_model[BGFX_CONFIG_MAX_BONES];
 uniform mat4  u_modelView;
+uniform mat4  u_invModelView;
 uniform mat4  u_modelViewProj;
 uniform vec4  u_alphaRef4;
 #define u_alphaRef u_alphaRef4.x

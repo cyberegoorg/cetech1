@@ -40,6 +40,7 @@ var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 
 var _ecs: *const ecs.EcsAPI = undefined;
+
 var _gpu: *const gpu.GpuApi = undefined;
 
 var _dd: *const gpu.GpuDDApi = undefined;
@@ -81,7 +82,6 @@ const Viewport = struct {
     renderMe: bool,
 
     render_pipeline: render_pipeline.RenderPipeline = undefined,
-
     graph_builder: render_graph.GraphBuilder = undefined,
 
     // Frame params
@@ -108,7 +108,9 @@ const Viewport = struct {
     // DD
     enabled_dd_set: EnabledDebugDrawSet = undefined,
 
-    fn init(name: [:0]const u8, world: ?ecs.World, camera_ent: ecs.EntityId) !Viewport {
+    gpu: gpu.GpuBackend,
+
+    fn init(name: [:0]const u8, gpu_backend: gpu.GpuBackend, world: ?ecs.World, camera_ent: ecs.EntityId) !Viewport {
         const dupe_name = try _allocator.dupeZ(u8, name);
 
         var buf: [128]u8 = undefined;
@@ -120,7 +122,7 @@ const Viewport = struct {
             .renderMe = false,
             .renderables_culling = culling.CullingSystem.init(_allocator, _profiler, _task),
             .shaderables_culling = culling.CullingSystem.init(_allocator, _profiler, _task),
-            .graph_builder = try _render_graph.createBuilder(_allocator),
+            .graph_builder = try _render_graph.createBuilder(_allocator, gpu_backend),
 
             .all_renderables_counter = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/all_renerables", .{dupe_name})),
             .all_shaderables_counter = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/all_shaderables", .{dupe_name})),
@@ -139,12 +141,13 @@ const Viewport = struct {
             .viewports_count = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/viewports_count", .{dupe_name})),
 
             .enabled_dd_set = EnabledDebugDrawSet.init(),
+            .gpu = gpu_backend,
         };
     }
 
     fn deinit(self: *Viewport) void {
         if (self.output.isValid()) {
-            _gpu.destroyTexture(self.output);
+            self.gpu.destroyTexture(self.output);
         }
 
         self.shaderables_culling.deinit();
@@ -169,7 +172,7 @@ var kernel_render_task = cetech1.kernel.KernelTaskUpdateI.implment(
     1,
     struct {
         pub fn update(kernel_tick: u64, dt: f32) !void {
-            if (_kernel.getGpuCtx()) |ctx| {
+            if (_kernel.getGpuBackend()) |ctx| {
                 try renderAll(ctx, kernel_tick, dt, !_kernel.isHeadlessMode());
             }
         }
@@ -182,9 +185,9 @@ var viewport_visibility_flag_i = visibility_flags.VisibilityFlagI.implement(.{
     .default = true,
 });
 
-fn createViewport(name: [:0]const u8, world: ?ecs.World, camera_ent: ecs.EntityId) !public.Viewport {
+fn createViewport(name: [:0]const u8, gpu_backend: gpu.GpuBackend, world: ?ecs.World, camera_ent: ecs.EntityId) !public.Viewport {
     const new_viewport = try _g.viewport_pool.create();
-    new_viewport.* = try .init(name, world, camera_ent);
+    new_viewport.* = try .init(name, gpu_backend, world, camera_ent);
 
     try _g.viewport_set.put(_allocator, new_viewport, {});
     return public.Viewport{
@@ -329,6 +332,7 @@ pub const viewport_vt = public.Viewport.VTable.implement(struct {
 
 const RenderViewportTask = struct {
     viewport: *Viewport,
+    gpu: gpu.GpuBackend,
     now_s: f32,
     pub fn exec(self: *@This()) !void {
         const complete_counter = cetech1.metrics.MetricScopedDuration.begin(self.viewport.complete_render_duration);
@@ -387,12 +391,14 @@ const RenderViewportTask = struct {
                                 aspect_ratio,
                                 cameras[idx].near,
                                 cameras[idx].far,
+                                self.gpu.isHomogenousDepth(),
                             ),
                             .ortho => _camera.orthographic(
                                 fb_size[0],
                                 fb_size[1],
                                 cameras[idx].near,
                                 cameras[idx].far,
+                                self.gpu.isHomogenousDepth(),
                             ),
                         };
 
@@ -407,7 +413,7 @@ const RenderViewportTask = struct {
                             try culling_viewers.insert(allocator, 0, cv);
 
                             // To struct
-                            const system = _shader.findSystemByName(cetech1.strId32("viewer_system")).?;
+                            const system = _shader.findSystemByName(.fromStr("viewer_system")).?;
                             const system_io = _shader.getSystemIO(system);
                             const system_uniform = (try _shader.createUniformBuffer(system_io)).?;
 
@@ -424,7 +430,7 @@ const RenderViewportTask = struct {
                             try _shader.updateUniforms(
                                 system_io,
                                 system_uniform,
-                                &.{.{ .name = cetech1.strId32("camera_pos"), .value = std.mem.asBytes(&pos) }},
+                                &.{.{ .name = .fromStr("camera_pos"), .value = std.mem.asBytes(&pos) }},
                             );
 
                             const v = render_graph.Viewer{
@@ -574,6 +580,7 @@ const RenderViewportTask = struct {
                     // if (result.visibleCount() > 0) {
                     try shaderable.update(
                         allocator,
+                        self.gpu,
                         graph_builder,
                         world,
                         vp,
@@ -743,6 +750,7 @@ const RenderViewportTask = struct {
                     if (result.visibleCount() > 0) {
                         try renderable.render(
                             allocator,
+                            self.gpu,
                             graph_builder,
                             world,
                             vp,
@@ -762,8 +770,8 @@ const RenderViewportTask = struct {
                 var z = _profiler.ZoneN(@src(), "Render viewport - Debugdraw pass");
                 defer z.End();
 
-                if (_gpu.getEncoder()) |e| {
-                    defer _gpu.endEncoder(e);
+                if (self.gpu.getEncoder()) |e| {
+                    defer self.gpu.endEncoder(e);
 
                     const dd = _dd.encoderCreate();
                     defer _dd.encoderDestroy(dd);
@@ -797,7 +805,7 @@ const RenderViewportTask = struct {
                                 const entities = it.entities();
                                 const data = it.fieldRaw(iface.size, iface.aligment, 0).?;
 
-                                try debugdraw(dd, world, entities, data, fb_size);
+                                try debugdraw(self.gpu, dd, world, entities, data, fb_size);
                             }
                         }
                     }
@@ -809,13 +817,13 @@ const RenderViewportTask = struct {
                 _shader.destroyUniformBuffer(io, value.viewer_system_uniforms);
             }
 
-            _gpu.endAllUsedEncoders();
-            _ = _gpu.frame(false);
+            self.gpu.endAllUsedEncoders();
+            _ = self.gpu.frame(false);
         }
     }
 };
 
-fn renderAllViewports(allocator: std.mem.Allocator, time_s: f32) !void {
+fn renderAllViewports(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, time_s: f32) !void {
     var zone_ctx = _profiler.ZoneN(@src(), "RenderAllViewports");
     defer zone_ctx.End();
 
@@ -830,38 +838,31 @@ fn renderAllViewports(allocator: std.mem.Allocator, time_s: f32) !void {
 
         if (recreate) {
             if (viewport.output.isValid()) {
-                _gpu.destroyTexture(viewport.output);
+                gpu_backend.destroyTexture(viewport.output);
             }
 
-            const txFlags: u64 = 0 |
-                gpu.TextureFlags_Rt |
-                gpu.TextureFlags_BlitDst;
-
-            const t = _gpu.createTexture2D(
+            const t = gpu_backend.createTexture2D(
                 @intFromFloat(viewport.new_size[0]),
                 @intFromFloat(viewport.new_size[1]),
                 false,
                 1,
                 gpu.TextureFormat.BGRA8,
-                txFlags,
+                .{
+                    .blit_dst = true,
+                    .rt = .rt,
+                },
+                null,
                 null,
             );
             viewport.output = t;
             viewport.size = viewport.new_size;
         }
 
+        var t = RenderViewportTask{ .viewport = viewport, .gpu = gpu_backend, .now_s = time_s };
         if (true) {
-            var render_task = RenderViewportTask{ .viewport = viewport, .now_s = time_s };
-            try render_task.exec();
+            try t.exec();
         } else {
-            const task_id = try _task.schedule(
-                cetech1.task.TaskID.none,
-                RenderViewportTask{
-                    .viewport = viewport,
-                    .now_s = time_s,
-                },
-                .{},
-            );
+            const task_id = try _task.schedule(cetech1.task.TaskID.none, t, .{});
             try tasks.append(allocator, task_id);
         }
     }
@@ -872,9 +873,9 @@ fn renderAllViewports(allocator: std.mem.Allocator, time_s: f32) !void {
 }
 
 var old_fb_size = [2]i32{ -1, -1 };
-var old_flags = gpu.ResetFlags_None;
+var old_flags = gpu.ResetFlags{};
 var dt_accum: f32 = 0;
-fn renderAll(ctx: *gpu.GpuContext, kernel_tick: u64, dt: f32, vsync: bool) !void {
+fn renderAll(gpu_backend: gpu.GpuBackend, kernel_tick: u64, dt: f32, vsync: bool) !void {
     var zone_ctx = _profiler.ZoneN(@src(), "Render");
     defer zone_ctx.End();
 
@@ -883,54 +884,52 @@ fn renderAll(ctx: *gpu.GpuContext, kernel_tick: u64, dt: f32, vsync: bool) !void
     //
     const allocator = try _tmpalloc.create();
     defer _tmpalloc.destroy(allocator);
-    try renderAllViewports(allocator, dt_accum);
+    try renderAllViewports(allocator, gpu_backend, dt_accum);
 
     //
     // Render main viewport
     //
 
     // TODO: use viewport
-    var flags = gpu.ResetFlags_None; // | gpu.ResetFlags_FlushAfterRender;
+    var flags = gpu.ResetFlags{}; // | gpu.ResetFlags_FlushAfterRender;
 
     var size = [2]i32{ 0, 0 };
-    if (_gpu.getWindow(ctx)) |w| {
+    if (gpu_backend.getWindow()) |w| {
         size = w.getFramebufferSize();
     }
 
-    if (vsync) {
-        flags |= gpu.ResetFlags_Vsync;
-    }
+    flags.Vsync = vsync;
 
-    if (old_flags != flags or old_fb_size[0] != size[0] or old_fb_size[1] != size[1]) {
-        _gpu.reset(
+    if (!std.meta.eql(old_flags, flags) or old_fb_size[0] != size[0] or old_fb_size[1] != size[1]) {
+        gpu_backend.reset(
             @intCast(size[0]),
             @intCast(size[1]),
             flags,
-            _gpu.getResolution().format,
+            gpu_backend.getResolution().formatColor,
         );
         old_fb_size = size;
         old_flags = flags;
     }
 
-    _gpu.setViewClear(0, gpu.ClearFlags_Color | gpu.ClearFlags_Depth, 0x303030ff, 1.0, 0);
-    _gpu.setViewRectRatio(0, 0, 0, .Equal);
+    gpu_backend.setViewClear(0, .{ .Color = true, .Depth = true }, 0x303030ff, 1.0, 0);
+    gpu_backend.setViewRectRatio(0, 0, 0, .Equal);
 
     {
-        const encoder = _gpu.getEncoder().?;
-        defer _gpu.endEncoder(encoder);
+        const encoder = gpu_backend.getEncoder().?;
+        defer gpu_backend.endEncoder(encoder);
         encoder.touch(0);
     }
-    _gpu.dbgTextClear(0, false);
+    gpu_backend.dbgTextClear(0, false);
 
-    try _coreui.draw(allocator, kernel_tick, dt);
+    try _coreui.draw(allocator, gpu_backend, kernel_tick, dt);
 
-    _gpu.endAllUsedEncoders();
+    gpu_backend.endAllUsedEncoders();
 
     // TODO: save frameid for sync (sync across frames like read back frame + 2)
     {
         var frame_zone_ctx = _profiler.ZoneN(@src(), "frame");
         defer frame_zone_ctx.End();
-        _g.current_frame = _gpu.frame(false);
+        _g.current_frame = gpu_backend.frame(false);
     }
 
     dt_accum += dt;

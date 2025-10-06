@@ -36,7 +36,7 @@ var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
 
 var _ecs: *const ecs.EcsAPI = undefined;
-var _gpu: *const gpu.GpuApi = undefined;
+
 var _dd: *const gpu.GpuDDApi = undefined;
 var _render_viewport: *const render_viewport.RenderViewportApi = undefined;
 var _render_graph: *const render_graph.RenderGraphApi = undefined;
@@ -136,6 +136,7 @@ const bloom_shaderable = render_viewport.ShaderableComponentI.implement(BloomCom
 
     pub fn update(
         allocator: std.mem.Allocator,
+        gpu_backend: gpu.GpuBackend,
         builder: render_graph.GraphBuilder,
         world: ecs.World,
         viewport: render_viewport.Viewport,
@@ -151,8 +152,8 @@ const bloom_shaderable = render_viewport.ShaderableComponentI.implement(BloomCom
         _ = viewport;
         _ = builder;
         _ = viewers;
-        // _ = pipeline;
         _ = transforms;
+        _ = gpu_backend;
 
         _ = visibility;
         _ = system_context;
@@ -220,13 +221,17 @@ const depth_pass = render_graph.PassApi.implement(struct {
             "depth",
             .{
                 .format = gpu.TextureFormat.D24,
-                .flags = 0 |
-                    gpu.TextureFlags_Rt |
-                    gpu.SamplerFlags_MinPoint |
-                    gpu.SamplerFlags_MagPoint |
-                    gpu.SamplerFlags_MipPoint |
-                    gpu.SamplerFlags_UClamp |
-                    gpu.SamplerFlags_VClamp,
+                .flags = .{
+                    .rt = .rt,
+                },
+                .sampler_flags = .{
+                    .min_filter = .point,
+                    .max_filter = .point,
+                    .mip_mode = .point,
+                    .u = .clamp,
+                    .v = .clamp,
+                },
+
                 .clear_depth = 1.0,
             },
         );
@@ -236,10 +241,10 @@ const depth_pass = render_graph.PassApi.implement(struct {
         try builder.enablePass(pass);
     }
 
-    pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_api: *const gpu.GpuApi, vp_size: [2]f32, viewid: gpu.ViewId) !void {
+    pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_backend: gpu.GpuBackend, vp_size: [2]f32, viewid: gpu.ViewId) !void {
         _ = builder;
         _ = vp_size;
-        _ = gpu_api;
+        _ = gpu_backend;
         _ = viewid;
         _ = pass;
     }
@@ -252,14 +257,16 @@ const material_pass = render_graph.PassApi.implement(struct {
             "hdr",
             .{
                 .format = gpu.TextureFormat.RGBA16F,
-                .flags = 0 |
-                    gpu.TextureFlags_Rt |
-                    gpu.SamplerFlags_MinPoint |
-                    gpu.SamplerFlags_MagPoint |
-                    gpu.SamplerFlags_MipPoint |
-                    gpu.SamplerFlags_UClamp |
-                    gpu.SamplerFlags_VClamp,
-
+                .flags = .{
+                    .rt = .rt,
+                },
+                .sampler_flags = .{
+                    .min_filter = .point,
+                    .max_filter = .point,
+                    .mip_mode = .point,
+                    .u = .clamp,
+                    .v = .clamp,
+                },
                 .clear_color = 0x336680,
                 // .clear_color = 0,
             },
@@ -273,11 +280,15 @@ const material_pass = render_graph.PassApi.implement(struct {
         try builder.enablePass(pass);
     }
 
-    pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_api: *const gpu.GpuApi, vp_size: [2]f32, viewid: gpu.ViewId) !void {
+    pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_backend: gpu.GpuBackend, vp_size: [2]f32, viewid: gpu.ViewId) !void {
         _ = builder;
         _ = vp_size;
         _ = pass;
-        gpu_api.touch(viewid);
+        if (gpu_backend.getEncoder()) |e| {
+            defer gpu_backend.endEncoder(e);
+
+            e.touch(viewid);
+        }
     }
 });
 
@@ -293,13 +304,13 @@ const dd_pass = render_graph.PassApi.implement(struct {
         try builder.enablePass(pass);
     }
 
-    pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_api: *const gpu.GpuApi, vp_size: [2]f32, viewid: gpu.ViewId) !void {
+    pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_backend: gpu.GpuBackend, vp_size: [2]f32, viewid: gpu.ViewId) !void {
         _ = builder;
         _ = vp_size;
         _ = pass;
 
-        if (gpu_api.getEncoder()) |e| {
-            defer gpu_api.endEncoder(e);
+        if (gpu_backend.getEncoder()) |e| {
+            defer gpu_backend.endEncoder(e);
 
             const dd = _dd.encoderCreate();
             defer _dd.encoderDestroy(dd);
@@ -327,23 +338,23 @@ const PosVertex = struct {
         };
     }
 
-    fn layoutInit() gpu.VertexLayout {
+    fn layoutInit(gpu_backend: gpu.GpuBackend) gpu.VertexLayout {
         // static local
         const L = struct {
             var posColorLayout = std.mem.zeroes(gpu.VertexLayout);
         };
-        _ = _gpu.layoutBegin(&L.posColorLayout, _gpu.getBackendType());
-        _ = _gpu.layoutAdd(&L.posColorLayout, gpu.Attrib.Position, 3, gpu.AttribType.Float, false, false);
-        _gpu.layoutEnd(&L.posColorLayout);
+        _ = gpu_backend.layoutBegin(&L.posColorLayout);
+        _ = gpu_backend.layoutAdd(&L.posColorLayout, gpu.Attrib.Position, 3, gpu.AttribType.Float, false, false);
+        gpu_backend.layoutEnd(&L.posColorLayout);
 
         return L.posColorLayout;
     }
 };
 var _vertex_pos_layout: gpu.VertexLayout = undefined;
-fn screenSpaceQuad(e: gpu.Encoder, origin_mottom_left: bool, width: f32, height: f32) void {
-    if (3 == _gpu.getAvailTransientVertexBuffer(3, &_vertex_pos_layout)) {
+fn screenSpaceQuad(gpu_backend: gpu.GpuBackend, e: gpu.GpuEncoder, origin_mottom_left: bool, width: f32, height: f32) void {
+    if (3 == gpu_backend.getAvailTransientVertexBuffer(3, &_vertex_pos_layout)) {
         var vb: gpu.TransientVertexBuffer = undefined;
-        _gpu.allocTransientVertexBuffer(&vb, 3, &_vertex_pos_layout);
+        gpu_backend.allocTransientVertexBuffer(&vb, 3, &_vertex_pos_layout);
         var vertex: [*]PosVertex = @ptrCast(@alignCast(vb.data));
 
         const zz: f32 = 0.0;
@@ -390,11 +401,16 @@ const bloom_0_pass = render_graph.PassApi.implement(struct {
             "bloom_0",
             .{
                 .format = gpu.TextureFormat.RGBA16F,
-                .flags = 0 |
-                    gpu.TextureFlags_Rt |
-                    gpu.SamplerFlags_UClamp |
-                    gpu.SamplerFlags_VClamp |
-                    gpu.TextureFlags_BlitDst,
+                .flags = .{
+                    .blit_dst = true,
+                    .rt = .rt,
+                },
+
+                .sampler_flags = .{
+                    .u = .clamp,
+                    .v = .clamp,
+                },
+
                 .clear_depth = 1.0,
                 .clear_color = 0,
             },
@@ -404,13 +420,13 @@ const bloom_0_pass = render_graph.PassApi.implement(struct {
         try builder.enablePass(pass);
     }
 
-    pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_api: *const gpu.GpuApi, vp_size: [2]f32, viewid: gpu.ViewId) !void {
+    pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_backend: gpu.GpuBackend, vp_size: [2]f32, viewid: gpu.ViewId) !void {
         _ = pass;
 
         const fb_size = vp_size;
 
-        if (gpu_api.getEncoder()) |e| {
-            defer gpu_api.endEncoder(e);
+        if (gpu_backend.getEncoder()) |e| {
+            defer gpu_backend.endEncoder(e);
 
             const out_tex = builder.getTexture("bloom_0").?;
             const foo_tex = builder.getTexture("hdr").?;
@@ -450,13 +466,12 @@ const bloom_downsample_pass_api = render_graph.PassApi.implement(struct {
             params.out_texture_name,
             .{
                 .format = gpu.TextureFormat.RGBA16F,
-                .flags = 0 |
-                    gpu.TextureFlags_Rt |
-                    gpu.SamplerFlags_UClamp |
-                    gpu.SamplerFlags_VClamp,
+                .flags = .{
+                    .rt = .rt,
+                },
                 .clear_depth = 1.0,
                 .clear_color = 0,
-                .ratio = @enumFromInt(params.step_id + 1),
+                .ratio = 1.0 / std.math.pow(f32, 2, @floatFromInt(params.step_id + 1)),
             },
         );
         try builder.readTexture(pass, params.in_texture_name);
@@ -465,13 +480,13 @@ const bloom_downsample_pass_api = render_graph.PassApi.implement(struct {
         try builder.enablePass(pass);
     }
 
-    pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_api: *const gpu.GpuApi, vp_size: [2]f32, viewid: gpu.ViewId) !void {
+    pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_backend: gpu.GpuBackend, vp_size: [2]f32, viewid: gpu.ViewId) !void {
         const params: *const BloomDownSampleParameters = @ptrCast(@alignCast(pass.data));
 
         _ = vp_size;
 
-        if (gpu_api.getEncoder()) |e| {
-            defer gpu_api.endEncoder(e);
+        if (gpu_backend.getEncoder()) |e| {
+            defer gpu_backend.endEncoder(e);
 
             var shader_constext = try _shader.createSystemContext();
             defer _shader.destroySystemContext(shader_constext);
@@ -509,12 +524,12 @@ const bloom_downsample_pass_api = render_graph.PassApi.implement(struct {
             const variant = variants[0];
 
             const projMtx = zm.matToArr(zm.orthographicOffCenterRh(0, 1, 1, 0, 0, 100));
-            _gpu.setViewTransform(viewid, null, &projMtx);
+            gpu_backend.setViewTransform(viewid, null, &projMtx);
 
-            screenSpaceQuad(e, false, 1, 1);
+            screenSpaceQuad(gpu_backend, e, false, 1, 1);
 
             e.setState(variant.state, variant.rgba);
-            e.submit(viewid, variant.prg.?, 0, gpu.DiscardFlags_None);
+            e.submit(viewid, variant.prg.?, 0, .{});
         }
     }
 });
@@ -538,12 +553,12 @@ const bloom_upsample_pass_api = render_graph.PassApi.implement(struct {
         try builder.enablePass(pass);
     }
 
-    pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_api: *const gpu.GpuApi, vp_size: [2]f32, viewid: gpu.ViewId) !void {
+    pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_backend: gpu.GpuBackend, vp_size: [2]f32, viewid: gpu.ViewId) !void {
         const params: *const BloomUpsampleParams = @ptrCast(@alignCast(pass.data));
         _ = vp_size;
 
-        if (gpu_api.getEncoder()) |e| {
-            defer gpu_api.endEncoder(e);
+        if (gpu_backend.getEncoder()) |e| {
+            defer gpu_backend.endEncoder(e);
 
             var shader_constext = try _shader.createSystemContext();
             defer _shader.destroySystemContext(shader_constext);
@@ -595,12 +610,12 @@ const bloom_upsample_pass_api = render_graph.PassApi.implement(struct {
             const variant = variants[0];
 
             const projMtx = zm.matToArr(zm.orthographicOffCenterRh(0, 1, 1, 0, 0, 100));
-            _gpu.setViewTransform(viewid, null, &projMtx);
+            gpu_backend.setViewTransform(viewid, null, &projMtx);
 
-            screenSpaceQuad(e, false, 1, 1);
+            screenSpaceQuad(gpu_backend, e, false, 1, 1);
 
-            e.setState(variant.state | gpu.StateFlags_BlendEquationAdd, variant.rgba);
-            e.submit(viewid, variant.prg.?, 0, gpu.DiscardFlags_None);
+            e.setState(variant.state, variant.rgba);
+            e.submit(viewid, variant.prg.?, 0, .{});
         }
     }
 });
@@ -620,13 +635,13 @@ const tonemap_pass = render_graph.PassApi.implement(struct {
         try builder.enablePass(pass);
     }
 
-    pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_api: *const gpu.GpuApi, vp_size: [2]f32, viewid: gpu.ViewId) !void {
+    pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_backend: gpu.GpuBackend, vp_size: [2]f32, viewid: gpu.ViewId) !void {
         const params: *const TonemapParams = @ptrCast(@alignCast(pass.data));
 
         _ = vp_size;
 
-        if (gpu_api.getEncoder()) |e| {
-            defer gpu_api.endEncoder(e);
+        if (gpu_backend.getEncoder()) |e| {
+            defer gpu_backend.endEncoder(e);
 
             var shader_constext = try _shader.createSystemContext();
             defer _shader.destroySystemContext(shader_constext);
@@ -668,7 +683,7 @@ const tonemap_pass = render_graph.PassApi.implement(struct {
             try _shader.updateUniforms(
                 shader_io,
                 ub,
-                &.{.{ .name = cetech1.strId32("params"), .value = std.mem.asBytes(
+                &.{.{ .name = .fromStr("params"), .value = std.mem.asBytes(
                     &[4]f32{
                         @bitCast(@as(u32, @intFromEnum(params.type))),
                         @bitCast(@as(u32, @intFromBool(bloom_texture_name != null))),
@@ -694,18 +709,20 @@ const tonemap_pass = render_graph.PassApi.implement(struct {
             const variant = variants[0];
 
             const projMtx = zm.matToArr(zm.orthographicOffCenterRh(0, 1, 1, 0, 0, 100));
-            _gpu.setViewTransform(viewid, null, &projMtx);
+            gpu_backend.setViewTransform(viewid, null, &projMtx);
 
-            screenSpaceQuad(e, false, 1, 1);
+            screenSpaceQuad(gpu_backend, e, false, 1, 1);
 
             e.setState(variant.state, variant.rgba);
-            e.submit(viewid, variant.prg.?, 0, gpu.DiscardFlags_None);
+            e.submit(viewid, variant.prg.?, 0, .{});
         }
     }
 });
 
 const DefaultPipelineInst = struct {
     allocator: std.mem.Allocator,
+
+    gpu: gpu.GpuBackend,
 
     time_system: shader_system.System = undefined,
     time_system_uniforms: shader_system.UniformBufferInstance = undefined,
@@ -723,7 +740,7 @@ const DefaultPipelineInst = struct {
 };
 
 const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
-    pub fn create(allocator: std.mem.Allocator, world: ecs.World) !*anyopaque {
+    pub fn create(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, world: ecs.World) !*anyopaque {
         const inst = try allocator.create(DefaultPipelineInst);
 
         const time_system = _shader.findSystemByName(.fromStr("time_system")).?;
@@ -739,10 +756,11 @@ const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
             .time_system = time_system,
             .time_system_uniforms = (try _shader.createUniformBuffer(time_system_io)).?,
 
-            .light_system = try _light_system.createLightSystem(),
+            .light_system = try _light_system.createLightSystem(gpu_backend),
             .main_module = try _render_graph.createModule(),
 
             .postprocess_ent = pp_ent,
+            .gpu = gpu_backend,
         };
         return inst;
     }
@@ -753,7 +771,7 @@ const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
         const time_system_io = _shader.getSystemIO(inst.time_system);
         _shader.destroyUniformBuffer(time_system_io, inst.time_system_uniforms);
 
-        _light_system.destroyLightSystem(inst.light_system);
+        _light_system.destroyLightSystem(inst.light_system, inst.gpu);
         _render_graph.destroyModule(inst.main_module);
 
         inst.world.destroyEntities(&.{inst.postprocess_ent});
@@ -812,7 +830,7 @@ const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
         try _shader.updateUniforms(
             system_io,
             inst.time_system_uniforms,
-            &.{.{ .name = cetech1.strId32("time"), .value = std.mem.asBytes(&[4]f32{ now_s, 0, 0, 0 }) }},
+            &.{.{ .name = .fromStr("time"), .value = std.mem.asBytes(&[4]f32{ now_s, 0, 0, 0 }) }},
         );
 
         // Light system
@@ -873,10 +891,10 @@ const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
     "DefaultRenderPipeline",
-    &[_]cetech1.StrId64{ cetech1.strId64("ShaderSystem"), cetech1.strId64("InstanceSystem") },
+    &[_]cetech1.StrId64{ .fromStr("ShaderSystem"), .fromStr("InstanceSystem") },
     struct {
         pub fn init() !void {
-            _vertex_pos_layout = PosVertex.layoutInit();
+            _vertex_pos_layout = PosVertex.layoutInit(_kernel.getGpuBackend().?);
 
             // Time system
             try _shader.addSystemDefiniton("time_system", .{
@@ -1206,12 +1224,24 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             try _shader.addShaderDefiniton("downsample", .{
                 .color_state = .rgba,
 
+                .samplers = &.{
+                    .{
+                        .name = "default",
+                        .defs = .{
+                            .min_filter = .linear,
+                            .max_filter = .linear,
+                            .u = .clamp,
+                            .v = .clamp,
+                        },
+                    },
+                },
+
                 .depth_stencil_state = .{
                     .depth_write_enable = false,
                     .depth_test_enable = false,
                 },
                 .imports = &.{
-                    .{ .name = "tex", .type = .sampler2d },
+                    .{ .name = "tex", .type = .sampler2d, .sampler = "default" },
                 },
                 .vertex_block = .{
                     .imports = &.{
@@ -1279,13 +1309,32 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             // "upsample"
             try _shader.addShaderDefiniton("upsample", .{
                 .color_state = .rgba,
+                .blend_state = .{
+                    .source_color_factor = .One,
+                    .destination_color_factor = .One,
+                    .source_alpha_factor = .One,
+                    .destination_alpha_factor = .One,
+                },
 
                 .depth_stencil_state = .{
                     .depth_write_enable = false,
                     .depth_test_enable = false,
                 },
+
+                .samplers = &.{
+                    .{
+                        .name = "default",
+                        .defs = .{
+                            .min_filter = .linear,
+                            .max_filter = .linear,
+                            .u = .clamp,
+                            .v = .clamp,
+                        },
+                    },
+                },
+
                 .imports = &.{
-                    .{ .name = "tex", .type = .sampler2d },
+                    .{ .name = "tex", .type = .sampler2d, .sampler = "default" },
                     .{ .name = "intensity", .type = .vec4 },
                 },
                 .vertex_block = .{
@@ -1364,7 +1413,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
 
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
+
     _dd = apidb.getZigApi(module_name, gpu.GpuDDApi).?;
     _render_viewport = apidb.getZigApi(module_name, render_viewport.RenderViewportApi).?;
     _render_graph = apidb.getZigApi(module_name, render_graph.RenderGraphApi).?;
