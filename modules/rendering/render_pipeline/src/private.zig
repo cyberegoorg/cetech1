@@ -31,18 +31,18 @@ var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 
 var _ecs: *const ecs.EcsAPI = undefined;
-var _gpu: *const gpu.GpuApi = undefined;
+
 var _dd: *const gpu.GpuDDApi = undefined;
 var _render_graph: *const render_graph.RenderGraphApi = undefined;
 
-fn createDefault(allocator: std.mem.Allocator, world: ecs.World) !public.RenderPipeline {
+fn createDefault(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, world: ecs.World) !public.RenderPipeline {
     const impls = try _apidb.getImpl(allocator, public.RenderPipelineI);
     defer allocator.free(impls);
     if (impls.len == 0) return error.NoPipelineDefined;
 
     const iface = impls[impls.len - 1];
 
-    const inst = try iface.create(allocator, world);
+    const inst = try iface.create(allocator, gpu_backend, world);
     return .{
         .ptr = inst,
         .vtable = iface,
@@ -66,7 +66,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
 
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
+
     _dd = apidb.getZigApi(module_name, gpu.GpuDDApi).?;
     _render_graph = apidb.getZigApi(module_name, render_graph.RenderGraphApi).?;
     // _render_viewport = apidb.getZigApi(module_name, renderer.RenderViewportApi).?;

@@ -112,6 +112,7 @@ pub const StateFlags_BlendEquationMin: StateFlags = 0x0000000030000000;
 
 /// Blend max: max(src, dst).
 pub const StateFlags_BlendEquationMax: StateFlags = 0x0000000040000000;
+
 pub const StateFlags_BlendEquationShift: StateFlags = 28;
 pub const StateFlags_BlendEquationMask: StateFlags = 0x00000003f0000000;
 

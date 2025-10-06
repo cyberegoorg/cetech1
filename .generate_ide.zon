@@ -6,6 +6,6 @@
         .{ .name = "CETech1 Tests", .program = "zig-out/bin/cetech1_test", .args = .{} },
         .{ .name = "CETech1 Tests UI", .args = .{"--test-ui"} },
         .{ .name = "CETech1 Tests UI (headless)", .args = .{ "--test-ui", "--headless", "--test-ui-junit", "./result.xml" } },
-        .{ .name = "CETech1 (Vulkan)", .args = .{ "--asset-root", "fixtures/test_asset/", "--renderer", "vulkan" } },
+        .{ .name = "CETech1 (Vulkan)", .args = .{ "--asset-root", "fixtures/test_asset/", "--renderer", "bgfx_vulkan" } },
     },
 }
