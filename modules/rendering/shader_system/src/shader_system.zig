@@ -194,238 +194,7 @@ pub const DefImport = struct {
     count: ?usize = null,
     buffer_type: ?DefMainImportVariableBufferType = null,
     buffer_acces: ?DefMainImportVariableBufferAccess = null,
-};
-
-pub const CullMode = enum {
-    none,
-    front,
-    back,
-};
-
-pub const FrontFace = enum {
-    cw,
-    ccw,
-};
-
-pub const RasterState = struct {
-    cullmode: ?CullMode = null,
-    front_face: ?FrontFace = null,
-
-    pub fn merge(self: RasterState, other: RasterState) RasterState {
-        var r = self;
-
-        if (self.cullmode) |_| {
-            if (other.cullmode) |o| {
-                r.cullmode = o;
-            }
-        } else {
-            r.cullmode = other.cullmode;
-        }
-
-        if (self.front_face) |_| {
-            if (other.front_face) |o| {
-                r.front_face = o;
-            }
-        } else {
-            r.front_face = other.front_face;
-        }
-
-        return r;
-    }
-
-    pub fn toState(self: RasterState) gpu.StateFlags {
-        var r: u64 = gpu.StateFlags_None;
-
-        if (self.cullmode) |cullmode| {
-            switch (cullmode) {
-                .front => {
-                    if (self.front_face) |front_face| {
-                        switch (front_face) {
-                            .cw => {
-                                r |= gpu.StateFlags_CullCw;
-                            },
-                            .ccw => {
-                                r |= gpu.StateFlags_CullCcw;
-                                r |= gpu.StateFlags_FrontCcw;
-                            },
-                        }
-                    } else {
-                        r |= gpu.StateFlags_CullCcw;
-                        r |= gpu.StateFlags_FrontCcw;
-                    }
-                },
-                .back => {
-                    if (self.front_face) |front_face| {
-                        switch (front_face) {
-                            .cw => {
-                                r |= gpu.StateFlags_CullCcw;
-                            },
-                            .ccw => {
-                                r |= gpu.StateFlags_CullCw;
-                                r |= gpu.StateFlags_FrontCcw;
-                            },
-                        }
-                    } else {
-                        r |= gpu.StateFlags_CullCw;
-                    }
-                },
-                .none => {},
-            }
-        }
-
-        if (self.front_face) |front_face| {
-            switch (front_face) {
-                .cw => {},
-                .ccw => {
-                    r |= gpu.StateFlags_FrontCcw;
-                },
-            }
-        }
-
-        return r;
-    }
-};
-
-pub const DepthComapareOp = enum {
-    never,
-    less,
-    equal,
-    less_equal,
-    greater,
-    not_equal,
-    greater_equal,
-};
-
-pub const DepthStencilState = struct {
-    depth_test_enable: ?bool = null,
-    depth_write_enable: ?bool = null,
-    depth_comapre_op: ?DepthComapareOp = null,
-
-    pub fn merge(self: DepthStencilState, other: DepthStencilState) DepthStencilState {
-        var r = self;
-
-        if (self.depth_test_enable) |_| {
-            if (other.depth_test_enable) |o| {
-                r.depth_test_enable = o;
-            }
-        } else {
-            r.depth_test_enable = other.depth_test_enable;
-        }
-
-        if (self.depth_write_enable) |_| {
-            if (other.depth_write_enable) |o| {
-                r.depth_write_enable = o;
-            }
-        } else {
-            r.depth_write_enable = other.depth_write_enable;
-        }
-
-        if (self.depth_comapre_op) |_| {
-            if (other.depth_comapre_op) |o| {
-                r.depth_comapre_op = o;
-            }
-        } else {
-            r.depth_comapre_op = other.depth_comapre_op;
-        }
-
-        return r;
-    }
-
-    pub fn toState(self: DepthStencilState) gpu.StateFlags {
-        var r: u64 = gpu.StateFlags_None;
-
-        if (self.depth_test_enable) |depth_test_enable| {
-            if (depth_test_enable) {
-                if (self.depth_comapre_op) |depth_comapre_op| {
-                    switch (depth_comapre_op) {
-                        .never => r |= gpu.StateFlags_DepthTestNever,
-                        .less => r |= gpu.StateFlags_DepthTestLess,
-                        .equal => r |= gpu.StateFlags_DepthTestEqual,
-                        .less_equal => r |= gpu.StateFlags_DepthTestLequal,
-                        .greater => r |= gpu.StateFlags_DepthTestGreater,
-                        .not_equal => r |= gpu.StateFlags_DepthTestNotequal,
-                        .greater_equal => r |= gpu.StateFlags_DepthTestGequal,
-                    }
-                }
-            }
-        }
-
-        if (self.depth_write_enable) |depth_write_enable| {
-            if (depth_write_enable) r |= gpu.StateFlags_WriteZ;
-        }
-
-        return r;
-    }
-};
-
-pub const ColorState = struct {
-    pub const rgb = ColorState{ .write_r = true, .write_g = true, .write_b = true, .write_a = false };
-    pub const rgba = ColorState{ .write_r = true, .write_g = true, .write_b = true, .write_a = true };
-    pub const only_a = ColorState{ .write_r = false, .write_g = false, .write_b = false, .write_a = true };
-
-    write_r: ?bool = null,
-    write_g: ?bool = null,
-    write_b: ?bool = null,
-    write_a: ?bool = null,
-
-    pub fn merge(self: ColorState, other: ColorState) ColorState {
-        var r = self;
-
-        if (self.write_r) |_| {
-            if (other.write_r) |o| {
-                r.write_r = o;
-            }
-        } else {
-            r.write_r = other.write_r;
-        }
-
-        if (self.write_g) |_| {
-            if (other.write_g) |o| {
-                r.write_g = o;
-            }
-        } else {
-            r.write_g = other.write_g;
-        }
-
-        if (self.write_b) |_| {
-            if (other.write_b) |o| {
-                r.write_b = o;
-            }
-        } else {
-            r.write_b = other.write_b;
-        }
-
-        if (self.write_a) |_| {
-            if (other.write_a) |o| {
-                r.write_a = o;
-            }
-        } else {
-            r.write_a = other.write_a;
-        }
-        return r;
-    }
-
-    pub fn toState(self: ColorState) gpu.StateFlags {
-        var r: u64 = gpu.StateFlags_None;
-
-        if (self.write_r) |write_r| {
-            if (write_r) r |= gpu.StateFlags_WriteR;
-        }
-
-        if (self.write_g) |write_g| {
-            if (write_g) r |= gpu.StateFlags_WriteG;
-        }
-
-        if (self.write_b) |write_b| {
-            if (write_b) r |= gpu.StateFlags_WriteB;
-        }
-
-        if (self.write_a) |write_a| {
-            if (write_a) r |= gpu.StateFlags_WriteA;
-        }
-
-        return r;
-    }
+    sampler: ?[:0]const u8 = null,
 };
 
 pub const DefGraphNodeInputType = enum {
@@ -468,9 +237,10 @@ pub const DefGraphNode = struct {
 
 pub const DefCompileConfigurationVariation = struct {
     systems: ?[]const [:0]const u8 = null,
-    raster_state: ?RasterState = .{},
-    color_state: ?ColorState = .{},
-    depth_stencil_state: ?DepthStencilState = .{},
+    raster_state: ?gpu.RasterState = .{},
+    color_state: ?gpu.ColorState = .{},
+    depth_stencil_state: ?gpu.DepthStencilState = .{},
+    blend_state: ?gpu.BlendState = .{},
 };
 
 pub const DefCompileConfiguration = struct {
@@ -494,12 +264,20 @@ pub const DefCompile = struct {
     contexts: []const DefCompileContext,
 };
 
+pub const DefSampler = struct {
+    name: [:0]const u8,
+    defs: gpu.SamplerFlags,
+};
+
 pub const ShaderDefinition = struct {
     rgba: u32 = 0,
 
-    raster_state: ?RasterState = .{},
-    color_state: ?ColorState = .{},
-    depth_stencil_state: ?DepthStencilState = .{},
+    raster_state: ?gpu.RasterState = .{},
+    color_state: ?gpu.ColorState = .{},
+    depth_stencil_state: ?gpu.DepthStencilState = .{},
+    blend_state: ?gpu.BlendState = .{},
+
+    samplers: ?[]const DefSampler = null,
 
     imports: ?[]const DefImport = null,
     defines: ?[]const []const u8 = null,
@@ -516,32 +294,6 @@ pub const ShaderDefinition = struct {
     compile: ?DefCompile = null,
 };
 
-pub const BufferHandle = union(enum) {
-    vb: gpu.VertexBufferHandle,
-    dvb: gpu.DynamicVertexBufferHandle,
-
-    ib: gpu.IndexBufferHandle,
-    dib: gpu.DynamicIndexBufferHandle,
-};
-
-pub const PrimitiveType = enum {
-    triangles,
-    triangles_strip,
-    lines,
-    lines_strip,
-    points,
-
-    pub fn toState(self: PrimitiveType) u64 {
-        return switch (self) {
-            .triangles => 0,
-            .triangles_strip => gpu.StateFlags_PtTristrip,
-            .lines => gpu.StateFlags_PtLines,
-            .lines_strip => gpu.StateFlags_PtLinestrip,
-            .points => gpu.StateFlags_PtPoints,
-        };
-    }
-};
-
 pub const UniformBufferInstance = struct {
     idx: u32,
 };
@@ -556,10 +308,10 @@ pub const Shader = struct {
 
 pub const ShaderVariant = struct {
     prg: ?gpu.ProgramHandle = null,
-    hash: u64,
-    state: u64,
+    state: gpu.RenderState,
     rgba: u32,
 
+    hash: u64,
     layer: ?cetech1.StrId32,
     system_set: SystemSet,
 };
@@ -582,7 +334,7 @@ pub const SystemContext = struct {
         );
     }
 
-    pub inline fn bind(self: *const SystemContext, shader: ShaderIO, encoder: gpu.Encoder) void {
+    pub inline fn bind(self: *const SystemContext, shader: ShaderIO, encoder: gpu.GpuEncoder) void {
         self.vtable.bind(self.ptr, shader, encoder);
     }
 
@@ -596,7 +348,7 @@ pub const SystemContext = struct {
         bind: *const fn (
             self: *anyopaque,
             shader: ShaderIO,
-            encoder: gpu.Encoder,
+            encoder: gpu.GpuEncoder,
         ) void,
 
         pub fn implement(comptime T: type) VTable {
@@ -759,7 +511,7 @@ pub const UpdateUniformItem = struct {
 };
 
 pub const UpdateResourceValue = union(enum) {
-    buffer: BufferHandle,
+    buffer: gpu.BufferHandle,
     texture: gpu.TextureHandle,
 };
 
@@ -801,9 +553,9 @@ pub const ShaderSystemAPI = struct {
     updateUniforms: *const fn (shader: ShaderIO, uniform_buffer: UniformBufferInstance, items: []const UpdateUniformItem) anyerror!void,
     updateResources: *const fn (shader: ShaderIO, resource_buffer: ResourceBufferInstance, items: []const UpdateResourceItem) anyerror!void,
 
-    bindConstant: *const fn (shader_io: ShaderIO, uniform_buffer: UniformBufferInstance, encoder: gpu.Encoder) void,
-    bindSystemConstant: *const fn (shader_io: ShaderIO, system: System, uniform_buffer: UniformBufferInstance, encoder: gpu.Encoder) void,
+    bindConstant: *const fn (shader_io: ShaderIO, uniform_buffer: UniformBufferInstance, encoder: gpu.GpuEncoder) void,
+    bindSystemConstant: *const fn (shader_io: ShaderIO, system: System, uniform_buffer: UniformBufferInstance, encoder: gpu.GpuEncoder) void,
 
-    bindResource: *const fn (shader_io: ShaderIO, resource_buffer: ResourceBufferInstance, encoder: gpu.Encoder) void,
-    bindSystemResource: *const fn (shader_io: ShaderIO, system: System, resource_buffer: ResourceBufferInstance, encoder: gpu.Encoder) void,
+    bindResource: *const fn (shader_io: ShaderIO, resource_buffer: ResourceBufferInstance, encoder: gpu.GpuEncoder) void,
+    bindSystemResource: *const fn (shader_io: ShaderIO, system: System, resource_buffer: ResourceBufferInstance, encoder: gpu.GpuEncoder) void,
 };

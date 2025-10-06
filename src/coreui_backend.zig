@@ -1,7 +1,7 @@
 const zgui = @import("zgui");
 const zbgfx = @import("zbgfx");
 
-var backend_init = false;
+pub var backend_init = false;
 
 pub fn init(
     window: ?*const anyopaque, // zglfw.Window
@@ -21,7 +21,7 @@ pub fn deinit() void {
 
 pub fn newFrame(viewid: zbgfx.bgfx.ViewId) void {
     if (backend_init) zgui.backend.newFrame();
-
+    //zgui.newFrame();
     ImGui_ImplBgfx_NewFrame(viewid);
     zgui.gizmo.beginFrame();
 }

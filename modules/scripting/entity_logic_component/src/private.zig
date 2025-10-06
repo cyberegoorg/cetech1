@@ -33,7 +33,6 @@ var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 
 var _ecs: *const ecs.EcsAPI = undefined;
 var _graphvm: *const graphvm.GraphVMApi = undefined;
-var _gpu: *const gpu.GpuApi = undefined;
 
 // Global state that can surive hot-reload
 const G = struct {};
@@ -227,7 +226,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
     _graphvm = apidb.getZigApi(module_name, graphvm.GraphVMApi).?;
-    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
 
     // impl interface
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);

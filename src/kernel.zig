@@ -117,7 +117,7 @@ var _restart = true;
 var _next_asset_root_buff: [256]u8 = undefined;
 var _next_asset_root: ?[]u8 = null;
 var main_window: ?cetech1.platform.Window = null;
-var gpu_context: ?*cetech1.gpu.GpuContext = null;
+var gpu_backend: ?cetech1.gpu.GpuBackend = null;
 
 pub var api = cetech1.kernel.KernelApi{
     .quit = quit,
@@ -130,7 +130,7 @@ pub var api = cetech1.kernel.KernelApi{
     .isTestigMode = isTestigMode,
     .isHeadlessMode = isHeadlessMode,
     .getMainWindow = getMainWindow,
-    .getGpuCtx = getGpuCtx,
+    .getGpuBackend = getGpuBackend,
     .getExternalsCredit = getExternalsCredit,
     .getAuthors = getAuthors,
 };
@@ -146,8 +146,8 @@ fn getAuthors() [:0]const u8 {
 fn getMainWindow() ?cetech1.platform.Window {
     return main_window;
 }
-fn getGpuCtx() ?*cetech1.gpu.GpuContext {
-    return gpu_context;
+fn getGpuBackend() ?cetech1.gpu.GpuBackend {
+    return gpu_backend;
 }
 
 fn isTestigMode() bool {
@@ -271,7 +271,7 @@ pub fn deinit(allocator: std.mem.Allocator) !void {
 
     ecs.deinit();
     //renderer.deinit();
-    if (gpu_context) |ctx| gpu.api.destroyContext(ctx);
+    if (gpu_backend) |ctx| gpu.api.destroyBackend(ctx);
     gpu.deinit();
     if (main_window) |window| platform.api.destroyWindow(window);
 
@@ -523,9 +523,9 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             );
         }
 
-        gpu_context = try gpu.api.createContext(
+        gpu_backend = try gpu.api.createBackend(
             main_window,
-            if (renderer_type) |r| cetech1.gpu.Backend.fromString(r) else null,
+            renderer_type,
             !_headless and vsync,
             _headless,
             renderer_debug,
@@ -681,7 +681,9 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             {
                 var zone_ctx = profiler_private.ztracy.ZoneN(@src(), "renderFrame");
                 defer zone_ctx.End();
-                _ = gpu.api.renderFrame(0);
+                if (gpu_backend) |ctx| {
+                    _ = ctx.renderFrame(0);
+                }
             }
         }
 
@@ -689,7 +691,9 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         // without this deadlock shit
         // TODO: quit loop only after last_game_tick_task
         while (!task.api.isDone(last_game_tick_task)) {
-            _ = gpu.api.renderFrame(2);
+            if (gpu_backend) |ctx| {
+                _ = ctx.renderFrame(2);
+            }
             task.api.doOneTask(false);
         }
         task.api.wait(last_game_tick_task);

@@ -81,6 +81,6 @@ pub const CameraAPI = struct {
     cameraSetingsMenu: *const fn (world: ecs.World, camera_ent: ecs.EntityId) void,
     selectMainCameraMenu: *const fn (allocator: std.mem.Allocator, world: ecs.World, camera_ent: ecs.EntityId, current_main_camera: ?ecs.EntityId) anyerror!?ecs.EntityId,
 
-    perspectiveFov: *const fn (fovy: f32, aspect: f32, near: f32, far: f32) zm.Mat,
-    orthographic: *const fn (w: f32, h: f32, near: f32, far: f32) zm.Mat,
+    perspectiveFov: *const fn (fovy: f32, aspect: f32, near: f32, far: f32, homogenous_depth: bool) zm.Mat,
+    orthographic: *const fn (w: f32, h: f32, near: f32, far: f32, homogenous_depth: bool) zm.Mat,
 };

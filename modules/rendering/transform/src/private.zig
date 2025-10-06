@@ -33,7 +33,6 @@ var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
 var _graphvm: *const graphvm.GraphVMApi = undefined;
 
 var _ecs: *const ecs.EcsAPI = undefined;
-var _gpu: *const gpu.GpuApi = undefined;
 
 // Global state that can surive hot-reload
 const G = struct {};
@@ -360,7 +359,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
 
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
+
     _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
     _graphvm = apidb.getZigApi(module_name, graphvm.GraphVMApi).?;
 
