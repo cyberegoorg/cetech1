@@ -5,8 +5,23 @@
   "__uuid": "01989447-fee6-7e42-bc47-f67421e06157",
   "components": [
     {
-      "__type_name": "ct_position",
-      "__uuid": "01989448-1c71-7a33-8bda-9b55c6ea4eac"
+      "__type_name": "ct_transform",
+      "__uuid": "019b9928-7d99-7ea3-ae5a-9c21dabab230",
+      "position": {
+        "__type_name": "ct_position",
+        "__uuid": "019b992a-fe4d-771e-9468-c3f332831480"
+      },
+      "rotation": {
+        "__type_name": "ct_rotation",
+        "__uuid": "019b992a-fe4d-74c7-b6c7-46968d8e4960"
+      },
+      "scale": {
+        "__type_name": "ct_scale",
+        "__uuid": "019b992a-fe4d-72b7-896b-2a157db34fea",
+        "x": 1,
+        "y": 1,
+        "z": 1
+      }
     },
     {
       "__type_name": "ct_render_component",
@@ -23,22 +38,22 @@
               "__type_name": "ct_gpu_simple_mesh_settings",
               "__uuid": "01989448-5d92-7b3c-bed6-64c70b99d434"
             },
-            "pos_x": 7.13e2,
-            "pos_y": 4.2e1
+            "pos_x": 713,
+            "pos_y": 42
           },
           {
             "__type_name": "ct_graph_node",
             "__uuid": "01989449-a2bf-75ff-83ae-f35ccf544ffe",
             "node_type": "node_pbr_lit",
-            "pos_x": 5.26e2,
-            "pos_y": -6e0
+            "pos_x": 526,
+            "pos_y": -6
           },
           {
             "__type_name": "ct_graph_node",
             "__uuid": "0198944b-3dab-7964-bb53-95993d7c9af7",
             "node_type": "gpu_vertex_color",
-            "pos_x": 2.58e2,
-            "pos_y": 4.6e1
+            "pos_x": 258,
+            "pos_y": 46
           },
           {
             "__type_name": "ct_graph_node",
@@ -59,15 +74,15 @@
                 ]
               }
             },
-            "pos_x": 8.99e2,
-            "pos_y": -6e0
+            "pos_x": 899,
+            "pos_y": -6
           },
           {
             "__type_name": "ct_graph_node",
             "__uuid": "01989449-a2bf-711e-9473-2fdd7063f8fd",
             "node_type": "culling_volume",
-            "pos_x": 8.92e2,
-            "pos_y": -3.38e2
+            "pos_x": 892,
+            "pos_y": -338
           }
         ],
         "connections": [
@@ -129,7 +144,7 @@
             "value": {
               "__type_name": "ct_f32",
               "__uuid": "01989449-7a13-7d4a-9866-377bfb218097",
-              "value": 1e0
+              "value": 1
             }
           },
           {
@@ -140,9 +155,9 @@
             "value": {
               "__type_name": "ct_vec_3f",
               "__uuid": "0198944a-3867-769d-b15d-6b4a73f51098",
-              "x": -5e-1,
-              "y": -5e-1,
-              "z": -5e-1
+              "x": -0.5,
+              "y": -0.5,
+              "z": -0.5
             }
           },
           {
@@ -153,9 +168,9 @@
             "value": {
               "__type_name": "ct_vec_3f",
               "__uuid": "0198944a-671d-750f-be1c-52e2abf56814",
-              "x": 5e-1,
-              "y": 5e-1,
-              "z": 5e-1
+              "x": 0.5,
+              "y": 0.5,
+              "z": 0.5
             }
           }
         ]

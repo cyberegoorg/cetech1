@@ -108,7 +108,7 @@ test "cdb: Should register aspect" {
 
     const FooAspect = struct {
         pub const c_name = "foo_aspect";
-        pub const name_hash = cetech1.strId32("foo_aspect");
+        pub const name_hash = cetech1.strId32(c_name);
 
         const Self = @This();
         barFn: *const fn (db_: public.DbId) void,
@@ -164,7 +164,7 @@ test "cdb: Should register property aspect" {
 
     const FooAspect = struct {
         pub const c_name = "foo_aspect";
-        pub const name_hash = cetech1.strId32("foo_aspect");
+        pub const name_hash = cetech1.strId32(c_name);
 
         const Self = @This();
         barFn: *const fn (db_: public.DbId) void,

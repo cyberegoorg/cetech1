@@ -153,28 +153,28 @@ var log_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             defer _coreui.popStyleColor(.{ .count = 1 });
 
             _coreui.sameLine(.{});
-            if (_coreui.checkbox(levelIcon(.err), .{ .v = &tab_o.enabled_levels.err })) {}
+            if (_coreui.toggleButton(levelIcon(.err), &tab_o.enabled_levels.err)) {}
         }
         {
             _coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.debug) });
             defer _coreui.popStyleColor(.{ .count = 1 });
 
             _coreui.sameLine(.{});
-            if (_coreui.checkbox(levelIcon(.debug), .{ .v = &tab_o.enabled_levels.debug })) {}
+            if (_coreui.toggleButton(levelIcon(.debug), &tab_o.enabled_levels.debug)) {}
         }
         {
             _coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.warn) });
             defer _coreui.popStyleColor(.{ .count = 1 });
 
             _coreui.sameLine(.{});
-            if (_coreui.checkbox(levelIcon(.warn), .{ .v = &tab_o.enabled_levels.warn })) {}
+            if (_coreui.toggleButton(levelIcon(.warn), &tab_o.enabled_levels.warn)) {}
         }
         {
             _coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.info) });
             defer _coreui.popStyleColor(.{ .count = 1 });
 
             _coreui.sameLine(.{});
-            if (_coreui.checkbox(levelIcon(.info), .{ .v = &tab_o.enabled_levels.info })) {}
+            if (_coreui.toggleButton(levelIcon(.info), &tab_o.enabled_levels.info)) {}
         }
 
         _coreui.sameLine(.{});

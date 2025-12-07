@@ -244,9 +244,12 @@ const depth_pass = render_graph.PassApi.implement(struct {
     pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_backend: gpu.GpuBackend, vp_size: [2]f32, viewid: gpu.ViewId) !void {
         _ = builder;
         _ = vp_size;
-        _ = gpu_backend;
-        _ = viewid;
         _ = pass;
+
+        if (gpu_backend.getEncoder()) |e| {
+            defer gpu_backend.endEncoder(e);
+            e.touch(viewid);
+        }
     }
 });
 
@@ -268,7 +271,6 @@ const material_pass = render_graph.PassApi.implement(struct {
                     .v = .clamp,
                 },
                 .clear_color = 0x336680,
-                // .clear_color = 0,
             },
         );
         try builder.readTexture(pass, "depth");
@@ -286,7 +288,6 @@ const material_pass = render_graph.PassApi.implement(struct {
         _ = pass;
         if (gpu_backend.getEncoder()) |e| {
             defer gpu_backend.endEncoder(e);
-
             e.touch(viewid);
         }
     }
@@ -529,7 +530,7 @@ const bloom_downsample_pass_api = render_graph.PassApi.implement(struct {
             screenSpaceQuad(gpu_backend, e, false, 1, 1);
 
             e.setState(variant.state, variant.rgba);
-            e.submit(viewid, variant.prg.?, 0, .{});
+            e.submit(viewid, variant.prg.?, 0, .all);
         }
     }
 });
@@ -615,7 +616,7 @@ const bloom_upsample_pass_api = render_graph.PassApi.implement(struct {
             screenSpaceQuad(gpu_backend, e, false, 1, 1);
 
             e.setState(variant.state, variant.rgba);
-            e.submit(viewid, variant.prg.?, 0, .{});
+            e.submit(viewid, variant.prg.?, 0, .all);
         }
     }
 });
@@ -714,7 +715,7 @@ const tonemap_pass = render_graph.PassApi.implement(struct {
             screenSpaceQuad(gpu_backend, e, false, 1, 1);
 
             e.setState(variant.state, variant.rgba);
-            e.submit(viewid, variant.prg.?, 0, .{});
+            e.submit(viewid, variant.prg.?, 0, .all);
         }
     }
 });
@@ -747,7 +748,7 @@ const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
         const time_system_io = _shader.getSystemIO(time_system);
 
         const pp_ent = world.newEntity("postprocess");
-        _ = world.setId(transform.Position, pp_ent, &transform.Position{});
+        _ = world.setId(transform.Transform, pp_ent, &transform.Transform{});
         _ = world.setId(BloomComponent, pp_ent, &BloomComponent{});
 
         inst.* = .{

@@ -305,11 +305,11 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _g.tag_prop_aspect = try apidb.setGlobalVarValue(editor_inspector.UiEmbedPropertyAspect, module_name, TAGS_ASPECT_NAME, tag_prop_aspect);
     _g.tag_visual_aspect = try apidb.setGlobalVarValue(editor.UiVisualAspect, module_name, TAG_VISUAL_ASPECT_NAME, tag_visual_aspect);
 
+    try apidb.setOrRemoveZigApi(module_name, public.EditorTagsApi, &api, load);
+
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(module_name, editor.CreateAssetI, &create_tag_asset_i, load);
     try apidb.implOrRemove(module_name, coreui.RegisterTestsI, &register_tests_i, load);
-
-    try apidb.setOrRemoveZigApi(module_name, public.EditorTagsApi, &api, load);
 
     return true;
 }

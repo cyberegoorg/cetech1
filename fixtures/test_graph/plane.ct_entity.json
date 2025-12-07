@@ -5,15 +5,23 @@
   "__uuid": "01990060-eb2c-724d-a353-bc93abe3e7c0",
   "components": [
     {
-      "__type_name": "ct_position",
-      "__uuid": "01990061-225c-7069-b02a-5eafa6df56cb"
-    },
-    {
-      "__type_name": "ct_scale",
-      "__uuid": "01990061-3c17-7dc7-9d08-a1443edfde9f",
-      "x": 1e0,
-      "y": 1e0,
-      "z": 1e0
+      "__type_name": "ct_transform",
+      "__uuid": "019b9929-1679-7075-94a1-2d3ef2c7036d",
+      "position": {
+        "__type_name": "ct_position",
+        "__uuid": "019b9929-27ff-7e24-a44f-b37dc9dc4c33"
+      },
+      "rotation": {
+        "__type_name": "ct_rotation",
+        "__uuid": "019b9929-26e5-7381-b766-3668fc2cd6f1"
+      },
+      "scale": {
+        "__type_name": "ct_scale",
+        "__uuid": "019b9929-24dc-7b47-a50a-c05aab79a0f8",
+        "x": 1,
+        "y": 1,
+        "z": 1
+      }
     },
     {
       "__type_name": "ct_render_component",
@@ -26,15 +34,15 @@
             "__type_name": "ct_graph_node",
             "__uuid": "01990062-a8a6-7ff5-ac67-3ccc9a50725c",
             "node_type": "node_pbr_lit",
-            "pos_x": 7.02e2,
-            "pos_y": 1.24e2
+            "pos_x": 702,
+            "pos_y": 124
           },
           {
             "__type_name": "ct_graph_node",
             "__uuid": "01990062-a8a6-7cae-960d-be4bf65aa806",
             "node_type": "culling_volume",
-            "pos_x": 1.104e3,
-            "pos_y": 2.86e2
+            "pos_x": 1104,
+            "pos_y": 286
           },
           {
             "__type_name": "ct_graph_node",
@@ -45,8 +53,8 @@
               "__uuid": "01990061-9f8d-778f-a1ce-877b12a81cd4",
               "type": "plane"
             },
-            "pos_x": 8.96e2,
-            "pos_y": 1.78e2
+            "pos_x": 896,
+            "pos_y": 178
           },
           {
             "__type_name": "ct_graph_node",
@@ -67,8 +75,8 @@
                 ]
               }
             },
-            "pos_x": 1.104e3,
-            "pos_y": 1.26e2
+            "pos_x": 1104,
+            "pos_y": 126
           },
           {
             "__type_name": "ct_graph_node",
@@ -81,14 +89,14 @@
               "value": {
                 "__type_name": "ct_color_4f",
                 "__uuid": "01990062-7284-7f78-a056-911ae627c6c0",
-                "r": 1e0,
-                "g": 1e0,
-                "b": 1e0,
-                "a": 1e0
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
               }
             },
-            "pos_x": 4.03e2,
-            "pos_y": 1.58e2
+            "pos_x": 403,
+            "pos_y": 158
           }
         ],
         "connections": [
@@ -150,9 +158,9 @@
             "value": {
               "__type_name": "ct_vec_3f",
               "__uuid": "01990062-0129-7b43-b6dc-8b160e7f51ee",
-              "x": 5e-1,
-              "y": 1.0000000149011612e-1,
-              "z": 5e-1
+              "x": 0.5,
+              "y": 0.10000000149011612,
+              "z": 0.5
             }
           },
           {
@@ -163,9 +171,9 @@
             "value": {
               "__type_name": "ct_vec_3f",
               "__uuid": "01990061-fadd-7914-80b0-cbf90df77cff",
-              "x": -5e-1,
-              "y": -1.0000000149011612e-1,
-              "z": -5e-1
+              "x": -0.5,
+              "y": -0.10000000149011612,
+              "z": -0.5
             }
           },
           {

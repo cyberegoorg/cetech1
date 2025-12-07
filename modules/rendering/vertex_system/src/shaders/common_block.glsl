@@ -24,6 +24,4 @@ struct ct_vertex_loader_ctx {
     vec4 offset[CT_VERTEX_SEMANTIC_MAX / 4];
     vec4 stride[CT_VERTEX_SEMANTIC_MAX / 4];
     vec4 buffer_idx[CT_VERTEX_SEMANTIC_MAX / 4];
-
-    //  vec3 position;
 };

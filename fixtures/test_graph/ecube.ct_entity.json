@@ -5,12 +5,23 @@
   "__uuid": "019990fe-3ba7-7110-9ce3-eef8568cc994",
   "components": [
     {
-      "__type_name": "ct_position",
-      "__uuid": "019990fe-65a8-7082-9110-ed51bd819977"
-    },
-    {
-      "__type_name": "ct_rotation",
-      "__uuid": "019990fe-6f0b-7daf-879a-d662da036444"
+      "__type_name": "ct_transform",
+      "__uuid": "019b9928-95de-7c76-b24b-e6a3ddbbd926",
+      "position": {
+        "__type_name": "ct_position",
+        "__uuid": "019b992b-f8be-7ace-b233-4bffe222f018"
+      },
+      "rotation": {
+        "__type_name": "ct_rotation",
+        "__uuid": "019b992b-fadf-7a9b-ba93-0bc47822febf"
+      },
+      "scale": {
+        "__type_name": "ct_scale",
+        "__uuid": "019b992c-3128-7a19-82d3-4466165671af",
+        "x": 1,
+        "y": 1,
+        "z": 1
+      }
     },
     {
       "__type_name": "ct_render_component",

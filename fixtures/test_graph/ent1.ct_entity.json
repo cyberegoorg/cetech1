@@ -5,8 +5,23 @@
   "__uuid": "0191e6d1-830a-73d8-992a-aa6f9add6d1e",
   "components": [
     {
-      "__type_name": "ct_position",
-      "__uuid": "0191e6d1-b2e2-7508-9b3e-f6f9de03ab92"
+      "__type_name": "ct_transform",
+      "__uuid": "019b9928-bf04-7dfb-9c9f-5192183df749",
+      "position": {
+        "__type_name": "ct_position",
+        "__uuid": "019b9929-cc1f-7cc5-930d-1fd8c44e83a5"
+      },
+      "rotation": {
+        "__type_name": "ct_rotation",
+        "__uuid": "019b9929-cc1f-7461-b502-5c4bebb75605"
+      },
+      "scale": {
+        "__type_name": "ct_scale",
+        "__uuid": "019b9929-cc1f-7190-83cb-ea21b4962cb2",
+        "x": 1,
+        "y": 1,
+        "z": 1
+      }
     },
     {
       "__type_name": "ct_render_component",
@@ -18,7 +33,7 @@
       }
     },
     {
-      "__type_name": "ct_entity_logic_component",
+      "__type_name": "ct_graphvm_logic_component",
       "__uuid": "0191e721-f738-76a1-a055-b63b381433c9",
       "graph": {
         "__type_name": "ct_graph",
@@ -29,7 +44,7 @@
     {
       "__type_name": "ct_velocity",
       "__uuid": "019267e3-2557-77a7-a54f-a5b4ac2e9240",
-      "z": -9.999999776482582e-3
+      "z": -1
     }
   ]
 }

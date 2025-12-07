@@ -2,7 +2,7 @@ const std = @import("std");
 const Src = std.builtin.SourceLocation;
 
 pub const ztracy = @import("ztracy");
-pub const profiler_enabled = @import("cetech1_options").enable_tracy;
+pub const profiler_enabled = @import("cetech1_options").with_tracy;
 
 const cetech1 = @import("cetech1");
 const apidb = @import("apidb.zig");

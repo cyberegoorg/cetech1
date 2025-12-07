@@ -183,6 +183,26 @@ fn selectMainCameraMenu(allocator: std.mem.Allocator, world: ecs.World, camera_e
     return null;
 }
 
+fn cameraMenu(allocator: std.mem.Allocator, world: ecs.World, camera_ent: ecs.EntityId, current_main_camera: ?ecs.EntityId) !?ecs.EntityId {
+    if (_coreui.beginMenu(allocator, cetech1.coreui.Icons.Camera, true, null)) {
+        defer _coreui.endMenu();
+
+        if (_coreui.beginMenu(allocator, "Active camera", true, null)) {
+            defer _coreui.endMenu();
+            if (try selectMainCameraMenu(allocator, world, camera_ent, current_main_camera)) |c| {
+                return c;
+            }
+        }
+
+        if (_coreui.beginMenu(allocator, "Editor camera", true, null)) {
+            defer _coreui.endMenu();
+            cameraSetingsMenu(world, camera_ent);
+        }
+    }
+
+    return null;
+}
+
 fn perspectiveFov(fovy: f32, aspect: f32, near: f32, far: f32, homogenous_depth: bool) zm.Mat {
     return if (homogenous_depth) zm.perspectiveFovLhGl(
         fovy,
@@ -212,10 +232,12 @@ fn orthographic(w: f32, h: f32, near: f32, far: f32, homogenous_depth: bool) zm.
 }
 
 const api = public.CameraAPI{
-    .cameraSetingsMenu = cameraSetingsMenu,
-    .selectMainCameraMenu = selectMainCameraMenu,
     .perspectiveFov = perspectiveFov,
     .orthographic = orthographic,
+
+    .cameraSetingsMenu = cameraSetingsMenu,
+    .selectMainCameraMenu = selectMainCameraMenu,
+    .cameraMenu = cameraMenu,
 };
 
 // CDB
@@ -272,6 +294,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
     _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
 
+    // impl api
     try apidb.setOrRemoveZigApi(module_name, public.CameraAPI, &api, load);
 
     // impl interface

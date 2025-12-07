@@ -9,14 +9,14 @@ const cdb_private = @import("cdb.zig");
 const uuid_private = @import("uuid.zig");
 const tempalloc = @import("tempalloc.zig");
 const profiler = @import("profiler.zig");
-const platform_private = @import("platform.zig");
+const host_private = @import("host.zig");
 
 const cetech1 = @import("cetech1");
 const public = cetech1.assetdb;
 const cdb = cetech1.cdb;
 const uuid = cetech1.uuid;
 
-const platform = cetech1.platform;
+const host = cetech1.host;
 const cdb_types = cetech1.cdb_types;
 
 var _cdb = &cdb_private.api;
@@ -1079,7 +1079,7 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
 
                 var full_path_buf: [2048]u8 = undefined;
                 const full_path = self.dir.realpath(self.filename, &full_path_buf) catch undefined;
-                log.info("Importing cdb asset {s}", .{full_path});
+                log.debug("Importing cdb asset {s}", .{full_path});
 
                 var asset_file = self.dir.openFile(self.filename, .{ .mode = .read_only }) catch |err| {
                     log.err("Could not import asset {}", .{err});
@@ -1650,7 +1650,7 @@ fn getPathForFolder(buff: []u8, from_folder: cdb.ObjId) ![]u8 {
         var first = true;
         var folder_it: ?cdb.ObjId = from_folder;
 
-        try writeLeft(&fbs, ".json");
+        try writeLeft(&fbs, ".json"); // TODO: shit
         try writeLeft(&fbs, public.Folder.name);
         try writeLeft(&fbs, ".");
 
@@ -1692,6 +1692,7 @@ fn getPathForAsset(buff: []u8, asset: cdb.ObjId, extension: []const u8) ![]u8 {
     var fbs = std.io.fixedBufferStream(buff);
     try fbs.seekTo(try fbs.getEndPos());
 
+    //try writeLeft(&fbs, ".json"); // TODO: shit
     try writeLeft(&fbs, extension);
     try writeLeft(&fbs, ".");
 
@@ -2606,7 +2607,7 @@ fn buffGetValidName(allocator: std.mem.Allocator, buf: [:0]u8, folder_: cdb.ObjI
     return name;
 }
 
-fn openInOs(allocator: std.mem.Allocator, open_type: platform.OpenInType, asset: cdb.ObjId) !void {
+fn openInOs(allocator: std.mem.Allocator, open_type: host.OpenInType, asset: cdb.ObjId) !void {
     if (_assetroot_fs.asset_root_path) |asset_root_path| {
         var buff: [128:0]u8 = undefined;
         const path = try getFilePathForAsset(&buff, asset);
@@ -2614,7 +2615,7 @@ fn openInOs(allocator: std.mem.Allocator, open_type: platform.OpenInType, asset:
         const full_path = try std.fs.path.join(allocator, &.{ asset_root_path, path });
         defer allocator.free(full_path);
 
-        try platform_private.api.openIn(allocator, open_type, full_path);
+        try host_private.system_api.openIn(allocator, open_type, full_path);
     }
 }
 

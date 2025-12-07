@@ -82,21 +82,21 @@ const move_system_i = ecs.SystemI.implement(
         .phase = ecs.OnUpdate,
         .simulation = true,
         .query = &.{
-            .{ .id = ecs.id(transform.Position), .inout = .InOut },
+            .{ .id = ecs.id(transform.Transform), .inout = .InOut },
             .{ .id = ecs.id(public.Velocity), .inout = .In },
         },
     },
     struct {
-        pub fn update(world: ecs.World, it: *ecs.Iter) !void {
+        pub fn update(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
             _ = world;
 
-            const p = it.field(transform.Position, 0).?;
+            const p = it.field(transform.Transform, 0).?;
             const v = it.field(public.Velocity, 1).?;
 
             for (0..it.count()) |i| {
-                p[i].x += v[i].x;
-                p[i].y += v[i].y;
-                p[i].z += v[i].z;
+                p[i].position.x += v[i].x * dt;
+                p[i].position.y += v[i].y * dt;
+                p[i].position.z += v[i].z * dt;
             }
         }
     },

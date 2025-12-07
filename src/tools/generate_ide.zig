@@ -3,13 +3,18 @@ const builtin = @import("builtin");
 
 pub const EditorType = enum {
     vscode,
-    fleet,
     idea,
+};
+
+const LaunchCmdProgram = union(enum) {
+    runner: void,
+    studio: void,
+    path: []const u8,
 };
 
 pub const LaunchCmd = struct {
     name: []const u8,
-    program: ?[]const u8 = null,
+    program: LaunchCmdProgram = .studio,
     args: []const []const u8,
     //cwd: []const u8,
 };
@@ -44,7 +49,6 @@ pub fn genLddbScriptPath(allocator: std.mem.Allocator, base_path: []const u8, is
 pub fn generateEditorConfigs(allocator: std.mem.Allocator, editor_type: EditorType, project_dir: std.fs.Dir, args: ParseArgsResult, launch_cmds: []const LaunchCmd) !void {
     switch (editor_type) {
         .vscode => try generateEditorConfigsVSCode(allocator, project_dir, args, launch_cmds),
-        .fleet => try generateEditorConfigsFleet(allocator, project_dir, args, launch_cmds),
         .idea => try generateEditorConfigsIdea(allocator, project_dir, args, launch_cmds),
     }
 }
@@ -62,7 +66,17 @@ pub fn createLauchCmdForFixtures(allocator: std.mem.Allocator, dir_path: []const
         const basename = std.fs.path.basename(path.name);
 
         try cmd_list.append(allocator, .{
-            .name = try std.fmt.allocPrint(allocator, "CETech1 - {s}", .{basename}),
+            .program = .studio,
+            .name = try std.fmt.allocPrint(allocator, "{s} - Studio", .{basename}),
+            .args = try allocator.dupe([]const u8, &.{
+                "--asset-root",
+                try std.fmt.allocPrint(allocator, "fixtures/{s}/", .{basename}),
+            }),
+        });
+
+        try cmd_list.append(allocator, .{
+            .program = .runner,
+            .name = try std.fmt.allocPrint(allocator, "{s} - Runner", .{basename}),
             .args = try allocator.dupe([]const u8, &.{
                 "--asset-root",
                 try std.fmt.allocPrint(allocator, "fixtures/{s}/", .{basename}),
@@ -236,9 +250,15 @@ pub fn createLaunchersVSCode(allocator: std.mem.Allocator, project_dir: std.fs.D
     const tmp_alloc = tmp_arena.allocator();
 
     for (launch_cmds) |cmd| {
+        const program = switch (cmd.program) {
+            .path => |p| p,
+            .studio => try std.fmt.allocPrint(tmp_alloc, "{s}_studio{s}", .{ args.bin_path, osBasedProgramExtension() }),
+            .runner => try std.fmt.allocPrint(tmp_alloc, "{s}{s}", .{ args.bin_path, osBasedProgramExtension() }),
+        };
+
         try cmd_list.append(allocator, .{
             .name = cmd.name,
-            .program = try std.fmt.allocPrint(tmp_alloc, "{s}{s}", .{ cmd.program orelse args.bin_path, osBasedProgramExtension() }),
+            .program = program,
             .args = cmd.args,
             .cwd = "${workspaceFolder}",
         });
@@ -343,114 +363,6 @@ pub fn createOrUpdateSettingsJsonVSCode(allocator: std.mem.Allocator, project_di
 }
 
 //
-// Fleet
-//
-pub const FleetCodeLaunchCmd = struct {
-    type: []const u8,
-    name: []const u8,
-    program: []const u8,
-    args: []const []const u8,
-    workingDir: []const u8,
-};
-
-pub const FleetCodeLaunchConfig = struct {
-    configurations: []const FleetCodeLaunchCmd,
-};
-
-pub const FleetCodeCmdList = std.ArrayListUnmanaged(FleetCodeLaunchCmd);
-
-pub fn generateEditorConfigsFleet(allocator: std.mem.Allocator, project_dir: std.fs.Dir, args: ParseArgsResult, launch_cmds: []const LaunchCmd) !void {
-    try createOrUpdateSettingsJsonFleet(allocator, project_dir, args);
-    try createLaunchersFleet(allocator, project_dir, args, launch_cmds);
-}
-
-pub fn createLaunchersFleet(allocator: std.mem.Allocator, project_dir: std.fs.Dir, args: ParseArgsResult, launch_cmds: []const LaunchCmd) !void {
-    var cmd_list = FleetCodeCmdList{};
-    defer cmd_list.deinit(allocator);
-
-    var tmp_arena = std.heap.ArenaAllocator.init(allocator);
-    defer tmp_arena.deinit();
-    const tmp_alloc = tmp_arena.allocator();
-
-    for (launch_cmds) |cmd| {
-        try cmd_list.append(allocator, .{
-            .type = "command",
-            .name = cmd.name,
-            .program = try std.fmt.allocPrint(tmp_alloc, "{s}{s}", .{ cmd.program orelse args.bin_path, osBasedProgramExtension() }),
-            .args = cmd.args,
-            .workingDir = "$WORKSPACE_DIR$",
-        });
-    }
-
-    var vscode_dir = try project_dir.makeOpenPath(".fleet", .{});
-    defer vscode_dir.close();
-
-    var obj_file = try vscode_dir.createFile("run.json", .{});
-    defer obj_file.close();
-
-    var buffer: [4096]u8 = undefined;
-
-    var bw = obj_file.writer(&buffer);
-    defer bw.interface.flush() catch undefined;
-
-    var ws = std.json.Stringify{ .writer = &bw.interface, .options = .{ .whitespace = .indent_tab } };
-    try ws.write(FleetCodeLaunchConfig{ .configurations = cmd_list.items });
-}
-
-pub fn createOrUpdateSettingsJsonFleet(allocator: std.mem.Allocator, project_dir: std.fs.Dir, args: ParseArgsResult) !void {
-    var fleet_dir = try project_dir.makeOpenPath(".fleet", .{});
-    defer fleet_dir.close();
-
-    var buffer: [4096]u8 = undefined;
-
-    // Read or create
-    var parsed = blk: {
-        var obj_file = fleet_dir.openFile("settings.json", .{ .mode = .read_only }) catch |err| {
-            if (err == error.FileNotFound) {
-                break :blk try std.json.parseFromSlice(std.json.Value, allocator, "{}", .{});
-            }
-            return err;
-        };
-        defer obj_file.close();
-        var rb = obj_file.reader(&buffer);
-        var json_reader = std.json.Reader.init(allocator, &rb.interface);
-        defer json_reader.deinit();
-
-        break :blk try std.json.parseFromTokenSource(std.json.Value, allocator, &json_reader, .{});
-    };
-    defer parsed.deinit();
-
-    const base_path = try project_dir.realpathAlloc(allocator, ".");
-    defer allocator.free(base_path);
-
-    // plugins
-    {
-        var zig_plugin = std.json.Value{ .object = std.json.ObjectMap.init(parsed.arena.allocator()) };
-        try zig_plugin.object.put("type", std.json.Value{ .string = "add" });
-        try zig_plugin.object.put("pluginName", std.json.Value{ .string = "fleet.zig" });
-
-        var args_array = std.json.Value{ .array = std.json.Array.init(parsed.arena.allocator()) };
-        try args_array.array.append(.{ .object = zig_plugin.object });
-        try parsed.value.object.put("plugins", args_array);
-    }
-
-    // ZLS
-    const zls_path = try genZlsPath(allocator, base_path, args.is_project);
-    defer allocator.free(zls_path);
-    try parsed.value.object.put("zig.zls.path", .{ .string = zls_path });
-
-    // Write back
-    var obj_file = try fleet_dir.createFile("settings.json", .{});
-    defer obj_file.close();
-
-    var bw = obj_file.writer(&buffer);
-    defer bw.interface.flush() catch undefined;
-
-    var ws = std.json.Stringify{ .writer = &bw.interface, .options = .{ .whitespace = .indent_tab } };
-    try ws.write(parsed.value);
-}
-
-//
 // Jetbrains
 //
 
@@ -489,7 +401,11 @@ pub fn createLaunchersIdea(allocator: std.mem.Allocator, project_dir: std.fs.Dir
         var bw = obj_file.writer(&buffer);
         defer bw.interface.flush() catch undefined;
 
-        const program = try std.fmt.allocPrint(tmp_alloc, "{s}{s}", .{ cmd.program orelse args.bin_path, osBasedProgramExtension() });
+        const program = switch (cmd.program) {
+            .path => |p| p,
+            .studio => try std.fmt.allocPrint(tmp_alloc, "{s}_studio{s}", .{ args.bin_path, osBasedProgramExtension() }),
+            .runner => try std.fmt.allocPrint(tmp_alloc, "{s}{s}", .{ args.bin_path, osBasedProgramExtension() }),
+        };
 
         try bw.interface.print(
             \\<component name="ProjectRunConfigurationManager">
@@ -528,8 +444,8 @@ pub fn createLaunchersIdea(allocator: std.mem.Allocator, project_dir: std.fs.Dir
 }
 
 pub fn createProjectIdea(allocator: std.mem.Allocator, project_dir: std.fs.Dir, args: ParseArgsResult) !void {
-    var fleet_dir = try project_dir.makeOpenPath(".idea", .{});
-    defer fleet_dir.close();
+    var idea_dir = try project_dir.makeOpenPath(".idea", .{});
+    defer idea_dir.close();
 
     const base_path = try project_dir.realpathAlloc(allocator, ".");
     defer allocator.free(base_path);
@@ -541,7 +457,7 @@ pub fn createProjectIdea(allocator: std.mem.Allocator, project_dir: std.fs.Dir, 
         const zls_path = try genZlsPath(allocator, base_path, args.is_project);
         defer allocator.free(zls_path);
 
-        var obj_file = try fleet_dir.createFile("zigbrains.xml", .{});
+        var obj_file = try idea_dir.createFile("zigbrains.xml", .{});
         defer obj_file.close();
         var bw = obj_file.writer(&buffer);
         defer bw.interface.flush() catch undefined;
@@ -558,7 +474,7 @@ pub fn createProjectIdea(allocator: std.mem.Allocator, project_dir: std.fs.Dir, 
 
     // cetech1.iml
     {
-        var obj_file = try fleet_dir.createFile("cetech1.iml", .{});
+        var obj_file = try idea_dir.createFile("cetech1.iml", .{});
         defer obj_file.close();
         var bw = obj_file.writer(&buffer);
         defer bw.interface.flush() catch undefined;
@@ -577,7 +493,7 @@ pub fn createProjectIdea(allocator: std.mem.Allocator, project_dir: std.fs.Dir, 
 
     // modules.xml
     {
-        var obj_file = try fleet_dir.createFile("modules.xml", .{});
+        var obj_file = try idea_dir.createFile("modules.xml", .{});
         defer obj_file.close();
         var bw = obj_file.writer(&buffer);
         defer bw.interface.flush() catch undefined;
@@ -596,7 +512,7 @@ pub fn createProjectIdea(allocator: std.mem.Allocator, project_dir: std.fs.Dir, 
 
     // .gitignore
     {
-        var obj_file = try fleet_dir.createFile(".gitignore", .{});
+        var obj_file = try idea_dir.createFile(".gitignore", .{});
         defer obj_file.close();
         var bw = obj_file.writer(&buffer);
         defer bw.interface.flush() catch undefined;

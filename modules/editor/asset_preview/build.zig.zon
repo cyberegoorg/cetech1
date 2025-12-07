@@ -12,8 +12,9 @@
         .render_viewport = .{ .path = "../../rendering/render_viewport" },
         .render_graph = .{ .path = "../../rendering/render_graph" },
         .render_pipeline = .{ .path = "../../rendering/render_pipeline" },
+        .light_component = .{ .path = "../../rendering/light_component" },
         .camera = .{ .path = "../../rendering/camera" },
+        .camera_controller = .{ .path = "../../rendering/camera_controller" },
         .transform = .{ .path = "../../rendering/transform" },
-        .editor_entity = .{ .path = "../entity_editor" },
     },
 }

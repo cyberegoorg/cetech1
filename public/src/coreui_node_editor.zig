@@ -4,7 +4,7 @@ const cdb = @import("cdb.zig");
 const modules = @import("modules.zig");
 const cetech1 = @import("root.zig");
 
-const platform = @import("platform.zig");
+const host = @import("host.zig");
 
 const coreui = @import("coreui.zig");
 

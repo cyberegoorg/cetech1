@@ -10,7 +10,6 @@
     </toc-element>
     <toc-element topic="getting-started.md">
     </toc-element>
-    <toc-element topic="CHANGELOG.md"/>
     <toc-element topic="manual.md">
         <toc-element topic="core.md">
             <toc-element topic="kernel.md"/>
@@ -18,6 +17,7 @@
             <toc-element topic="cdb.md"/>
             <toc-element topic="assetdb.md"/>
         </toc-element>
-        <toc-element topic="editor.md"/>
+        <toc-element topic="studio.md"/>
     </toc-element>
+    <toc-element topic="CHANGELOG.md"/>
 </instance-profile>

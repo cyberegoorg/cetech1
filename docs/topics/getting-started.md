@@ -62,7 +62,7 @@ Get ZIG `0.15.1`.
 | `-Ddynamic_modules=` | `true` or `false` | `true`  | Build all modules in dynamic mode.                                          |
 | `-Dstatic_modules=`  | `true` or `false` | `false` | Build all modules in static mode.                                           |
 | `-Dwith_samples=`    | `true` or `false` | `true`  | Build with sample modules.                                                  |
-| `-Dwith_editor=`     | `true` or `false` | `true`  | Build with editor modules.                                                  |
+| `-Dwith_studio=`     | `true` or `false` | `true`  | Build with studio modules.                                                  |
 | `-Dwith_tracy=`      | `true` or `false` | `true`  | Build with [tracy](#tracy-profiler) support.                                |
 | `-Dwith_nfd=`        | `true` or `false` | `true`  | Build with NFD (native file dialog)                                         |
 | `-Dnfd_portal=`      | `true` or `false` | `true`  | Build NFD with xdg-desktop-portal instead of GTK. Linux, nice for SteamDeck |
@@ -152,7 +152,7 @@ CETech1 has builtin support for tracy profiler and provide Tracy as submodule, b
     <tab title="MacOS">
         <code-block lang="bash">
             profiler/build/tracy-profiler -a localhost
-            zig-out/bin/cetech1 # on separate terminal
+            zig-out/bin/cetech1_studio # on separate terminal
             # Have fun
         </code-block>
     </tab>
@@ -160,7 +160,7 @@ CETech1 has builtin support for tracy profiler and provide Tracy as submodule, b
         <code-block lang="bash">
             # install tracy by your way
             profiler/build/tracy-profiler -a localhost
-            zig-out/bin/cetech1 # on separate terminal
+            zig-out/bin/cetech1_studio # on separate terminal
             # Have fun
         </code-block>
     </tab>
@@ -178,16 +178,6 @@ CETech1 has builtin support for tracy profiler and provide Tracy as submodule, b
         zig build gen-ide -Dide=vscode
     </code-block>
 2. Install extension `ziglang.vscode-zig` (or install all recommended)
-
-## Fleet
-
-1. Create fleet configs.
-    <code-block lang="bash">
-        # This generate fleet run.json with predefined cases
-        # create or update settings.json
-        # and set zls path to locally builded
-        zig build gen-ide -Dide=fleet
-    </code-block>
 
 ## Idea
 

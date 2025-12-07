@@ -5,7 +5,7 @@ const cdb = @import("cdb.zig");
 const modules = @import("modules.zig");
 const cetech1 = @import("root.zig");
 
-const platform = @import("platform.zig");
+const host = @import("host.zig");
 const gpu = @import("gpu.zig");
 const ArraySet = @import("root.zig").ArraySet;
 
@@ -198,14 +198,20 @@ pub const Icons = struct {
     pub const Metrics = CoreIcons.FA_CHART_LINE;
 
     pub const Entity = CoreIcons.FA_ROBOT;
-    pub const Component = CoreIcons.FA_POO;
+    pub const Component = CoreIcons.FA_PUZZLE_PIECE;
 
     pub const Position = CoreIcons.FA_UP_DOWN_LEFT_RIGHT;
     pub const Rotation = CoreIcons.FA_ROTATE;
     pub const Scale = CoreIcons.FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER;
 
+    pub const LocalMode = CoreIcons.FA_ARROWS_TO_CIRCLE;
+    pub const WorldMode = CoreIcons.FA_GLOBE;
+    pub const Gizmo = CoreIcons.FA_LOCATION_CROSSHAIRS;
+    pub const Snap = CoreIcons.FA_MAGNET;
+
     pub const Play = CoreIcons.FA_PLAY;
     pub const Pause = CoreIcons.FA_PAUSE;
+    pub const ForwardStep = CoreIcons.FA_FORWARD_STEP;
 
     pub const Camera = CoreIcons.FA_CAMERA;
     pub const Draw = CoreIcons.FA_BRUSH;
@@ -215,6 +221,16 @@ pub const Icons = struct {
     pub const Light = CoreIcons.FA_LIGHTBULB;
 
     pub const RenderPipeline = CoreIcons.FA_PHOTO_FILM;
+
+    pub const Explosion = CoreIcons.FA_EXPLOSION;
+
+    pub const BoundingBox = CoreIcons.FA_CUBE;
+    pub const BoundingSphere = CoreIcons.FA_CIRCLE;
+
+    pub const FreezeCamera = CoreIcons.FA_SNOWFLAKE;
+
+    pub const FontScale = CoreIcons.FA_TEXT_WIDTH;
+    pub const Culling = CoreIcons.FA_BORDER_TOP_LEFT;
 };
 
 pub const CoreUII = struct {
@@ -450,7 +466,7 @@ pub const CoreUIApi = struct {
         return result;
     }
 
-    draw: *const fn (allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, kernel_tick: u64, dt: f32) anyerror!void,
+    draw: *const fn (allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, viewid: gpu.ViewId, kernel_tick: u64, dt: f32) anyerror!void,
 
     showDemoWindow: *const fn () void,
     showMetricsWindow: *const fn () void,
@@ -461,12 +477,6 @@ pub const CoreUIApi = struct {
     // Filter
     uiFilter: *const fn (buf: []u8, filter: ?[:0]const u8) ?[:0]const u8,
     uiFilterPass: *const fn (allocator: std.mem.Allocator, filter: [:0]const u8, value: [:0]const u8, is_path: bool) ?f64,
-
-    // NFD
-    supportFileDialog: *const fn () bool,
-    openFileDialog: *const fn (allocator: std.mem.Allocator, filter: ?[]const FilterItem, default_path: ?[:0]const u8) anyerror!?[:0]const u8,
-    saveFileDialog: *const fn (allocator: std.mem.Allocator, filter: ?[]const FilterItem, default_path: ?[:0]const u8, default_name: ?[:0]const u8) anyerror!?[:0]const u8,
-    openFolderDialog: *const fn (allocator: std.mem.Allocator, default_path: ?[:0]const u8) anyerror!?[:0]const u8,
 
     // shit from the pointer deep.
     begin: *const fn (name: [:0]const u8, args: Begin) bool,
@@ -556,6 +566,9 @@ pub const CoreUIApi = struct {
     dragU64: *const fn (label: [:0]const u8, args: DragScalarGen(u64)) bool,
 
     checkbox: *const fn (label: [:0]const u8, args: Checkbox) bool,
+    toggleButton: *const fn (label: [:0]const u8, toggled: *bool) bool,
+    toggleMenuItem: *const fn (label: [:0]const u8, toggled: *bool) bool,
+
     setClipboardText: *const fn (value: [:0]const u8) void,
 
     beginPopupContextItem: *const fn () bool,
@@ -579,6 +592,7 @@ pub const CoreUIApi = struct {
 
     separator: *const fn () void,
     separatorText: *const fn (label: [:0]const u8) void,
+    separatorMenu: *const fn () void,
 
     setNextItemWidth: *const fn (item_width: f32) void,
     setNextWindowSize: *const fn (args: SetNextWindowSize) void,
@@ -616,6 +630,11 @@ pub const CoreUIApi = struct {
     isMouseClicked: *const fn (mouse_button: MouseButton) bool,
 
     handleSelection: *const fn (allocator: std.mem.Allocator, selection: *Selection, obj: SelectionItem, multiselect_enabled: bool) anyerror!void,
+
+    beginTabBar: *const fn (label: [:0]const u8, flags: TabBarFlags) bool,
+    beginTabItem: *const fn (label: [:0]const u8, args: BeginTabItem) bool,
+    endTabBar: *const fn () void,
+    endTabItem: *const fn () void,
 
     // TODO: MOVE?
     // Tests
@@ -675,15 +694,16 @@ pub const CoreUIApi = struct {
     beginDisabled: *const fn (args: BeginDisabled) void,
     endDisabled: *const fn () void,
 
-    // TODO: mode
+    getCurrentWindow: *const fn () *ImGuiWindow,
+
+    // TODO: move
     gizmoSetRect: *const fn (x: f32, y: f32, width: f32, height: f32) void,
     gizmoSetDrawList: *const fn (draw_list: ?DrawList) void,
-
     gizmoManipulate: *const fn (
         view: *const [16]f32,
         projection: *const [16]f32,
         operation: Operation,
-        mode: Mode,
+        mode: GizmoMode,
         matrix: *[16]f32,
         opt: struct {
             delta_matrix: ?*[16]f32 = null,
@@ -692,7 +712,12 @@ pub const CoreUIApi = struct {
             bounds_snap: ?*const [3]f32 = null,
         },
     ) bool,
+    gizmoSetAlternativeWindow: *const fn (window: *ImGuiWindow) void,
+    gizmoIsUsing: *const fn () bool,
+    gizmoIsOver: *const fn () bool,
 };
+
+pub const ImGuiWindow = opaque {};
 
 pub const Operation = packed struct(u32) {
     translate_x: bool = false,
@@ -711,36 +736,26 @@ pub const Operation = packed struct(u32) {
     scale_zu: bool = false,
     _padding: u18 = 0,
 
-    pub fn translate() Operation {
-        return .{ .translate_x = true, .translate_y = true, .translate_z = true };
-    }
-    pub fn rotate() Operation {
-        return .{ .rotate_x = true, .rotate_y = true, .rotate_z = true };
-    }
-    pub fn scale() Operation {
-        return .{ .scale_x = true, .scale_y = true, .scale_z = true };
-    }
-    pub fn scaleU() Operation {
-        return .{ .scale_xu = true, .scale_yu = true, .scale_zu = true };
-    }
-    pub fn universal() Operation {
-        return .{
-            .translate_x = true,
-            .translate_y = true,
-            .translate_z = true,
-            .rotate_x = true,
-            .rotate_y = true,
-            .rotate_z = true,
-            .scale_xu = true,
-            .scale_yu = true,
-            .scale_zu = true,
-        };
-    }
+    pub const translate: Operation = .{ .translate_x = true, .translate_y = true, .translate_z = true };
+    pub const rotate: Operation = .{ .rotate_x = true, .rotate_y = true, .rotate_z = true };
+    pub const scale: Operation = .{ .scale_x = true, .scale_y = true, .scale_z = true };
+    pub const scaleU: Operation = .{ .scale_xu = true, .scale_yu = true, .scale_zu = true };
+    pub const universal: Operation = .{
+        .translate_x = true,
+        .translate_y = true,
+        .translate_z = true,
+        .rotate_x = true,
+        .rotate_y = true,
+        .rotate_z = true,
+        .scale_xu = true,
+        .scale_yu = true,
+        .scale_zu = true,
+    };
 };
 
-pub const Mode = enum(u32) {
-    local,
-    world,
+pub const GizmoMode = enum(u32) {
+    local = 0,
+    world = 1,
 };
 
 pub const DrawCmd = extern struct {
@@ -2697,6 +2712,41 @@ pub fn DragScalarGen(comptime T: type) type {
         flags: SliderFlags = .{},
     };
 }
+
+//--------------------------------------------------------------------------------------------------
+//
+// Tabs
+//
+//--------------------------------------------------------------------------------------------------
+pub const TabBarFlags = packed struct(c_int) {
+    reorderable: bool = false,
+    auto_select_new_tabs: bool = false,
+    tab_list_popup_button: bool = false,
+    no_close_with_middle_mouse_button: bool = false,
+    no_tab_list_scrolling_buttons: bool = false,
+    no_tooltip: bool = false,
+    draw_selected_overline: bool = false,
+    fitting_policy_resize_down: bool = false,
+    fitting_policy_scroll: bool = false,
+    _padding: u23 = 0,
+};
+pub const TabItemFlags = packed struct(c_int) {
+    unsaved_document: bool = false,
+    set_selected: bool = false,
+    no_close_with_middle_mouse_button: bool = false,
+    no_push_id: bool = false,
+    no_tooltip: bool = false,
+    no_reorder: bool = false,
+    leading: bool = false,
+    trailing: bool = false,
+    no_assumed_closure: bool = false,
+    _padding: u23 = 0,
+};
+
+const BeginTabItem = struct {
+    p_open: ?*bool = null,
+    flags: TabItemFlags = .{},
+};
 
 pub const PlotFlags = packed struct(u32) {
     no_title: bool = false,

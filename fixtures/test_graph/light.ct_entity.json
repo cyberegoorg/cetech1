@@ -5,22 +5,37 @@
   "__uuid": "0198f9db-b41e-743c-817c-1c1fb5db1c59",
   "components": [
     {
-      "__type_name": "ct_position",
-      "__uuid": "0198f9db-f31d-7fb3-9830-1babb2858b7a"
+      "__type_name": "ct_transform",
+      "__uuid": "019b9928-fe65-7947-aa05-39fae8ff408c",
+      "position": {
+        "__type_name": "ct_position",
+        "__uuid": "019b992c-3127-7f1f-bac7-efb37dfbb946"
+      },
+      "rotation": {
+        "__type_name": "ct_rotation",
+        "__uuid": "019b992c-3127-7ba5-948c-a9313f563c55"
+      },
+      "scale": {
+        "__type_name": "ct_scale",
+        "__uuid": "019b992c-3127-79c3-8f7b-9be429239a2d",
+        "x": 1,
+        "y": 1,
+        "z": 1
+      }
     },
     {
       "__type_name": "ct_light_component",
       "__uuid": "0198f9fb-70ca-7cf1-9c8f-8d77a4434245",
       "type": "point",
-      "radius": 1e0,
+      "radius": 1,
       "color": {
         "__type_name": "ct_color_3f",
         "__uuid": "0198f9fb-7daf-71f9-b9a4-fa6ac5a36ad0",
-        "r": 1e0,
-        "g": 1e0,
-        "b": 1e0
+        "r": 1,
+        "g": 1,
+        "b": 1
       },
-      "power": 1e3
+      "power": 1000
     }
   ]
 }

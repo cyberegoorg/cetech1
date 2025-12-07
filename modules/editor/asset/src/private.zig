@@ -38,7 +38,7 @@ var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 var _editor_inspector: *const editor_inspector.InspectorAPI = undefined;
 var _editor_tree: *const editor_tree.TreeAPI = undefined;
 var _editor_obj_buffer: *const editor_obj_buffer.EditorObjBufferAPI = undefined;
-var _platform: *const cetech1.platform.PlatformApi = undefined;
+var _platform: *const cetech1.host.PlatformApi = undefined;
 
 // Global state
 const G = struct {
@@ -1237,7 +1237,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _editor_inspector = apidb.getZigApi(module_name, editor_inspector.InspectorAPI).?;
     _editor_tree = apidb.getZigApi(module_name, editor_tree.TreeAPI).?;
     _editor_obj_buffer = apidb.getZigApi(module_name, editor_obj_buffer.EditorObjBufferAPI).?;
-    _platform = apidb.getZigApi(module_name, cetech1.platform.PlatformApi).?;
+    _platform = apidb.getZigApi(module_name, cetech1.host.PlatformApi).?;
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});

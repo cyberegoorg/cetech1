@@ -28,7 +28,9 @@ var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _coreui: *const coreui.CoreUIApi = undefined;
 var _assetdb: *const assetdb.AssetDBAPI = undefined;
 var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _platform: *const cetech1.platform.PlatformApi = undefined;
+var _platform: *const cetech1.host.PlatformApi = undefined;
+var _platform_system: *const cetech1.host.SystemApi = undefined;
+var _platform_dialogs: *const cetech1.host.DialogsApi = undefined;
 var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
 var _task: *const cetech1.task.TaskAPI = undefined;
 
@@ -597,7 +599,7 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
     if (_coreui.beginMenu(allocator, coreui.Icons.Editor, true, null)) {
         defer _coreui.endMenu();
 
-        if (_coreui.menuItem(allocator, coreui.Icons.OpenProject ++ "  " ++ "Open project", .{ .enabled = _coreui.supportFileDialog() }, null)) {
+        if (_coreui.menuItem(allocator, coreui.Icons.OpenProject ++ "  " ++ "Open project", .{ .enabled = _platform_dialogs.supportFileDialog() }, null)) {
             const Task = struct {
                 pub fn exec(_: *@This()) !void {
                     var buf: [256:0]u8 = undefined;
@@ -607,7 +609,7 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
                     const a = _tempalloc.create() catch undefined;
                     defer _tempalloc.destroy(a);
 
-                    if (try _coreui.openFileDialog(
+                    if (try _platform_dialogs.openFileDialog(
                         a,
                         &.{
                             .{ .name = "Project file", .spec = assetdb.Project.name ++ ".json" },
@@ -633,11 +635,11 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
             try _assetdb.saveAllModifiedAssets(allocator);
         }
 
-        if (_coreui.menuItem(allocator, coreui.Icons.SaveAll ++ "  " ++ "Save project as", .{ .enabled = _coreui.supportFileDialog() }, null)) {
+        if (_coreui.menuItem(allocator, coreui.Icons.SaveAll ++ "  " ++ "Save project as", .{ .enabled = _platform_dialogs.supportFileDialog() }, null)) {
             var buf: [256:0]u8 = undefined;
             const str = try std.fs.cwd().realpath(".", &buf);
             buf[str.len] = 0;
-            if (try _coreui.openFolderDialog(allocator, @ptrCast(&buf))) |path| {
+            if (try _platform_dialogs.openFolderDialog(allocator, @ptrCast(&buf))) |path| {
                 defer allocator.free(path);
                 try _assetdb.saveAsAllAssets(allocator, path);
                 _kernel.openAssetRoot(path);
@@ -659,16 +661,15 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
 
     if (_coreui.beginMenu(allocator, coreui.Icons.Settings, true, null)) {
         defer _coreui.endMenu();
-        _ = _coreui.menuItemPtr(allocator, coreui.Icons.Colors ++ "  " ++ "Colors", .{ .selected = &_g.enable_colors }, null);
 
-        // TODO: but neeed imgui docking
-        // if (_coreui.beginMenu(allocator, coreui.Icons.TickRate ++ "  " ++ "Scale factor", true, null)) {
-        //     defer _coreui.endMenu();
-        //     var scale_factor = _coreui.getScaleFactor();
-        //     if (_coreui.inputF32("###kernel_tick_rate", .{ .v = &scale_factor, .flags = .{ .enter_returns_true = true } })) {
-        //         _coreui.setScaleFactor(scale_factor);
-        //     }
-        // }
+        if (_coreui.beginMenu(allocator, coreui.Icons.FontScale ++ "  " ++ "Scale", true, null)) {
+            defer _coreui.endMenu();
+            var font_scale_main = _coreui.getScaleFactor();
+
+            if (_coreui.inputF32("###scale", .{ .v = &font_scale_main, .flags = .{ .enter_returns_true = true } })) {
+                _coreui.setScaleFactor(font_scale_main);
+            }
+        }
 
         if (_coreui.beginMenu(allocator, coreui.Icons.TickRate ++ "  " ++ "Kernel tick rate", true, null)) {
             defer _coreui.endMenu();
@@ -678,6 +679,8 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
                 _kernel.setKernelTickRate(rate);
             }
         }
+
+        _ = _coreui.menuItemPtr(allocator, coreui.Icons.Colors ++ "  " ++ "Colors", .{ .selected = &_g.enable_colors }, null);
     }
 
     if (_coreui.beginMenu(allocator, coreui.Icons.Debug, true, null)) {
@@ -700,11 +703,11 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
         defer _coreui.endMenu();
 
         if (_coreui.menuItem(allocator, coreui.Icons.Link ++ "  " ++ "GitHub", .{}, null)) {
-            try _platform.openIn(allocator, .open_url, REPO_URL);
+            try _platform_system.openIn(allocator, .open_url, REPO_URL);
         }
 
         if (_coreui.menuItem(allocator, coreui.Icons.Link ++ "  " ++ "Docs (online)", .{}, null)) {
-            try _platform.openIn(allocator, .open_url, ONLINE_DOCUMENTATION);
+            try _platform_system.openIn(allocator, .open_url, ONLINE_DOCUMENTATION);
         }
 
         _coreui.separator();
@@ -718,8 +721,7 @@ fn doTabMainMenu(allocator: std.mem.Allocator) !void {
     if (_coreui.beginMenu(allocator, coreui.Icons.Windows, true, null)) {
         defer _coreui.endMenu();
 
-        if (_coreui.beginMenu(allocator, coreui.Icons.OpenTab ++ "  " ++ "Create", true, null)) {
-            defer _coreui.endMenu();
+        {
 
             // Create tabs
             const impls = try _apidb.getImpl(allocator, public.TabTypeI);
@@ -760,6 +762,9 @@ fn doTabMainMenu(allocator: std.mem.Allocator) !void {
                 }
             }
         }
+
+        // Close section
+        _coreui.separator();
 
         if (_coreui.beginMenu(allocator, coreui.Icons.CloseTab ++ "  " ++ "Close", _g.tabs.count() != 0, null)) {
             defer _coreui.endMenu();
@@ -854,7 +859,12 @@ fn doTabs(allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
                 // If needed show pin object button
                 if (tab.vt.*.show_pin_object) {
                     var new_pinned = !tab.pinned_obj.isEmpty();
-                    if (_coreui.menuItemPtr(allocator, if (!tab.pinned_obj.isEmpty()) Icons.FA_LOCK else Icons.FA_LOCK_OPEN ++ "", .{ .selected = &new_pinned }, null)) {
+                    if (_coreui.menuItemPtr(
+                        allocator,
+                        if (!tab.pinned_obj.isEmpty()) Icons.FA_LOCK else Icons.FA_LOCK_OPEN ++ "",
+                        .{ .selected = &new_pinned },
+                        null,
+                    )) {
                         // Unpin
                         if (!new_pinned) {
                             tab.pinned_obj = coreui.SelectionItem.empty();
@@ -866,6 +876,7 @@ fn doTabs(allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
                             tab.pinned_obj = tab_selection;
                         }
                     }
+                    _coreui.separatorMenu();
                 }
 
                 try tab_menu(tab.inst);
@@ -885,7 +896,7 @@ fn doTabs(allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
 
 var coreui_ui_i = coreui.CoreUII.implement(struct {
     pub fn ui(allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
-        _ = _coreui.mainDockSpace(coreui.DockNodeFlags{ .passthru_central_node = true });
+        _ = _coreui.mainDockSpace(coreui.DockNodeFlags{ .passthru_central_node = false });
 
         try doMainMenu(allocator);
         try quitSaveModal();
@@ -1074,7 +1085,9 @@ pub fn load_module_zig(apidb_: *const apidb.ApiDbAPI, allocator: Allocator, log_
     _kernel = _apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _assetdb = _apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
     _tempalloc = _apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _platform = _apidb.getZigApi(module_name, cetech1.platform.PlatformApi).?;
+    _platform = _apidb.getZigApi(module_name, cetech1.host.PlatformApi).?;
+    _platform_system = _apidb.getZigApi(module_name, cetech1.host.SystemApi).?;
+    _platform_dialogs = _apidb.getZigApi(module_name, cetech1.host.DialogsApi).?;
     _profiler = _apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
     _task = _apidb.getZigApi(module_name, cetech1.task.TaskAPI).?;
 

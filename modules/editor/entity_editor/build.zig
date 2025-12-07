@@ -17,12 +17,15 @@ pub fn build(b: *std.Build) !void {
     );
 
     lib.root_module.addImport("editor", editor.module("editor"));
+    lib.root_module.addImport("editor_gizmo", b.dependency("editor_gizmo", .{}).module("editor_gizmo"));
     lib.root_module.addImport("render_viewport", b.dependency("render_viewport", .{}).module("render_viewport"));
     lib.root_module.addImport("camera", b.dependency("camera", .{}).module("camera"));
+    lib.root_module.addImport("camera_controller", b.dependency("camera_controller", .{}).module("camera_controller"));
     lib.root_module.addImport("transform", b.dependency("transform", .{}).module("transform"));
     lib.root_module.addImport("graphvm", b.dependency("graphvm", .{}).module("graphvm"));
     lib.root_module.addImport("render_graph", b.dependency("render_graph", .{}).module("render_graph"));
     lib.root_module.addImport("render_pipeline", b.dependency("render_pipeline", .{}).module("render_pipeline"));
+    lib.root_module.addImport("light_component", b.dependency("light_component", .{}).module("light_component"));
 
     _ = b.addModule("editor_entity", .{
         .root_source_file = b.path("src/entity_editor.zig"),

@@ -164,6 +164,119 @@ const light_c = ecs.ComponentI.implement(
                 }
             }
         }
+
+        // pub fn gizmoGetOperation(
+        //     world: ecs.World,
+        //     entity: ecs.EntityId,
+        //     entity_obj: cdb.ObjId,
+        //     component_obj: cdb.ObjId,
+        // ) !ecs.GizmoOptions {
+        //     // _ = world;
+        //     // _ = entity;
+        //     _ = entity_obj;
+        //     _ = component_obj;
+
+        //     const l = world.getComponent(public.Light, entity).?;
+
+        //     switch (l.type) {
+        //         .point => {
+        //             return .{
+        //                 .scale_x = true,
+        //             };
+        //         },
+        //         .spot => {
+        //             return .{
+        //                 .scale_x = true,
+        //                 .scale_y = true,
+        //                 .scale_z = true,
+        //             };
+        //         },
+        //         .direction => {
+        //             return .{
+        //                 .scale_z = true,
+        //             };
+        //         },
+        //     }
+
+        //     return .{};
+        // }
+
+        // pub fn gizmoGetMatrix(
+        //     world: ecs.World,
+        //     entity: ecs.EntityId,
+        //     entity_obj: cdb.ObjId,
+        //     component_obj: cdb.ObjId,
+        //     world_mtx: *zm.Mat,
+        //     local_mtx: *zm.Mat,
+        // ) !void {
+        //     _ = entity_obj;
+        //     _ = component_obj;
+
+        //     const t = world.getComponent(transform.WorldTransform, entity) orelse return;
+        //     const l = world.getComponent(public.Light, entity).?;
+
+        //     const translation = zm.util.getTranslationVec(t.mtx);
+        //     const rotation = zm.util.getRotationQuat(t.mtx);
+
+        //     var mat = blk: {
+        //         switch (l.type) {
+        //             .point => {
+        //                 break :blk zm.scalingV(.{ l.radius, l.radius, l.radius, 0 });
+        //             },
+        //             .spot => {
+        //                 break :blk zm.scalingV(.{ l.angle_inner, l.angle_outer, l.radius, 0 });
+        //             },
+        //             .direction => {
+        //                 break :blk zm.scalingV(.{ l.radius, l.radius, l.radius, 0 });
+        //             },
+        //         }
+        //     };
+
+        //     mat = zm.mul(mat, zm.quatToMat(rotation));
+        //     mat = zm.mul(mat, zm.translationV(translation));
+
+        //     world_mtx.* = mat;
+        //     local_mtx.* = mat;
+        // }
+
+        // pub fn gizmoSetMatrix(
+        //     world: ecs.World,
+        //     entity: ecs.EntityId,
+        //     entity_obj: cdb.ObjId,
+        //     component_obj: cdb.ObjId,
+        //     mat: zm.Mat,
+        // ) !void {
+        //     // _ = world;
+        //     // _ = entity;
+        //     _ = entity_obj;
+        //     // _ = component_obj;
+        //     // _ = mat;
+
+        //     {
+        //         const scale = zm.util.getScaleVec(mat);
+
+        //         const w = public.LightCdb.write(_cdb, component_obj).?;
+        //         const l = world.getComponent(public.Light, entity).?;
+
+        //         switch (l.type) {
+        //             .point => {
+        //                 public.LightCdb.setValue(f32, _cdb, w, .Radius, scale[0]);
+        //             },
+
+        //             .spot => {
+        //                 public.LightCdb.setValue(f32, _cdb, w, .AngleInner, scale[0]);
+        //                 public.LightCdb.setValue(f32, _cdb, w, .AngleOuter, scale[1]);
+        //                 public.LightCdb.setValue(f32, _cdb, w, .Radius, scale[2]);
+        //             },
+
+        //             .direction => {
+        //                 public.LightCdb.setValue(f32, _cdb, w, .Radius, scale[2]);
+        //             },
+        //         }
+
+        //         try public.LightCdb.commit(_cdb, w);
+        //     }
+        // }
     },
 );
 

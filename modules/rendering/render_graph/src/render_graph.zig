@@ -181,8 +181,8 @@ pub const GraphBuilder = struct {
     pub inline fn compile(builder: GraphBuilder, allocator: std.mem.Allocator, module: Module) !void {
         return builder.vtable.compile(builder.ptr, allocator, module);
     }
-    pub inline fn execute(builder: GraphBuilder, allocator: std.mem.Allocator, vp_size: [2]f32, viewers: []const Viewer) !void {
-        return builder.vtable.execute(builder.ptr, allocator, vp_size, viewers);
+    pub inline fn execute(builder: GraphBuilder, allocator: std.mem.Allocator, vp_size: [2]f32, viewers: []const Viewer, freze_mtx: ?zm.Mat) !void {
+        return builder.vtable.execute(builder.ptr, allocator, vp_size, viewers, freze_mtx);
     }
 
     pub inline fn clear(builder: GraphBuilder) !void {
@@ -224,7 +224,7 @@ pub const GraphBuilder = struct {
         getViewers: *const fn (builder: *anyopaque) []Viewer,
 
         compile: *const fn (builder: *anyopaque, allocator: std.mem.Allocator, module: Module) anyerror!void,
-        execute: *const fn (builder: *anyopaque, allocator: std.mem.Allocator, vp_size: [2]f32, viewers: []const Viewer) anyerror!void,
+        execute: *const fn (builder: *anyopaque, allocator: std.mem.Allocator, vp_size: [2]f32, viewers: []const Viewer, freze_mtx: ?zm.Mat) anyerror!void,
 
         clear: *const fn (builder: *anyopaque) anyerror!void,
 
