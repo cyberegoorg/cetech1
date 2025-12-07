@@ -23,10 +23,7 @@ const Icons = coreui.CoreIcons;
 
 const transform = @import("transform");
 const camera = @import("camera");
-const editor_entity = @import("editor_entity");
 const render_graph = @import("render_graph");
-const light_component = @import("light_component");
-const physics = @import("physics");
 
 const module_name = .editor_foo_viewport_tab;
 
@@ -55,7 +52,6 @@ var _assetdb: *const assetdb.AssetDBAPI = undefined;
 var _uuid: *const uuid.UuidAPI = undefined;
 var _task: *const task.TaskAPI = undefined;
 var _render_viewport: *const render_viewport.RenderViewportApi = undefined;
-var _editor_entity: *const editor_entity.EditorEntityAPI = undefined;
 var _render_pipeline: *const render_pipeline.RenderPipelineApi = undefined;
 var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
 
@@ -65,11 +61,6 @@ const G = struct {
     db: cdb.DbId = undefined, // TODO: SHIT
 };
 var _g: *G = undefined;
-
-const DRAW_OBJ_COUNT = 1_000;
-
-const seed: u64 = 1111;
-var prng = std.Random.DefaultPrng.init(seed);
 
 // Struct for tab type
 const FooViewportTab = struct {
@@ -87,11 +78,6 @@ const FooViewportTab = struct {
 
     flecs_port: ?u16 = null,
 };
-
-// Rendering component
-
-const ECS_WORLD_CONTEXT = .fromStr("ecs_world_context");
-const ECS_ENTITY_CONTEXT = .fromStr("ecs_entity_context");
 
 // Fill editor tab interface
 var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
@@ -131,6 +117,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 gpu_backend,
                 w,
                 camera_ent,
+                false,
             ),
             .camera_ent = camera_ent,
             .world = w,
@@ -141,35 +128,6 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 .inst = @ptrCast(tab_inst),
             },
         };
-
-        var allocator = try _tempalloc.create();
-        defer _tempalloc.destroy(allocator);
-        {
-            var zzz = _profiler.ZoneN(@src(), "Foo viewport tab - spawn entities");
-            defer zzz.End();
-
-            // TODO: TEMP HARDCODE SHIT HACK - created in 2024... if you still read this and year is not 2024 am still idiot ;)
-            if (_assetdb.getObjId(_uuid.fromStr("0191e6d1-830a-73d8-992a-aa6f9add6d1e").?)) |e_obj| {
-                const entities = try _ecs.spawnManyFromCDB(allocator, w, e_obj, DRAW_OBJ_COUNT);
-                defer allocator.free(entities);
-
-                const rnd = prng.random();
-
-                for (entities, 0..) |ent, idx| {
-                    _ = idx;
-
-                    _ = w.setId(physics.Velocity, ent, &physics.Velocity{
-                        .x = (rnd.float(f32) * 2 - 1) * 0.1,
-                        .y = (rnd.float(f32) * 2 - 1) * 0.1,
-                        .z = (rnd.float(f32) * 2 - 1) * 0.1,
-                    });
-                }
-
-                const light_ent = w.newEntity(null);
-                _ = w.setId(transform.Position, light_ent, &transform.Position{ .y = 20 });
-                _ = w.setId(light_component.Light, light_ent, &light_component.Light{ .radius = 100, .power = 10000 });
-            }
-        }
 
         return &tab_inst.tab_i;
     }
@@ -251,7 +209,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         if (_coreui.beginMenu(allocator, cetech1.coreui.Icons.Debug, true, null)) {
             defer _coreui.endMenu();
             _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
-            tab_o.flecs_port = _editor_entity.uiRemoteDebugMenuItems(&tab_o.world, allocator, tab_o.flecs_port);
+            tab_o.flecs_port = tab_o.world.uiRemoteDebugMenuItems(allocator, tab_o.flecs_port);
         }
     }
 });
@@ -347,7 +305,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _uuid = apidb.getZigApi(module_name, uuid.UuidAPI).?;
     _task = apidb.getZigApi(module_name, task.TaskAPI).?;
     _render_viewport = apidb.getZigApi(module_name, render_viewport.RenderViewportApi).?;
-    _editor_entity = apidb.getZigApi(module_name, editor_entity.EditorEntityAPI).?;
     _render_pipeline = apidb.getZigApi(module_name, render_pipeline.RenderPipelineApi).?;
     _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
 

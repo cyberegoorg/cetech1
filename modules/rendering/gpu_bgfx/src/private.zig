@@ -350,6 +350,10 @@ pub const BufferFlags = struct {
 
 const DiscardFlags = struct {
     pub fn toState(self: public.DiscardFlags) u8 {
+        if (self.Bindings and self.IndexBuffer and self.State and self.Transform and self.VertexStreams) {
+            return bgfx.DiscardFlags_All;
+        }
+
         var r: u8 = bgfx.DiscardFlags_None;
 
         if (self.Bindings) r |= bgfx.DiscardFlags_Bindings;

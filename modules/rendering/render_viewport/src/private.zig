@@ -110,7 +110,9 @@ const Viewport = struct {
 
     gpu: gpu.GpuBackend,
 
-    fn init(name: [:0]const u8, gpu_backend: gpu.GpuBackend, world: ?ecs.World, camera_ent: ecs.EntityId) !Viewport {
+    output_to_backbuffer: bool,
+
+    fn init(name: [:0]const u8, gpu_backend: gpu.GpuBackend, world: ?ecs.World, camera_ent: ecs.EntityId, output_to_backbuffer: bool) !Viewport {
         const dupe_name = try _allocator.dupeZ(u8, name);
 
         var buf: [128]u8 = undefined;
@@ -142,6 +144,7 @@ const Viewport = struct {
 
             .enabled_dd_set = EnabledDebugDrawSet.init(),
             .gpu = gpu_backend,
+            .output_to_backbuffer = output_to_backbuffer,
         };
     }
 
@@ -185,9 +188,9 @@ var viewport_visibility_flag_i = visibility_flags.VisibilityFlagI.implement(.{
     .default = true,
 });
 
-fn createViewport(name: [:0]const u8, gpu_backend: gpu.GpuBackend, world: ?ecs.World, camera_ent: ecs.EntityId) !public.Viewport {
+fn createViewport(name: [:0]const u8, gpu_backend: gpu.GpuBackend, world: ?ecs.World, camera_ent: ecs.EntityId, output_to_backbuffer: bool) !public.Viewport {
     const new_viewport = try _g.viewport_pool.create();
-    new_viewport.* = try .init(name, gpu_backend, world, camera_ent);
+    new_viewport.* = try .init(name, gpu_backend, world, camera_ent, output_to_backbuffer);
 
     try _g.viewport_set.put(_allocator, new_viewport, {});
     return public.Viewport{
@@ -329,6 +332,79 @@ pub const viewport_vt = public.Viewport.VTable.implement(struct {
         true_viewport.renderables_culling.draw_culling_box_debug = enable;
     }
 });
+
+const PosVertex = struct {
+    x: f32,
+    y: f32,
+    z: f32,
+    u: f32,
+    v: f32,
+
+    fn init(x: f32, y: f32, z: f32, u: f32, v: f32) PosVertex {
+        return .{
+            .x = x,
+            .y = y,
+            .z = z,
+            .u = u,
+            .v = v,
+        };
+    }
+
+    fn layoutInit(gpu_backend: gpu.GpuBackend) gpu.VertexLayout {
+        // static local
+        const L = struct {
+            var posColorLayout = std.mem.zeroes(gpu.VertexLayout);
+        };
+        _ = gpu_backend.layoutBegin(&L.posColorLayout);
+        _ = gpu_backend.layoutAdd(&L.posColorLayout, gpu.Attrib.Position, 3, gpu.AttribType.Float, false, false);
+        _ = gpu_backend.layoutAdd(&L.posColorLayout, gpu.Attrib.TexCoord0, 2, gpu.AttribType.Float, false, false);
+        gpu_backend.layoutEnd(&L.posColorLayout);
+
+        return L.posColorLayout;
+    }
+};
+
+var _vertex_pos_layout: gpu.VertexLayout = undefined;
+fn screenSpaceQuad(gpu_backend: gpu.GpuBackend, e: gpu.GpuEncoder, origin_mottom_left: bool, width: f32, height: f32) void {
+    if (3 == gpu_backend.getAvailTransientVertexBuffer(3, &_vertex_pos_layout)) {
+        var vb: gpu.TransientVertexBuffer = undefined;
+        gpu_backend.allocTransientVertexBuffer(&vb, 3, &_vertex_pos_layout);
+        var vertex: [*]PosVertex = @ptrCast(@alignCast(vb.data));
+
+        const zz: f32 = 0.0;
+
+        const minx = -width;
+        const maxx = width;
+        const miny = 0.0;
+        const maxy = height * 2.0;
+
+        var minv: f32 = 0.0;
+        var maxv: f32 = 2.0;
+
+        if (origin_mottom_left) {
+            const temp = minv;
+            minv = maxv;
+            maxv = temp;
+
+            minv -= 1.0;
+            maxv -= 1.0;
+        }
+
+        vertex[0].x = minx;
+        vertex[0].y = miny;
+        vertex[0].z = zz;
+
+        vertex[1].x = maxx;
+        vertex[1].y = miny;
+        vertex[1].z = zz;
+
+        vertex[2].x = maxx;
+        vertex[2].y = maxy;
+        vertex[2].z = zz;
+
+        e.setTransientVertexBuffer(0, &vb, 0, 3);
+    }
+}
 
 const RenderViewportTask = struct {
     viewport: *Viewport,
@@ -879,25 +955,21 @@ fn renderAll(gpu_backend: gpu.GpuBackend, kernel_tick: u64, dt: f32, vsync: bool
     var zone_ctx = _profiler.ZoneN(@src(), "Render");
     defer zone_ctx.End();
 
-    //
-    // Render all viewports
-    //
+    // _ = kernel_tick;
+
     const allocator = try _tmpalloc.create();
     defer _tmpalloc.destroy(allocator);
-    try renderAllViewports(allocator, gpu_backend, dt_accum);
 
     //
     // Render main viewport
     //
-
-    // TODO: use viewport
-    var flags = gpu.ResetFlags{}; // | gpu.ResetFlags_FlushAfterRender;
 
     var size = [2]i32{ 0, 0 };
     if (gpu_backend.getWindow()) |w| {
         size = w.getFramebufferSize();
     }
 
+    var flags = gpu.ResetFlags{};
     flags.Vsync = vsync;
 
     if (!std.meta.eql(old_flags, flags) or old_fb_size[0] != size[0] or old_fb_size[1] != size[1]) {
@@ -911,17 +983,68 @@ fn renderAll(gpu_backend: gpu.GpuBackend, kernel_tick: u64, dt: f32, vsync: bool
         old_flags = flags;
     }
 
-    gpu_backend.setViewClear(0, .{ .Color = true, .Depth = true }, 0x303030ff, 1.0, 0);
-    gpu_backend.setViewRectRatio(0, 0, 0, .Equal);
+    //
+    // Render all viewports
+    //
+    try renderAllViewports(allocator, gpu_backend, dt_accum);
 
-    {
-        const encoder = gpu_backend.getEncoder().?;
-        defer gpu_backend.endEncoder(encoder);
-        encoder.touch(0);
-    }
     gpu_backend.dbgTextClear(0, false);
 
-    try _coreui.draw(allocator, gpu_backend, kernel_tick, dt);
+    const present_viewid = 0;
+    const coreui_viewid = 255;
+
+    // TODO: SHIT
+    if (true) {
+        const encoder = gpu_backend.getEncoder().?;
+        defer gpu_backend.endEncoder(encoder);
+
+        for (_g.viewport_set.keys()) |viewport| {
+            if (!viewport.output_to_backbuffer) continue;
+
+            gpu_backend.resetView(present_viewid); // TODO: ? =(
+            gpu_backend.setViewClear(present_viewid, .{ .Color = true }, 0, 1.0, 0);
+            gpu_backend.setViewRectRatio(present_viewid, 0, 0, .Equal);
+
+            const tobb_shader = _shader.findShaderByName(.fromStr("tobb")).?;
+            const shader_io = _shader.getShaderIO(tobb_shader);
+
+            var shader_constext = try _shader.createSystemContext();
+            defer _shader.destroySystemContext(shader_constext);
+
+            const rb = (try _shader.createResourceBuffer(shader_io)).?;
+            defer _shader.destroyResourceBuffer(shader_io, rb);
+
+            try _shader.updateResources(
+                shader_io,
+                rb,
+                &.{.{ .name = .fromStr("tex"), .value = .{ .texture = viewport.output } }},
+            );
+            _shader.bindResource(shader_io, rb, encoder);
+
+            const variants = try _shader.selectShaderVariant(
+                allocator,
+                tobb_shader,
+                &.{.fromStr("viewport")},
+                &shader_constext,
+            );
+            defer allocator.free(variants);
+            const variant = variants[0];
+
+            const projMtx = zm.matToArr(zm.orthographicOffCenterRh(0, 1, 1, 0, 0, 100));
+            gpu_backend.setViewTransform(present_viewid, null, &projMtx);
+
+            screenSpaceQuad(gpu_backend, encoder, false, 1, 1);
+
+            encoder.setState(variant.state, variant.rgba);
+            encoder.submit(present_viewid, variant.prg.?, 0, .all);
+            break;
+        }
+    }
+
+    // TODO: remove
+    gpu_backend.resetView(coreui_viewid); // TODO: ? =(
+    try _coreui.draw(allocator, gpu_backend, coreui_viewid, kernel_tick, dt);
+    //
 
     gpu_backend.endAllUsedEncoders();
 
@@ -945,6 +1068,64 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
         pub fn init() !void {
             _g.viewport_set = .{};
             _g.viewport_pool = ViewportPool.init(_allocator);
+            _vertex_pos_layout = PosVertex.layoutInit(_kernel.getGpuBackend().?);
+
+            try _shader.addShaderDefiniton("tobb", .{
+                .color_state = .rgba,
+
+                .samplers = &.{
+                    .{
+                        .name = "default",
+                        .defs = .{
+                            .min_filter = .linear,
+                            .max_filter = .linear,
+                            .u = .clamp,
+                            .v = .clamp,
+                        },
+                    },
+                },
+
+                .depth_stencil_state = .{
+                    .depth_write_enable = false,
+                    .depth_test_enable = false,
+                },
+                .imports = &.{
+                    .{ .name = "tex", .type = .sampler2d, .sampler = "default" },
+                },
+                .vertex_block = .{
+                    .imports = &.{ .position, .texcoord0 },
+                    .import_semantic = &.{.vertex_id},
+                    .code =
+                    \\  output.position = mul(u_modelViewProj, vec4(a_position, 1.0));
+                    ,
+                },
+                .fragment_block = .{
+                    .code =
+                    \\  vec2 uv = gl_FragCoord.xy * u_viewTexel.xy;
+                    \\  output.color0.xyzw = texture2D(get_tex_sampler(), uv).rgba;
+                    ,
+                },
+
+                .compile = .{
+                    .includes = &.{"shaderlib"},
+                    .configurations = &.{
+                        .{
+                            .name = "default",
+                            .variations = &.{
+                                .{ .systems = &.{} },
+                            },
+                        },
+                    },
+                    .contexts = &.{
+                        .{
+                            .name = "viewport",
+                            .defs = &.{
+                                .{ .config = "default" },
+                            },
+                        },
+                    },
+                },
+            });
         }
 
         pub fn shutdown() !void {

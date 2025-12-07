@@ -1,11 +1,13 @@
 .{
     .launchers = .{
+        .{ .name = "CETech1 unit tests", .program = .{ .path = "zig-out/bin/cetech1_test" }, .args = .{} },
         .{ .name = "CETech1 no asset root", .args = .{} },
         .{ .name = "CETech1 max 5 tick", .args = .{ "--max-kernel-tick", "5", "--asset-root", "fixtures/test_asset/" } },
         .{ .name = "CETech1 --headless", .args = .{ "--max-kernel-tick", "5", "--asset-root", "fixtures/test_asset/", "--headless" } },
-        .{ .name = "CETech1 Tests", .program = "zig-out/bin/cetech1_test", .args = .{} },
         .{ .name = "CETech1 Tests UI", .args = .{"--test-ui"} },
         .{ .name = "CETech1 Tests UI (headless)", .args = .{ "--test-ui", "--headless", "--test-ui-junit", "./result.xml" } },
         .{ .name = "CETech1 (Vulkan)", .args = .{ "--asset-root", "fixtures/test_asset/", "--renderer", "bgfx_vulkan" } },
+        .{ .name = "CETech1 runner world", .program = .runner, .args = .{ "--asset-root", "fixtures/test_graph/", "--simulate", "0198d6b0-9580-74d8-b06f-e4df9723720a", "--simulate-ui" } },
+        .{ .name = "CETech1 runner explode", .program = .runner, .args = .{ "--asset-root", "fixtures/test_graph/", "--simulate", "0191e6d1-830a-73d8-992a-aa6f9add6d1e", "--simulate-explode", "100", "--simulate-ui" } },
     },
 }

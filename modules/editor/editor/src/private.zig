@@ -661,15 +661,6 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
         defer _coreui.endMenu();
         _ = _coreui.menuItemPtr(allocator, coreui.Icons.Colors ++ "  " ++ "Colors", .{ .selected = &_g.enable_colors }, null);
 
-        // TODO: but neeed imgui docking
-        // if (_coreui.beginMenu(allocator, coreui.Icons.TickRate ++ "  " ++ "Scale factor", true, null)) {
-        //     defer _coreui.endMenu();
-        //     var scale_factor = _coreui.getScaleFactor();
-        //     if (_coreui.inputF32("###kernel_tick_rate", .{ .v = &scale_factor, .flags = .{ .enter_returns_true = true } })) {
-        //         _coreui.setScaleFactor(scale_factor);
-        //     }
-        // }
-
         if (_coreui.beginMenu(allocator, coreui.Icons.TickRate ++ "  " ++ "Kernel tick rate", true, null)) {
             defer _coreui.endMenu();
 
@@ -885,7 +876,7 @@ fn doTabs(allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
 
 var coreui_ui_i = coreui.CoreUII.implement(struct {
     pub fn ui(allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
-        _ = _coreui.mainDockSpace(coreui.DockNodeFlags{ .passthru_central_node = true });
+        _ = _coreui.mainDockSpace(coreui.DockNodeFlags{ .passthru_central_node = false });
 
         try doMainMenu(allocator);
         try quitSaveModal();

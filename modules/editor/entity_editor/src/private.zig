@@ -134,7 +134,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         var tab_inst = _allocator.create(EntityEditorTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _render_viewport.createViewport(name, gpu_backend, w, camera_ent),
+            .viewport = try _render_viewport.createViewport(name, gpu_backend, w, camera_ent, false),
             .world = w,
             .camera_ent = camera_ent,
             .render_pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w),
@@ -352,7 +352,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         if (_coreui.beginMenu(allocator, cetech1.coreui.Icons.Debug, true, null)) {
             defer _coreui.endMenu();
             _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
-            tab_o.flecs_port = uiRemoteDebugMenuItems(&tab_o.world, allocator, tab_o.flecs_port);
+            tab_o.flecs_port = tab_o.world.uiRemoteDebugMenuItems(allocator, tab_o.flecs_port);
         }
     }
 
@@ -494,48 +494,6 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
     },
 );
 
-fn uiRemoteDebugMenuItems(world: *ecs.World, allocator: std.mem.Allocator, port: ?u16) ?u16 {
-    var remote_active = world.isRemoteDebugActive();
-    var result: ?u16 = port;
-
-    var buf: [256:0]u8 = undefined;
-    const URL = "https://www.flecs.dev/explorer/?page=info&host=localhost:{d}";
-
-    if (_coreui.beginMenu(allocator, coreui.Icons.Entity ++ "  " ++ "ECS", true, null)) {
-        defer _coreui.endMenu();
-
-        if (_coreui.menuItemPtr(
-            allocator,
-            coreui.Icons.Debug ++ "  " ++ "Remote debug",
-            .{ .selected = &remote_active },
-            null,
-        )) {
-            if (world.setRemoteDebugActive(remote_active)) |p| {
-                const url = std.fmt.allocPrintSentinel(allocator, URL, .{p}, 0) catch return null;
-                defer allocator.free(url);
-
-                _coreui.setClipboardText(url);
-                result = p;
-            } else {
-                result = null;
-            }
-        }
-
-        const copy_label = std.fmt.bufPrintZ(&buf, coreui.Icons.CopyToClipboard ++ "  " ++ "Copy url", .{}) catch return null;
-        if (_coreui.menuItem(allocator, copy_label, .{ .enabled = port != null }, null)) {
-            const url = std.fmt.allocPrintSentinel(allocator, URL, .{port.?}, 0) catch return null;
-            defer allocator.free(url);
-            _coreui.setClipboardText(url);
-        }
-    }
-
-    return result;
-}
-
-pub var api = public.EditorEntityAPI{
-    .uiRemoteDebugMenuItems = &uiRemoteDebugMenuItems,
-};
-
 // Create types, register api, interfaces etc...
 pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
     _ = reload;
@@ -569,8 +527,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
     _g.test_tab_vt_ptr = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, TAB_NAME, foo_tab);
-
-    try apidb.setOrRemoveZigApi(module_name, public.EditorEntityAPI, &api, load);
 
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
     try apidb.implOrRemove(module_name, editor.TabTypeI, &foo_tab, load);

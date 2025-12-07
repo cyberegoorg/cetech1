@@ -20,7 +20,7 @@
     },
     .dependencies = .{
         //
-        // Public cetech1 API
+        // Public API for modules
         //
         .cetech1 = .{ .path = "public/" },
 
@@ -47,6 +47,9 @@
         .editor_simulation = .{ .path = "modules/editor/simulation", .lazy = true },
         .editor_renderer = .{ .path = "modules/editor/renderer", .lazy = true },
 
+        // RUNNER
+        .runner = .{ .path = "modules/runner/runner", .lazy = true },
+
         // PHYSICS
         .physics = .{ .path = "modules/physics/physics", .lazy = true },
 
@@ -66,11 +69,15 @@
         .vertex_system = .{ .path = "modules/rendering/vertex_system", .lazy = true },
         .instance_system = .{ .path = "modules/rendering/instance_system", .lazy = true },
         .renderer_nodes = .{ .path = "modules/rendering/renderer_nodes", .lazy = true },
-        .renderer = .{ .path = "modules/rendering/renderer", .lazy = true },
         .visibility_flags = .{ .path = "modules/rendering/visibility_flags", .lazy = true },
         .light_component = .{ .path = "modules/rendering/light_component", .lazy = true },
         .light_system = .{ .path = "modules/rendering/light_system", .lazy = true },
         .gpu_bgfx = .{ .path = "modules/rendering/gpu_bgfx", .lazy = true },
+
+        // Examples
+        .foo = .{ .path = "modules/examples/foo", .lazy = true },
+        .editor_foo_tab = .{ .path = "modules/examples/editor_foo_tab", .lazy = true },
+        .editor_foo_viewport_tab = .{ .path = "modules/examples/editor_foo_viewport_tab", .lazy = true },
 
         //
         // Externals
@@ -90,12 +97,5 @@
         .zflecs = .{ .path = "externals/shared/lib/zflecs" },
         .ztracy = .{ .path = "externals/shared/lib/ztracy" },
         .zgui = .{ .path = "externals/shared/lib/zgui" },
-
-        //
-        // CETech1 examples
-        //
-        .foo = .{ .path = "examples/foo", .lazy = true },
-        .editor_foo_tab = .{ .path = "examples/editor_foo_tab", .lazy = true },
-        .editor_foo_viewport_tab = .{ .path = "examples/editor_foo_viewport_tab", .lazy = true },
     },
 }

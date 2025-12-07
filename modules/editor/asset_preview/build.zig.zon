@@ -14,6 +14,5 @@
         .render_pipeline = .{ .path = "../../rendering/render_pipeline" },
         .camera = .{ .path = "../../rendering/camera" },
         .transform = .{ .path = "../../rendering/transform" },
-        .editor_entity = .{ .path = "../entity_editor" },
     },
 }

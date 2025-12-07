@@ -1079,7 +1079,7 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
 
                 var full_path_buf: [2048]u8 = undefined;
                 const full_path = self.dir.realpath(self.filename, &full_path_buf) catch undefined;
-                log.info("Importing cdb asset {s}", .{full_path});
+                log.debug("Importing cdb asset {s}", .{full_path});
 
                 var asset_file = self.dir.openFile(self.filename, .{ .mode = .read_only }) catch |err| {
                     log.err("Could not import asset {}", .{err});

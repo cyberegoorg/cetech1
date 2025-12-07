@@ -206,6 +206,7 @@ pub const Icons = struct {
 
     pub const Play = CoreIcons.FA_PLAY;
     pub const Pause = CoreIcons.FA_PAUSE;
+    pub const ForwardStep = CoreIcons.FA_FORWARD_STEP;
 
     pub const Camera = CoreIcons.FA_CAMERA;
     pub const Draw = CoreIcons.FA_BRUSH;
@@ -450,7 +451,7 @@ pub const CoreUIApi = struct {
         return result;
     }
 
-    draw: *const fn (allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, kernel_tick: u64, dt: f32) anyerror!void,
+    draw: *const fn (allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, viewid: gpu.ViewId, kernel_tick: u64, dt: f32) anyerror!void,
 
     showDemoWindow: *const fn () void,
     showMetricsWindow: *const fn () void,

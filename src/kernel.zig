@@ -45,6 +45,8 @@ const BootArgs = struct {
     max_kernel_tick: u32 = 0,
     headless: bool = false,
     load_dynamic: bool = true,
+    ignored_modules: ?[]const []const u8 = null,
+    ignored_modules_prefix: ?[]const []const u8 = null,
 };
 
 const Phase = struct {
@@ -133,6 +135,8 @@ pub var api = cetech1.kernel.KernelApi{
     .getGpuBackend = getGpuBackend,
     .getExternalsCredit = getExternalsCredit,
     .getAuthors = getAuthors,
+    .getStrArgs = getStrArgs,
+    .getIntArgs = getIntArgs,
 };
 
 fn getExternalsCredit() [:0]const u8 {
@@ -185,7 +189,7 @@ fn setCanQuit(can_quit: *const fn () bool) void {
     can_quit_handler = can_quit;
 }
 
-pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
+pub fn init(allocator: std.mem.Allocator, headless: bool, boot_args: BootArgs) !void {
     _root_allocator = allocator;
     _main_profiler_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, allocator, null);
     _kernel_allocator = _main_profiler_allocator.allocator();
@@ -223,7 +227,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try tempalloc.init(_tmp_alocator_pool_allocator.allocator(), 256);
 
     try apidb.init(_apidb_allocator.allocator());
-    try modules.init(_modules_allocator.allocator());
+    try modules.init(_modules_allocator.allocator(), boot_args.ignored_modules, boot_args.ignored_modules_prefix);
     try metrics.init(_metrics_allocator.allocator());
     try task.init(_task_allocator.allocator());
     try cdb_private.init(_cdb_allocator.allocator());
@@ -270,7 +274,6 @@ pub fn deinit(allocator: std.mem.Allocator) !void {
     try modules.unloadAll();
 
     ecs.deinit();
-    //renderer.deinit();
     if (gpu_backend) |ctx| gpu.api.destroyBackend(ctx);
     gpu.deinit();
     if (main_window) |window| platform.api.destroyWindow(window);
@@ -453,7 +456,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         const renderer_profile = 1 == getIntArgs("--renderer-profile") orelse @intFromBool(is_debug);
 
         // Init Kernel
-        try init(gpa_allocator, _headless);
+        try init(gpa_allocator, _headless, boot_args);
         defer deinit(gpa_allocator) catch undefined;
 
         // Test args

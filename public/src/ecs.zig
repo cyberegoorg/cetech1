@@ -478,8 +478,20 @@ pub const World = struct {
         return self.vtable.isSimulate(self.ptr);
     }
 
+    pub fn doStep(self: World) void {
+        return self.vtable.doStep(self.ptr);
+    }
+
     pub fn clear(self: World) void {
         return self.vtable.clear(self.ptr);
+    }
+
+    pub fn debuguiMenuItems(self: World, allocator: std.mem.Allocator) void {
+        return self.vtable.debuguiMenuItems(self.ptr, allocator);
+    }
+
+    pub fn uiRemoteDebugMenuItems(self: World, allocator: std.mem.Allocator, port: ?u16) ?u16 {
+        return self.vtable.uiRemoteDebugMenuItems(self.ptr, allocator, port);
     }
 
     ptr: *anyopaque,
@@ -508,8 +520,12 @@ pub const World = struct {
 
         setSimulate: *const fn (world: *anyopaque, simulate: bool) void,
         isSimulate: *const fn (world: *anyopaque) bool,
+        doStep: *const fn (world: *anyopaque) void,
 
         clear: *const fn (world: *anyopaque) void,
+
+        debuguiMenuItems: *const fn (world: *anyopaque, allocator: std.mem.Allocator) void,
+        uiRemoteDebugMenuItems: *const fn (world: *anyopaque, allocator: std.mem.Allocator, port: ?u16) ?u16,
     };
 };
 

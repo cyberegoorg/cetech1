@@ -15,7 +15,6 @@ const task = cetech1.task;
 
 const camera = @import("camera");
 const transform = @import("transform");
-const editor_entity = @import("editor_entity");
 
 const render_viewport = @import("render_viewport");
 const render_graph = @import("render_graph");
@@ -57,7 +56,6 @@ var _render_viewport: *const render_viewport.RenderViewportApi = undefined;
 var _render_pipeline: *const render_pipeline.RenderPipelineApi = undefined;
 var _platform: *const cetech1.platform.PlatformApi = undefined;
 var _editor: *const editor.EditorAPI = undefined;
-var _editor_entity: *const editor_entity.EditorEntityAPI = undefined;
 
 // Global state that can surive hot-reload
 const G = struct {
@@ -88,7 +86,7 @@ const AssetPreviewTab = struct {
 };
 
 // Fill editor tab interface
-var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
+var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
     .tab_hash = .fromStr(TAB_NAME),
 
@@ -127,7 +125,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         var tab_inst = _allocator.create(AssetPreviewTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _render_viewport.createViewport(name, gpu_backend, w, camera_ent),
+            .viewport = try _render_viewport.createViewport(name, gpu_backend, w, camera_ent, false),
             .world = w,
             .camera_ent = camera_ent,
             .render_pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w),
@@ -254,7 +252,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         if (_coreui.beginMenu(allocator, cetech1.coreui.Icons.Debug, true, null)) {
             defer _coreui.endMenu();
             _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
-            tab_o.flecs_port = _editor_entity.uiRemoteDebugMenuItems(&tab_o.world, allocator, tab_o.flecs_port);
+            tab_o.flecs_port = tab_o.world.uiRemoteDebugMenuItems(allocator, tab_o.flecs_port);
         }
     }
 
@@ -408,7 +406,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _render_viewport = apidb.getZigApi(module_name, render_viewport.RenderViewportApi).?;
     _platform = apidb.getZigApi(module_name, cetech1.platform.PlatformApi).?;
     _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
-    _editor_entity = apidb.getZigApi(module_name, editor_entity.EditorEntityAPI).?;
     _render_pipeline = apidb.getZigApi(module_name, render_pipeline.RenderPipelineApi).?;
 
     // create global variable that can survive reload
@@ -416,10 +413,10 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.test_tab_vt_ptr = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, TAB_NAME, foo_tab);
+    _g.test_tab_vt_ptr = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, TAB_NAME, asset_preview_tab);
 
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
-    try apidb.implOrRemove(module_name, editor.TabTypeI, &foo_tab, load);
+    try apidb.implOrRemove(module_name, editor.TabTypeI, &asset_preview_tab, load);
 
     return true;
 }

@@ -17,7 +17,6 @@ const task = cetech1.task;
 
 const camera = @import("camera");
 const transform = @import("transform");
-const editor_entity = @import("editor_entity");
 
 const render_viewport = @import("render_viewport");
 const render_graph = @import("render_graph");
@@ -57,7 +56,6 @@ var _render_viewport: *const render_viewport.RenderViewportApi = undefined;
 var _platform: *const cetech1.platform.PlatformApi = undefined;
 var _editor: *const editor.EditorAPI = undefined;
 var _camera: *const camera.CameraAPI = undefined;
-var _editor_entity: *const editor_entity.EditorEntityAPI = undefined;
 var _render_pipeline: *const render_pipeline.RenderPipelineApi = undefined;
 
 // Global state that can surive hot-reload
@@ -130,7 +128,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         var tab_inst = _allocator.create(SimulationTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _render_viewport.createViewport(name, gpu_backend, w, camera_ent),
+            .viewport = try _render_viewport.createViewport(name, gpu_backend, w, camera_ent, false),
             .world = w,
             .camera_ent = camera_ent,
             .render_pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w),
@@ -188,6 +186,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
             const ents = try _ecs.spawnManyFromCDB(allocator, tab_o.world, entiy_obj, 1);
             defer allocator.free(ents);
+
             tab_o.root_entity = ents[0];
 
             tab_o.camera = camera.SimpleFPSCamera.init(.{
@@ -244,11 +243,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             }
         }
 
-        const is_simulate = tab_o.world.isSimulate();
-
-        if (_coreui.menuItem(allocator, if (!is_simulate) cetech1.coreui.Icons.Play else cetech1.coreui.Icons.Pause, .{}, null)) {
-            tab_o.world.setSimulate(!is_simulate);
-        }
+        tab_o.world.debuguiMenuItems(allocator);
 
         if (_coreui.menuItem(allocator, cetech1.coreui.Icons.Restart, .{}, null)) {
             if (tab_o.root_entity) |root_ent| {
@@ -267,7 +262,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         if (_coreui.beginMenu(allocator, cetech1.coreui.Icons.Debug, true, null)) {
             defer _coreui.endMenu();
             _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
-            tab_o.flecs_port = _editor_entity.uiRemoteDebugMenuItems(&tab_o.world, allocator, tab_o.flecs_port);
+            tab_o.flecs_port = tab_o.world.uiRemoteDebugMenuItems(allocator, tab_o.flecs_port);
         }
     }
 
@@ -343,7 +338,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _platform = apidb.getZigApi(module_name, cetech1.platform.PlatformApi).?;
     _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
     _camera = apidb.getZigApi(module_name, camera.CameraAPI).?;
-    _editor_entity = apidb.getZigApi(module_name, editor_entity.EditorEntityAPI).?;
     _render_pipeline = apidb.getZigApi(module_name, render_pipeline.RenderPipelineApi).?;
 
     // create global variable that can survive reload

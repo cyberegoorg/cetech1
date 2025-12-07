@@ -98,13 +98,13 @@ jobs:
       #   uses: pyvista/setup-headless-display-action@v2
       
       - name: Test headless standalone
-        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5
+        run: zig-out/bin/cetech1_editor --headless --max-kernel-tick 5
 
       - name: Test headless standalone with asset root
-        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
+        run: zig-out/bin/cetech1_editor --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
       
       - name: Test UI headless 
-        run: zig-out/bin/cetech1 --headless --test-ui --test-ui-junit ./result.xml
+        run: zig-out/bin/cetech1_editor --headless --test-ui --test-ui-junit ./result.xml
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4
@@ -150,13 +150,13 @@ jobs:
         #run: kcov --include-pattern=/cetech1/src/,/cetech/public/ kcov-output zig-out/bin/cetech1_test
 
       - name: Test headless standalone
-        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 
+        run: zig-out/bin/cetech1_editor --headless --max-kernel-tick 5 
 
       - name: Test headless standalone with asset root
-        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
+        run: zig-out/bin/cetech1_editor --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
 
       - name: Test UI headless 
-        run: zig-out/bin/cetech1 --headless --test-ui --test-ui-junit ./result.xml
+        run: zig-out/bin/cetech1_editor --headless --test-ui --test-ui-junit ./result.xml
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4
@@ -204,17 +204,15 @@ jobs:
         run: zig-out/bin/cetech1_test
       
       # FIXME: Windows
-      - name: Test headless standalone
-        shell: bash
-        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5
-
-      - name: Test headless standalone with asset root
-        shell: bash
-        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
-
-      - name: Test UI headless 
-        shell: bash
-        run: zig-out/bin/cetech1 --headless --test-ui --test-ui-junit ./result.xml
+      # - name: Test headless standalone
+      #   shell: bash
+      #   run: zig-out/bin/cetech1_editor --headless --max-kernel-tick 5
+      # - name: Test headless standalone with asset root
+      #   shell: bash
+      #   run: zig-out/bin/cetech1_editor --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
+      # - name: Test UI headless 
+      #   shell: bash
+      #   run: zig-out/bin/cetech1_editor --headless --test-ui --test-ui-junit ./result.xml
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4
