@@ -25,8 +25,6 @@ const transform = @import("transform");
 const camera = @import("camera");
 const editor_entity = @import("editor_entity");
 const render_graph = @import("render_graph");
-const light_component = @import("light_component");
-const physics = @import("physics");
 
 const module_name = .editor_foo_viewport_tab;
 
@@ -66,11 +64,6 @@ const G = struct {
 };
 var _g: *G = undefined;
 
-const DRAW_OBJ_COUNT = 1_000;
-
-const seed: u64 = 1111;
-var prng = std.Random.DefaultPrng.init(seed);
-
 // Struct for tab type
 const FooViewportTab = struct {
     tab_i: editor.TabI,
@@ -87,11 +80,6 @@ const FooViewportTab = struct {
 
     flecs_port: ?u16 = null,
 };
-
-// Rendering component
-
-const ECS_WORLD_CONTEXT = .fromStr("ecs_world_context");
-const ECS_ENTITY_CONTEXT = .fromStr("ecs_entity_context");
 
 // Fill editor tab interface
 var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
@@ -131,6 +119,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 gpu_backend,
                 w,
                 camera_ent,
+                false,
             ),
             .camera_ent = camera_ent,
             .world = w,
@@ -141,35 +130,6 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 .inst = @ptrCast(tab_inst),
             },
         };
-
-        var allocator = try _tempalloc.create();
-        defer _tempalloc.destroy(allocator);
-        {
-            var zzz = _profiler.ZoneN(@src(), "Foo viewport tab - spawn entities");
-            defer zzz.End();
-
-            // TODO: TEMP HARDCODE SHIT HACK - created in 2024... if you still read this and year is not 2024 am still idiot ;)
-            if (_assetdb.getObjId(_uuid.fromStr("0191e6d1-830a-73d8-992a-aa6f9add6d1e").?)) |e_obj| {
-                const entities = try _ecs.spawnManyFromCDB(allocator, w, e_obj, DRAW_OBJ_COUNT);
-                defer allocator.free(entities);
-
-                const rnd = prng.random();
-
-                for (entities, 0..) |ent, idx| {
-                    _ = idx;
-
-                    _ = w.setId(physics.Velocity, ent, &physics.Velocity{
-                        .x = (rnd.float(f32) * 2 - 1) * 0.1,
-                        .y = (rnd.float(f32) * 2 - 1) * 0.1,
-                        .z = (rnd.float(f32) * 2 - 1) * 0.1,
-                    });
-                }
-
-                const light_ent = w.newEntity(null);
-                _ = w.setId(transform.Position, light_ent, &transform.Position{ .y = 20 });
-                _ = w.setId(light_component.Light, light_ent, &light_component.Light{ .radius = 100, .power = 10000 });
-            }
-        }
 
         return &tab_inst.tab_i;
     }

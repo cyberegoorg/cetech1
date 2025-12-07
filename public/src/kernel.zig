@@ -120,6 +120,9 @@ pub const KernelApi = struct {
     getExternalsCredit: *const fn () [:0]const u8,
     getAuthors: *const fn () [:0]const u8,
 
+    getStrArgs: *const fn (arg_name: []const u8) ?[]const u8,
+    getIntArgs: *const fn (arg_name: []const u8) ?u32,
+
     // TODO: !!!GLOBAL SHIT WARNING !!!
     getDb: *const fn () cdb.DbId,
     //

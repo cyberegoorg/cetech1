@@ -230,7 +230,7 @@ pub const Viewport = struct {
 pub const ColorResource = "viewport_color";
 
 pub const RenderViewportApi = struct {
-    createViewport: *const fn (name: [:0]const u8, gpu_backend: gpu.GpuBackend, world: ?ecs.World, camera_ent: ecs.EntityId) anyerror!Viewport,
+    createViewport: *const fn (name: [:0]const u8, gpu_backend: gpu.GpuBackend, world: ?ecs.World, camera_ent: ecs.EntityId, output_to_backbuffer: bool) anyerror!Viewport,
     destroyViewport: *const fn (viewport: Viewport) void,
 
     uiDebugMenuItems: *const fn (allocator: std.mem.Allocator, viewport: Viewport) void,

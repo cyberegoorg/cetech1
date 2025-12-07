@@ -885,7 +885,7 @@ fn doTabs(allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
 
 var coreui_ui_i = coreui.CoreUII.implement(struct {
     pub fn ui(allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
-        _ = _coreui.mainDockSpace(coreui.DockNodeFlags{ .passthru_central_node = true });
+        _ = _coreui.mainDockSpace(coreui.DockNodeFlags{ .passthru_central_node = false });
 
         try doMainMenu(allocator);
         try quitSaveModal();

@@ -244,9 +244,12 @@ const depth_pass = render_graph.PassApi.implement(struct {
     pub fn execute(pass: *const render_graph.Pass, builder: render_graph.GraphBuilder, gpu_backend: gpu.GpuBackend, vp_size: [2]f32, viewid: gpu.ViewId) !void {
         _ = builder;
         _ = vp_size;
-        _ = gpu_backend;
-        _ = viewid;
         _ = pass;
+
+        if (gpu_backend.getEncoder()) |e| {
+            defer gpu_backend.endEncoder(e);
+            e.touch(viewid);
+        }
     }
 });
 
@@ -268,7 +271,6 @@ const material_pass = render_graph.PassApi.implement(struct {
                     .v = .clamp,
                 },
                 .clear_color = 0x336680,
-                // .clear_color = 0,
             },
         );
         try builder.readTexture(pass, "depth");
@@ -286,7 +288,6 @@ const material_pass = render_graph.PassApi.implement(struct {
         _ = pass;
         if (gpu_backend.getEncoder()) |e| {
             defer gpu_backend.endEncoder(e);
-
             e.touch(viewid);
         }
     }

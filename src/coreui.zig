@@ -43,7 +43,7 @@ var _allocator: std.mem.Allocator = undefined;
 var _backed_initialised = false;
 var _te_engine: *zguite.TestEngine = undefined;
 var _te_show_window: bool = false;
-var _enabled_ui = false;
+var _ui_init = false;
 
 var _junit_filename_buff: [1024:0]u8 = undefined;
 var _junit_filename: ?[:0]const u8 = null;
@@ -60,16 +60,16 @@ var ui_being_task = cetech1.kernel.KernelTaskUpdateI.implment(
             var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "Begin-loop CoreUI");
             defer update_zone_ctx.End();
 
-            const window = kernel.api.getMainWindow();
-            const gpu_backend = kernel.api.getGpuBackend();
+            if (!_ui_init) {
+                const window = kernel.api.getMainWindow();
+                const gpu_backend = kernel.api.getGpuBackend();
 
-            if (!_enabled_ui) {
                 try enableWithWindow(window, gpu_backend);
-                _enabled_ui = true;
+                _ui_init = true;
             }
 
-            if (_enabled_ui) {
-                newFrame(255);
+            if (_ui_init) {
+                newFrame();
             }
         }
     },
@@ -124,7 +124,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
     _backed_initialised = false;
     _te_engine = undefined;
     _te_show_window = false;
-    _enabled_ui = false;
+    _ui_init = false;
     _junit_filename = null;
 
     //TODO: TEMP SHIT
@@ -1321,7 +1321,7 @@ pub fn labelText(label: [:0]const u8, text: [:0]const u8) void {
     zgui.labelText(label, "{s}", .{text});
 }
 
-pub fn drawUI(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, kernel_tick: u64, dt: f32) !void {
+pub fn drawUI(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, viewid: gpu.ViewId, kernel_tick: u64, dt: f32) !void {
     var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "CoreUI: Draw UI");
     defer update_zone_ctx.End();
 
@@ -1332,7 +1332,7 @@ pub fn drawUI(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, kernel_
         try iface.ui(allocator, kernel_tick, dt);
     }
 
-    backend.draw(gpu_backend);
+    backend.draw(gpu_backend, viewid);
 }
 
 pub fn registerToApi() !void {
@@ -1446,10 +1446,10 @@ pub fn enableWithWindow(window: ?cetech1.platform.Window, gpu_backend: ?gpu.GpuB
     }
 }
 
-fn newFrame(viewid: gpu.ViewId) void {
+fn newFrame() void {
     var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "CoreUI new frame");
     defer update_zone_ctx.End();
-    backend.newFrame(viewid);
+    backend.newFrame();
 }
 
 fn afterAll() void {

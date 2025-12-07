@@ -7,9 +7,15 @@ pub const EditorType = enum {
     idea,
 };
 
+const LaunchCmdProgram = union(enum) {
+    runner: void,
+    editor: void,
+    path: []const u8,
+};
+
 pub const LaunchCmd = struct {
     name: []const u8,
-    program: ?[]const u8 = null,
+    program: LaunchCmdProgram = .editor,
     args: []const []const u8,
     //cwd: []const u8,
 };
@@ -62,7 +68,17 @@ pub fn createLauchCmdForFixtures(allocator: std.mem.Allocator, dir_path: []const
         const basename = std.fs.path.basename(path.name);
 
         try cmd_list.append(allocator, .{
-            .name = try std.fmt.allocPrint(allocator, "CETech1 - {s}", .{basename}),
+            .program = .runner,
+            .name = try std.fmt.allocPrint(allocator, "CETech1 runner - {s}", .{basename}),
+            .args = try allocator.dupe([]const u8, &.{
+                "--asset-root",
+                try std.fmt.allocPrint(allocator, "fixtures/{s}/", .{basename}),
+            }),
+        });
+
+        try cmd_list.append(allocator, .{
+            .program = .editor,
+            .name = try std.fmt.allocPrint(allocator, "CETech1 editor - {s}", .{basename}),
             .args = try allocator.dupe([]const u8, &.{
                 "--asset-root",
                 try std.fmt.allocPrint(allocator, "fixtures/{s}/", .{basename}),
@@ -236,9 +252,15 @@ pub fn createLaunchersVSCode(allocator: std.mem.Allocator, project_dir: std.fs.D
     const tmp_alloc = tmp_arena.allocator();
 
     for (launch_cmds) |cmd| {
+        const program = switch (cmd.program) {
+            .path => |p| p,
+            .editor => try std.fmt.allocPrint(tmp_alloc, "{s}_editor{s}", .{ args.bin_path, osBasedProgramExtension() }),
+            .runner => try std.fmt.allocPrint(tmp_alloc, "{s}{s}", .{ args.bin_path, osBasedProgramExtension() }),
+        };
+
         try cmd_list.append(allocator, .{
             .name = cmd.name,
-            .program = try std.fmt.allocPrint(tmp_alloc, "{s}{s}", .{ cmd.program orelse args.bin_path, osBasedProgramExtension() }),
+            .program = program,
             .args = cmd.args,
             .cwd = "${workspaceFolder}",
         });
@@ -373,10 +395,16 @@ pub fn createLaunchersFleet(allocator: std.mem.Allocator, project_dir: std.fs.Di
     const tmp_alloc = tmp_arena.allocator();
 
     for (launch_cmds) |cmd| {
+        const program = switch (cmd.program) {
+            .path => |p| p,
+            .editor => try std.fmt.allocPrint(tmp_alloc, "{s}_editor{s}", .{ args.bin_path, osBasedProgramExtension() }),
+            .runner => try std.fmt.allocPrint(tmp_alloc, "{s}{s}", .{ args.bin_path, osBasedProgramExtension() }),
+        };
+
         try cmd_list.append(allocator, .{
             .type = "command",
             .name = cmd.name,
-            .program = try std.fmt.allocPrint(tmp_alloc, "{s}{s}", .{ cmd.program orelse args.bin_path, osBasedProgramExtension() }),
+            .program = program,
             .args = cmd.args,
             .workingDir = "$WORKSPACE_DIR$",
         });
@@ -489,7 +517,11 @@ pub fn createLaunchersIdea(allocator: std.mem.Allocator, project_dir: std.fs.Dir
         var bw = obj_file.writer(&buffer);
         defer bw.interface.flush() catch undefined;
 
-        const program = try std.fmt.allocPrint(tmp_alloc, "{s}{s}", .{ cmd.program orelse args.bin_path, osBasedProgramExtension() });
+        const program = switch (cmd.program) {
+            .path => |p| p,
+            .editor => try std.fmt.allocPrint(tmp_alloc, "{s}_editor{s}", .{ args.bin_path, osBasedProgramExtension() }),
+            .runner => try std.fmt.allocPrint(tmp_alloc, "{s}{s}", .{ args.bin_path, osBasedProgramExtension() }),
+        };
 
         try bw.interface.print(
             \\<component name="ProjectRunConfigurationManager">

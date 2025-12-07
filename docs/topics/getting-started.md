@@ -152,7 +152,7 @@ CETech1 has builtin support for tracy profiler and provide Tracy as submodule, b
     <tab title="MacOS">
         <code-block lang="bash">
             profiler/build/tracy-profiler -a localhost
-            zig-out/bin/cetech1 # on separate terminal
+            zig-out/bin/cetech1_editor # on separate terminal
             # Have fun
         </code-block>
     </tab>
@@ -160,7 +160,7 @@ CETech1 has builtin support for tracy profiler and provide Tracy as submodule, b
         <code-block lang="bash">
             # install tracy by your way
             profiler/build/tracy-profiler -a localhost
-            zig-out/bin/cetech1 # on separate terminal
+            zig-out/bin/cetech1_editor # on separate terminal
             # Have fun
         </code-block>
     </tab>

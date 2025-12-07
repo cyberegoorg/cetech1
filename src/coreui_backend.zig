@@ -65,15 +65,14 @@ pub fn deinit(gpu_backend: ?gpu.GpuBackend) void {
     }
 }
 
-pub fn newFrame(viewid: gpu.ViewId) void {
-    _ = viewid;
+pub fn newFrame() void {
     if (backend_init) zgui.backend.newFrame();
     zgui.newFrame();
     zgui.gizmo.beginFrame();
 }
 
-pub fn draw(gpu_backend: gpu.GpuBackend) void {
-    renderDrawData(gpu_backend, 255) catch undefined;
+pub fn draw(gpu_backend: gpu.GpuBackend, viewid: gpu.ViewId) void {
+    renderDrawData(gpu_backend, viewid) catch undefined;
 }
 
 fn orthographic(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32, homogenous_depth: bool) zm.Mat {

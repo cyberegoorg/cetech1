@@ -134,7 +134,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         var tab_inst = _allocator.create(EntityEditorTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _render_viewport.createViewport(name, gpu_backend, w, camera_ent),
+            .viewport = try _render_viewport.createViewport(name, gpu_backend, w, camera_ent, false),
             .world = w,
             .camera_ent = camera_ent,
             .render_pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w),

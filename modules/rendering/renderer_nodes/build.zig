@@ -19,7 +19,6 @@ pub fn build(b: *std.Build) !void {
     lib.root_module.addImport("render_graph", b.dependency("render_graph", .{}).module("render_graph"));
     lib.root_module.addImport("render_viewport", b.dependency("render_viewport", .{}).module("render_viewport"));
     lib.root_module.addImport("vertex_system", b.dependency("vertex_system", .{}).module("vertex_system"));
-    lib.root_module.addImport("renderer", b.dependency("renderer", .{}).module("renderer"));
     lib.root_module.addImport("visibility_flags", b.dependency("visibility_flags", .{}).module("visibility_flags"));
 
     _ = b.addModule(
@@ -31,7 +30,6 @@ pub fn build(b: *std.Build) !void {
                 .{ .name = "shader_system", .module = b.dependency("shader_system", .{}).module("shader_system") },
                 .{ .name = "render_graph", .module = b.dependency("render_graph", .{}).module("render_graph") },
                 .{ .name = "vertex_system", .module = b.dependency("vertex_system", .{}).module("vertex_system") },
-                .{ .name = "renderer", .module = b.dependency("renderer", .{}).module("renderer") },
                 .{ .name = "visibility_flags", .module = b.dependency("visibility_flags", .{}).module("visibility_flags") },
             },
         },

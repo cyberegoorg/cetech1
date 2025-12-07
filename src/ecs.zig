@@ -668,6 +668,7 @@ fn getOrCreatePrefab(allocator: std.mem.Allocator, world: public.World, db: cdb.
 
             try w.obj2parent_obj.put(_allocator, component_obj, obj);
 
+            //log.debug("Create component {s}", .{_cdb.getTypeName(db, component_obj.type_idx).?});
             const iface = findComponentIByCdbHash(component_hash).?;
 
             const component_data = try allocator.alloc(u8, iface.size);

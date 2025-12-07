@@ -119,13 +119,18 @@ pub fn updateCectechStep(
 pub fn createKernelExe(
     b: *std.Build,
     comptime bin_name: []const u8,
+    comptime run_name: []const u8,
+    comptime run_description: []const u8,
     runner_main: std.Build.LazyPath,
     cetech1_kernel: *std.Build.Module,
     cetech1_kernel_lib: *std.Build.Step.Compile,
     versionn: std.SemanticVersion,
+    static_modules: []const []const u8,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-) *std.Build.Step.Compile {
+    ignored_modules: ?[]const []const u8,
+    ignored_modules_prefix: ?[]const []const u8,
+) !*std.Build.Step.Compile {
     const exe = b.addExecutable(.{
         .name = bin_name,
         .version = versionn,
@@ -141,9 +146,72 @@ pub fn createKernelExe(
     exe.linkLibrary(cetech1_kernel_lib);
     b.installArtifact(exe);
     useSystemSDK(b, target, exe);
-    createRunStep(b, exe, "run", "Run Forest run");
+    createRunStep(b, exe, run_name, run_description);
+    try linkStaticModules(b, exe, target, optimize, static_modules);
 
+    const options_step = b.addOptions();
+    options_step.addOption(?[]const []const u8, "ignored_modules", ignored_modules);
+    options_step.addOption(?[]const []const u8, "ignored_modules_prefix", ignored_modules_prefix);
+    const options_module = options_step.createModule();
+
+    exe.root_module.addImport("kernel_options", options_module);
     return exe;
+}
+
+pub fn createEditorExe(
+    b: *std.Build,
+    comptime base_bin_name: []const u8,
+    root_source: std.Build.LazyPath,
+    cetech1_kernel: *std.Build.Module,
+    cetech1_kernel_lib: *std.Build.Step.Compile,
+    versionn: std.SemanticVersion,
+    static_modules: []const []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) !*std.Build.Step.Compile {
+    return try createKernelExe(
+        b,
+        base_bin_name ++ "_editor",
+        "editor",
+        "Run editor",
+        root_source,
+        cetech1_kernel,
+        cetech1_kernel_lib,
+        versionn,
+        static_modules,
+        target,
+        optimize,
+        &.{"runner"},
+        &.{"runner_"},
+    );
+}
+
+pub fn createRunnerExe(
+    b: *std.Build,
+    comptime base_bin_name: []const u8,
+    root_source: std.Build.LazyPath,
+    cetech1_kernel: *std.Build.Module,
+    cetech1_kernel_lib: *std.Build.Step.Compile,
+    versionn: std.SemanticVersion,
+    static_modules: []const []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) !*std.Build.Step.Compile {
+    return try createKernelExe(
+        b,
+        base_bin_name,
+        "run",
+        "Run Forest Run!",
+        root_source,
+        cetech1_kernel,
+        cetech1_kernel_lib,
+        versionn,
+        static_modules,
+        target,
+        optimize,
+        &.{"editor"},
+        &.{"editor_"},
+    );
 }
 
 pub fn build(b: *std.Build) !void {
@@ -159,6 +227,7 @@ pub fn build(b: *std.Build) !void {
         // Modules
         .enable_samples = b.option(bool, "with_samples", "build with sample modules.") orelse true,
         .enable_editor = b.option(bool, "with_editor", "build with editor modules.") orelse true,
+        .enable_runner = b.option(bool, "with_runner", "build with editor modules.") orelse true,
 
         .modules = b.option([]const []const u8, "with_module", "build with this modules."),
         .static_modules = b.option(bool, "static_modules", "build all modules in static mode.") orelse false,
@@ -317,6 +386,10 @@ pub fn build(b: *std.Build) !void {
 
     // Modules
     const ModulesSet = std.StringArrayHashMapUnmanaged(void);
+
+    var internal_modules = std.ArrayListUnmanaged([]const u8){};
+    defer internal_modules.deinit(b.allocator);
+
     var module_set = ModulesSet{};
     defer module_set.deinit(b.allocator);
     for (all_modules) |module| {
@@ -333,6 +406,7 @@ pub fn build(b: *std.Build) !void {
 
         if (options.enable_samples) try enabled_modules.appendSlice(b.allocator, &samples_modules);
         if (options.enable_editor) try enabled_modules.appendSlice(b.allocator, &editor_modules);
+        if (options.enable_runner) try enabled_modules.appendSlice(b.allocator, &runner_modules);
     }
 
     // Static modules.
@@ -446,6 +520,9 @@ pub fn build(b: *std.Build) !void {
     var buff: [256:0]u8 = undefined;
     for (dynamic_modules.keys()) |m| {
         const artifact_name = try std.fmt.bufPrintZ(&buff, "ct_{s}", .{m});
+
+        if (!module_set.contains(m)) continue;
+
         const art = b.lazyDependency(m, .{
             .target = target,
             .optimize = optimize,
@@ -526,21 +603,36 @@ pub fn build(b: *std.Build) !void {
     });
 
     //
-    // CETech1 kernel standalone exe
+    // CETech1 editor standalone exe
     //
-    const exe = createKernelExe(
+    const editor_exe = try createEditorExe(
         b,
         "cetech1",
         b.path("src/main.zig"),
         kernel_module,
         kernel_lib,
         cetech1_version,
+        static_modules.keys(),
         target,
         optimize,
     );
-    try linkStaticModules(b, exe, target, optimize, static_modules.keys());
-    // Make exe depends on generated files.
-    exe.step.dependOn(&generated_files.step);
+    editor_exe.step.dependOn(&generated_files.step);
+
+    //
+    // CETech1 runner standalone exe
+    //
+    const runner_exe = try createRunnerExe(
+        b,
+        "cetech1",
+        b.path("src/main.zig"),
+        kernel_module,
+        kernel_lib,
+        cetech1_version,
+        static_modules.keys(),
+        target,
+        optimize,
+    );
+    runner_exe.step.dependOn(&generated_files.step);
 
     //
     // CETech1 kernel standalone tests
@@ -557,17 +649,17 @@ pub fn build(b: *std.Build) !void {
     });
     useSystemSDK(b, target, tests);
     b.installArtifact(tests);
+    try linkStaticModules(b, tests, target, optimize, static_modules.keys());
     tests.linkLibC();
     tests.linkLibrary(kernel_lib);
     tests.step.dependOn(&generated_files.step);
-    try linkStaticModules(b, tests, target, optimize, static_modules.keys());
 
     const run_unit_tests = b.addRunArtifact(tests);
     run_unit_tests.step.dependOn(b.getInstallStep());
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
 
-    const run_tests_ui = b.addRunArtifact(exe);
+    const run_tests_ui = b.addRunArtifact(editor_exe);
     run_tests_ui.addArgs(&.{ "--test-ui", "--headless" });
     run_tests_ui.step.dependOn(b.getInstallStep());
     const testui_step = b.step("test-ui", "Run UI headless test");
@@ -636,6 +728,10 @@ pub const editor_modules = [_][]const u8{
     "editor_renderer",
 };
 
+pub const runner_modules = [_][]const u8{
+    "runner",
+};
+
 pub const core_modules = [_][]const u8{
     "gpu_bgfx",
     "graphvm",
@@ -668,4 +764,4 @@ pub const samples_modules = [_][]const u8{
     "editor_foo_viewport_tab",
 };
 
-pub const all_modules = editor_modules ++ core_modules ++ samples_modules;
+pub const all_modules = editor_modules ++ runner_modules ++ core_modules ++ samples_modules;
