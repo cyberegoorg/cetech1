@@ -330,7 +330,7 @@ pub const CullingSystem = struct {
         return self.request_map.get(rq_type);
     }
 
-    pub fn doCullingSpheres(self: *Self, allocator: std.mem.Allocator, viewers: []const Viewer) !usize {
+    pub fn doCullingSpheres(self: *Self, allocator: std.mem.Allocator, viewers: []const Viewer, freze_mtx: ?zm.Mat) !usize {
         var cull_zone = self.profiler.ZoneN(@src(), "Culling system - doCullingSpheres");
         defer cull_zone.End();
 
@@ -338,7 +338,7 @@ pub const CullingSystem = struct {
         defer frustums.deinit(allocator);
 
         for (viewers) |v| {
-            const mtx = zm.mul(zm.matFromArr(v.mtx), zm.matFromArr(v.proj));
+            const mtx = zm.mul(zm.matFromArr(if (freze_mtx) |mtx| zm.matToArr(mtx) else v.mtx), zm.matFromArr(v.proj));
             frustums.appendAssumeCapacity(cetech1.math.buildFrustumPlanes(zm.matToArr(mtx)));
         }
 
@@ -425,7 +425,7 @@ pub const CullingSystem = struct {
         }
     }
 
-    pub fn doCullingBox(self: *Self, allocator: std.mem.Allocator, viewers: []const Viewer) !void {
+    pub fn doCullingBox(self: *Self, allocator: std.mem.Allocator, viewers: []const Viewer, freze_mtx: ?zm.Mat) !void {
         var cull_zone = self.profiler.ZoneN(@src(), "Culling system - doCullingBox");
         defer cull_zone.End();
 
@@ -433,7 +433,7 @@ pub const CullingSystem = struct {
         defer frustums.deinit(allocator);
 
         for (viewers) |v| {
-            const mtx = zm.mul(zm.matFromArr(v.mtx), zm.matFromArr(v.proj));
+            const mtx = zm.mul(zm.matFromArr(if (freze_mtx) |mtx| zm.matToArr(mtx) else v.mtx), zm.matFromArr(v.proj));
             frustums.appendAssumeCapacity(cetech1.math.buildFrustumPlanes(zm.matToArr(mtx)));
         }
 

@@ -1,0 +1,72 @@
+const std = @import("std");
+
+const cetech1 = @import("cetech1");
+const input = cetech1.input;
+
+pub const ACTIONS_KERNEL_TASK_NAME = "ActionsInit";
+pub const ACTIONS_KERNEL_TASK = cetech1.strId64(ACTIONS_KERNEL_TASK_NAME);
+
+pub const ButtonAction = struct {};
+
+pub const AxisAction = struct {};
+
+pub const Action = struct {
+    name: cetech1.StrId32,
+
+    action: union(enum) {
+        button: ButtonAction,
+        axis: AxisAction,
+    },
+};
+
+pub const KeyButtonMapping = struct {
+    k: input.Key,
+    axis_map: ?[]const f32 = null,
+};
+
+pub const MouseButtonMapping = struct {
+    b: input.MouseButton,
+};
+
+pub const GamepadButtonMapping = struct {
+    b: input.GamepadButton,
+    axis_map: ?[]const f32 = null,
+};
+
+pub const GamepadAxisButtonMapping = struct {
+    a: input.GamepadAxis,
+    treshold: f32 = 0.5,
+};
+
+pub const GamepadAxisMapping = struct {
+    x: ?input.GamepadAxis,
+    y: ?input.GamepadAxis,
+
+    scale_x: f32 = 1,
+    scale_y: f32 = 1,
+};
+
+pub const MouseMapping = struct { delta: bool = true };
+
+pub const ActionMapping = union(enum) {
+    key: KeyButtonMapping,
+    mouse: MouseMapping,
+    mouseButton: MouseButtonMapping,
+    gamepadButton: GamepadButtonMapping,
+    gamepadAxis: GamepadAxisMapping,
+    gamepadAxisButton: GamepadAxisButtonMapping,
+};
+
+pub const ActionsAPI = struct {
+    createActionSet: *const fn (name: cetech1.StrId32) anyerror!void,
+    addActions: *const fn (action_set: cetech1.StrId32, actions: []const Action) anyerror!void,
+    addMappings: *const fn (action_set: cetech1.StrId32, action: cetech1.StrId32, mapping: []const ActionMapping) anyerror!void,
+
+    pushSet: *const fn (action_set: cetech1.StrId32) void,
+    popSet: *const fn () void,
+
+    isSetActive: *const fn (action_set: cetech1.StrId32) bool,
+
+    isActionDown: *const fn (action: cetech1.StrId32) bool,
+    getActionAxis: *const fn (action: cetech1.StrId32) [2]f32,
+};

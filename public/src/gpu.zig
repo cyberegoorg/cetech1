@@ -1,5 +1,5 @@
 const std = @import("std");
-const platform = @import("platform.zig");
+const host = @import("host.zig");
 const cetech1 = @import("root.zig");
 
 const log = std.log.scoped(.gpu);
@@ -782,7 +782,7 @@ pub const TextureFlags = struct {
 //
 
 pub const GpuBackend = struct {
-    pub fn getWindow(self: GpuBackend) ?platform.Window {
+    pub fn getWindow(self: GpuBackend) ?host.Window {
         return self.api.getWindow(self.inst);
     }
     pub fn getResolution(self: GpuBackend) Resolution {
@@ -1115,7 +1115,7 @@ pub const GpuBackend = struct {
 
 pub const GpuApi = struct {
     createBackend: *const fn (
-        window: ?platform.Window,
+        window: ?host.Window,
         backend: ?[]const u8,
         vsync: bool,
         headles: bool,
@@ -1135,7 +1135,7 @@ pub const GpuBackendI = struct {
     isDefault: *const fn (backend: []const u8, headles: bool) bool,
 
     createBackend: *const fn (
-        window: ?platform.Window,
+        window: ?host.Window,
         backend: []const u8,
         vsync: bool,
         headles: bool,
@@ -1261,7 +1261,7 @@ pub const GpuBackendApi = struct {
 
     destroyBackend: *const fn (self: *anyopaque) void,
     isNoop: *const fn (self: *anyopaque) bool,
-    getWindow: *const fn (self: *anyopaque) ?platform.Window,
+    getWindow: *const fn (self: *anyopaque) ?host.Window,
     getResolution: *const fn (self: *anyopaque) Resolution,
     addPaletteColor: *const fn (self: *anyopaque, color: u32) u8,
     endAllUsedEncoders: *const fn (self: *anyopaque) void,

@@ -2763,8 +2763,6 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
 // Nodes
 //
 
-const PRINT_NODE_TYPE = .fromStr("print");
-
 // Inputs
 
 const graph_inputs_i = public.NodeI.implement(

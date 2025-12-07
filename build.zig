@@ -119,13 +119,18 @@ pub fn updateCectechStep(
 pub fn createKernelExe(
     b: *std.Build,
     comptime bin_name: []const u8,
+    comptime run_name: []const u8,
+    comptime run_description: []const u8,
     runner_main: std.Build.LazyPath,
     cetech1_kernel: *std.Build.Module,
     cetech1_kernel_lib: *std.Build.Step.Compile,
     versionn: std.SemanticVersion,
+    static_modules: []const []const u8,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-) *std.Build.Step.Compile {
+    ignored_modules: ?[]const []const u8,
+    ignored_modules_prefix: ?[]const []const u8,
+) !*std.Build.Step.Compile {
     const exe = b.addExecutable(.{
         .name = bin_name,
         .version = versionn,
@@ -136,14 +141,77 @@ pub fn createKernelExe(
         }),
         .use_llvm = true,
     });
-    exe.linkLibC();
+    exe.root_module.link_libc = true;
     exe.root_module.addImport("kernel", cetech1_kernel);
     exe.linkLibrary(cetech1_kernel_lib);
     b.installArtifact(exe);
     useSystemSDK(b, target, exe);
-    createRunStep(b, exe, "run", "Run Forest run");
+    createRunStep(b, exe, run_name, run_description);
+    try linkStaticModules(b, exe, target, optimize, static_modules);
 
+    const options_step = b.addOptions();
+    options_step.addOption(?[]const []const u8, "ignored_modules", ignored_modules);
+    options_step.addOption(?[]const []const u8, "ignored_modules_prefix", ignored_modules_prefix);
+    const options_module = options_step.createModule();
+
+    exe.root_module.addImport("kernel_options", options_module);
     return exe;
+}
+
+pub fn createStudioExe(
+    b: *std.Build,
+    comptime base_bin_name: []const u8,
+    root_source: std.Build.LazyPath,
+    cetech1_kernel: *std.Build.Module,
+    cetech1_kernel_lib: *std.Build.Step.Compile,
+    versionn: std.SemanticVersion,
+    static_modules: []const []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) !*std.Build.Step.Compile {
+    return try createKernelExe(
+        b,
+        base_bin_name ++ "_studio",
+        "studio",
+        "Run studio",
+        root_source,
+        cetech1_kernel,
+        cetech1_kernel_lib,
+        versionn,
+        static_modules,
+        target,
+        optimize,
+        &.{"runner"},
+        &.{"runner_"},
+    );
+}
+
+pub fn createRunnerExe(
+    b: *std.Build,
+    comptime base_bin_name: []const u8,
+    root_source: std.Build.LazyPath,
+    cetech1_kernel: *std.Build.Module,
+    cetech1_kernel_lib: *std.Build.Step.Compile,
+    versionn: std.SemanticVersion,
+    static_modules: []const []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) !*std.Build.Step.Compile {
+    return try createKernelExe(
+        b,
+        base_bin_name,
+        "run",
+        "Run Forest Run!",
+        root_source,
+        cetech1_kernel,
+        cetech1_kernel_lib,
+        versionn,
+        static_modules,
+        target,
+        optimize,
+        &.{"editor"},
+        &.{"editor_"},
+    );
 }
 
 pub fn build(b: *std.Build) !void {
@@ -156,33 +224,35 @@ pub fn build(b: *std.Build) !void {
     // OPTIONS
     //
     const options = .{
+        .app_name = b.option([]const u8, "app_name", "App name") orelse "CETech1",
+
+        .externals_optimize = b.option(std.builtin.OptimizeMode, "externals_optimize", "Optimize for externals libs") orelse .ReleaseFast,
+
         // Modules
+        .enable_studio = b.option(bool, "with_studio", "build with studio modules.") orelse true,
+        .enable_runner = b.option(bool, "with_runner", "build with runner modules.") orelse true,
         .enable_samples = b.option(bool, "with_samples", "build with sample modules.") orelse true,
-        .enable_editor = b.option(bool, "with_editor", "build with editor modules.") orelse true,
 
         .modules = b.option([]const []const u8, "with_module", "build with this modules."),
         .static_modules = b.option(bool, "static_modules", "build all modules in static mode.") orelse false,
         .dynamic_modules = b.option(bool, "dynamic_modules", "build all modules in dynamic mode.") orelse true,
 
         // Tracy options
-        .enable_tracy = b.option(bool, "with_tracy", "build with tracy.") orelse true,
+        .with_tracy = b.option(bool, "with_tracy", "build with tracy.") orelse true,
         .tracy_on_demand = b.option(bool, "tracy_on_demand", "build tracy with TRACY_ON_DEMAND") orelse true,
 
         // NFD options
-        .enable_nfd = b.option(bool, "with_nfd", "build with NFD (Native File Dialog).") orelse true,
+        .with_nfd = b.option(bool, "with_nfd", "build with NFD (Native File Dialog).") orelse true,
         .nfd_portal = b.option(bool, "nfd_portal", "build NFD with xdg-desktop-portal instead of GTK. ( Linux, nice for steamdeck;) )") orelse true,
 
+        // ZGUI
         .with_freetype = b.option(bool, "with_freetype", "build coreui with freetype support") orelse false,
 
-        .externals_optimize = b.option(std.builtin.OptimizeMode, "externals_optimize", "Optimize for externals libs") orelse .ReleaseFast,
-
-        .enable_shaderc = b.option(bool, "with_shaderc", "build with shaderc support") orelse true,
-
-        .app_name = b.option([]const u8, "app_name", "App name") orelse "CETech1",
-        .ide = b.option(generate_ide.EditorType, "ide", "IDE for gen-ide command") orelse .vscode,
+        // BGFX
+        .with_shaderc = b.option(bool, "with_shaderc", "build with shaderc support") orelse true,
     };
 
-    const external_credits = b.option([]std.Build.LazyPath, "external_credits", "Path to additional .external_credits.json .");
+    const external_credits = b.option([]std.Build.LazyPath, "external_credits", "Path to additional .externals.zon .");
     const authors = b.option(std.Build.LazyPath, "authors", "Path to AUTHORS.");
 
     const options_step = b.addOptions();
@@ -231,7 +301,7 @@ pub fn build(b: *std.Build) !void {
         .{
             .target = target,
             .optimize = options.externals_optimize,
-            .enable_ztracy = options.enable_tracy,
+            .enable_ztracy = options.with_tracy,
             .enable_fibers = false,
             .on_demand = options.tracy_on_demand,
         },
@@ -317,6 +387,10 @@ pub fn build(b: *std.Build) !void {
 
     // Modules
     const ModulesSet = std.StringArrayHashMapUnmanaged(void);
+
+    var internal_modules = std.ArrayListUnmanaged([]const u8){};
+    defer internal_modules.deinit(b.allocator);
+
     var module_set = ModulesSet{};
     defer module_set.deinit(b.allocator);
     for (all_modules) |module| {
@@ -332,7 +406,8 @@ pub fn build(b: *std.Build) !void {
         try enabled_modules.appendSlice(b.allocator, &core_modules);
 
         if (options.enable_samples) try enabled_modules.appendSlice(b.allocator, &samples_modules);
-        if (options.enable_editor) try enabled_modules.appendSlice(b.allocator, &editor_modules);
+        if (options.enable_studio) try enabled_modules.appendSlice(b.allocator, &studio_modules);
+        if (options.enable_runner) try enabled_modules.appendSlice(b.allocator, &runner_modules);
     }
 
     // Static modules.
@@ -380,7 +455,7 @@ pub fn build(b: *std.Build) !void {
     // Extrenals credits/license
     const gen_externals = b.addRunArtifact(generate_externals_tool);
     const external_credits_file = gen_externals.addOutputFileArg("externals_credit.md");
-    gen_externals.addFileArg(b.path(".external_credits.zon"));
+    gen_externals.addFileArg(b.path(".externals.zon"));
     if (external_credits) |credits| {
         for (credits) |ec| {
             gen_externals.addFileArg(ec);
@@ -398,9 +473,11 @@ pub fn build(b: *std.Build) !void {
     //
     const gen_ide_step = b.step("gen-ide", "init/update IDE configs");
     {
+        const ide = b.option(generate_ide.EditorType, "ide", "IDE for gen-ide command") orelse .vscode;
+
         const gen_ide = b.addRunArtifact(generate_ide_tool);
 
-        gen_ide.addArgs(&.{ "--ide", @tagName(options.ide) });
+        gen_ide.addArgs(&.{ "--ide", @tagName(ide) });
 
         gen_ide.addArg("--bin-path");
         gen_ide.addDirectoryArg(b.path("zig-out/bin/cetech1"));
@@ -412,7 +489,7 @@ pub fn build(b: *std.Build) !void {
         gen_ide.addDirectoryArg(b.path("fixtures/"));
 
         gen_ide.addArg("--config");
-        gen_ide.addDirectoryArg(b.path(".generate_ide.zon"));
+        gen_ide.addDirectoryArg(b.path(".ide.zon"));
 
         gen_ide_step.dependOn(&gen_ide.step);
     }
@@ -425,7 +502,7 @@ pub fn build(b: *std.Build) !void {
         .{
             .target = target,
             .optimize = optimize,
-            .with_tracy = options.enable_tracy,
+            .with_tracy = options.with_tracy,
         },
     );
 
@@ -436,7 +513,7 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
-    if (options.enable_shaderc) {
+    if (options.with_shaderc) {
         b.installArtifact(zbgfx.artifact("shaderc"));
     }
 
@@ -446,6 +523,9 @@ pub fn build(b: *std.Build) !void {
     var buff: [256:0]u8 = undefined;
     for (dynamic_modules.keys()) |m| {
         const artifact_name = try std.fmt.bufPrintZ(&buff, "ct_{s}", .{m});
+
+        if (!module_set.contains(m)) continue;
+
         const art = b.lazyDependency(m, .{
             .target = target,
             .optimize = optimize,
@@ -509,13 +589,13 @@ pub fn build(b: *std.Build) !void {
     });
     useSystemSDK(b, target, kernel_lib);
     b.installArtifact(kernel_lib);
-    kernel_lib.linkLibC();
+    kernel_lib.root_module.link_libc = true;
     kernel_lib.linkLibrary(ztracy.artifact("tracy"));
     kernel_lib.linkLibrary(zglfw.artifact("glfw"));
     kernel_lib.linkLibrary(zgui.artifact("imgui"));
     kernel_lib.linkLibrary(zflecs.artifact("flecs"));
 
-    if (options.enable_nfd) {
+    if (options.with_nfd) {
         kernel_lib.root_module.addImport("znfde", znfde.module("root"));
         kernel_lib.linkLibrary(znfde.artifact("nfde"));
     }
@@ -526,21 +606,36 @@ pub fn build(b: *std.Build) !void {
     });
 
     //
-    // CETech1 kernel standalone exe
+    // CETech1 editor standalone exe
     //
-    const exe = createKernelExe(
+    const editor_exe = try createStudioExe(
         b,
         "cetech1",
         b.path("src/main.zig"),
         kernel_module,
         kernel_lib,
         cetech1_version,
+        static_modules.keys(),
         target,
         optimize,
     );
-    try linkStaticModules(b, exe, target, optimize, static_modules.keys());
-    // Make exe depends on generated files.
-    exe.step.dependOn(&generated_files.step);
+    editor_exe.step.dependOn(&generated_files.step);
+
+    //
+    // CETech1 runner standalone exe
+    //
+    const runner_exe = try createRunnerExe(
+        b,
+        "cetech1",
+        b.path("src/main.zig"),
+        kernel_module,
+        kernel_lib,
+        cetech1_version,
+        static_modules.keys(),
+        target,
+        optimize,
+    );
+    runner_exe.step.dependOn(&generated_files.step);
 
     //
     // CETech1 kernel standalone tests
@@ -557,17 +652,17 @@ pub fn build(b: *std.Build) !void {
     });
     useSystemSDK(b, target, tests);
     b.installArtifact(tests);
-    tests.linkLibC();
+    try linkStaticModules(b, tests, target, optimize, static_modules.keys());
+    tests.root_module.link_libc = true;
     tests.linkLibrary(kernel_lib);
     tests.step.dependOn(&generated_files.step);
-    try linkStaticModules(b, tests, target, optimize, static_modules.keys());
 
     const run_unit_tests = b.addRunArtifact(tests);
     run_unit_tests.step.dependOn(b.getInstallStep());
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
 
-    const run_tests_ui = b.addRunArtifact(exe);
+    const run_tests_ui = b.addRunArtifact(editor_exe);
     run_tests_ui.addArgs(&.{ "--test-ui", "--headless" });
     run_tests_ui.step.dependOn(b.getInstallStep());
     const testui_step = b.step("test-ui", "Run UI headless test");
@@ -616,7 +711,7 @@ fn ensureZigVersion() !void {
     }
 }
 
-pub const editor_modules = [_][]const u8{
+pub const studio_modules = [_][]const u8{
     "editor",
     "editor_asset",
     "editor_asset_browser",
@@ -632,11 +727,18 @@ pub const editor_modules = [_][]const u8{
     "editor_entity_asset",
     "editor_entity",
     "editor_asset_preview",
-    "editor_simulation",
+    "editor_simulator",
     "editor_renderer",
+    "editor_input",
+    "editor_gizmo",
+};
+
+pub const runner_modules = [_][]const u8{
+    "runner",
 };
 
 pub const core_modules = [_][]const u8{
+    "actions",
     "gpu_bgfx",
     "graphvm",
     "render_viewport",
@@ -646,9 +748,11 @@ pub const core_modules = [_][]const u8{
     "default_render_pipeline",
     "shader_system",
     "render_component",
-    "entity_logic_component",
+    "graphvm_logic_component",
+    "native_logic_component",
     "transform",
     "camera",
+    "camera_controller",
     "vertex_system",
     "instance_system",
     "visibility_flags",
@@ -666,6 +770,9 @@ pub const samples_modules = [_][]const u8{
 
     // Zig editor viewport tab sample
     "editor_foo_viewport_tab",
+
+    // Zig example native script
+    "example_native_script",
 };
 
-pub const all_modules = editor_modules ++ core_modules ++ samples_modules;
+pub const all_modules = core_modules ++ studio_modules ++ runner_modules ++ samples_modules;

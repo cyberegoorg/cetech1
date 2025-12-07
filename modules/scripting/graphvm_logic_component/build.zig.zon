@@ -1,0 +1,13 @@
+.{
+    .name = .graphvm_logic_component,
+    .fingerprint = 0x42871a7c2200987c,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .graphvm = .{ .path = "../graphvm" },
+    },
+}

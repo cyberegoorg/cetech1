@@ -9,7 +9,9 @@ pub const profiler = @import("profiler.zig");
 pub const metrics = @import("metrics.zig");
 pub const math = @import("math.zig");
 
-pub const platform = @import("platform.zig");
+pub const host = @import("host.zig");
+pub const input = @import("input.zig");
+
 pub const apidb = @import("apidb.zig");
 pub const modules = @import("modules.zig");
 pub const kernel = @import("kernel.zig");
@@ -23,8 +25,6 @@ pub const gpu = @import("gpu.zig");
 // TODO: to module (need platform based appi aka backed)
 pub const coreui = @import("coreui.zig");
 pub const coreui_node_editor = @import("coreui_node_editor.zig");
-
-pub const actions = @import("actions.zig");
 
 // BitSet
 pub const StaticBitSet = std.StaticBitSet;

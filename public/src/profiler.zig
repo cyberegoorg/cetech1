@@ -1,6 +1,6 @@
 const std = @import("std");
 const Src = std.builtin.SourceLocation;
-pub const profiler_enabled = @import("cetech1_options").enable_tracy;
+pub const profiler_enabled = @import("cetech1_options").with_tracy;
 
 /// Profiler alocator wraping struct
 /// Wrap given alocator and trace alloc/free with profiler

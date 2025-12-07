@@ -41,7 +41,7 @@ var _task: *const cetech1.task.TaskAPI = undefined;
 var _dd: *const gpu.GpuDDApi = undefined;
 var _shader_system: *const shader_system.ShaderSystemAPI = undefined;
 
-const MAX_LIGHTS = 1_000; // TODO
+const MAX_LIGHTS = 1_024; // TODO
 const LIGHT_SIZE = 16; // 2xfloat4
 
 // Global state that can surive hot-reload

@@ -20,7 +20,6 @@ pub fn build(b: *std.Build) !void {
     lib.root_module.addImport("shader_system", b.dependency("shader_system", .{}).module("shader_system"));
     lib.root_module.addImport("render_graph", b.dependency("render_graph", .{}).module("render_graph"));
     lib.root_module.addImport("renderer_nodes", b.dependency("renderer_nodes", .{}).module("renderer_nodes"));
-    lib.root_module.addImport("renderer", b.dependency("renderer", .{}).module("renderer"));
     lib.root_module.addImport("visibility_flags", b.dependency("visibility_flags", .{}).module("visibility_flags"));
     lib.root_module.addImport("instance_system", b.dependency("instance_system", .{}).module("instance_system"));
 

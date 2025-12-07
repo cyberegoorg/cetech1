@@ -36,7 +36,7 @@ pub fn build(b: *std.Build) !void {
 
     const options = .{
         // Tracy options
-        .enable_tracy = b.option(bool, "with_tracy", "build with tracy.") orelse true,
+        .with_tracy = b.option(bool, "with_tracy", "build with tracy.") orelse true,
     };
 
     const options_step = b.addOptions();

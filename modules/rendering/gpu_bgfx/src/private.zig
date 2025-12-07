@@ -350,6 +350,10 @@ pub const BufferFlags = struct {
 
 const DiscardFlags = struct {
     pub fn toState(self: public.DiscardFlags) u8 {
+        if (self.Bindings and self.IndexBuffer and self.State and self.Transform and self.VertexStreams) {
+            return bgfx.DiscardFlags_All;
+        }
+
         var r: u8 = bgfx.DiscardFlags_None;
 
         if (self.Bindings) r |= bgfx.DiscardFlags_Bindings;
@@ -590,7 +594,7 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
         _allocator.destroy(inst);
     }
 
-    pub fn getWindow(self: *anyopaque) ?cetech1.platform.Window {
+    pub fn getWindow(self: *anyopaque) ?cetech1.host.Window {
         const context: *BgfxBackend = @ptrCast(@alignCast(self));
         return context.window;
     }
@@ -1257,7 +1261,7 @@ fn initBgfx(context: *BgfxBackend, backend: bgfx.RendererType, vsync: bool, head
     context.float_buffer_layout = FloatBufferVertex.layoutInit();
 }
 const BgfxBackend = struct {
-    window: ?cetech1.platform.Window = null,
+    window: ?cetech1.host.Window = null,
     headless: bool = false,
     bgfx_backend: bgfx.RendererType,
 
@@ -1315,7 +1319,7 @@ fn isBgfxDefault(backend: []const u8, headles: bool) bool {
 }
 
 fn createBgfxBackend(
-    window: ?cetech1.platform.Window,
+    window: ?cetech1.host.Window,
     backend: []const u8,
     vsync: bool,
     headles: bool,

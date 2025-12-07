@@ -591,6 +591,8 @@ pub const TypeStorage = struct {
         self.objid2obj.items[id.id] = obj;
         obj.parent = .{};
 
+        // try self.changed_objs.addChangedObjects(self.version, &.{id});
+
         return id;
     }
 
@@ -2108,9 +2110,9 @@ pub const Db = struct {
 
         if (true_obj.prototype.isEmpty()) return false;
 
-        const protoype_id = true_obj.prototype;
+        const prototype_id = true_obj.prototype;
 
-        return true_inisiated_obj.parent.eql(protoype_id);
+        return true_inisiated_obj.parent.eql(prototype_id);
     }
 
     fn isIinisiated(self: *Self, obj: *public.Obj, set_prop_idx: u32, inisiated_obj: *public.Obj) bool {
@@ -2147,7 +2149,7 @@ pub const Db = struct {
     }
 
     fn restoreDeletedInSet(self: *Self, obj: *public.Obj, set_prop_idx: u32, inisiated_obj: *public.Obj) void {
-        _ = self;
+        // _ = self;
         var true_obj = toObjFromObjO(obj);
         const true_inisiated_obj = toObjFromObjO(inisiated_obj);
 
@@ -2155,6 +2157,7 @@ pub const Db = struct {
 
         const idset = true_obj.getPropPtr(*ObjIdSet, set_prop_idx);
         idset.*.removeFromRemoved(true_inisiated_obj.objid);
+        self.increaseVersionToAll(true_inisiated_obj);
     }
 
     pub fn setPrototype(self: *Self, obj: public.ObjId, prototype: public.ObjId) !void {

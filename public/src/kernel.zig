@@ -6,7 +6,7 @@ const cetech1 = @import("root.zig");
 const cdb = @import("cdb.zig");
 const modules = @import("modules.zig");
 const gpu = @import("gpu.zig");
-const platform = @import("platform.zig");
+const host = @import("host.zig");
 
 const log = std.log.scoped(.kernel);
 
@@ -114,13 +114,16 @@ pub const KernelApi = struct {
     isHeadlessMode: *const fn () bool,
     isTestigMode: *const fn () bool,
 
-    getMainWindow: *const fn () ?platform.Window,
-    getGpuBackend: *const fn () ?gpu.GpuBackend,
-
     getExternalsCredit: *const fn () [:0]const u8,
     getAuthors: *const fn () [:0]const u8,
 
+    getStrArgs: *const fn (arg_name: []const u8) ?[]const u8,
+    getIntArgs: *const fn (arg_name: []const u8) ?u32,
+
     // TODO: !!!GLOBAL SHIT WARNING !!!
     getDb: *const fn () cdb.DbId,
+    getMainWindow: *const fn () ?host.Window,
+    getGpuBackend: *const fn () ?gpu.GpuBackend,
+
     //
 };

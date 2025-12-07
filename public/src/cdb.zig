@@ -301,7 +301,7 @@ pub fn CdbTypeDecl(comptime type_name: [:0]const u8, comptime props_enum: type, 
             return api.readSubObjSetRemoved(reader, Self.propIdx(prop));
         }
 
-        pub inline fn readSubObjSet(api: *const CdbAPI, reader: *Obj, prop: PropsEnum, allocator: std.mem.Allocator) !?[]const ObjId {
+        pub inline fn readSubObjSet(api: *const CdbAPI, reader: *Obj, prop: PropsEnum, allocator: std.mem.Allocator) !?[]ObjId {
             return api.readSubObjSet(reader, Self.propIdx(prop), allocator);
         }
 

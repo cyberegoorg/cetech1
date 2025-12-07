@@ -9,11 +9,15 @@
     .dependencies = .{
         .cetech1 = .{ .path = "../../../public/" },
         .editor = .{ .path = "../editor" },
+        .editor_gizmo = .{ .path = "../gizmo" },
         .render_viewport = .{ .path = "../../rendering/render_viewport" },
         .render_graph = .{ .path = "../../rendering/render_graph" },
         .render_pipeline = .{ .path = "../../rendering/render_pipeline" },
         .camera = .{ .path = "../../rendering/camera" },
+        .camera_controller = .{ .path = "../../rendering/camera_controller" },
         .transform = .{ .path = "../../rendering/transform" },
+        .light_component = .{ .path = "../../rendering/light_component" },
         .graphvm = .{ .path = "../../scripting/graphvm" },
+        .actions = .{ .path = "../../input/actions" },
     },
 }

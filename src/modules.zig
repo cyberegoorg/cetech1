@@ -51,11 +51,32 @@ var _modules_map: ModuleHashMap = undefined;
 var _dyn_modules_map: DynModuleHashMap = undefined;
 var _modules_allocator_map: ModuleAlocatorMap = undefined;
 
-pub fn init(allocator: Allocator) !void {
+var _ignored_modules: ?[]const []const u8 = null;
+var _ignored_modules_prefix: ?[]const []const u8 = null;
+
+fn isModuleIgnored(name: []const u8) bool {
+    if (_ignored_modules) |ignored_modules| {
+        for (ignored_modules) |module| {
+            if (std.mem.eql(u8, name, module)) return true;
+        }
+    }
+
+    if (_ignored_modules_prefix) |ignored_modules_prefix| {
+        for (ignored_modules_prefix) |module| {
+            if (std.mem.startsWith(u8, name, module)) return true;
+        }
+    }
+
+    return false;
+}
+
+pub fn init(allocator: Allocator, ignored_modules: ?[]const []const u8, ignored_modules_prefix: ?[]const []const u8) !void {
     _allocator = allocator;
     _dyn_modules_map = .{};
     _modules_map = .{};
     _modules_allocator_map = .{};
+    _ignored_modules = ignored_modules;
+    _ignored_modules_prefix = ignored_modules_prefix;
 }
 
 pub fn deinit() void {
@@ -101,6 +122,7 @@ fn getModuleName(path: []const u8) []const u8 {
 
 pub fn addModules(modules: []const public.ModuleDesc) !void {
     for (modules) |v| {
+        if (isModuleIgnored(v.name)) continue;
         try _modules_map.put(_allocator, v.name, .{ .desc = v, .full_path = null });
     }
 }
@@ -160,7 +182,7 @@ fn _getModule(name: []const u8) ?*ModuleDesc {
     return _modules_map.getPtr(name);
 }
 
-fn _loadDynLib(path: []const u8) !DynLibInfo {
+fn _loadDynLib(path: []const u8) !?DynLibInfo {
     var dll = std.DynLib.open(path) catch |err| {
         log.err("Error load module from {s} with error {any}", .{ path, err });
         return err;
@@ -168,6 +190,9 @@ fn _loadDynLib(path: []const u8) !DynLibInfo {
 
     var load_fce_name_buff: [128:0]u8 = undefined;
     const name = getModuleName(path);
+
+    if (isModuleIgnored(name)) return null;
+
     const load_fce_name = try std.fmt.bufPrintZ(&load_fce_name_buff, "ct_load_module_{s}", .{name});
 
     const symbol = dll.lookup(*public.LoadModuleFn, load_fce_name);
@@ -234,14 +259,12 @@ pub fn loadDynModules() !void {
     std.sort.insertion([:0]const u8, modules.items, {}, lessThanStr);
 
     for (modules.items) |full_path| {
-        log.warn("Loading dynamic module from {s}", .{full_path});
-
-        const dyn_lib_info = _loadDynLib(full_path) catch continue;
-
-        try _dyn_modules_map.put(_allocator, dyn_lib_info.full_path, dyn_lib_info);
-        try addDynamicModule(.{ .name = dyn_lib_info.name, .module_fce = dyn_lib_info.symbol }, dyn_lib_info.full_path);
-
-        allocator.free(full_path);
+        defer allocator.free(full_path);
+        if (_loadDynLib(full_path) catch continue) |dyn_lib_info| {
+            log.warn("Loading dynamic module from {s}", .{full_path});
+            try _dyn_modules_map.put(_allocator, dyn_lib_info.full_path, dyn_lib_info);
+            try addDynamicModule(.{ .name = dyn_lib_info.name, .module_fce = dyn_lib_info.symbol }, dyn_lib_info.full_path);
+        }
     }
 }
 
@@ -299,18 +322,21 @@ pub fn reloadAllIfNeeded(allocator: std.mem.Allocator) !bool {
 
             //load new
             var new_dyn_lib_info = _loadDynLib(k) catch continue;
-            if (!new_dyn_lib_info.symbol(@ptrCast(&apidb.api), @ptrCast(&alloc_item.*.allocator), true, true)) {
-                log.err("Problem with load new module {s}", .{k});
-                continue;
-            }
-            const v = _dyn_modules_map.get(k).?;
-            _allocator.free(new_dyn_lib_info.full_path);
-            _allocator.free(new_dyn_lib_info.name);
-            new_dyn_lib_info.full_path = v.full_path;
-            new_dyn_lib_info.name = v.name;
-            v_ptr.* = new_dyn_lib_info;
 
-            old_module_desc.desc.module_fce = new_dyn_lib_info.symbol;
+            if (new_dyn_lib_info) |*new_lib_info| {
+                if (!new_lib_info.symbol(@ptrCast(&apidb.api), @ptrCast(&alloc_item.*.allocator), true, true)) {
+                    log.err("Problem with load new module {s}", .{k});
+                    continue;
+                }
+                const v = _dyn_modules_map.get(k).?;
+                _allocator.free(new_lib_info.full_path);
+                _allocator.free(new_lib_info.name);
+                new_lib_info.full_path = v.full_path;
+                new_lib_info.name = v.name;
+                v_ptr.* = new_lib_info.*;
+
+                old_module_desc.desc.module_fce = new_lib_info.symbol;
+            }
         }
     }
 
@@ -332,7 +358,7 @@ pub fn dumpModules() void {
 test "Can register module" {
     const allocator = std.testing.allocator;
 
-    try init(allocator);
+    try init(allocator, null, null);
     defer deinit();
 
     const Module1 = struct {

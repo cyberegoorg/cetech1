@@ -417,7 +417,7 @@ const GraphBuilder = struct {
         try self.dag.build_all();
     }
 
-    pub fn execute(self: *GraphBuilder, allocator: std.mem.Allocator, vp_size: [2]f32, viewers: []const public.Viewer) !void {
+    pub fn execute(self: *GraphBuilder, allocator: std.mem.Allocator, vp_size: [2]f32, viewers: []const public.Viewer, freze_mtx: ?zm.Mat) !void {
         var z = _profiler.ZoneN(@src(), "RenderGraph - Execute");
         defer z.End();
 
@@ -434,6 +434,7 @@ const GraphBuilder = struct {
         for (self.dag.output.keys()) |pass| {
             var zz = _profiler.Zone(@src());
             defer zz.End();
+
             zz.Name(pass.name);
 
             textures.clearRetainingCapacity();
@@ -442,6 +443,8 @@ const GraphBuilder = struct {
 
             info.viewid = view_id;
             view_id += 1;
+
+            self.gpu.resetView(info.viewid);
 
             if (info.exported_layer) |layer| {
                 try self.layer_map.put(self.allocator, layer, info.viewid);
@@ -512,7 +515,7 @@ const GraphBuilder = struct {
                 );
 
                 const projMtx = viewers[0].proj;
-                const viewMtx = viewers[0].mtx;
+                const viewMtx = if (freze_mtx) |mtx| zm.matToArr(mtx) else viewers[0].mtx;
                 self.gpu.setViewTransform(info.viewid, &viewMtx, &projMtx);
             }
 

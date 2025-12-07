@@ -1,0 +1,11 @@
+.{
+    .launchers = .{
+        .{ .name = "Unit tests", .program = .{ .path = "zig-out/bin/cetech1_test" }, .args = .{} },
+        .{ .name = "No asset root", .args = .{} },
+        .{ .name = "max 5 tick", .args = .{ "--max-kernel-tick", "5", "--asset-root", "fixtures/test_asset/" } },
+        .{ .name = "--headless", .args = .{ "--max-kernel-tick", "5", "--asset-root", "fixtures/test_asset/", "--headless" } },
+        .{ .name = "Tests UI", .args = .{"--test-ui"} },
+        .{ .name = "Tests UI (headless)", .args = .{ "--test-ui", "--headless", "--test-ui-junit", "./result.xml" } },
+        .{ .name = "(Vulkan)", .args = .{ "--asset-root", "fixtures/test_asset/", "--renderer", "bgfx_vulkan" } },
+    },
+}

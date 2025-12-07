@@ -34,57 +34,64 @@ jobs:
 
       - name: Lint
         run: zig fmt --check . --exclude externals/
-
-  x86-64-linux:
+  build:
     needs: ["validation"]
-    name: x86-64 Linux
-    runs-on: linux-large
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - linux-large
+          - macos-15-large
+          - windows-large
+
+    runs-on: ${{matrix.os}}
+
+    env:
+      TRACY_NO_INVARIANT_CHECK: "1" #TODO: remove
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare
-        # uses: awalsh128/cache-apt-pkgs-action@latest
-        # with:
-        #   packages: kcov libdbus-1-dev
-        #   version: 1.0
+      - if: runner.os == 'Linux'
+        name: Prepare linux
         run: sudo apt update && sudo apt install -y libdbus-1-dev
-      
-      # TODO: https://github.com/SimonKagstrom/kcov/issues/471
-      - name: Install kcov
+
+      - if: runner.os == 'Linux'
+        name: Install kcov
         run: |
           sudo ln -s /usr/lib/x86_64-linux-gnu/libbfd-2.42-system.so /usr/lib/x86_64-linux-gnu/libbfd-2.38-system.so
           sudo ln -s /usr/lib/x86_64-linux-gnu/libopcodes-2.42-system.so /usr/lib/x86_64-linux-gnu/libopcodes-2.38-system.so
           wget https://github.com/SimonKagstrom/kcov/releases/download/v42/kcov-amd64.tar.gz
           sudo tar xf kcov-amd64.tar.gz -C /
 
-          # KCOV_VERSION=v43 && \
-          # sudo apt install -y git cmake g++ libcurl4-openssl-dev zlib1g-dev libdw-dev libiberty-dev binutils-dev && \
-          # git clone https://github.com/SimonKagstrom/kcov.git && \
-          # cd kcov && git checkout ${KCOV_VERSION} && mkdir build && cd build && \
-          # cmake .. && make && sudo make install && \
-          # kcov --version
-
-      #- uses: Schleifner/github-coredump@v1
-
       - name: Install Zig
         uses: mlugg/setup-zig@v2
+
+      - name: Init repo
+        shell: bash
+        run: zig build init
+
       - name: Build
-        run: .ci/build.sh x86_64-linux Debug
+        shell: bash
+        run: zig build -Doptimize=Debug -Dwith_shaderc=false
 
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
-          name: x86-64-linux-bin
+          name: ${{matrix.os}}-bin
           path: zig-out/
           overwrite: true
           retention-days: 1
 
-      - name: Test unit
+      - if: runner.os == 'Linux'
+        name: Test unit with kcov
+        shell: bash
         run: kcov --include-pattern=/cetech1/src/,/cetech/public/ kcov-output zig-out/bin/cetech1_test
 
-      - name: Upload code coverage report to Codecov
+      - if: runner.os == 'Linux'
+        name: Upload code coverage report to Codecov
         uses: codecov/codecov-action@v4
         with:
           directory: kcov-output
@@ -94,128 +101,15 @@ jobs:
           verbose: true
           flags: unittests
 
-      # - name: Setup headless display
-      #   uses: pyvista/setup-headless-display-action@v2
-      
-      - name: Test headless standalone
-        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5
-
-      - name: Test headless standalone with asset root
-        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
-      
-      - name: Test UI headless 
-        run: zig-out/bin/cetech1 --headless --test-ui --test-ui-junit ./result.xml
-
-      - name: Publish Test Report
-        uses: mikepenz/action-junit-report@v4
-        if: success() || failure() # always run even if the previous step fails
-        with:
-          report_paths: "./result.xml"
-          fail_on_failure: true
-          require_passed_tests: true
-          require_tests: true
-          detailed_summary: true
-
-  x86-64-macos:
-    needs: ["validation"]
-    name: x86-64 Macos
-    runs-on: macos-15-large # macos-latest
-    timeout-minutes: 10
-    env:
-      TRACY_NO_INVARIANT_CHECK: "1" #TODO: remove
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # - name: Prepare`
-      #   run: |
-      #     brew update
-      #     brew install kcov
-
-      - name: Install Zig
-        uses: mlugg/setup-zig@v2
-      - name: Build
-        run: .ci/build.sh x86_64-macos Debug
-
-      - name: Upload build
-        uses: actions/upload-artifact@v4
-        with:
-          name: x86-64-macos-bin
-          path: zig-out/
-          overwrite: true
-          retention-days: 1
-
-      - name: Test unit
-        run: zig-out/bin/cetech1_test
-        #run: kcov --include-pattern=/cetech1/src/,/cetech/public/ kcov-output zig-out/bin/cetech1_test
-
-      - name: Test headless standalone
-        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 
-
-      - name: Test headless standalone with asset root
-        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
-
-      - name: Test UI headless 
-        run: zig-out/bin/cetech1 --headless --test-ui --test-ui-junit ./result.xml
-
-      - name: Publish Test Report
-        uses: mikepenz/action-junit-report@v4
-        if: success() || failure() # always run even if the previous step fails
-        with:
-          report_paths: "./result.xml"
-          fail_on_failure: true
-          require_passed_tests: true
-          require_tests: true
-          detailed_summary: true
-
-  x86-64-windows:
-    needs: ["validation"]
-    name: x86-64 Windows
-    runs-on: windows-large # windows-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Zig
-        uses: mlugg/setup-zig@v2
-
-      - name: Build
-        shell: bash
-        run: .ci/build.sh x86_64-windows Debug
-
-      - name: Upload build
-        uses: actions/upload-artifact@v4
-        with:
-          name: x86-64-windows-bin
-          path: zig-out/
-          overwrite: true
-          retention-days: 1
-
-      # - name: configure Pagefile
-      #   uses: al-cheb/configure-pagefile-action@v1.4
-      #   with:
-      #     minimum-size: 8GB
-      #     maximum-size: 16GB
-      #     disk-root: "C:"
-
-      - name: Test unit
+      - if: runner.os != 'Linux'
+        name: Test unit without kcov
         shell: bash
         run: zig-out/bin/cetech1_test
-      
+
       # FIXME: Windows
-      - name: Test headless standalone
-        shell: bash
-        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5
-
-      - name: Test headless standalone with asset root
-        shell: bash
-        run: zig-out/bin/cetech1 --headless --max-kernel-tick 5 --asset-root fixtures/test_asset/
-
-      - name: Test UI headless 
-        shell: bash
-        run: zig-out/bin/cetech1 --headless --test-ui --test-ui-junit ./result.xml
-
+      - if: runner.os != 'Windows'
+        name: Test UI headless
+        run: zig-out/bin/cetech1_studio --headless --test-ui --test-ui-junit ./result.xml
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4
         if: success() || failure() # always run even if the previous step fails

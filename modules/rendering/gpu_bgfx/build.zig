@@ -32,7 +32,8 @@ pub fn build(b: *std.Build) !void {
         },
         else => {},
     }
-    lib.linkLibC();
+
+    lib.root_module.link_libc = true;
     lib.linkLibrary(zbgfx.artifact("bgfx"));
     lib.root_module.addImport("zbgfx", zbgfx.module("zbgfx"));
 }

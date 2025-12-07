@@ -15,7 +15,6 @@
         .render_graph = .{ .path = "../render_graph" },
         .render_viewport = .{ .path = "../render_viewport" },
         .vertex_system = .{ .path = "../vertex_system" },
-        .renderer = .{ .path = "../renderer" },
         .visibility_flags = .{ .path = "../visibility_flags" },
     },
 }

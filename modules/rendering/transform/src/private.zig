@@ -38,124 +38,149 @@ var _ecs: *const ecs.EcsAPI = undefined;
 const G = struct {};
 var _g: *G = undefined;
 
-const position_c = ecs.ComponentI.implement(
-    public.Position,
-    .{
-        .cdb_type_hash = public.PositionCdb.type_hash,
-        .category = "Transform",
-        .category_order = 0.1,
-        .with = &.{ecs.id(public.WorldTransform)},
-    },
-    struct {
-        pub fn uiIcons(
-            buff: [:0]u8,
-            allocator: std.mem.Allocator,
-            obj: cdb.ObjId,
-        ) ![:0]const u8 {
-            _ = allocator; // autofix
-            _ = obj; // autofix
-            return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Position});
+const transform_c = ecs.ComponentI.implement(public.Transform, .{
+    .cdb_type_hash = public.TransformCdb.type_hash,
+    .category = "Transform",
+    .category_order = 0.3,
+    .gizmoPriority = 100,
+    .with = &.{ecs.id(public.WorldTransform)},
+}, struct {
+    pub fn uiIcons(
+        buff: [:0]u8,
+        allocator: std.mem.Allocator,
+        obj: cdb.ObjId,
+    ) ![:0]const u8 {
+        _ = allocator; // autofix
+        _ = obj; // autofix
+        return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Position});
+    }
+
+    pub fn fromCdb(
+        allocator: std.mem.Allocator,
+        obj: cdb.ObjId,
+        data: []u8,
+    ) anyerror!void {
+        _ = allocator; // autofix
+
+        const t = _cdb.readObj(obj) orelse return;
+
+        const transform = std.mem.bytesAsValue(public.Transform, data);
+
+        const pos_obj = public.TransformCdb.readSubObj(_cdb, t, .Position).?;
+        const pos_r = public.PositionCdb.read(_cdb, pos_obj).?;
+        transform.position = public.Position{
+            .x = public.PositionCdb.readValue(f32, _cdb, pos_r, .X),
+            .y = public.PositionCdb.readValue(f32, _cdb, pos_r, .Y),
+            .z = public.PositionCdb.readValue(f32, _cdb, pos_r, .Z),
+        };
+
+        const rot_obj = public.TransformCdb.readSubObj(_cdb, t, .Rotation).?;
+        const rot_r = public.PositionCdb.read(_cdb, rot_obj).?;
+        transform.rotation.q = zm.quatFromRollPitchYaw(
+            std.math.degreesToRadians(public.RotationCdb.readValue(f32, _cdb, rot_r, .X)),
+            std.math.degreesToRadians(public.RotationCdb.readValue(f32, _cdb, rot_r, .Y)),
+            std.math.degreesToRadians(public.RotationCdb.readValue(f32, _cdb, rot_r, .Z)),
+        );
+
+        const scale_obj = public.TransformCdb.readSubObj(_cdb, t, .Scale).?;
+        const scale_r = public.ScaleCdb.read(_cdb, scale_obj).?;
+        transform.scale = public.Scale{
+            .x = public.ScaleCdb.readValue(f32, _cdb, scale_r, .X),
+            .y = public.ScaleCdb.readValue(f32, _cdb, scale_r, .Y),
+            .z = public.ScaleCdb.readValue(f32, _cdb, scale_r, .Z),
+        };
+    }
+
+    pub fn gizmoGetOperation(
+        world: ecs.World,
+        entity: ecs.EntityId,
+        entity_obj: cdb.ObjId,
+        component_obj: cdb.ObjId,
+    ) !ecs.GizmoOptions {
+        _ = world;
+        _ = entity;
+        _ = entity_obj;
+        _ = component_obj;
+        return .{
+            .translate_x = true,
+            .translate_y = true,
+            .translate_z = true,
+
+            .rotate_x = true,
+            .rotate_y = true,
+            .rotate_z = true,
+
+            .scale_x = true,
+            .scale_y = true,
+            .scale_z = true,
+        };
+    }
+
+    pub fn gizmoGetMatrix(
+        world: ecs.World,
+        entity: ecs.EntityId,
+        entity_obj: cdb.ObjId,
+        component_obj: cdb.ObjId,
+        world_mtx: *zm.Mat,
+        local_mtx: *zm.Mat,
+    ) !void {
+        _ = entity_obj;
+        _ = component_obj;
+        const wt = world.getComponent(public.WorldTransform, entity) orelse return;
+        world_mtx.* = wt.mtx;
+
+        const t = world.getComponent(public.Transform, entity) orelse return;
+        local_mtx.* = t.toMat();
+    }
+
+    pub fn gizmoSetMatrix(
+        world: ecs.World,
+        entity: ecs.EntityId,
+        entity_obj: cdb.ObjId,
+        component_obj: cdb.ObjId,
+        mat: zm.Mat,
+    ) !void {
+        _ = world;
+        _ = entity;
+        _ = entity_obj;
+
+        const comp_r = public.TransformCdb.read(_cdb, component_obj).?;
+        const pos_obj = public.TransformCdb.readSubObj(_cdb, comp_r, .Position).?;
+        const rot_obj = public.TransformCdb.readSubObj(_cdb, comp_r, .Rotation).?;
+        const scl_obj = public.TransformCdb.readSubObj(_cdb, comp_r, .Scale).?;
+
+        {
+            const translate = zm.util.getTranslationVec(mat);
+            const w = public.PositionCdb.write(_cdb, pos_obj).?;
+            public.PositionCdb.setValue(f32, _cdb, w, .X, translate[0]);
+            public.PositionCdb.setValue(f32, _cdb, w, .Y, translate[1]);
+            public.PositionCdb.setValue(f32, _cdb, w, .Z, translate[2]);
+            try public.PositionCdb.commit(_cdb, w);
         }
 
-        pub fn fromCdb(
-            allocator: std.mem.Allocator,
-            obj: cdb.ObjId,
-            data: []u8,
-        ) anyerror!void {
-            _ = allocator; // autofix
-
-            const r = _cdb.readObj(obj) orelse return;
-
-            const position = std.mem.bytesAsValue(public.Position, data);
-            position.* = public.Position{
-                .x = public.PositionCdb.readValue(f32, _cdb, r, .X),
-                .y = public.PositionCdb.readValue(f32, _cdb, r, .Y),
-                .z = public.PositionCdb.readValue(f32, _cdb, r, .Z),
-            };
-        }
-    },
-);
-
-const rotation_c = ecs.ComponentI.implement(
-    public.Rotation,
-    .{
-        .cdb_type_hash = public.RotationCdb.type_hash,
-        .category = "Transform",
-        .category_order = 0.2,
-        .with = &.{ecs.id(public.WorldTransform)},
-    },
-    struct {
-        pub fn uiIcons(
-            buff: [:0]u8,
-            allocator: std.mem.Allocator,
-            obj: cdb.ObjId,
-        ) ![:0]const u8 {
-            _ = allocator; // autofix
-            _ = obj; // autofix
-            return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Rotation});
+        {
+            const r = zm.quatToRollPitchYaw(zm.util.getRotationQuat(mat));
+            const w = public.RotationCdb.write(_cdb, rot_obj).?;
+            public.RotationCdb.setValue(f32, _cdb, w, .X, std.math.radiansToDegrees(r[0]));
+            public.RotationCdb.setValue(f32, _cdb, w, .Y, std.math.radiansToDegrees(r[1]));
+            public.RotationCdb.setValue(f32, _cdb, w, .Z, std.math.radiansToDegrees(r[2]));
+            try public.RotationCdb.commit(_cdb, w);
         }
 
-        pub fn fromCdb(
-            allocator: std.mem.Allocator,
-            obj: cdb.ObjId,
-            data: []u8,
-        ) anyerror!void {
-            _ = allocator; // autofix
-
-            const r = _cdb.readObj(obj) orelse return;
-
-            const position = std.mem.bytesAsValue(public.Rotation, data);
-            position.* = public.Rotation{
-                .q = zm.quatFromRollPitchYaw(
-                    std.math.degreesToRadians(public.RotationCdb.readValue(f32, _cdb, r, .X)),
-                    std.math.degreesToRadians(public.RotationCdb.readValue(f32, _cdb, r, .Y)),
-                    std.math.degreesToRadians(public.RotationCdb.readValue(f32, _cdb, r, .Z)),
-                ),
-            };
+        {
+            const sc = zm.util.getScaleVec(mat);
+            const w = public.ScaleCdb.write(_cdb, scl_obj).?;
+            public.ScaleCdb.setValue(f32, _cdb, w, .X, sc[0]);
+            public.ScaleCdb.setValue(f32, _cdb, w, .Y, sc[1]);
+            public.ScaleCdb.setValue(f32, _cdb, w, .Z, sc[2]);
+            try public.ScaleCdb.commit(_cdb, w);
         }
-    },
-);
-
-const scale_c = ecs.ComponentI.implement(
-    public.Scale,
-    .{
-        .cdb_type_hash = public.ScaleCdb.type_hash,
-        .category = "Transform",
-        .category_order = 0.3,
-        .with = &.{ecs.id(public.WorldTransform)},
-    },
-    struct {
-        pub fn uiIcons(
-            buff: [:0]u8,
-            allocator: std.mem.Allocator,
-            obj: cdb.ObjId,
-        ) ![:0]const u8 {
-            _ = allocator; // autofix
-            _ = obj; // autofix
-            return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Scale});
-        }
-
-        pub fn fromCdb(
-            allocator: std.mem.Allocator,
-            obj: cdb.ObjId,
-            data: []u8,
-        ) anyerror!void {
-            _ = allocator; // autofix
-
-            const r = _cdb.readObj(obj) orelse return;
-
-            const position = std.mem.bytesAsValue(public.Scale, data);
-            position.* = public.Scale{
-                .x = public.ScaleCdb.readValue(f32, _cdb, r, .X),
-                .y = public.ScaleCdb.readValue(f32, _cdb, r, .Y),
-                .z = public.ScaleCdb.readValue(f32, _cdb, r, .Z),
-            };
-        }
-    },
-);
+    }
+});
 
 const world_tranform_c = cetech1.ecs.ComponentI.implement(public.WorldTransform, .{}, struct {});
 
+// TODO: SHIT
 const transform_system_i = ecs.SystemI.implement(
     .{
         .name = "transform.transform",
@@ -164,15 +189,13 @@ const transform_system_i = ecs.SystemI.implement(
         .query = &.{
             .{ .id = ecs.id(public.WorldTransform), .inout = .Out },
             .{ .id = ecs.id(public.WorldTransform), .inout = .In, .oper = .Optional, .src = .{ .id = ecs.Cascade } },
-            .{ .id = ecs.id(public.Position), .inout = .In }, // .src = .{ .id = ecs.Self_ | ecs.Up }
-            .{ .id = ecs.id(public.Rotation), .inout = .In, .oper = .Optional },
-            .{ .id = ecs.id(public.Scale), .inout = .In, .oper = .Optional },
+            .{ .id = ecs.id(public.Transform), .inout = .In },
         },
     },
     struct {
-        pub fn iterate(world: ecs.World, it: *ecs.Iter) !void {
+        pub fn iterate(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
             _ = world;
-            // log.debug("BEGIN", .{});
+            _ = dt;
 
             while (it.next()) {
                 var zone_iner_ctx = _profiler.ZoneN(@src(), "Transform iner");
@@ -181,9 +204,8 @@ const transform_system_i = ecs.SystemI.implement(
                 const world_transform = it.field(public.WorldTransform, 0).?;
                 const parent_world_transform = it.field(public.WorldTransform, 1);
 
-                const positions = it.field(public.Position, 2).?;
-                const rotations = it.field(public.Rotation, 3);
-                const scales = it.field(public.Scale, 4);
+                const transform = it.field(public.Transform, 2).?;
+
                 const count = it.count();
 
                 // log.debug("{}", .{count});
@@ -191,47 +213,46 @@ const transform_system_i = ecs.SystemI.implement(
                 if (parent_world_transform) |p| {
                     if (it.isSelf(2)) {
                         for (0..count) |i| {
-                            const model_mat = zm.translation(positions[i].x, positions[i].y, positions[i].z);
-                            world_transform[i].mtx = zm.mul(p[0].mtx, model_mat);
+                            const translate_model_mat = zm.translation(transform[i].position.x, transform[i].position.y, transform[i].position.z);
+                            const rot_model_mat = zm.quatToMat(transform[i].rotation.q);
+                            const scl_model_mat = zm.scaling(transform[i].scale.x, transform[i].scale.y, transform[i].scale.z);
+
+                            world_transform[i].mtx = zm.mul(p[0].mtx, translate_model_mat);
+                            world_transform[i].mtx = zm.mul(rot_model_mat, world_transform[i].mtx);
+                            world_transform[i].mtx = zm.mul(scl_model_mat, world_transform[i].mtx);
                         }
                     } else {
                         for (0..count) |i| {
-                            const model_mat = zm.translation(positions[0].x, positions[0].y, positions[0].z);
-                            world_transform[i].mtx = zm.mul(p[0].mtx, model_mat);
+                            const translate_model_mat = zm.translation(transform[0].position.x, transform[0].position.y, transform[0].position.z);
+                            const rot_model_mat = zm.quatToMat(transform[0].rotation.q);
+                            const scl_model_mat = zm.scaling(transform[0].scale.x, transform[0].scale.y, transform[0].scale.z);
+
+                            world_transform[i].mtx = zm.mul(p[0].mtx, translate_model_mat);
+                            world_transform[i].mtx = zm.mul(rot_model_mat, world_transform[i].mtx);
+                            world_transform[i].mtx = zm.mul(scl_model_mat, world_transform[i].mtx);
                         }
                     }
                 } else {
                     if (it.isSelf(2)) {
                         for (0..count) |i| {
-                            const model_mat = zm.translation(positions[i].x, positions[i].y, positions[i].z);
-                            world_transform[i].mtx = model_mat;
+                            const translate_model_mat = zm.translation(transform[i].position.x, transform[i].position.y, transform[i].position.z);
+                            const rot_model_mat = zm.quatToMat(transform[i].rotation.q);
+                            const scl_model_mat = zm.scaling(transform[i].scale.x, transform[i].scale.y, transform[i].scale.z);
+
+                            world_transform[i].mtx = translate_model_mat;
+                            world_transform[i].mtx = zm.mul(rot_model_mat, world_transform[i].mtx);
+                            world_transform[i].mtx = zm.mul(scl_model_mat, world_transform[i].mtx);
                         }
                     } else {
                         for (0..count) |i| {
-                            const model_mat = zm.translation(positions[0].x, positions[0].y, positions[0].z);
-                            world_transform[i].mtx = model_mat;
-                        }
-                    }
-                }
+                            const translate_model_mat = zm.translation(transform[0].position.x, transform[0].position.y, transform[0].position.z);
+                            const rot_model_mat = zm.quatToMat(transform[0].rotation.q);
+                            const scl_model_mat = zm.scaling(transform[0].scale.x, transform[0].scale.y, transform[0].scale.z);
 
-                if (rotations) |r| {
-                    if (it.isSelf(3)) {
-                        for (0..count) |i| {
-                            const mat = zm.quatToMat(r[i].q);
-                            world_transform[i].mtx = zm.mul(mat, world_transform[i].mtx);
+                            world_transform[i].mtx = translate_model_mat;
+                            world_transform[i].mtx = zm.mul(rot_model_mat, world_transform[i].mtx);
+                            world_transform[i].mtx = zm.mul(scl_model_mat, world_transform[i].mtx);
                         }
-                    } else {
-                        for (0..count) |i| {
-                            const mat = zm.quatToMat(r[0].q);
-                            world_transform[i].mtx = zm.mul(mat, world_transform[i].mtx);
-                        }
-                    }
-                }
-
-                if (scales) |s| {
-                    for (0..count) |i| {
-                        const mat = zm.scaling(s[i].x, s[i].y, s[i].z);
-                        world_transform[i].mtx = zm.mul(mat, world_transform[i].mtx);
                     }
                 }
             }
@@ -270,17 +291,15 @@ const set_position_node_i = graphvm.NodeI.implement(
             _, const position = in_pins.read([3]f32, 2) orelse return;
 
             const w = _graphvm.getContext(anyopaque, args.instance, ecs.ECS_WORLD_CONTEXT) orelse return;
-
             const world = _ecs.toWorld(w);
-            _ = world.setId(
-                public.Position,
-                ent,
-                &public.Position{
-                    .x = position[0],
-                    .y = position[1],
-                    .z = position[2],
-                },
-            );
+
+            var t = world.getComponent(public.Transform, ent).?.*;
+            t.position = .{
+                .x = position[0],
+                .y = position[1],
+                .z = position[2],
+            };
+            _ = world.setId(public.Transform, ent, &t);
         }
     },
 );
@@ -345,6 +364,56 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
             try _cdb.writeCommit(default_quat_w);
             _cdb.setDefaultObject(default_quat);
         }
+
+        // Transform
+        {
+            const idx = try _cdb.addType(
+                db,
+                public.TransformCdb.name,
+                &[_]cdb.PropDef{
+                    .{
+                        .prop_idx = public.TransformCdb.propIdx(.Position),
+                        .name = "position",
+                        .type = .SUBOBJECT,
+                        .type_hash = public.PositionCdb.type_hash,
+                    },
+                    .{
+                        .prop_idx = public.TransformCdb.propIdx(.Rotation),
+                        .name = "rotation",
+                        .type = .SUBOBJECT,
+                        .type_hash = public.RotationCdb.type_hash,
+                    },
+                    .{
+                        .prop_idx = public.TransformCdb.propIdx(.Scale),
+                        .name = "scale",
+                        .type = .SUBOBJECT,
+                        .type_hash = public.ScaleCdb.type_hash,
+                    },
+                },
+            );
+
+            const default_quat = try _cdb.createObject(db, idx);
+            const default_quat_w = _cdb.writeObj(default_quat).?;
+
+            const default_pos = try public.PositionCdb.createObject(_cdb, db);
+            const default_pos_w = public.PositionCdb.write(_cdb, default_pos).?;
+            try public.TransformCdb.setSubObj(_cdb, default_quat_w, .Position, default_pos_w);
+
+            const default_rot = try public.RotationCdb.createObject(_cdb, db);
+            const default_rot_w = public.RotationCdb.write(_cdb, default_rot).?;
+            try public.TransformCdb.setSubObj(_cdb, default_quat_w, .Rotation, default_rot_w);
+
+            const default_scale = try public.ScaleCdb.createObject(_cdb, db);
+            const default_scale_w = public.ScaleCdb.write(_cdb, default_scale).?;
+            try public.TransformCdb.setSubObj(_cdb, default_quat_w, .Scale, default_scale_w);
+
+            try _cdb.writeCommit(default_pos_w);
+            try _cdb.writeCommit(default_rot_w);
+            try _cdb.writeCommit(default_scale_w);
+
+            try _cdb.writeCommit(default_quat_w);
+            _cdb.setDefaultObject(default_quat);
+        }
     }
 });
 
@@ -368,12 +437,10 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     try apidb.implOrRemove(module_name, ecs.ComponentCategoryI, &transform_ecs_category_i, load);
     try apidb.implOrRemove(module_name, ecs.ComponentI, &world_tranform_c, load);
-    try apidb.implOrRemove(module_name, ecs.ComponentI, &position_c, load);
-    try apidb.implOrRemove(module_name, ecs.ComponentI, &rotation_c, load);
-    try apidb.implOrRemove(module_name, ecs.ComponentI, &scale_c, load);
+    try apidb.implOrRemove(module_name, ecs.ComponentI, &transform_c, load);
     try apidb.implOrRemove(module_name, ecs.SystemI, &transform_system_i, load);
 
-    try apidb.implOrRemove(module_name, graphvm.NodeI, &set_position_node_i, true);
+    try apidb.implOrRemove(module_name, graphvm.NodeI, &set_position_node_i, load);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});

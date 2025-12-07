@@ -50,7 +50,7 @@ var _g: *G = undefined;
 
 // Create entity asset
 var create_entity_i = editor.CreateAssetI.implement(
-    ecs.Entity.type_hash,
+    ecs.EntityCdb.type_hash,
     struct {
         pub fn create(
             allocator: std.mem.Allocator,
@@ -62,11 +62,11 @@ var create_entity_i = editor.CreateAssetI.implement(
                 allocator,
                 &buff,
                 folder,
-                _cdb.getTypeIdx(db, ecs.Entity.type_hash).?,
+                _cdb.getTypeIdx(db, ecs.EntityCdb.type_hash).?,
                 "NewEntity",
             );
 
-            const new_obj = try ecs.Entity.createObject(_cdb, db);
+            const new_obj = try ecs.EntityCdb.createObject(_cdb, db);
 
             _ = _assetdb.createAsset(name, folder, new_obj);
         }
@@ -93,7 +93,7 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
             const db = _cdb.getDbFromObjid(obj.obj);
             const ent_obj = _assetdb.getObjForAsset(obj.obj) orelse obj.obj;
 
-            if (!ent_obj.type_idx.eql(ecs.Entity.typeIdx(_cdb, db))) return false;
+            if (!ent_obj.type_idx.eql(ecs.EntityCdb.typeIdx(_cdb, db))) return false;
         }
 
         var valid = true;
@@ -120,7 +120,7 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
         if (_coreui.beginMenu(allocator, coreui.Icons.Add ++ "  " ++ "Add component", true, filter)) {
             defer _coreui.endMenu();
 
-            try entity_component_menu_aspect.add_menu(allocator, ent_obj, ecs.Entity.propIdx(.components), filter);
+            try entity_component_menu_aspect.add_menu(allocator, ent_obj, ecs.EntityCdb.propIdx(.components), filter);
         }
     }
 });
@@ -136,12 +136,12 @@ const entity_component_menu_aspect = editor.UiSetMenusAspect.implement(struct {
         _ = prop_idx; // autofix
 
         const db = _cdb.getDbFromObjid(obj);
-        const entity_r = ecs.Entity.read(_cdb, obj).?;
+        const entity_r = ecs.EntityCdb.read(_cdb, obj).?;
 
         var components_set = cetech1.ArraySet(cdb.TypeIdx).init();
         defer components_set.deinit(allocator);
 
-        if (try ecs.Entity.readSubObjSet(_cdb, entity_r, .components, allocator)) |components| {
+        if (try ecs.EntityCdb.readSubObjSet(_cdb, entity_r, .components, allocator)) |components| {
             defer allocator.free(components);
             //try components_set.ensureTotalCapacity(components.len);
 
@@ -204,12 +204,12 @@ const entity_component_menu_aspect = editor.UiSetMenusAspect.implement(struct {
             };
 
             if (category_open and _coreui.menuItem(allocator, label, .{}, null)) {
-                const obj_w = ecs.Entity.write(_cdb, obj).?;
+                const obj_w = ecs.EntityCdb.write(_cdb, obj).?;
 
                 const value_obj = try _cdb.createObject(db, _cdb.getTypeIdx(db, iface.cdb_type_hash).?);
                 const value_obj_w = _cdb.writeObj(value_obj).?;
 
-                try ecs.Entity.addSubObjToSet(_cdb, obj_w, .components, &.{value_obj_w});
+                try ecs.EntityCdb.addSubObjToSet(_cdb, obj_w, .components, &.{value_obj_w});
 
                 try _cdb.writeCommit(value_obj_w);
                 try _cdb.writeCommit(obj_w);
@@ -231,7 +231,7 @@ var entity_visual_aspect = editor.UiVisualAspect.implement(struct {
         _ = allocator; // autofix
         const obj_r = _cdb.readObj(obj).?;
 
-        if (ecs.Entity.readStr(_cdb, obj_r, .name)) |name| {
+        if (ecs.EntityCdb.readStr(_cdb, obj_r, .name)) |name| {
             return std.fmt.bufPrintZ(
                 buff,
                 "{s}",
@@ -290,16 +290,16 @@ var entity_children_drop_aspect = editor.UiDropObj.implement(struct {
         if (drag_obj.type_idx.eql(assetdb.Asset.typeIdx(_cdb, db))) {
             const asset_entity_obj = _assetdb.getObjForAsset(drag_obj).?;
 
-            if (asset_entity_obj.type_idx.eql(ecs.Entity.typeIdx(_cdb, db))) {
+            if (asset_entity_obj.type_idx.eql(ecs.EntityCdb.typeIdx(_cdb, db))) {
                 const new_obj = try _cdb.createObjectFromPrototype(asset_entity_obj);
 
-                const new_obj_w = ecs.Entity.write(_cdb, new_obj).?;
-                const entiy_obj_w = ecs.Entity.write(_cdb, obj).?;
+                const new_obj_w = ecs.EntityCdb.write(_cdb, new_obj).?;
+                const entiy_obj_w = ecs.EntityCdb.write(_cdb, obj).?;
 
-                try ecs.Entity.addSubObjToSet(_cdb, entiy_obj_w, .childrens, &.{new_obj_w});
+                try ecs.EntityCdb.addSubObjToSet(_cdb, entiy_obj_w, .childrens, &.{new_obj_w});
 
-                try ecs.Entity.commit(_cdb, new_obj_w);
-                try ecs.Entity.commit(_cdb, entiy_obj_w);
+                try ecs.EntityCdb.commit(_cdb, new_obj_w);
+                try ecs.EntityCdb.commit(_cdb, entiy_obj_w);
             }
         }
     }
@@ -371,7 +371,7 @@ var component_visual_aspect = editor.UiVisualAspect.implement(struct {
 
 const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
     pub fn postCreateTypes(db: cdb.DbId) !void {
-        try ecs.Entity.addPropertyAspect(
+        try ecs.EntityCdb.addPropertyAspect(
             editor.UiSetMenusAspect,
             _cdb,
             db,
@@ -379,21 +379,21 @@ const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
             _g.component_value_menu_aspect,
         );
 
-        try ecs.Entity.addAspect(
+        try ecs.EntityCdb.addAspect(
             editor.UiVisualAspect,
             _cdb,
             db,
             _g.entity_visual_aspect,
         );
 
-        try ecs.Entity.addAspect(
+        try ecs.EntityCdb.addAspect(
             asset_preview.AssetPreviewAspectI,
             _cdb,
             db,
             _g.entity_preview_aspect,
         );
 
-        try ecs.Entity.addPropertyAspect(
+        try ecs.EntityCdb.addPropertyAspect(
             editor.UiDropObj,
             _cdb,
             db,
@@ -401,7 +401,7 @@ const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
             _g.entity_children_drop_aspect,
         );
 
-        try ecs.Entity.addPropertyAspect(
+        try ecs.EntityCdb.addPropertyAspect(
             editor_tree.UiTreeFlatenPropertyAspect,
             _cdb,
             db,
@@ -409,7 +409,7 @@ const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
             _g.entity_flaten_aspect,
         );
 
-        try ecs.Entity.addPropertyAspect(
+        try ecs.EntityCdb.addPropertyAspect(
             editor.UiSetSortPropertyAspect,
             _cdb,
             db,

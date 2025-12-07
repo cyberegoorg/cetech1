@@ -51,7 +51,7 @@ pub const ApiDbAPI = struct {
         return @ptrFromInt(@intFromPtr(self.getApiOpaaqueFn(@tagName(module), language, api_name, @sizeOf(T))));
     }
 
-    // Set or remove API for given language and api name
+    /// Set or remove API for given language and api name
     pub inline fn setOrRemoveApi(self: Self, comptime module: @Type(.enum_literal), comptime T: type, language: []const u8, api_name: []const u8, api_ptr: *const T, load: bool) !void {
         if (load) {
             return self.setApi(module, T, language, api_name, api_ptr);
@@ -60,7 +60,7 @@ pub const ApiDbAPI = struct {
         }
     }
 
-    // Set or remove Zig API
+    /// Set or remove Zig API
     pub inline fn setOrRemoveZigApi(self: Self, comptime module: @Type(.enum_literal), comptime T: type, api_ptr: *const T, load: bool) !void {
         if (load) {
             return self.setZigApi(module, T, api_ptr);
@@ -69,7 +69,7 @@ pub const ApiDbAPI = struct {
         }
     }
 
-    // Implement or remove interface
+    /// Implement or remove interface
     pub inline fn implOrRemove(self: Self, comptime module: @Type(.enum_literal), comptime T: type, impl_ptr: *const T, load: bool) !void {
         if (load) {
             return self.implInterface(module, T, impl_ptr);
@@ -78,30 +78,30 @@ pub const ApiDbAPI = struct {
         }
     }
 
-    // Set zig api
+    /// Set zig api
     pub inline fn setZigApi(self: Self, comptime module: @Type(.enum_literal), comptime T: type, api_ptr: *const T) !void {
         var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
         return try self.setApiOpaqueueFn(@tagName(module), lang_zig, name_iter.first(), api_ptr, @sizeOf(T));
     }
 
-    // Get zig api
+    /// Get zig api
     pub inline fn getZigApi(self: Self, comptime module: @Type(.enum_literal), comptime T: type) ?*const T {
         var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
         return @ptrFromInt(@intFromPtr(self.getApiOpaaqueFn(@tagName(module), lang_zig, name_iter.first(), @sizeOf(T))));
     }
 
-    // Remove zig api
+    /// Remove zig api
     pub inline fn removeZigApi(self: Self, comptime module: @Type(.enum_literal), comptime T: type) void {
         var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
         self.removeApiFn(@tagName(module), lang_zig, name_iter.first());
     }
 
-    // Implement interface
+    /// Implement interface
     pub inline fn implInterface(self: Self, comptime module: @Type(.enum_literal), comptime T: type, impl_ptr: *const T) !void {
         return self.implInterfaceFn(@tagName(module), T.name_hash, impl_ptr);
     }
 
-    // Get all implementation for given interface
+    /// Get all implementation for given interface
     pub inline fn getImpl(self: Self, allocator: std.mem.Allocator, comptime T: type) ![]*const T {
         const impls = try self.getImplFn(allocator, T.name_hash);
         var result: []*const T = undefined;
@@ -110,13 +110,13 @@ pub const ApiDbAPI = struct {
         return result;
     }
 
-    // Remove interface
+    /// Remove interface
     pub inline fn removeImpl(self: Self, comptime module: @Type(.enum_literal), comptime T: type, impl_ptr: *const T) void {
         self.removeImplFn(@tagName(module), T.name_hash, impl_ptr);
     }
 
-    // Get version for given interface.
-    // Version is number that is increment every time is interface implementation added or removed
+    /// Get version for given interface.
+    /// Version is number that is increment every time is interface implementation added or removed
     pub inline fn getInterafcesVersion(self: Self, comptime T: type) InterfaceVersion {
         return self.getInterafcesVersionFn(T.name_hash);
     }

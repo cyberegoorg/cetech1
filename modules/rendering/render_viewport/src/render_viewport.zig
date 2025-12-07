@@ -178,8 +178,8 @@ pub const Viewport = struct {
         return self.vtable.getMainCamera(self.ptr);
     }
 
-    pub inline fn requestRender(self: Viewport, pipeline: render_pipeline.RenderPipeline) void {
-        return self.vtable.requestRender(self.ptr, pipeline);
+    pub inline fn requestRender(self: Viewport) void {
+        return self.vtable.requestRender(self.ptr);
     }
 
     pub inline fn setDebugCulling(self: Viewport, enable: bool) void {
@@ -188,6 +188,14 @@ pub const Viewport = struct {
 
     pub inline fn getDebugCulling(self: Viewport) bool {
         return self.vtable.getDebugCulling(self.ptr);
+    }
+
+    pub inline fn setSelectedEntity(self: Viewport, entity: ?ecs.EntityId) void {
+        return self.vtable.setSelectedEntity(self.ptr, entity);
+    }
+
+    pub inline fn frezeMainCameraCulling(self: Viewport, freeze: bool) void {
+        return self.vtable.frezeMainCameraCulling(self.ptr, freeze);
     }
 
     ptr: *anyopaque,
@@ -200,11 +208,14 @@ pub const Viewport = struct {
 
         getMainCamera: *const fn (viewport: *anyopaque) ?ecs.EntityId,
         setMainCamera: *const fn (viewport: *anyopaque, camera_ent: ?ecs.EntityId) void,
+        frezeMainCameraCulling: *const fn (viewport: *anyopaque, freeze: bool) void,
 
-        requestRender: *const fn (viewport: *anyopaque, pipeline: render_pipeline.RenderPipeline) void,
+        requestRender: *const fn (viewport: *anyopaque) void,
 
         getDebugCulling: *const fn (viewport: *anyopaque) bool,
         setDebugCulling: *const fn (viewport: *anyopaque, enable: bool) void,
+
+        setSelectedEntity: *const fn (viewport: *anyopaque, entity: ?ecs.EntityId) void,
 
         pub fn implement(comptime T: type) VTable {
             if (!std.meta.hasFn(T, "setSize")) @compileError("implement me");
@@ -222,6 +233,8 @@ pub const Viewport = struct {
 
                 .getDebugCulling = &T.getDebugCulling,
                 .setDebugCulling = &T.setDebugCulling,
+                .setSelectedEntity = &T.setSelectedEntity,
+                .frezeMainCameraCulling = &T.frezeMainCameraCulling,
             };
         }
     };
@@ -230,7 +243,7 @@ pub const Viewport = struct {
 pub const ColorResource = "viewport_color";
 
 pub const RenderViewportApi = struct {
-    createViewport: *const fn (name: [:0]const u8, gpu_backend: gpu.GpuBackend, world: ?ecs.World, camera_ent: ecs.EntityId) anyerror!Viewport,
+    createViewport: *const fn (name: [:0]const u8, gpu_backend: gpu.GpuBackend, pipeline: render_pipeline.RenderPipeline, world: ?ecs.World, output_to_backbuffer: bool) anyerror!Viewport,
     destroyViewport: *const fn (viewport: Viewport) void,
 
     uiDebugMenuItems: *const fn (allocator: std.mem.Allocator, viewport: Viewport) void,

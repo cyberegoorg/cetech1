@@ -1,6 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const cetech1 = @import("root.zig");
+const zm = cetech1.math.zm;
+const coreui = cetech1.coreui;
 
 const cdb = @import("cdb.zig");
 const gpu = @import("gpu.zig");
@@ -17,7 +19,7 @@ pub const PinTypes = struct {
     pub const World = cetech1.strId32("world");
 };
 
-pub const Entity = cdb.CdbTypeDecl(
+pub const EntityCdb = cdb.CdbTypeDecl(
     "ct_entity",
     enum(u32) {
         name = 0,
@@ -134,6 +136,49 @@ pub const QueryTerm = struct {
 
 pub const IterO = opaque {};
 
+// TODO: =(
+
+pub const GizmoOptions = struct {
+    translate_x: bool = false,
+    translate_y: bool = false,
+    translate_z: bool = false,
+    rotate_x: bool = false,
+    rotate_y: bool = false,
+    rotate_z: bool = false,
+    rotate_screen: bool = false,
+    scale_x: bool = false,
+    scale_y: bool = false,
+    scale_z: bool = false,
+    bounds: bool = false,
+    scale_xu: bool = false,
+    scale_yu: bool = false,
+    scale_zu: bool = false,
+
+    mode: coreui.GizmoMode = .world,
+    snap_enabled: bool = false,
+    snap: [3]f32 = @splat(1),
+
+    pub const translate: GizmoOptions = .{ .translate_x = true, .translate_y = true, .translate_z = true };
+    pub const rotate: GizmoOptions = .{ .rotate_x = true, .rotate_y = true, .rotate_z = true };
+    pub const scale: GizmoOptions = .{ .scale_x = true, .scale_y = true, .scale_z = true };
+    pub const scaleU: GizmoOptions = .{ .scale_xu = true, .scale_yu = true, .scale_zu = true };
+    pub const universal: GizmoOptions = .{
+        .translate_x = true,
+        .translate_y = true,
+        .translate_z = true,
+        .rotate_x = true,
+        .rotate_y = true,
+        .rotate_z = true,
+        .scale_xu = true,
+        .scale_yu = true,
+        .scale_zu = true,
+    };
+
+    pub fn empty(self: GizmoOptions) bool {
+        return !(self.translate_x or self.translate_y or self.translate_z or self.rotate_x or self.rotate_y or self.rotate_z or self.rotate_screen or self.scale_x or self.scale_y or self.scale_z or self.bounds or self.scale_xu or self.scale_yu or self.scale_zu);
+    }
+};
+
 pub const ComponentI = struct {
     const Self = @This();
     pub const c_name = "ct_ecs_component_i";
@@ -179,6 +224,29 @@ pub const ComponentI = struct {
         entites: []const EntityId,
         data: []const u8,
         size: [2]f32,
+    ) anyerror!void = null,
+
+    gizmoPriority: f32 = 0,
+    gizmoGetOperation: ?*const fn (
+        world: World,
+        entity: EntityId,
+        entity_obj: cdb.ObjId,
+        component_obj: cdb.ObjId,
+    ) anyerror!GizmoOptions = null,
+    gizmoGetMatrix: ?*const fn (
+        world: World,
+        entity: EntityId,
+        entity_obj: cdb.ObjId,
+        component_obj: cdb.ObjId,
+        world_mtx: *zm.Mat,
+        local_mtx: *zm.Mat,
+    ) anyerror!void = null,
+    gizmoSetMatrix: ?*const fn (
+        world: World,
+        entity: EntityId,
+        entity_obj: cdb.ObjId,
+        component_obj: cdb.ObjId,
+        mat: zm.Mat,
     ) anyerror!void = null,
 
     pub fn nameFromType(
@@ -281,6 +349,11 @@ pub const ComponentI = struct {
 
             .fromCdb = if (std.meta.hasFn(Hooks, "fromCdb")) Hooks.fromCdb else null,
             .debugdraw = if (std.meta.hasFn(Hooks, "debugdraw")) Hooks.debugdraw else null,
+
+            .gizmoPriority = args.gizmoPriority,
+            .gizmoGetMatrix = if (std.meta.hasFn(Hooks, "gizmoGetMatrix")) Hooks.gizmoGetMatrix else null,
+            .gizmoSetMatrix = if (std.meta.hasFn(Hooks, "gizmoSetMatrix")) Hooks.gizmoSetMatrix else null,
+            .gizmoGetOperation = if (std.meta.hasFn(Hooks, "gizmoGetOperation")) Hooks.gizmoGetOperation else null,
         };
     }
 };
@@ -313,8 +386,8 @@ pub const SystemI = struct {
 
     simulation: bool = false,
 
-    update: ?*const fn (world: World, iter: *Iter) anyerror!void = undefined,
-    iterate: ?*const fn (world: World, iter: *Iter) anyerror!void = undefined,
+    update: ?*const fn (world: World, iter: *Iter, dt: f32) anyerror!void = undefined,
+    iterate: ?*const fn (world: World, iter: *Iter, dt: f32) anyerror!void = undefined,
 
     pub fn implement(args: SystemI, comptime T: type) SystemI {
         return SystemI{
@@ -434,6 +507,11 @@ pub const World = struct {
         return @ptrCast(@alignCast(ptr));
     }
 
+    pub inline fn getComponentRaw(self: World, comp_id: cetech1.StrId32, entity: EntityId) ?*const anyopaque {
+        const ptr = self.vtable.getComponent(self.ptr, entity, comp_id);
+        return ptr;
+    }
+
     pub inline fn setIdRaw(self: World, entity: EntityId, cid: cetech1.StrId32, size: usize, ptr: ?*const anyopaque) EntityId {
         return self.vtable.setComponent(self.ptr, entity, cid, size, ptr);
     }
@@ -478,8 +556,24 @@ pub const World = struct {
         return self.vtable.isSimulate(self.ptr);
     }
 
+    pub fn doStep(self: World) void {
+        return self.vtable.doStep(self.ptr);
+    }
+
     pub fn clear(self: World) void {
         return self.vtable.clear(self.ptr);
+    }
+
+    pub fn debuguiMenuItems(self: World, allocator: std.mem.Allocator) void {
+        return self.vtable.debuguiMenuItems(self.ptr, allocator);
+    }
+
+    pub fn uiRemoteDebugMenuItems(self: World, allocator: std.mem.Allocator, port: ?u16) ?u16 {
+        return self.vtable.uiRemoteDebugMenuItems(self.ptr, allocator, port);
+    }
+
+    pub fn findEntityByCdbObj(self: World, ent_obj: cdb.ObjId) !?EntityId {
+        return self.vtable.findEntityByCdbObj(self.ptr, ent_obj);
     }
 
     ptr: *anyopaque,
@@ -508,8 +602,14 @@ pub const World = struct {
 
         setSimulate: *const fn (world: *anyopaque, simulate: bool) void,
         isSimulate: *const fn (world: *anyopaque) bool,
+        doStep: *const fn (world: *anyopaque) void,
 
         clear: *const fn (world: *anyopaque) void,
+
+        findEntityByCdbObj: *const fn (world: *anyopaque, ent_obj: cdb.ObjId) anyerror!?EntityId,
+
+        debuguiMenuItems: *const fn (world: *anyopaque, allocator: std.mem.Allocator) void,
+        uiRemoteDebugMenuItems: *const fn (world: *anyopaque, allocator: std.mem.Allocator, port: ?u16) ?u16,
     };
 };
 
