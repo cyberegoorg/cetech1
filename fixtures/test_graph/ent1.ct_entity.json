@@ -18,7 +18,7 @@
       }
     },
     {
-      "__type_name": "ct_entity_logic_component",
+      "__type_name": "ct_graphvm_logic_component",
       "__uuid": "0191e721-f738-76a1-a055-b63b381433c9",
       "graph": {
         "__type_name": "ct_graph",
@@ -29,7 +29,7 @@
     {
       "__type_name": "ct_velocity",
       "__uuid": "019267e3-2557-77a7-a54f-a5b4ac2e9240",
-      "z": -9.999999776482582e-3
+      "z": -1
     }
   ]
 }

@@ -1,0 +1,19 @@
+.{
+    .name = .editor_foo_viewport_tab,
+    .fingerprint = 0x8f29a2de4b4c123a,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .editor = .{ .path = "../../editor/editor" },
+        .render_viewport = .{ .path = "../../rendering/render_viewport" },
+        .render_graph = .{ .path = "../../rendering/render_graph" },
+        .render_pipeline = .{ .path = "../../rendering/render_pipeline" },
+        .transform = .{ .path = "../../rendering/transform" },
+        .camera = .{ .path = "../../rendering/camera" },
+        .camera_controller = .{ .path = "../../rendering/camera_controller" },
+    },
+}

@@ -5,7 +5,7 @@ const cdb = @import("cdb.zig");
 const modules = @import("modules.zig");
 const cetech1 = @import("root.zig");
 
-const platform = @import("platform.zig");
+const host = @import("host.zig");
 const gpu = @import("gpu.zig");
 const ArraySet = @import("root.zig").ArraySet;
 
@@ -206,6 +206,7 @@ pub const Icons = struct {
 
     pub const Play = CoreIcons.FA_PLAY;
     pub const Pause = CoreIcons.FA_PAUSE;
+    pub const ForwardStep = CoreIcons.FA_FORWARD_STEP;
 
     pub const Camera = CoreIcons.FA_CAMERA;
     pub const Draw = CoreIcons.FA_BRUSH;
@@ -215,6 +216,8 @@ pub const Icons = struct {
     pub const Light = CoreIcons.FA_LIGHTBULB;
 
     pub const RenderPipeline = CoreIcons.FA_PHOTO_FILM;
+
+    pub const Explosion = CoreIcons.FA_EXPLOSION;
 };
 
 pub const CoreUII = struct {
@@ -450,7 +453,7 @@ pub const CoreUIApi = struct {
         return result;
     }
 
-    draw: *const fn (allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, kernel_tick: u64, dt: f32) anyerror!void,
+    draw: *const fn (allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, viewid: gpu.ViewId, kernel_tick: u64, dt: f32) anyerror!void,
 
     showDemoWindow: *const fn () void,
     showMetricsWindow: *const fn () void,
@@ -461,12 +464,6 @@ pub const CoreUIApi = struct {
     // Filter
     uiFilter: *const fn (buf: []u8, filter: ?[:0]const u8) ?[:0]const u8,
     uiFilterPass: *const fn (allocator: std.mem.Allocator, filter: [:0]const u8, value: [:0]const u8, is_path: bool) ?f64,
-
-    // NFD
-    supportFileDialog: *const fn () bool,
-    openFileDialog: *const fn (allocator: std.mem.Allocator, filter: ?[]const FilterItem, default_path: ?[:0]const u8) anyerror!?[:0]const u8,
-    saveFileDialog: *const fn (allocator: std.mem.Allocator, filter: ?[]const FilterItem, default_path: ?[:0]const u8, default_name: ?[:0]const u8) anyerror!?[:0]const u8,
-    openFolderDialog: *const fn (allocator: std.mem.Allocator, default_path: ?[:0]const u8) anyerror!?[:0]const u8,
 
     // shit from the pointer deep.
     begin: *const fn (name: [:0]const u8, args: Begin) bool,
@@ -616,6 +613,11 @@ pub const CoreUIApi = struct {
     isMouseClicked: *const fn (mouse_button: MouseButton) bool,
 
     handleSelection: *const fn (allocator: std.mem.Allocator, selection: *Selection, obj: SelectionItem, multiselect_enabled: bool) anyerror!void,
+
+    beginTabBar: *const fn (label: [:0]const u8, flags: TabBarFlags) bool,
+    beginTabItem: *const fn (label: [:0]const u8, args: BeginTabItem) bool,
+    endTabBar: *const fn () void,
+    endTabItem: *const fn () void,
 
     // TODO: MOVE?
     // Tests
@@ -2697,6 +2699,41 @@ pub fn DragScalarGen(comptime T: type) type {
         flags: SliderFlags = .{},
     };
 }
+
+//--------------------------------------------------------------------------------------------------
+//
+// Tabs
+//
+//--------------------------------------------------------------------------------------------------
+pub const TabBarFlags = packed struct(c_int) {
+    reorderable: bool = false,
+    auto_select_new_tabs: bool = false,
+    tab_list_popup_button: bool = false,
+    no_close_with_middle_mouse_button: bool = false,
+    no_tab_list_scrolling_buttons: bool = false,
+    no_tooltip: bool = false,
+    draw_selected_overline: bool = false,
+    fitting_policy_resize_down: bool = false,
+    fitting_policy_scroll: bool = false,
+    _padding: u23 = 0,
+};
+pub const TabItemFlags = packed struct(c_int) {
+    unsaved_document: bool = false,
+    set_selected: bool = false,
+    no_close_with_middle_mouse_button: bool = false,
+    no_push_id: bool = false,
+    no_tooltip: bool = false,
+    no_reorder: bool = false,
+    leading: bool = false,
+    trailing: bool = false,
+    no_assumed_closure: bool = false,
+    _padding: u23 = 0,
+};
+
+const BeginTabItem = struct {
+    p_open: ?*bool = null,
+    flags: TabItemFlags = .{},
+};
 
 pub const PlotFlags = packed struct(u32) {
     no_title: bool = false,

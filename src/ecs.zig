@@ -42,7 +42,10 @@ const World = struct {
     allocator: std.mem.Allocator,
 
     w: *zflecs.world_t,
+
     simulate: bool = true,
+    simulate_do_step: bool = false,
+
     id_map: IdMap = .{},
     simulated_systems: SimulatedSystemsList = .{},
 
@@ -163,7 +166,25 @@ const World = struct {
     pub fn progress(self: *World, dt: f32) bool {
         var zone_ctx = profiler_private.ztracy.ZoneN(@src(), "ECS: World progress");
         defer zone_ctx.End();
-        return zflecs.progress(self.w, dt);
+
+        const do_step = !self.simulate and self.simulate_do_step;
+        self.simulate_do_step = false;
+
+        if (do_step) {
+            for (self.simulated_systems.items) |value| {
+                zflecs.enable(self.w, value, true);
+            }
+        }
+
+        const ret = zflecs.progress(self.w, dt);
+
+        if (do_step) {
+            for (self.simulated_systems.items) |value| {
+                zflecs.enable(self.w, value, false);
+            }
+        }
+
+        return ret;
     }
 
     pub fn createQuery(self: *World, query: []const public.QueryTerm) !public.Query {
@@ -232,6 +253,11 @@ const World = struct {
         self.simulate = simulate;
     }
 
+    pub fn doStep(self: *World) void {
+        if (self.simulate) return;
+        self.simulate_do_step = true;
+    }
+
     pub fn isSimulate(self: *World) bool {
         return self.simulate;
     }
@@ -239,6 +265,61 @@ const World = struct {
     pub fn clear(self: *World) void {
         self.obj2prefab.clearRetainingCapacity();
         self.obj2parent_obj.clearRetainingCapacity();
+    }
+
+    pub fn debuguiMenuItems(self: *World, allocator: std.mem.Allocator) void {
+        const is_simulate = self.isSimulate();
+
+        if (coreui_private.api.menuItem(allocator, if (!is_simulate) coreui.Icons.Play else coreui.Icons.Pause, .{}, null)) {
+            self.setSimulate(!is_simulate);
+        }
+
+        {
+            coreui_private.api.beginDisabled(.{ .disabled = is_simulate });
+            defer coreui_private.api.endDisabled();
+
+            if (coreui_private.api.menuItem(allocator, coreui.Icons.ForwardStep, .{}, null)) {
+                self.doStep();
+            }
+        }
+    }
+
+    pub fn uiRemoteDebugMenuItems(self: *World, allocator: std.mem.Allocator, port: ?u16) ?u16 {
+        var remote_active = self.isRemoteDebugActive();
+        var result: ?u16 = port;
+
+        var buf: [256:0]u8 = undefined;
+        const URL = "https://www.flecs.dev/explorer/?page=info&host=localhost:{d}";
+
+        if (coreui_private.api.beginMenu(allocator, coreui.Icons.Entity ++ "  " ++ "ECS", true, null)) {
+            defer coreui_private.api.endMenu();
+
+            if (coreui_private.api.menuItemPtr(
+                allocator,
+                coreui.Icons.Debug ++ "  " ++ "Remote debug",
+                .{ .selected = &remote_active },
+                null,
+            )) {
+                if (self.setRemoteDebugActive(remote_active)) |p| {
+                    const url = std.fmt.allocPrintSentinel(allocator, URL, .{p}, 0) catch return null;
+                    defer allocator.free(url);
+
+                    coreui_private.api.setClipboardText(url);
+                    result = p;
+                } else {
+                    result = null;
+                }
+            }
+
+            const copy_label = std.fmt.bufPrintZ(&buf, coreui.Icons.CopyToClipboard ++ "  " ++ "Copy url", .{}) catch return null;
+            if (coreui_private.api.menuItem(allocator, copy_label, .{ .enabled = port != null }, null)) {
+                const url = std.fmt.allocPrintSentinel(allocator, URL, .{port.?}, 0) catch return null;
+                defer allocator.free(url);
+                coreui_private.api.setClipboardText(url);
+            }
+        }
+
+        return result;
     }
 };
 
@@ -668,6 +749,7 @@ fn getOrCreatePrefab(allocator: std.mem.Allocator, world: public.World, db: cdb.
 
             try w.obj2parent_obj.put(_allocator, component_obj, obj);
 
+            //log.debug("Create component {s}", .{_cdb.getTypeName(db, component_obj.type_idx).?});
             const iface = findComponentIByCdbHash(component_hash).?;
 
             const component_data = try allocator.alloc(u8, iface.size);
@@ -722,7 +804,10 @@ const world_vt = public.World.VTable{
     .setRemoteDebugActive = @ptrCast(&World.setRemoteDebugActive),
     .setSimulate = @ptrCast(&World.setSimulate),
     .isSimulate = @ptrCast(&World.isSimulate),
+    .doStep = @ptrCast(&World.doStep),
     .clear = @ptrCast(&World.clear),
+    .debuguiMenuItems = @ptrCast(&World.debuguiMenuItems),
+    .uiRemoteDebugMenuItems = @ptrCast(&World.uiRemoteDebugMenuItems),
 };
 
 const iter_vt = public.Iter.VTable.implement(struct {
@@ -1013,7 +1098,7 @@ pub fn createWorld() !public.World {
                         var ww = it_world.cloneForFakeWorld(iter.world);
                         const pw = ww.toPublic();
 
-                        s.update.?(pw, &it) catch undefined;
+                        s.update.?(pw, &it, iter.delta_time) catch undefined;
                     }
                 }.f else null,
                 .run = if (iface.iterate != null) struct {
@@ -1030,7 +1115,7 @@ pub fn createWorld() !public.World {
 
                         const pw = ww.toPublic();
 
-                        s.iterate.?(pw, &it) catch undefined;
+                        s.iterate.?(pw, &it, iter.delta_time) catch undefined;
                     }
                 }.f else null,
                 .multi_threaded = iface.multi_threaded,

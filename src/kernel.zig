@@ -12,11 +12,11 @@ const cdb_types = @import("cdb_types.zig");
 const tempalloc = @import("tempalloc.zig");
 const uuid = @import("uuid.zig");
 const assetdb = @import("assetdb.zig");
-const platform = @import("platform.zig");
+const host = @import("host.zig");
+const input = @import("input.zig");
 const gpu = @import("gpu.zig");
 const coreui = @import("coreui.zig");
 const ecs = @import("ecs.zig");
-const actions = @import("actions.zig");
 
 const metrics = @import("metrics.zig");
 
@@ -45,6 +45,8 @@ const BootArgs = struct {
     max_kernel_tick: u32 = 0,
     headless: bool = false,
     load_dynamic: bool = true,
+    ignored_modules: ?[]const []const u8 = null,
+    ignored_modules_prefix: ?[]const []const u8 = null,
 };
 
 const Phase = struct {
@@ -82,7 +84,8 @@ var _task_allocator: profiler.AllocatorProfiler = undefined;
 var _profiler_allocator: profiler.AllocatorProfiler = undefined;
 var _cdb_allocator: profiler.AllocatorProfiler = undefined;
 var _assetdb_allocator: profiler.AllocatorProfiler = undefined;
-var _platform_allocator: profiler.AllocatorProfiler = undefined;
+var _host_allocator: profiler.AllocatorProfiler = undefined;
+var _input_allocator: profiler.AllocatorProfiler = undefined;
 var _gpu_allocator: profiler.AllocatorProfiler = undefined;
 var _coreui_allocator: profiler.AllocatorProfiler = undefined;
 var _tmp_alocator_pool_allocator: profiler.AllocatorProfiler = undefined;
@@ -116,7 +119,7 @@ var _restart = true;
 
 var _next_asset_root_buff: [256]u8 = undefined;
 var _next_asset_root: ?[]u8 = null;
-var main_window: ?cetech1.platform.Window = null;
+var main_window: ?cetech1.host.Window = null;
 var gpu_backend: ?cetech1.gpu.GpuBackend = null;
 
 pub var api = cetech1.kernel.KernelApi{
@@ -133,6 +136,8 @@ pub var api = cetech1.kernel.KernelApi{
     .getGpuBackend = getGpuBackend,
     .getExternalsCredit = getExternalsCredit,
     .getAuthors = getAuthors,
+    .getStrArgs = getStrArgs,
+    .getIntArgs = getIntArgs,
 };
 
 fn getExternalsCredit() [:0]const u8 {
@@ -143,7 +148,7 @@ fn getAuthors() [:0]const u8 {
     return authors;
 }
 
-fn getMainWindow() ?cetech1.platform.Window {
+fn getMainWindow() ?cetech1.host.Window {
     return main_window;
 }
 fn getGpuBackend() ?cetech1.gpu.GpuBackend {
@@ -185,7 +190,7 @@ fn setCanQuit(can_quit: *const fn () bool) void {
     can_quit_handler = can_quit;
 }
 
-pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
+pub fn init(allocator: std.mem.Allocator, headless: bool, boot_args: BootArgs) !void {
     _root_allocator = allocator;
     _main_profiler_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, allocator, null);
     _kernel_allocator = _main_profiler_allocator.allocator();
@@ -198,7 +203,8 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     _task_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "task");
     _cdb_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "cdb");
     _assetdb_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "assetdb");
-    _platform_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "platform");
+    _host_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "host");
+    _input_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "input");
     _gpu_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "gpu");
     _coreui_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "coreui");
     _tmp_alocator_pool_allocator = profiler.AllocatorProfiler.init(&profiler_private.api, _kernel_allocator, "tmp_allocators");
@@ -223,12 +229,13 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try tempalloc.init(_tmp_alocator_pool_allocator.allocator(), 256);
 
     try apidb.init(_apidb_allocator.allocator());
-    try modules.init(_modules_allocator.allocator());
+    try modules.init(_modules_allocator.allocator(), boot_args.ignored_modules, boot_args.ignored_modules_prefix);
     try metrics.init(_metrics_allocator.allocator());
     try task.init(_task_allocator.allocator());
     try cdb_private.init(_cdb_allocator.allocator());
-    try platform.init(_platform_allocator.allocator(), headless);
-    try actions.init(_actions_allocator.allocator());
+    try host.init(_host_allocator.allocator(), headless);
+    try input.init(_input_allocator.allocator());
+    // try actions.init(_actions_allocator.allocator());
     try gpu.init(_gpu_allocator.allocator());
     try coreui.init(_coreui_allocator.allocator());
 
@@ -243,8 +250,8 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     try cdb_private.registerToApi();
     try cdb_types.registerToApi();
     try assetdb.registerToApi();
-    try platform.registerToApi();
-    try actions.registerToApi();
+    try host.registerToApi();
+    try input.registerToApi();
     try gpu.registerToApi();
     try coreui.registerToApi();
     try ecs.registerToApi();
@@ -270,13 +277,12 @@ pub fn deinit(allocator: std.mem.Allocator) !void {
     try modules.unloadAll();
 
     ecs.deinit();
-    //renderer.deinit();
     if (gpu_backend) |ctx| gpu.api.destroyBackend(ctx);
     gpu.deinit();
-    if (main_window) |window| platform.api.destroyWindow(window);
+    if (main_window) |window| host.window_api.destroyWindow(window);
 
-    actions.deinit();
-    platform.deinit();
+    input.deinit();
+    host.deinit();
 
     assetdb.deinit();
     modules.deinit();
@@ -453,7 +459,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         const renderer_profile = 1 == getIntArgs("--renderer-profile") orelse @intFromBool(is_debug);
 
         // Init Kernel
-        try init(gpa_allocator, _headless);
+        try init(gpa_allocator, _headless, boot_args);
         defer deinit(gpa_allocator) catch undefined;
 
         // Test args
@@ -505,7 +511,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             var w: i32 = 1024;
             var h: i32 = 768;
 
-            const monitor = platform.api.getPrimaryMonitor();
+            const monitor = host.monitor_api.getPrimaryMonitor();
 
             if (fullscreen) {
                 const vm = try monitor.?.getVideoMode();
@@ -515,7 +521,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
             log.info("Using video mode {d}x{d}", .{ w, h });
 
-            main_window = try platform.api.createWindow(
+            main_window = try host.window_api.createWindow(
                 w,
                 h,
                 cetech1_options.app_name ++ " - powered by CETech1",
@@ -546,12 +552,13 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         var frame_arena = std.heap.ArenaAllocator.init(_main_profiler_allocator.allocator());
         defer frame_arena.deinit();
 
-        profiler_private.api.frameMark();
+        try input.dumpControlers(frame_arena.allocator());
+
+        // profiler_private.api.frameMark();
         while (_running and !_quit and !_restart) : (kernel_tick +%= 1) {
             // var update_zone_ctx = profiler_private.ztracy.ZoneN(@src(), "kernelUpdate");
             // defer update_zone_ctx.End();
 
-            //const tick_duration = cetech1.metrics.MetricScopedDuration.begin(tick_duration_counter);
             const tick_duration = cetech1.metrics.MetricScopedDuration.begin(tick_duration_counter);
             defer tick_duration.end();
 
@@ -589,6 +596,8 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                 kernel_task_update_gen = new_kernel_update_gen;
             }
 
+            try host.api.update(kernel_tick, 0);
+
             const GameTickTask = struct {
                 kernel_tick: u64,
                 dt_s: f32,
@@ -605,9 +614,6 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                     const allocator = try tempalloc.api.create();
                     defer tempalloc.api.destroy(allocator);
 
-                    // TODO: stange delta, unshit this shit
-                    actions.checkInputs();
-
                     // Do hard work.
                     try doKernelUpdateTasks(self.kernel_tick, self.dt_s);
 
@@ -622,8 +628,6 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                     }
                 }
             };
-
-            platform.api.poolEvents();
 
             if (task.api.isDone(last_game_tick_task)) {
                 if (_next_asset_root != null) {
@@ -729,8 +733,6 @@ fn sleepIfNeed(allocator: std.mem.Allocator, last_call: i64, max_rate: u32, work
 
     const dt: f32 = @floatFromInt(std.time.milliTimestamp() - last_call);
     if (dt < frame_limit_time) {
-        // var zone_ctx = profiler_private.ztracy.ZoneN(@src(), "ShityFrameLimitSleeper");
-        // defer zone_ctx.End();
         const sleep_time: u64 = @intFromFloat((frame_limit_time - dt) * 0.62 * std.time.ns_per_ms);
 
         const n = worker_n;
@@ -753,25 +755,6 @@ fn sleepIfNeed(allocator: std.mem.Allocator, last_call: i64, max_rate: u32, work
             );
             wait_tasks.appendAssumeCapacity(t);
         }
-
-        // // Sleep but pool events and draw coreui
-        // const sleep_begin = std.time.milliTimestamp();
-        // while (true) {
-        //     const sleep_time_s: f32 = @as(f32, @floatFromInt(sleep_time)) / std.time.ns_per_s;
-        //     const sleep_delta_s: f32 = @as(f32, @floatFromInt(std.time.milliTimestamp() - sleep_begin)) / std.time.ms_per_s;
-        //     if (sleep_delta_s > sleep_time_s) break;
-        //     platform.api.poolEventsWithTimeout(std.math.clamp(sleep_time_s - sleep_delta_s, 0.0, sleep_time_s));
-
-        //     if (main_window) |window| {
-        //         if (window.shouldClose()) {
-        //             if (can_quit_handler) |can_quit| {
-        //                 _ = can_quit();
-        //             } else {
-        //                 _quit = true;
-        //             }
-        //         }
-        //     }
-        // }
 
         return task.api.combine(wait_tasks.items);
     }

@@ -272,6 +272,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
     _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
 
+    // impl api
     try apidb.setOrRemoveZigApi(module_name, public.CameraAPI, &api, load);
 
     // impl interface

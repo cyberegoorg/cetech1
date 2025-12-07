@@ -3,10 +3,8 @@ const builtin = @import("builtin");
 
 const cetech1_options = @import("cetech1_options");
 
-const zglfw = @import("zglfw");
 const zgui = @import("zgui");
 const zguite = zgui.te;
-const znfde = @import("znfde");
 const zf = @import("zf");
 const tempalloc = @import("tempalloc.zig");
 const kernel = @import("kernel.zig");
@@ -43,7 +41,7 @@ var _allocator: std.mem.Allocator = undefined;
 var _backed_initialised = false;
 var _te_engine: *zguite.TestEngine = undefined;
 var _te_show_window: bool = false;
-var _enabled_ui = false;
+var _ui_init = false;
 
 var _junit_filename_buff: [1024:0]u8 = undefined;
 var _junit_filename: ?[:0]const u8 = null;
@@ -60,16 +58,16 @@ var ui_being_task = cetech1.kernel.KernelTaskUpdateI.implment(
             var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "Begin-loop CoreUI");
             defer update_zone_ctx.End();
 
-            const window = kernel.api.getMainWindow();
-            const gpu_backend = kernel.api.getGpuBackend();
+            if (!_ui_init) {
+                const window = kernel.api.getMainWindow();
+                const gpu_backend = kernel.api.getGpuBackend();
 
-            if (!_enabled_ui) {
                 try enableWithWindow(window, gpu_backend);
-                _enabled_ui = true;
+                _ui_init = true;
             }
 
-            if (_enabled_ui) {
-                newFrame(255);
+            if (_ui_init) {
+                newFrame();
             }
         }
     },
@@ -124,7 +122,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
     _backed_initialised = false;
     _te_engine = undefined;
     _te_show_window = false;
-    _enabled_ui = false;
+    _ui_init = false;
     _junit_filename = null;
 
     //TODO: TEMP SHIT
@@ -140,8 +138,6 @@ pub fn init(allocator: std.mem.Allocator) !void {
     zgui.init(_allocator);
     zgui.plot.init();
 
-    if (cetech1_options.enable_nfd) try znfde.init();
-
     try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &ui_being_task, true);
     try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &ui_end_task, true);
     try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTestingI, &kernel_testing, true);
@@ -156,8 +152,6 @@ pub fn deinit() void {
     zgui.plot.deinit();
     if (_backed_initialised) backend.deinit(kernel.api.getGpuBackend());
     zgui.deinit();
-
-    if (cetech1_options.enable_nfd) znfde.deinit();
 }
 
 pub var api = public.CoreUIApi{
@@ -260,12 +254,10 @@ pub var api = public.CoreUIApi{
     .getScrollMaxY = @ptrCast(&zgui.getScrollMaxY),
     .setScrollHereY = @ptrCast(&zgui.setScrollHereY),
     .setScrollHereX = @ptrCast(&zgui.setScrollHereX),
-    .supportFileDialog = supportFileDialog,
-    .openFileDialog = openFileDialog,
-    .saveFileDialog = saveFileDialog,
-    .openFolderDialog = openFolderDialog,
+
     .uiFilterPass = uiFilterPass,
     .uiFilter = uiFilter,
+
     .beginDragDropSource = @ptrCast(&zgui.beginDragDropSource),
     .setDragDropPayload = @ptrCast(&zgui.setDragDropPayload),
     .endDragDropSource = @ptrCast(&zgui.endDragDropSource),
@@ -276,6 +268,11 @@ pub var api = public.CoreUIApi{
     .isMouseDoubleClicked = isMouseDoubleClicked,
     .isMouseDown = @ptrCast(&zgui.isMouseDown),
     .isMouseClicked = isMouseClicked,
+
+    .beginTabBar = @ptrCast(&zgui.beginTabBar),
+    .beginTabItem = @ptrCast(&zgui.beginTabItem),
+    .endTabBar = @ptrCast(&zgui.endTabBar),
+    .endTabItem = @ptrCast(&zgui.endTabItem),
 
     .handleSelection = handleSelection,
 
@@ -1107,32 +1104,6 @@ fn getScaleFactor() f32 {
     return _scale_factor.?;
 }
 
-fn supportFileDialog() bool {
-    return cetech1_options.enable_nfd;
-}
-
-fn openFileDialog(allocator: std.mem.Allocator, filter: ?[]const public.FilterItem, default_path: ?[:0]const u8) !?[:0]const u8 {
-    if (cetech1_options.enable_nfd) {
-        return znfde.openFileDialog(allocator, @ptrCast(filter), default_path);
-    }
-    return null;
-}
-
-fn saveFileDialog(allocator: std.mem.Allocator, filter: ?[]const public.FilterItem, default_path: ?[:0]const u8, default_name: ?[:0]const u8) !?[:0]const u8 {
-    if (cetech1_options.enable_nfd) {
-        return znfde.saveFileDialog(allocator, @ptrCast(filter), default_path, default_name);
-    }
-
-    return null;
-}
-
-fn openFolderDialog(allocator: std.mem.Allocator, default_path: ?[:0]const u8) !?[:0]const u8 {
-    if (cetech1_options.enable_nfd) {
-        return znfde.openFolderDialog(allocator, default_path);
-    }
-    return null;
-}
-
 fn pushPropName(obj: cdb.ObjId, prop_idx: u32) void {
     const db = _cdb.getDbFromObjid(obj);
     const props_def = _cdb.getTypePropDef(db, obj.type_idx).?;
@@ -1321,7 +1292,7 @@ pub fn labelText(label: [:0]const u8, text: [:0]const u8) void {
     zgui.labelText(label, "{s}", .{text});
 }
 
-pub fn drawUI(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, kernel_tick: u64, dt: f32) !void {
+pub fn drawUI(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, viewid: gpu.ViewId, kernel_tick: u64, dt: f32) !void {
     var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "CoreUI: Draw UI");
     defer update_zone_ctx.End();
 
@@ -1332,7 +1303,7 @@ pub fn drawUI(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, kernel_
         try iface.ui(allocator, kernel_tick, dt);
     }
 
-    backend.draw(gpu_backend);
+    backend.draw(gpu_backend, viewid);
 }
 
 pub fn registerToApi() !void {
@@ -1363,7 +1334,7 @@ pub fn initFonts(font_size: f32) void {
     );
 }
 
-pub fn enableWithWindow(window: ?cetech1.platform.Window, gpu_backend: ?gpu.GpuBackend) !void {
+pub fn enableWithWindow(window: ?cetech1.host.Window, gpu_backend: ?gpu.GpuBackend) !void {
     _scale_factor = scale_factor: {
         if (builtin.os.tag.isDarwin()) break :scale_factor 1;
 
@@ -1446,10 +1417,10 @@ pub fn enableWithWindow(window: ?cetech1.platform.Window, gpu_backend: ?gpu.GpuB
     }
 }
 
-fn newFrame(viewid: gpu.ViewId) void {
+fn newFrame() void {
     var update_zone_ctx = profiler.ztracy.ZoneN(@src(), "CoreUI new frame");
     defer update_zone_ctx.End();
-    backend.newFrame(viewid);
+    backend.newFrame();
 }
 
 fn afterAll() void {

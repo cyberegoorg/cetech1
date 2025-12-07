@@ -4,7 +4,7 @@ const cdb_types = @import("cdb_types.zig");
 const task = @import("task.zig");
 const cetech1 = @import("root.zig");
 const uuid = @import("uuid.zig");
-const platform = @import("platform.zig");
+const host = @import("host.zig");
 
 const log = std.log.scoped(.assetdb);
 
@@ -257,7 +257,7 @@ pub const AssetDBAPI = struct {
     createNewAssetFromPrototype: *const fn (asset: cdb.ObjId) anyerror!cdb.ObjId,
     cloneNewAssetFrom: *const fn (asset: cdb.ObjId) anyerror!cdb.ObjId,
 
-    openInOs: *const fn (allocator: std.mem.Allocator, open_type: platform.OpenInType, asset: cdb.ObjId) anyerror!void,
+    openInOs: *const fn (allocator: std.mem.Allocator, open_type: host.OpenInType, asset: cdb.ObjId) anyerror!void,
 
     isRootFolder: *const fn (asset: cdb.ObjId) bool,
     isAssetObjTypeOf: *const fn (asset: cdb.ObjId, type_idx: cdb.TypeIdx) bool,

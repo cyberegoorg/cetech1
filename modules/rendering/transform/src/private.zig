@@ -170,9 +170,9 @@ const transform_system_i = ecs.SystemI.implement(
         },
     },
     struct {
-        pub fn iterate(world: ecs.World, it: *ecs.Iter) !void {
+        pub fn iterate(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
             _ = world;
-            // log.debug("BEGIN", .{});
+            _ = dt;
 
             while (it.next()) {
                 var zone_iner_ctx = _profiler.ZoneN(@src(), "Transform iner");

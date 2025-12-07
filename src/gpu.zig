@@ -36,7 +36,7 @@ pub const api = public.GpuApi{
 };
 
 fn createContext(
-    window: ?cetech1.platform.Window,
+    window: ?cetech1.host.Window,
     backend: ?[]const u8,
     vsync: bool,
     headles: bool,

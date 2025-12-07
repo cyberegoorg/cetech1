@@ -63,7 +63,9 @@ const init_render_graph_system_i = ecs.SystemI.implement(
         },
     },
     struct {
-        pub fn update(world: ecs.World, it: *ecs.Iter) !void {
+        pub fn update(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
+            _ = dt;
+
             const alloc = try _tmpalloc.create();
             defer _tmpalloc.destroy(alloc);
 
@@ -159,7 +161,7 @@ const rc_initialized_c = ecs.ComponentI.implement(
 );
 
 const UpdateHashesTask = struct {
-    draw_calls: []const ?*renderer.DrawCall,
+    draw_calls: []const ?*renderer_nodes.DrawCall,
     visibility: []const render_viewport.VisibilityBitField,
     hashes: []u64,
 
@@ -185,7 +187,7 @@ pub fn toInstanceSlice(from: anytype) []const graphvm.GraphInstance {
 }
 
 const SortDrawCallsContext = struct {
-    drawcalls: []?*renderer.DrawCall,
+    drawcalls: []?*renderer_nodes.DrawCall,
     ent_idx: []usize,
     visibility: []const render_viewport.VisibilityBitField,
     hash: []u64,
@@ -197,7 +199,7 @@ const SortDrawCallsContext = struct {
     pub fn swap(ctx: *SortDrawCallsContext, lhs: usize, rhs: usize) void {
         std.mem.swap(usize, &ctx.ent_idx[lhs], &ctx.ent_idx[rhs]);
         std.mem.swap(u64, &ctx.hash[lhs], &ctx.hash[rhs]);
-        std.mem.swap(?*renderer.DrawCall, &ctx.drawcalls[lhs], &ctx.drawcalls[rhs]);
+        std.mem.swap(?*renderer_nodes.DrawCall, &ctx.drawcalls[lhs], &ctx.drawcalls[rhs]);
     }
 };
 
@@ -207,10 +209,10 @@ fn lessThanDrawCall(ctx: *SortDrawCallsContext, lhs: usize, rhs: usize) bool {
 
 const DrawCallCusterDef = struct {
     first_idx: usize,
-    calls: []const ?*renderer.DrawCall,
+    calls: []const ?*renderer_nodes.DrawCall,
 };
 
-fn clusterByDrawCall(allocator: std.mem.Allocator, sorted_instances: []?*renderer.DrawCall, hash: []u64, max_cluster: usize) ![]DrawCallCusterDef {
+fn clusterByDrawCall(allocator: std.mem.Allocator, sorted_instances: []?*renderer_nodes.DrawCall, hash: []u64, max_cluster: usize) ![]DrawCallCusterDef {
     var zone2_ctx = _profiler.ZoneN(@src(), "clusterByDrawCall");
     defer zone2_ctx.End();
 
@@ -242,7 +244,7 @@ fn clusterByDrawCall(allocator: std.mem.Allocator, sorted_instances: []?*rendere
 fn submitDrawcall(
     allocator: std.mem.Allocator,
     e: gpu.GpuEncoder,
-    dc: *const renderer.DrawCall,
+    dc: *const renderer_nodes.DrawCall,
     builder: render_graph.GraphBuilder,
     system_context: *shader_system.SystemContext,
     first_idx: usize,
@@ -355,7 +357,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
         defer allocator.free(states);
 
         const draw_calls = try _graphvm.getNodeState(
-            renderer.DrawCall,
+            renderer_nodes.DrawCall,
             allocator,
             containers.items,
             renderer_nodes.DRAW_CALL_NODE_TYPE,
@@ -449,7 +451,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
         }
 
         const draw_calls = try _graphvm.executeNodeAndGetState(
-            renderer.DrawCall,
+            renderer_nodes.DrawCall,
             allocator,
             containers.items,
             renderer_nodes.DRAW_CALL_NODE_TYPE,
@@ -473,7 +475,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
             if (update_hash_wih_task) {
                 const ARGS = struct {
                     hashes: []u64,
-                    draw_calls: []const ?*renderer.DrawCall,
+                    draw_calls: []const ?*renderer_nodes.DrawCall,
                     visibility: []const render_viewport.VisibilityBitField,
                 };
                 if (try cetech1.task.batchWorkloadTask(
@@ -530,13 +532,13 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
         const clusters = try clusterByDrawCall(allocator, draw_calls, hashes, 256);
         defer allocator.free(clusters);
 
-        if (gpu_backend.getEncoder()) |e| {
-            defer gpu_backend.endEncoder(e);
+        var contexts = try cetech1.StrId32List.initCapacity(allocator, visibility_flags.MAX_FLAGS);
+        defer contexts.deinit(allocator);
 
-            var contexts = try cetech1.StrId32List.initCapacity(allocator, visibility_flags.MAX_FLAGS);
-            defer contexts.deinit(allocator);
+        for (clusters) |cluster| {
+            if (gpu_backend.getEncoder()) |e| {
+                defer gpu_backend.endEncoder(e);
 
-            for (clusters) |cluster| {
                 var zzz = _profiler.ZoneN(@src(), "RenderComponentTask - Draw cluster");
                 defer zzz.End();
                 const draw_call_count: u32 = @truncate(cluster.calls.len);
@@ -580,7 +582,8 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
                         viewers,
                         visibility,
                     );
-                    e.discard(.all);
+
+                    //e.discard(.all);
                 } else {
                     log.err("null draw call", .{});
                 }

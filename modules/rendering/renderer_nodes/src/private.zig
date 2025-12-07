@@ -19,7 +19,6 @@ const shader_system = @import("shader_system");
 
 const render_viewport = @import("render_viewport");
 const vertex_system = @import("vertex_system");
-const renderer = @import("renderer");
 const visibility_flags = @import("visibility_flags");
 
 const module_name = .renderer_nodes;
@@ -327,7 +326,7 @@ const draw_call_node_i = graphvm.NodeI.implement(
         .category = "Renderer",
         .settings_type = public.DrawCallNodeSettings.type_hash,
     },
-    renderer.DrawCall,
+    public.DrawCall,
     struct {
         const Self = @This();
 
@@ -353,7 +352,7 @@ const draw_call_node_i = graphvm.NodeI.implement(
             _ = reload; // autofix
             _ = allocator; // autofix
             _ = node_obj; // autofix
-            const real_state: *renderer.DrawCall = @ptrCast(@alignCast(state));
+            const real_state: *public.DrawCall = @ptrCast(@alignCast(state));
 
             real_state.* = .{
                 .shader = .{},
@@ -364,7 +363,7 @@ const draw_call_node_i = graphvm.NodeI.implement(
         pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
             _ = self; // autofix
             _ = out_pins;
-            var state = args.getState(renderer.DrawCall).?;
+            var state = args.getState(public.DrawCall).?;
 
             _, const shader = in_pins.read(shader_system.GpuShaderValue, 0) orelse .{ 0, shader_system.GpuShaderValue{} };
             _, const geometry = in_pins.read(vertex_system.GPUGeometry, 1) orelse .{ 0, vertex_system.GPUGeometry{} };

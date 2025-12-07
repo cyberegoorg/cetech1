@@ -434,6 +434,7 @@ const GraphBuilder = struct {
         for (self.dag.output.keys()) |pass| {
             var zz = _profiler.Zone(@src());
             defer zz.End();
+
             zz.Name(pass.name);
 
             textures.clearRetainingCapacity();
@@ -442,6 +443,8 @@ const GraphBuilder = struct {
 
             info.viewid = view_id;
             view_id += 1;
+
+            self.gpu.resetView(info.viewid);
 
             if (info.exported_layer) |layer| {
                 try self.layer_map.put(self.allocator, layer, info.viewid);

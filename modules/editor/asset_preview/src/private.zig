@@ -8,14 +8,14 @@ const tempalloc = cetech1.tempalloc;
 const gpu = cetech1.gpu;
 const zm = cetech1.math.zmath;
 const ecs = cetech1.ecs;
-const actions = cetech1.actions;
 const assetdb = cetech1.assetdb;
 const uuid = cetech1.uuid;
 const task = cetech1.task;
 
 const camera = @import("camera");
+const camera_controller = @import("camera_controller");
 const transform = @import("transform");
-const editor_entity = @import("editor_entity");
+const actions = @import("actions");
 
 const render_viewport = @import("render_viewport");
 const render_graph = @import("render_graph");
@@ -49,15 +49,14 @@ var _render_graph: *const render_graph.RenderGraphApi = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _ecs: *const ecs.EcsAPI = undefined;
 var _tempalloc: *const tempalloc.TempAllocApi = undefined;
-var _actions: *const actions.ActionsAPI = undefined;
 var _assetdb: *const assetdb.AssetDBAPI = undefined;
 var _uuid: *const uuid.UuidAPI = undefined;
 var _task: *const task.TaskAPI = undefined;
 var _render_viewport: *const render_viewport.RenderViewportApi = undefined;
 var _render_pipeline: *const render_pipeline.RenderPipelineApi = undefined;
-var _platform: *const cetech1.platform.PlatformApi = undefined;
+var _platform: *const cetech1.host.PlatformApi = undefined;
 var _editor: *const editor.EditorAPI = undefined;
-var _editor_entity: *const editor_entity.EditorEntityAPI = undefined;
+var _camera_controller: *const camera_controller.CameraControllerAPI = undefined;
 
 // Global state that can surive hot-reload
 const G = struct {
@@ -71,7 +70,6 @@ const AssetPreviewTab = struct {
     viewport: Viewport = undefined,
 
     world: ecs.World,
-    camera_look_activated: bool = false,
     camera_ent: ecs.EntityId,
 
     selection: coreui.SelectionItem = coreui.SelectionItem.empty(),
@@ -80,15 +78,11 @@ const AssetPreviewTab = struct {
 
     render_pipeline: render_pipeline.RenderPipeline,
 
-    camera: camera.SimpleFPSCamera = camera.SimpleFPSCamera.init(.{
-        .position = .{ 0, 2, 12 },
-    }),
-
     flecs_port: ?u16 = null,
 };
 
 // Fill editor tab interface
-var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
+var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     .tab_name = TAB_NAME,
     .tab_hash = .fromStr(TAB_NAME),
 
@@ -119,24 +113,27 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         const name = try std.fmt.bufPrintZ(&buf, "Asset preview {d}", .{tab_id});
 
         const camera_ent = w.newEntity(null);
-        _ = w.setId(transform.Position, camera_ent, &transform.Position{});
+        _ = w.setId(transform.Position, camera_ent, &transform.Position{ .x = 0, .y = 2, .z = -12 });
         _ = w.setId(transform.Rotation, camera_ent, &transform.Rotation{});
         _ = w.setId(camera.Camera, camera_ent, &camera.Camera{});
+        _ = w.setId(camera_controller.CameraController, camera_ent, &camera_controller.CameraController{});
 
         const gpu_backend = _kernel.getGpuBackend().?;
+        const pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w);
 
         var tab_inst = _allocator.create(AssetPreviewTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _render_viewport.createViewport(name, gpu_backend, w, camera_ent),
-            .world = w,
+            .viewport = try _render_viewport.createViewport(name, gpu_backend, pipeline, w, false),
             .camera_ent = camera_ent,
-            .render_pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w),
+            .world = w,
+            .render_pipeline = pipeline,
             .tab_i = .{
                 .vt = _g.test_tab_vt_ptr,
                 .inst = @ptrCast(tab_inst),
             },
         };
 
+        tab_inst.viewport.setMainCamera(tab_inst.camera_ent);
         // tab_inst.viewport.setDebugCulling(true);
 
         return &tab_inst.tab_i;
@@ -154,6 +151,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     // Draw tab content
     pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
         _ = kernel_tick;
+        _ = dt;
 
         const tab_o: *AssetPreviewTab = @ptrCast(@alignCast(inst));
 
@@ -189,45 +187,11 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                     },
                 );
                 const hovered = _coreui.isItemHovered(.{});
-
-                var camera_look_activated = false;
-                {
-                    _actions.pushSet(ViewportActionSet);
-                    defer _actions.popSet();
-                    camera_look_activated = _actions.isActionDown(LookActivationAction);
-                }
-
-                if (hovered and camera_look_activated) {
-                    tab_o.camera_look_activated = true;
-                    _kernel.getMainWindow().?.setCursorMode(.disabled);
-                    _actions.pushSet(ActivatedViewportActionSet);
-                }
-
-                if (tab_o.camera_look_activated and !camera_look_activated) {
-                    tab_o.camera_look_activated = false;
-                    _kernel.getMainWindow().?.setCursorMode(.normal);
-                    _actions.popSet();
-                }
-
-                if (tab_o.camera_look_activated) {
-                    const move = _actions.getActionAxis(MoveAction);
-                    const look = _actions.getActionAxis(LookAction);
-
-                    tab_o.camera.update(move, look, dt);
-                }
+                var controller = tab_o.world.getMutComponent(camera_controller.CameraController, tab_o.camera_ent).?;
+                controller.input_enabled = hovered;
             }
 
-            _ = tab_o.world.setId(transform.Position, tab_o.camera_ent, &transform.Position{
-                .x = tab_o.camera.position[0],
-                .y = tab_o.camera.position[1],
-                .z = tab_o.camera.position[2],
-            });
-
-            _ = tab_o.world.setId(transform.Rotation, tab_o.camera_ent, &transform.Rotation{
-                .q = zm.matToQuat(zm.mul(zm.rotationX(tab_o.camera.pitch), zm.rotationY(tab_o.camera.yaw))),
-            });
-
-            tab_o.viewport.requestRender(tab_o.render_pipeline);
+            tab_o.viewport.requestRender();
         } else {
             const db = _cdb.getDbFromObjid(selected_obj);
             if (_cdb.getAspect(public.AssetPreviewAspectI, db, selected_obj.type_idx)) |iface| {
@@ -254,7 +218,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         if (_coreui.beginMenu(allocator, cetech1.coreui.Icons.Debug, true, null)) {
             defer _coreui.endMenu();
             _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
-            tab_o.flecs_port = _editor_entity.uiRemoteDebugMenuItems(&tab_o.world, allocator, tab_o.flecs_port);
+            tab_o.flecs_port = tab_o.world.uiRemoteDebugMenuItems(allocator, tab_o.flecs_port);
         }
     }
 
@@ -295,10 +259,6 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             }
 
             tab_o.selection = selected;
-
-            tab_o.camera = camera.SimpleFPSCamera.init(.{
-                .position = .{ 0, 2, -12 },
-            });
         }
     }
 
@@ -323,70 +283,6 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 });
 
-const ActivatedViewportActionSet = cetech1.strId32("preview_activated_viewport");
-const ViewportActionSet = cetech1.strId32("preview_viewport");
-const MoveAction = cetech1.strId32("move");
-const LookAction = cetech1.strId32("look");
-const LookActivationAction = cetech1.strId32("look_activation");
-
-var kernel_task = cetech1.kernel.KernelTaskI.implement(
-    "AssetPreviewTab",
-    &[_]cetech1.StrId64{},
-    struct {
-        pub fn init() !void {
-            try _actions.createActionSet(ViewportActionSet);
-            try _actions.addActions(ViewportActionSet, &.{
-                .{ .name = LookActivationAction, .action = .{ .button = actions.ButtonAction{} } },
-            });
-
-            try _actions.addMappings(ViewportActionSet, LookActivationAction, &.{
-                .{ .gamepadAxisButton = actions.GamepadAxisButtonMapping{ .a = .right_trigger } },
-                .{ .mouseButton = actions.MouseButtonMapping{ .b = .left } },
-            });
-
-            try _actions.createActionSet(ActivatedViewportActionSet);
-            try _actions.addActions(ActivatedViewportActionSet, &.{
-                .{ .name = MoveAction, .action = .{ .axis = actions.AxisAction{} } },
-                .{ .name = LookAction, .action = .{ .axis = actions.AxisAction{} } },
-            });
-            try _actions.addMappings(ActivatedViewportActionSet, MoveAction, &.{
-                // WSAD
-                .{ .key = actions.KeyButtonMapping{ .k = .w, .axis_map = &.{ 0, 1 } } },
-                .{ .key = actions.KeyButtonMapping{ .k = .s, .axis_map = &.{ 0, -1 } } },
-                .{ .key = actions.KeyButtonMapping{ .k = .a, .axis_map = &.{ -1, 0 } } },
-                .{ .key = actions.KeyButtonMapping{ .k = .d, .axis_map = &.{ 1, 0 } } },
-
-                // Arrow
-                .{ .key = actions.KeyButtonMapping{ .k = .up, .axis_map = &.{ 0, 1 } } },
-                .{ .key = actions.KeyButtonMapping{ .k = .down, .axis_map = &.{ 0, -1 } } },
-                .{ .key = actions.KeyButtonMapping{ .k = .left, .axis_map = &.{ -1, 0 } } },
-                .{ .key = actions.KeyButtonMapping{ .k = .right, .axis_map = &.{ 1, 0 } } },
-
-                // Dpad
-                .{ .gamepadButton = actions.GamepadButtonMapping{ .b = .dpad_up, .axis_map = &.{ 0, 1 } } },
-                .{ .gamepadButton = actions.GamepadButtonMapping{ .b = .dpad_down, .axis_map = &.{ 0, -1 } } },
-                .{ .gamepadButton = actions.GamepadButtonMapping{ .b = .dpad_left, .axis_map = &.{ -1, 0 } } },
-                .{ .gamepadButton = actions.GamepadButtonMapping{ .b = .dpad_right, .axis_map = &.{ 1, 0 } } },
-
-                // Clasic gamepad move
-                .{ .gamepadAxis = actions.GamepadAxisMapping{ .x = .left_x, .y = .left_y } },
-            });
-            try _actions.addMappings(ActivatedViewportActionSet, LookAction, &.{
-                .{ .mouse = actions.MouseMapping{ .delta = true } },
-
-                .{ .gamepadAxis = actions.GamepadAxisMapping{
-                    .x = .right_x,
-                    .y = .right_y,
-                    .scale_x = 10,
-                    .scale_y = 10,
-                } },
-            });
-        }
-
-        pub fn shutdown() !void {}
-    },
-);
-
 // Create types, register api, interfaces etc...
 pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
     _ = reload;
@@ -401,25 +297,23 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
     _tempalloc = apidb.getZigApi(module_name, tempalloc.TempAllocApi).?;
-    _actions = apidb.getZigApi(module_name, actions.ActionsAPI).?;
     _assetdb = apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
     _uuid = apidb.getZigApi(module_name, uuid.UuidAPI).?;
     _task = apidb.getZigApi(module_name, task.TaskAPI).?;
     _render_viewport = apidb.getZigApi(module_name, render_viewport.RenderViewportApi).?;
-    _platform = apidb.getZigApi(module_name, cetech1.platform.PlatformApi).?;
+    _platform = apidb.getZigApi(module_name, cetech1.host.PlatformApi).?;
     _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
-    _editor_entity = apidb.getZigApi(module_name, editor_entity.EditorEntityAPI).?;
     _render_pipeline = apidb.getZigApi(module_name, render_pipeline.RenderPipelineApi).?;
+    _camera_controller = apidb.getZigApi(module_name, camera_controller.CameraControllerAPI).?;
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.test_tab_vt_ptr = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, TAB_NAME, foo_tab);
+    _g.test_tab_vt_ptr = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, TAB_NAME, asset_preview_tab);
 
-    try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
-    try apidb.implOrRemove(module_name, editor.TabTypeI, &foo_tab, load);
+    try apidb.implOrRemove(module_name, editor.TabTypeI, &asset_preview_tab, load);
 
     return true;
 }

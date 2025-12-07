@@ -13,7 +13,9 @@
         .render_graph = .{ .path = "../../rendering/render_graph" },
         .render_pipeline = .{ .path = "../../rendering/render_pipeline" },
         .camera = .{ .path = "../../rendering/camera" },
+        .camera_controller = .{ .path = "../../rendering/camera_controller" },
         .transform = .{ .path = "../../rendering/transform" },
         .graphvm = .{ .path = "../../scripting/graphvm" },
+        .actions = .{ .path = "../../input/actions" },
     },
 }

@@ -1,0 +1,21 @@
+.{
+    .name = .editor_simulator,
+    .fingerprint = 0xec7ac0b88ab454e9,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .editor = .{ .path = "../editor" },
+        .render_viewport = .{ .path = "../../rendering/render_viewport" },
+        .render_graph = .{ .path = "../../rendering/render_graph" },
+        .render_pipeline = .{ .path = "../../rendering/render_pipeline" },
+        .light_component = .{ .path = "../../rendering/light_component" },
+        .physics = .{ .path = "../../physics/physics" },
+        .camera = .{ .path = "../../rendering/camera" },
+        .camera_controller = .{ .path = "../../rendering/camera_controller" },
+        .transform = .{ .path = "../../rendering/transform" },
+    },
+}
