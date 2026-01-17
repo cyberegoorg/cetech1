@@ -10,6 +10,7 @@ const assetdb = cetech1.assetdb;
 const coreui = cetech1.coreui;
 const coreui_icons = cetech1.coreui;
 const profiler = cetech1.profiler;
+const math = cetech1.math;
 
 const editor = @import("editor");
 
@@ -24,11 +25,6 @@ const log = std.log.scoped(module_name);
 
 const INSPECTOR_TAB_NAME = "ct_editor_inspector_tab";
 const INSPECTOR_TAB_NAME_HASH = .fromStr(INSPECTOR_TAB_NAME);
-
-const COLOR4F_PROPERTY_ASPECT_NAME = "ct_color_4f_properties_aspect";
-const FOLDER_NAME_PROPERTY_ASPECT_NAME = "ct_folder_name_property_aspect";
-const FOLDER_PROPERTY_CONFIG_ASPECT_NAME = "ct_folder_property_config_aspect";
-const ASSET_PROPERTIES_ASPECT_NAME = "ct_asset_properties_aspect";
 
 const PROP_HEADER_BG_COLOR = .{ 0.2, 0.2, 0.2, 0.65 };
 
@@ -49,8 +45,14 @@ const G = struct {
     tab_vt: *editor.TabTypeI = undefined,
     asset_prop_aspect: *public.UiPropertiesAspect = undefined,
 
-    color4f_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+    vec3f_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+
     color3f_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+    Color4f_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+
+    position_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+    rotation_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+    scale_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
 
     hide_proto_property_config_aspect: *public.UiPropertiesConfigAspect = undefined,
 };
@@ -208,7 +210,7 @@ fn uiAssetInputGeneric(
             }
         }
 
-        if (!_assetdb.isAssetObjTypeOf(obj, assetdb.Folder.typeIdx(_cdb, db))) {
+        if (!_assetdb.isAssetObjTypeOf(obj, assetdb.FolderCdb.typeIdx(_cdb, db))) {
             if (_coreui.menuItem(allocator, coreui.Icons.Clear ++ "  " ++ "Clear" ++ "###Clear", .{ .enabled = !read_only and value_asset != null }, null)) {
                 if (is_proto) {
                     try _cdb.setPrototype(obj, .{});
@@ -244,7 +246,7 @@ fn uiAssetInputGeneric(
         if (_coreui.acceptDragDropPayload("obj", .{ .source_allow_null_id = true })) |payload| {
             var drag_obj: cdb.ObjId = std.mem.bytesToValue(cdb.ObjId, payload.data.?);
             if (drag_obj.type_idx.eql(AssetTypeIdx)) {
-                drag_obj = assetdb.Asset.readSubObj(_cdb, _cdb.readObj(drag_obj).?, .Object).?;
+                drag_obj = assetdb.AssetCdb.readSubObj(_cdb, _cdb.readObj(drag_obj).?, .Object).?;
             }
 
             if (is_proto) {
@@ -761,7 +763,7 @@ fn uiPropInput(obj: cdb.ObjId, prop_idx: u32, enabled: bool, args: public.cdbPro
 fn uiPropInputRaw(obj: cdb.ObjId, prop_idx: u32, args: public.cdbPropertiesViewArgs) !void {
     _ = args; // autofix
 
-    const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionAvail()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
+    const visible = _coreui.isRectVisible(.{ .x = _coreui.getContentRegionAvail().x, .y = _coreui.getFontSize() * _coreui.getScaleFactor() });
     if (!visible) {
         _coreui.dummy(.{ .w = -1, .h = _coreui.getFontSize() * _coreui.getScaleFactor() });
         return;
@@ -897,7 +899,7 @@ fn uiPropInputRaw(obj: cdb.ObjId, prop_idx: u32, args: public.cdbPropertiesViewA
     }
 }
 
-fn uiPropLabel(allocator: std.mem.Allocator, name: [:0]const u8, color: ?[4]f32, enabled: bool, args: public.cdbPropertiesViewArgs) bool {
+fn uiPropLabel(allocator: std.mem.Allocator, name: [:0]const u8, color: ?math.Color4f, enabled: bool, args: public.cdbPropertiesViewArgs) bool {
     if (args.filter) |filter| {
         if (_coreui.uiFilterPass(allocator, filter, name, false) == null) return false;
     }
@@ -974,27 +976,27 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
 
             // Asset name
             if (!is_project and !_assetdb.isRootFolder(obj) and uiPropLabel(allocator, "Name", null, true, args)) {
-                try uiPropInput(obj, assetdb.Asset.propIdx(.Name), true, args);
+                try uiPropInput(obj, assetdb.AssetCdb.propIdx(.Name), true, args);
             }
 
             // Asset name
             if (!_assetdb.isRootFolder(obj) and uiPropLabel(allocator, "Description", null, true, args)) {
-                try uiPropInput(obj, assetdb.Asset.propIdx(.Description), true, args);
+                try uiPropInput(obj, assetdb.AssetCdb.propIdx(.Description), true, args);
             }
 
             // Folder
             if (!is_project and !_assetdb.isRootFolder(obj) and uiPropLabel(allocator, "Folder", null, true, args)) {
-                try uiAssetInput(allocator, tab, obj, assetdb.Asset.propIdx(.Folder), false, true);
+                try uiAssetInput(allocator, tab, obj, assetdb.AssetCdb.propIdx(.Folder), false, true);
             }
 
             // Tags
             if (!is_project and !_assetdb.isRootFolder(obj)) {
                 // TODO: SHIT HACK
-                const ui_prop_aspect = _cdb.getPropertyAspect(public.UiEmbedPropertyAspect, db, obj.type_idx, assetdb.Asset.propIdx(.Tags));
+                const ui_prop_aspect = _cdb.getPropertyAspect(public.UiEmbedPropertyAspect, db, obj.type_idx, assetdb.AssetCdb.propIdx(.Tags));
                 // If exist aspect and is empty hide property.
                 if (ui_prop_aspect) |aspect| {
                     if (uiPropLabel(allocator, "Tags", null, true, args)) {
-                        try aspect.ui_properties(allocator, obj, assetdb.Asset.propIdx(.Tags), args);
+                        try aspect.ui_properties(allocator, obj, assetdb.AssetCdb.propIdx(.Tags), args);
                     }
                 }
             }
@@ -1002,14 +1004,14 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
 
         // Asset object
         _coreui.separatorText("Asset object");
-        try cdbPropertiesObj(allocator, tab, top_level_obj, assetdb.Asset.readSubObj(_cdb, obj_r, .Object).?, depth + 1, args);
+        try cdbPropertiesObj(allocator, tab, top_level_obj, assetdb.AssetCdb.readSubObj(_cdb, obj_r, .Object).?, depth + 1, args);
     }
 });
 
 //
 
 // Asset properties aspect
-var color4f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+var Color4f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
@@ -1021,12 +1023,12 @@ var color4f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
         _coreui.pushObjUUID(obj);
         defer _coreui.popId();
 
-        var color = cetech1.cdb_types.Color4f.f.toSlice(_cdb, obj);
+        var color = cetech1.cdb_types.Color4fCdb.f.to(_cdb, obj);
 
         _coreui.setNextItemWidth(-1);
         if (_coreui.colorEdit4("", .{ .col = &color })) {
             const w = _cdb.writeObj(obj).?;
-            cetech1.cdb_types.Color4f.f.fromSlice(_cdb, w, color);
+            cetech1.cdb_types.Color4fCdb.f.from(_cdb, w, color);
             try _cdb.writeCommit(w);
         }
     }
@@ -1044,12 +1046,104 @@ var color3f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
         _coreui.pushObjUUID(obj);
         defer _coreui.popId();
 
-        const color = cetech1.cdb_types.Color3f.f.toSlice(_cdb, obj);
-        var c = [4]f32{ color[0], color[1], color[2], 1.0 };
+        const color = cetech1.cdb_types.Color3fCdb.f.to(_cdb, obj);
+        var c: math.Color4f = .fromColor4f(color, 1.0);
         _coreui.setNextItemWidth(-1);
         if (_coreui.colorEdit4("", .{ .col = &c, .flags = .{ .no_alpha = true } })) {
             const w = _cdb.writeObj(obj).?;
-            cetech1.cdb_types.Color3f.f.fromSlice(_cdb, w, .{ c[0], c[1], c[2] });
+            cetech1.cdb_types.Color3fCdb.f.from(_cdb, w, c.toColor3f());
+            try _cdb.writeCommit(w);
+        }
+    }
+});
+
+var vec3f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+    pub fn ui(
+        allocator: std.mem.Allocator,
+        obj: cdb.ObjId,
+        args: public.cdbPropertiesViewArgs,
+    ) !void {
+        _ = allocator;
+        _ = args;
+
+        _coreui.pushObjUUID(obj);
+        defer _coreui.popId();
+
+        var rotation = cetech1.cdb_types.Vec3fCdb.f.to(_cdb, obj);
+
+        _coreui.setNextItemWidth(-1);
+        if (_coreui.dragVec3f("", .{ .v = &rotation })) {
+            const w = _cdb.writeObj(obj).?;
+            cetech1.cdb_types.Vec3fCdb.f.from(_cdb, w, rotation);
+            try _cdb.writeCommit(w);
+        }
+    }
+});
+
+var position_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+    pub fn ui(
+        allocator: std.mem.Allocator,
+        obj: cdb.ObjId,
+        args: public.cdbPropertiesViewArgs,
+    ) !void {
+        _ = allocator;
+        _ = args;
+
+        _coreui.pushObjUUID(obj);
+        defer _coreui.popId();
+
+        var position = cetech1.cdb_types.Vec3fCdb.f.to(_cdb, obj);
+
+        _coreui.setNextItemWidth(-1);
+        if (_coreui.dragVec3f("", .{ .v = &position })) {
+            const w = _cdb.writeObj(obj).?;
+            cetech1.cdb_types.Vec3fCdb.f.from(_cdb, w, position);
+            try _cdb.writeCommit(w);
+        }
+    }
+});
+
+var rotation_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+    pub fn ui(
+        allocator: std.mem.Allocator,
+        obj: cdb.ObjId,
+        args: public.cdbPropertiesViewArgs,
+    ) !void {
+        _ = allocator;
+        _ = args;
+
+        _coreui.pushObjUUID(obj);
+        defer _coreui.popId();
+
+        var rotation = cetech1.cdb_types.Vec3fCdb.f.to(_cdb, obj);
+
+        _coreui.setNextItemWidth(-1);
+        if (_coreui.dragVec3f("", .{ .v = &rotation })) {
+            const w = _cdb.writeObj(obj).?;
+            cetech1.cdb_types.Vec3fCdb.f.from(_cdb, w, rotation);
+            try _cdb.writeCommit(w);
+        }
+    }
+});
+
+var scale_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+    pub fn ui(
+        allocator: std.mem.Allocator,
+        obj: cdb.ObjId,
+        args: public.cdbPropertiesViewArgs,
+    ) !void {
+        _ = allocator;
+        _ = args;
+
+        _coreui.pushObjUUID(obj);
+        defer _coreui.popId();
+
+        var rotation = cetech1.cdb_types.Vec3fCdb.f.to(_cdb, obj);
+
+        _coreui.setNextItemWidth(-1);
+        if (_coreui.dragVec3f("", .{ .v = &rotation })) {
+            const w = _cdb.writeObj(obj).?;
+            cetech1.cdb_types.Vec3fCdb.f.from(_cdb, w, rotation);
             try _cdb.writeCommit(w);
         }
     }
@@ -1165,39 +1259,78 @@ var folder_properties_config_aspect = public.UiPropertiesConfigAspect{
 
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.DbId) !void {
-        try assetdb.Folder.addAspect(
+        _ = db;
+    }
+});
+
+// Cdb
+var AssetTypeIdx: cdb.TypeIdx = undefined;
+var ProjectTypeIdx: cdb.TypeIdx = undefined;
+
+const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
+    pub fn postCreateTypes(db: cdb.DbId) !void {
+        AssetTypeIdx = assetdb.AssetCdb.typeIdx(_cdb, db);
+        ProjectTypeIdx = assetdb.ProjectCdb.typeIdx(_cdb, db);
+
+        try assetdb.FolderCdb.addAspect(
             public.UiPropertiesConfigAspect,
             _cdb,
             db,
             _g.hide_proto_property_config_aspect,
         );
 
-        try assetdb.Project.addAspect(
+        try assetdb.ProjectCdb.addAspect(
             public.UiPropertiesConfigAspect,
             _cdb,
             db,
             _g.hide_proto_property_config_aspect,
         );
 
-        try assetdb.Asset.addAspect(
+        try assetdb.AssetCdb.addAspect(
             public.UiPropertiesAspect,
             _cdb,
             db,
             _g.asset_prop_aspect,
         );
 
-        try cetech1.cdb_types.Color4f.addAspect(
+        try cetech1.cdb_types.Color4fCdb.addAspect(
             public.UiEmbedPropertiesAspect,
             _cdb,
             db,
-            _g.color4f_properties_aspec,
+            _g.Color4f_properties_aspec,
         );
 
-        try cetech1.cdb_types.Color3f.addAspect(
+        try cetech1.cdb_types.Color3fCdb.addAspect(
             public.UiEmbedPropertiesAspect,
             _cdb,
             db,
             _g.color3f_properties_aspec,
+        );
+
+        try cetech1.cdb_types.Vec3fCdb.addAspect(
+            public.UiEmbedPropertiesAspect,
+            _cdb,
+            db,
+            _g.vec3f_properties_aspec,
+        );
+
+        try cetech1.cdb_types.PositionCdb.addAspect(
+            public.UiEmbedPropertiesAspect,
+            _cdb,
+            db,
+            _g.position_properties_aspec,
+        );
+        try cetech1.cdb_types.RotationCdb.addAspect(
+            public.UiEmbedPropertiesAspect,
+            _cdb,
+            db,
+            _g.rotation_properties_aspec,
+        );
+        try cetech1.cdb_types.ScaleCdb.addAspect(
+            public.UiEmbedPropertiesAspect,
+            _cdb,
+            db,
+            _g.scale_properties_aspec,
         );
     }
 });
@@ -1820,17 +1953,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
     }
 });
 
-// Cdb
-var AssetTypeIdx: cdb.TypeIdx = undefined;
-var ProjectTypeIdx: cdb.TypeIdx = undefined;
-
-const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
-    pub fn postCreateTypes(db: cdb.DbId) !void {
-        AssetTypeIdx = assetdb.Asset.typeIdx(_cdb, db);
-        ProjectTypeIdx = assetdb.Project.typeIdx(_cdb, db);
-    }
-});
-
 // Create types, register api, interfaces etc...
 pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
     _ = reload;
@@ -1852,10 +1974,57 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     _g.tab_vt = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, INSPECTOR_TAB_NAME, inspector_tab);
 
-    _g.asset_prop_aspect = try apidb.setGlobalVarValue(public.UiPropertiesAspect, module_name, ASSET_PROPERTIES_ASPECT_NAME, asset_properties_aspec);
-    _g.hide_proto_property_config_aspect = try apidb.setGlobalVarValue(public.UiPropertiesConfigAspect, module_name, FOLDER_PROPERTY_CONFIG_ASPECT_NAME, folder_properties_config_aspect);
-    _g.color4f_properties_aspec = try apidb.setGlobalVarValue(public.UiEmbedPropertiesAspect, module_name, COLOR4F_PROPERTY_ASPECT_NAME, color4f_properties_aspec);
-    _g.color3f_properties_aspec = try apidb.setGlobalVarValue(public.UiEmbedPropertiesAspect, module_name, COLOR4F_PROPERTY_ASPECT_NAME, color3f_properties_aspec);
+    // Aspects
+    _g.asset_prop_aspect = try apidb.setGlobalVarValue(
+        public.UiPropertiesAspect,
+        module_name,
+        "ct_asset_properties_aspect",
+        asset_properties_aspec,
+    );
+    _g.hide_proto_property_config_aspect = try apidb.setGlobalVarValue(
+        public.UiPropertiesConfigAspect,
+        module_name,
+        "ct_folder_property_config_aspect",
+        folder_properties_config_aspect,
+    );
+
+    _g.color3f_properties_aspec = try apidb.setGlobalVarValue(
+        public.UiEmbedPropertiesAspect,
+        module_name,
+        "ct_color_3f_properties_aspect",
+        color3f_properties_aspec,
+    );
+    _g.Color4f_properties_aspec = try apidb.setGlobalVarValue(
+        public.UiEmbedPropertiesAspect,
+        module_name,
+        "ct_color_4f_properties_aspect",
+        Color4f_properties_aspec,
+    );
+    _g.position_properties_aspec = try apidb.setGlobalVarValue(
+        public.UiEmbedPropertiesAspect,
+        module_name,
+        "ct_position_properties_aspect",
+        position_properties_aspec,
+    );
+    _g.rotation_properties_aspec = try apidb.setGlobalVarValue(
+        public.UiEmbedPropertiesAspect,
+        module_name,
+        "ct_rotation_properties_aspect",
+        rotation_properties_aspec,
+    );
+    _g.scale_properties_aspec = try apidb.setGlobalVarValue(
+        public.UiEmbedPropertiesAspect,
+        module_name,
+        "ct_scale_properties_aspect",
+        scale_properties_aspec,
+    );
+
+    _g.vec3f_properties_aspec = try apidb.setGlobalVarValue(
+        public.UiEmbedPropertiesAspect,
+        module_name,
+        "ct_vec3f_properties_aspect",
+        vec3f_properties_aspec,
+    );
 
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(module_name, cdb.PostCreateTypesI, &post_create_types_i, load);

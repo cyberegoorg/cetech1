@@ -253,11 +253,11 @@ test "asset: Should read asset from json reader" {
     try _cdb.writeCommit(proto_sub_obj1_w);
     try _cdb.writeCommit(proto_w);
 
-    const folder1_asset = try public.Asset.createObject(_cdb, db);
-    const folder1 = try public.Folder.createObject(_cdb, db);
-    const folder1_w = public.Folder.write(_cdb, folder1).?;
+    const folder1_asset = try public.AssetCdb.createObject(_cdb, db);
+    const folder1 = try public.FolderCdb.createObject(_cdb, db);
+    const folder1_w = public.FolderCdb.write(_cdb, folder1).?;
     const folder1_asset_w = _cdb.writeObj(folder1_asset).?;
-    try public.Asset.setSubObj(_cdb, folder1_asset_w, .Object, folder1_w);
+    try public.AssetCdb.setSubObj(_cdb, folder1_asset_w, .Object, folder1_w);
     try _cdb.writeCommit(folder1_w);
     try _cdb.writeCommit(folder1_asset_w);
 
@@ -321,7 +321,7 @@ test "asset: Should read asset from json reader" {
     );
     try std.testing.expectEqual(uuid.fromStr("018b5846-c2d5-7b88-95f9-a7538a00e76b").?, private.api.getUuid(asset).?);
 
-    const asset_obj = public.Asset.readSubObj(_cdb, _cdb.readObj(asset).?, .Object);
+    const asset_obj = public.AssetCdb.readSubObj(_cdb, _cdb.readObj(asset).?, .Object);
     try std.testing.expect(asset_obj != null);
 
     try std.testing.expectEqual(uuid.fromStr("018b5846-c2d5-712f-bb12-9d9d15321ecb").?, private.api.getUuid(asset_obj.?).?);
@@ -389,15 +389,15 @@ test "asset: Should open asset root dir" {
         const expect_name = "foo";
         try std.testing.expectEqualStrings(
             expect_name,
-            public.Asset.readStr(_cdb, _cdb.readObj(foo_obj_asset).?, .Name).?,
+            public.AssetCdb.readStr(_cdb, _cdb.readObj(foo_obj_asset).?, .Name).?,
         );
 
         const blob = _cdb.readBlob(_cdb.readObj(foo_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.Blob));
         try std.testing.expectEqualSlices(u8, "hello blob", blob);
 
-        root_folder = public.Asset.readRef(_cdb, _cdb.readObj(foo_obj_asset).?, .Folder);
+        root_folder = public.AssetCdb.readRef(_cdb, _cdb.readObj(foo_obj_asset).?, .Folder);
         try std.testing.expect(root_folder != null);
-        try std.testing.expect(null == public.Asset.readStr(_cdb, _cdb.readObj(private.api.getAssetForObj(root_folder.?).?).?, .Name));
+        try std.testing.expect(null == public.AssetCdb.readStr(_cdb, _cdb.readObj(private.api.getAssetForObj(root_folder.?).?).?, .Name));
 
         try std.testing.expectEqual(private.api.getAssetForObj(root_folder.?).?, private.api.getRootFolder());
         const set = try _cdb.getReferencerSet(std.testing.allocator, root_folder.?);
@@ -428,19 +428,19 @@ test "asset: Should open asset root dir" {
         const expect_name = "foo_core";
         try std.testing.expectEqualStrings(
             expect_name,
-            public.Asset.readStr(_cdb, _cdb.readObj(foo_core_obj_asset).?, .Name).?,
+            public.AssetCdb.readStr(_cdb, _cdb.readObj(foo_core_obj_asset).?, .Name).?,
         );
 
         const blob = _cdb.readBlob(_cdb.readObj(foo_core_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.Blob));
         try std.testing.expectEqualSlices(u8, "hello core blob", blob);
 
-        core_folder = public.Asset.readRef(_cdb, _cdb.readObj(foo_core_obj_asset).?, .Folder);
+        core_folder = public.AssetCdb.readRef(_cdb, _cdb.readObj(foo_core_obj_asset).?, .Folder);
         try std.testing.expect(core_folder != null);
 
         const expect_folder_name = "core";
         try std.testing.expectEqualStrings(
             expect_folder_name,
-            public.Asset.readStr(_cdb, _cdb.readObj(private.api.getAssetForObj(core_folder.?).?).?, .Name).?,
+            public.AssetCdb.readStr(_cdb, _cdb.readObj(private.api.getAssetForObj(core_folder.?).?).?, .Name).?,
         );
 
         var buff: [128]u8 = undefined;
@@ -464,7 +464,7 @@ test "asset: Should open asset root dir" {
         const expect_name = "foo_subcore";
         try std.testing.expectEqualStrings(
             expect_name,
-            public.Asset.readStr(_cdb, _cdb.readObj(foo_subcore_obj_asset).?, .Name).?,
+            public.AssetCdb.readStr(_cdb, _cdb.readObj(foo_subcore_obj_asset).?, .Name).?,
         );
 
         const blob = _cdb.readBlob(_cdb.readObj(foo_subcore_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.Blob));
@@ -490,13 +490,13 @@ test "asset: Should open asset root dir" {
             subobj_set.?,
         );
 
-        core_subfolder_folder = public.Asset.readRef(_cdb, _cdb.readObj(foo_subcore_obj_asset).?, .Folder);
+        core_subfolder_folder = public.AssetCdb.readRef(_cdb, _cdb.readObj(foo_subcore_obj_asset).?, .Folder);
         try std.testing.expect(core_subfolder_folder != null);
 
         const expect_folder_name = "core_subfolder";
         try std.testing.expectEqualStrings(
             expect_folder_name,
-            public.Asset.readStr(_cdb, _cdb.readObj(private.api.getAssetForObj(core_subfolder_folder.?).?).?, .Name).?,
+            public.AssetCdb.readStr(_cdb, _cdb.readObj(private.api.getAssetForObj(core_subfolder_folder.?).?).?, .Name).?,
         );
 
         var buff: [128]u8 = undefined;
@@ -568,7 +568,7 @@ test "asset: Should save asset root dir" {
     }
 
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "." ++ public.Folder.name ++ ".json" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "." ++ public.FolderCdb.name ++ ".json" });
         defer std.testing.allocator.free(path);
 
         var f = std.fs.cwd().openFile(path, .{});
@@ -636,7 +636,7 @@ test "asset: Should save modified asset" {
     }
 
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "." ++ public.Folder.name ++ ".json" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "." ++ public.FolderCdb.name ++ ".json" });
         defer std.testing.allocator.free(path);
 
         var f = std.fs.cwd().openFile(path, .{});
@@ -697,7 +697,7 @@ test "asset: Should rename asset" {
     // Change name to new name
     {
         const w = _cdb.writeObj(asset).?;
-        try cetech1.assetdb.Asset.setStr(_cdb, w, .Name, "bar");
+        try cetech1.assetdb.AssetCdb.setStr(_cdb, w, .Name, "bar");
         try _cdb.writeCommit(w);
     }
 
@@ -790,7 +790,7 @@ test "asset: Should move asset" {
     // Change folder
     {
         const w = _cdb.writeObj(asset).?;
-        try cetech1.assetdb.Asset.setRef(_cdb, w, .Folder, bar_folder);
+        try cetech1.assetdb.AssetCdb.setRef(_cdb, w, .Folder, bar_folder);
         try _cdb.writeCommit(w);
     }
 
@@ -1140,7 +1140,7 @@ test "asset: Should rename folder" {
     // Change folder
     {
         const w = _cdb.writeObj(foo_folder_asset).?;
-        try cetech1.assetdb.Asset.setStr(_cdb, w, .Name, "bar");
+        try cetech1.assetdb.AssetCdb.setStr(_cdb, w, .Name, "bar");
         try _cdb.writeCommit(w);
     }
 
@@ -1236,7 +1236,7 @@ test "asset: Should move folder" {
     // Change folder
     {
         const w = _cdb.writeObj(foo_folder_asset).?;
-        try cetech1.assetdb.Asset.setRef(_cdb, w, .Folder, bar_folder);
+        try cetech1.assetdb.AssetCdb.setRef(_cdb, w, .Folder, bar_folder);
         try _cdb.writeCommit(w);
     }
 

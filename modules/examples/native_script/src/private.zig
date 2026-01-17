@@ -41,6 +41,7 @@ const native_script_i = native_logic_component.NativeScriptI.implement(.{
         _ = inst;
         log.debug("SHUTDOWN", .{});
     }
+
     pub fn update(inst: ?*anyopaque) !void {
         _ = inst;
         log.debug("UPDATE", .{});

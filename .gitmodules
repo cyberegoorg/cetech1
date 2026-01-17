@@ -37,3 +37,6 @@
 [submodule "externals/shared/repo/tracy"]
 	path = externals/shared/repo/tracy
 	url = https://github.com/wolfpld/tracy.git
+[submodule "externals/shared/repo/zphysics"]
+	path = externals/shared/repo/zphysics
+	url = https://github.com/cyberegoorg/zphysics.git

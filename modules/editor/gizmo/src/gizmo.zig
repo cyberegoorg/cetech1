@@ -2,6 +2,7 @@ const std = @import("std");
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
+const math = cetech1.math;
 
 pub const GizmoResult = struct {
     manipulate: bool = false,
@@ -33,9 +34,9 @@ pub const EditorGizmoApi = struct {
         entity: ecs.EntityId,
         entity_obj: cdb.ObjId,
         component_obj: ?cdb.ObjId,
-        view: [16]f32,
-        projection: [16]f32,
-        origin: [2]f32,
-        size: [2]f32,
+        view: math.Mat44f,
+        projection: math.Mat44f,
+        origin: math.Vec2f,
+        size: math.Vec2f,
     ) anyerror!GizmoResult,
 };

@@ -8,6 +8,7 @@ const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
 const ecs = cetech1.ecs;
 const gpu = cetech1.gpu;
+const math = cetech1.math;
 
 const public = @import("graphvm.zig");
 
@@ -679,7 +680,7 @@ const GraphVM = struct {
         _ = root; // autofix
 
         const node_r = _cdb.readObj(node_obj).?;
-        const type_hash = public.NodeType.f.getNodeTypeId(_cdb, node_r);
+        const type_hash = public.NodeTypeCdb.f.getNodeTypeId(_cdb, node_r);
         const iface = findNodeI(type_hash).?;
 
         const prototype = _cdb.getPrototype(node_r);
@@ -701,7 +702,7 @@ const GraphVM = struct {
             vmnode.cdb_version = node_version;
         }
 
-        const settings = public.NodeType.readSubObj(_cdb, node_r, .settings);
+        const settings = public.NodeTypeCdb.readSubObj(_cdb, node_r, .settings);
 
         if (!prototype.isEmpty()) {
             try node_prototype_map.put(allocator, prototype, node_obj);
@@ -768,10 +769,10 @@ const GraphVM = struct {
         const graph_r = _cdb.readObj(graph).?;
 
         // Nodes
-        const nodes = (try public.GraphType.readSubObjSet(_cdb, graph_r, .nodes, allocator)).?;
+        const nodes = (try public.GraphTypeCdb.readSubObjSet(_cdb, graph_r, .nodes, allocator)).?;
         defer allocator.free(nodes);
 
-        const connections = (try public.GraphType.readSubObjSet(_cdb, graph_r, .connections, allocator)).?;
+        const connections = (try public.GraphTypeCdb.readSubObjSet(_cdb, graph_r, .connections, allocator)).?;
         defer allocator.free(connections);
 
         //try self.vmnodes.ensureUnusedCapacity(self.allocator, nodes.len);
@@ -783,7 +784,7 @@ const GraphVM = struct {
         // Add node expect subgraph
         for (nodes) |node| {
             const node_r = _cdb.readObj(node).?;
-            const type_hash = public.NodeType.f.getNodeTypeId(_cdb, node_r);
+            const type_hash = public.NodeTypeCdb.f.getNodeTypeId(_cdb, node_r);
             const iface = findNodeI(type_hash).?;
 
             if (!root) {
@@ -797,9 +798,9 @@ const GraphVM = struct {
             }
 
             if (iface.type_hash.eql(call_graph_node_i.type_hash)) {
-                const s = public.NodeType.readSubObj(_cdb, node_r, .settings) orelse continue;
-                const s_r = public.CallGraphNodeSettings.read(_cdb, s).?;
-                if (public.CallGraphNodeSettings.readSubObj(_cdb, s_r, .graph)) |sub_graph| {
+                const s = public.NodeTypeCdb.readSubObj(_cdb, node_r, .settings) orelse continue;
+                const s_r = public.CallGraphNodeSettingsCdb.read(_cdb, s).?;
+                if (public.CallGraphNodeSettingsCdb.readSubObj(_cdb, s_r, .graph)) |sub_graph| {
                     try self.addNodes(
                         allocator,
                         sub_graph,
@@ -824,11 +825,11 @@ const GraphVM = struct {
 
         for (connections) |connection| {
             const connection_r = _cdb.readObj(connection).?;
-            var from_node_obj = public.ConnectionType.readRef(_cdb, connection_r, .from_node).?;
-            const from_pin = public.ConnectionType.f.getFromPinId(_cdb, connection_r);
+            var from_node_obj = public.ConnectionTypeCdb.readRef(_cdb, connection_r, .from_node).?;
+            const from_pin = public.ConnectionTypeCdb.f.getFromPinId(_cdb, connection_r);
 
-            var to_node_obj = public.ConnectionType.readRef(_cdb, connection_r, .to_node).?;
-            const to_pin = public.ConnectionType.f.getToPinId(_cdb, connection_r);
+            var to_node_obj = public.ConnectionTypeCdb.readRef(_cdb, connection_r, .to_node).?;
+            const to_pin = public.ConnectionTypeCdb.f.getToPinId(_cdb, connection_r);
 
             // Rewrite connection from prototype
             if (node_prototype_map.get(from_node_obj)) |node| {
@@ -839,13 +840,13 @@ const GraphVM = struct {
             }
 
             const from_node_obj_r = _cdb.readObj(from_node_obj).?;
-            const from_node_type = public.NodeType.f.getNodeTypeId(_cdb, from_node_obj_r);
+            const from_node_type = public.NodeTypeCdb.f.getNodeTypeId(_cdb, from_node_obj_r);
             const from_subgraph = call_graph_node_i.type_hash.eql(from_node_type);
             const from_inputs = graph_inputs_i.type_hash.eql(from_node_type);
             const from_node = !from_subgraph and !from_inputs;
 
             const to_node_obj_r = _cdb.readObj(to_node_obj).?;
-            const to_node_type = public.NodeType.f.getNodeTypeId(_cdb, to_node_obj_r);
+            const to_node_type = public.NodeTypeCdb.f.getNodeTypeId(_cdb, to_node_obj_r);
             const to_subgraph = call_graph_node_i.type_hash.eql(to_node_type);
             const to_outputs = graph_outputs_i.type_hash.eql(to_node_type);
             const to_node = !to_subgraph and !to_outputs;
@@ -886,16 +887,16 @@ const GraphVM = struct {
         }
 
         // Data
-        if (try public.GraphType.readSubObjSet(_cdb, graph_r, .data, allocator)) |datas| {
+        if (try public.GraphTypeCdb.readSubObjSet(_cdb, graph_r, .data, allocator)) |datas| {
             for (datas) |data| {
-                const data_r = public.GraphDataType.read(_cdb, data).?;
-                const value_obj = public.GraphDataType.readSubObj(_cdb, data_r, .value).?;
+                const data_r = public.GraphDataTypeCdb.read(_cdb, data).?;
+                const value_obj = public.GraphDataTypeCdb.readSubObj(_cdb, data_r, .value).?;
                 const db = _cdb.getDbFromObjid(value_obj);
 
                 const type_def = findValueTypeIByCdb(_cdb.getTypeHash(db, value_obj.type_idx).?).?;
 
-                const to_node = public.GraphDataType.readRef(_cdb, data_r, .to_node).?;
-                const to_node_pin_str = public.GraphDataType.readStr(_cdb, data_r, .to_node_pin).?;
+                const to_node = public.GraphDataTypeCdb.readRef(_cdb, data_r, .to_node).?;
+                const to_node_pin_str = public.GraphDataTypeCdb.readStr(_cdb, data_r, .to_node_pin).?;
 
                 const to_node_pin = cetech1.strId32(to_node_pin_str);
 
@@ -948,18 +949,18 @@ const GraphVM = struct {
         );
 
         // Now scan for CallGraph node and build
-        const nodes = (try public.GraphType.readSubObjSet(_cdb, graph_r, .nodes, allocator)).?;
+        const nodes = (try public.GraphTypeCdb.readSubObjSet(_cdb, graph_r, .nodes, allocator)).?;
         defer allocator.free(nodes);
         for (nodes) |node| {
             const node_r = _cdb.readObj(node).?;
-            const type_hash = public.NodeType.f.getNodeTypeId(_cdb, node_r);
+            const type_hash = public.NodeTypeCdb.f.getNodeTypeId(_cdb, node_r);
             const iface = findNodeI(type_hash).?;
             _ = iface; // autofix
 
             if (type_hash.eql(call_graph_node_i.type_hash)) {
-                const s = public.NodeType.readSubObj(_cdb, node_r, .settings) orelse continue;
-                const s_r = public.CallGraphNodeSettings.read(_cdb, s).?;
-                if (public.CallGraphNodeSettings.readSubObj(_cdb, s_r, .graph)) |sub_graph| {
+                const s = public.NodeTypeCdb.readSubObj(_cdb, node_r, .settings) orelse continue;
+                const s_r = public.CallGraphNodeSettingsCdb.read(_cdb, s).?;
+                if (public.CallGraphNodeSettingsCdb.readSubObj(_cdb, s_r, .graph)) |sub_graph| {
                     try self.buildGraph(
                         allocator,
                         sub_graph,
@@ -985,7 +986,7 @@ const GraphVM = struct {
             var it = nexts.iterator();
             while (it.next()) |v| {
                 const node_obj_r = _cdb.readObj(v.key_ptr.obj).?;
-                const node_type = public.NodeType.f.getNodeTypeId(_cdb, node_obj_r);
+                const node_type = public.NodeTypeCdb.f.getNodeTypeId(_cdb, node_obj_r);
                 const from_subgraph = call_graph_node_i.type_hash.eql(node_type);
 
                 if (from_subgraph) {
@@ -1057,11 +1058,11 @@ const GraphVM = struct {
 
         for (out_connections.items) |v| {
             const connection_r = _cdb.readObj(v.c).?;
-            var from_node_obj = public.ConnectionType.readRef(_cdb, connection_r, .from_node).?;
-            const from_pin = public.ConnectionType.f.getFromPinId(_cdb, connection_r);
+            var from_node_obj = public.ConnectionTypeCdb.readRef(_cdb, connection_r, .from_node).?;
+            const from_pin = public.ConnectionTypeCdb.f.getFromPinId(_cdb, connection_r);
 
-            var to_node_obj = public.ConnectionType.readRef(_cdb, connection_r, .to_node).?;
-            const to_pin = public.ConnectionType.f.getToPinId(_cdb, connection_r);
+            var to_node_obj = public.ConnectionTypeCdb.readRef(_cdb, connection_r, .to_node).?;
+            const to_pin = public.ConnectionTypeCdb.f.getToPinId(_cdb, connection_r);
 
             // Rewrite connection from prototype
             if (self.node_prototype_map.get(from_node_obj)) |node| {
@@ -1072,13 +1073,13 @@ const GraphVM = struct {
             }
 
             const from_node_obj_r = _cdb.readObj(from_node_obj).?;
-            const from_node_type = public.NodeType.f.getNodeTypeId(_cdb, from_node_obj_r);
+            const from_node_type = public.NodeTypeCdb.f.getNodeTypeId(_cdb, from_node_obj_r);
             const from_subgraph = call_graph_node_i.type_hash.eql(from_node_type);
             const from_inputs = graph_inputs_i.type_hash.eql(from_node_type);
             const from_node = !from_subgraph and !from_inputs;
 
             const to_node_obj_r = _cdb.readObj(to_node_obj).?;
-            const to_node_type = public.NodeType.f.getNodeTypeId(_cdb, to_node_obj_r);
+            const to_node_type = public.NodeTypeCdb.f.getNodeTypeId(_cdb, to_node_obj_r);
             const to_subgraph = call_graph_node_i.type_hash.eql(to_node_type);
             const to_outputs = graph_outputs_i.type_hash.eql(to_node_type);
             const to_node = !to_subgraph and !to_outputs;
@@ -1232,7 +1233,7 @@ const GraphVM = struct {
             }
 
             const to_node_obj_r = _cdb.readObj(to_node_obj).?;
-            const to_node_type = public.NodeType.f.getNodeTypeId(_cdb, to_node_obj_r);
+            const to_node_type = public.NodeTypeCdb.f.getNodeTypeId(_cdb, to_node_obj_r);
             const to_subgraph = call_graph_node_i.type_hash.eql(to_node_type);
             const to_outputs = graph_outputs_i.type_hash.eql(to_node_type);
             const to_node = !to_subgraph and !to_outputs;
@@ -1405,7 +1406,7 @@ const GraphVM = struct {
         //
         // Interafces
         //
-        if (public.GraphType.readSubObj(_cdb, root_graph_r, .interface)) |interface_obj| {
+        if (public.GraphTypeCdb.readSubObj(_cdb, root_graph_r, .interface)) |interface_obj| {
             _ = interface_obj; // autofix
 
             const in_pin_def = try graph_inputs_i.getPinsDef(&graph_inputs_i, self.allocator, self.graph_obj, .{});
@@ -2037,8 +2038,8 @@ const GraphVM = struct {
         defer root_dir.close();
 
         const asset_obj = _assetdb.getAssetForObj(self.graph_obj).?;
-        const asset_obj_r = cetech1.assetdb.Asset.read(_cdb, asset_obj).?;
-        const name = cetech1.assetdb.Asset.readStr(_cdb, asset_obj_r, .Name).?;
+        const asset_obj_r = cetech1.assetdb.AssetCdb.read(_cdb, asset_obj).?;
+        const name = cetech1.assetdb.AssetCdb.readStr(_cdb, asset_obj_r, .Name).?;
 
         const filename = try std.fmt.allocPrint(allocator, "{s}/graph_{s}.md", .{ cetech1.assetdb.CT_TEMP_FOLDER, name });
         defer allocator.free(filename);
@@ -2125,24 +2126,24 @@ const StringIntern = cetech1.string.InternWithLock([:0]const u8);
 var AssetTypeIdx: cdb.TypeIdx = undefined;
 var CallGraphNodeSettingsIdx: cdb.TypeIdx = undefined;
 
-pub fn createCdbNode(db: cdb.DbId, type_hash: cetech1.StrId32, pos: ?[2]f32) !cdb.ObjId {
+pub fn createCdbNode(db: cdb.DbId, type_hash: cetech1.StrId32, pos: ?math.Vec2f) !cdb.ObjId {
     const iface = findNodeI(type_hash).?;
-    const node = try public.NodeType.createObject(_cdb, db);
+    const node = try public.NodeTypeCdb.createObject(_cdb, db);
 
-    const node_w = public.NodeType.write(_cdb, node).?;
-    try public.NodeType.setStr(_cdb, node_w, .node_type, iface.type_name);
+    const node_w = public.NodeTypeCdb.write(_cdb, node).?;
+    try public.NodeTypeCdb.setStr(_cdb, node_w, .node_type, iface.type_name);
 
     if (!iface.settings_type.isEmpty()) {
         const settings = try _cdb.createObject(db, _cdb.getTypeIdx(db, iface.settings_type).?);
 
         const settings_w = _cdb.writeObj(settings).?;
-        try public.NodeType.setSubObj(_cdb, node_w, .settings, settings_w);
+        try public.NodeTypeCdb.setSubObj(_cdb, node_w, .settings, settings_w);
         try _cdb.writeCommit(settings_w);
     }
 
     if (pos) |p| {
-        public.NodeType.setValue(f32, _cdb, node_w, .pos_x, p[0]);
-        public.NodeType.setValue(f32, _cdb, node_w, .pos_y, p[1]);
+        public.NodeTypeCdb.setValue(f32, _cdb, node_w, .pos_x, p.x);
+        public.NodeTypeCdb.setValue(f32, _cdb, node_w, .pos_y, p.y);
     }
 
     try _cdb.writeCommit(node_w);
@@ -2204,10 +2205,10 @@ fn getOutputPin(allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cd
     return null;
 }
 
-fn getTypeColor(type_hash: cetech1.StrId32) [4]f32 {
-    if (type_hash.isEmpty()) return .{ 1.0, 0.0, 0.0, 1.0 };
+fn getTypeColor(type_hash: cetech1.StrId32) math.Color4f {
+    if (type_hash.isEmpty()) return .{ .r = 1.0, .a = 1.0 };
 
-    if (public.PinTypes.GENERIC.eql(type_hash)) return .{ 0.8, 0.0, 0.8, 1.0 };
+    if (public.PinTypes.GENERIC.eql(type_hash)) return .{ .r = 0.8, .b = 0.8, .a = 1.0 };
 
     const iface = findValueTypeI(type_hash).?;
 
@@ -2221,14 +2222,14 @@ fn getTypeColor(type_hash: cetech1.StrId32) [4]f32 {
         const r: f32 = @floatFromInt(type_hash.id & 0x0000FF);
 
         return .{
-            std.math.clamp(std.math.sin(r + 1), 0.4, 0.8),
-            std.math.clamp(std.math.sin(g + 2), 0.4, 0.8),
-            std.math.clamp(std.math.sin(b + 3), 0.4, 0.8),
-            1.0,
+            .r = std.math.clamp(std.math.sin(r + 1), 0.4, 0.8),
+            .g = std.math.clamp(std.math.sin(g + 2), 0.4, 0.8),
+            .b = std.math.clamp(std.math.sin(b + 3), 0.4, 0.8),
+            .a = 1.0,
         };
     }
 
-    return .{ 1, 1, 1, 1 };
+    return .white;
 }
 
 fn createVM(graph: cdb.ObjId) !*GraphVM {
@@ -2713,7 +2714,7 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
 
                 const db = _assetdb.getDb();
 
-                const changed = try _cdb.getChangeObjects(alloc, db, public.GraphType.typeIdx(_cdb, db), _last_check);
+                const changed = try _cdb.getChangeObjects(alloc, db, public.GraphTypeCdb.typeIdx(_cdb, db), _last_check);
                 defer alloc.free(changed.objects);
 
                 if (!changed.need_fullscan) {
@@ -2735,7 +2736,7 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
                         try _g.graph_to_compile.put(_allocator, graph, {});
                     }
                 } else {
-                    if (_cdb.getAllObjectByType(alloc, db, public.GraphType.typeIdx(_cdb, db))) |objs| {
+                    if (_cdb.getAllObjectByType(alloc, db, public.GraphTypeCdb.typeIdx(_cdb, db))) |objs| {
                         for (objs) |graph| {
                             if (!_g.vm_map.contains(graph)) {
                                 // skip subgraph
@@ -2783,19 +2784,19 @@ const graph_inputs_i = public.NodeI.implement(
             const db = _cdb.getDbFromObjid(graph_obj);
             var pins = public.NodePinList{};
 
-            const graph_r = public.GraphType.read(_cdb, graph_obj).?;
+            const graph_r = public.GraphTypeCdb.read(_cdb, graph_obj).?;
 
-            if (public.GraphType.readSubObj(_cdb, graph_r, .interface)) |iface_obj| {
-                const iface_r = public.Interface.read(_cdb, iface_obj).?;
+            if (public.GraphTypeCdb.readSubObj(_cdb, graph_r, .interface)) |iface_obj| {
+                const iface_r = public.InterfaceCdb.read(_cdb, iface_obj).?;
 
-                if (try public.Interface.readSubObjSet(_cdb, iface_r, .inputs, allocator)) |inputs| {
+                if (try public.InterfaceCdb.readSubObjSet(_cdb, iface_r, .inputs, allocator)) |inputs| {
                     defer allocator.free(inputs);
 
                     for (inputs) |input| {
                         const input_r = _cdb.readObj(input).?;
 
-                        const name = public.InterfaceInput.readStr(_cdb, input_r, .name) orelse "NO NAME!!";
-                        const value_obj = public.InterfaceInput.readSubObj(_cdb, input_r, .value) orelse continue;
+                        const name = public.InterfaceInputCdb.readStr(_cdb, input_r, .name) orelse "NO NAME!!";
+                        const value_obj = public.InterfaceInputCdb.readSubObj(_cdb, input_r, .value) orelse continue;
 
                         const uuid = try _assetdb.getOrCreateUuid(input);
                         var buffer: [128]u8 = undefined;
@@ -2868,19 +2869,19 @@ const graph_outputs_i = public.NodeI.implement(
 
             const db = _cdb.getDbFromObjid(graph_obj);
 
-            const graph_r = public.GraphType.read(_cdb, graph_obj).?;
+            const graph_r = public.GraphTypeCdb.read(_cdb, graph_obj).?;
 
-            if (public.GraphType.readSubObj(_cdb, graph_r, .interface)) |iface_obj| {
-                const iface_r = public.Interface.read(_cdb, iface_obj).?;
+            if (public.GraphTypeCdb.readSubObj(_cdb, graph_r, .interface)) |iface_obj| {
+                const iface_r = public.InterfaceCdb.read(_cdb, iface_obj).?;
 
-                if (try public.Interface.readSubObjSet(_cdb, iface_r, .outputs, allocator)) |outputs| {
+                if (try public.InterfaceCdb.readSubObjSet(_cdb, iface_r, .outputs, allocator)) |outputs| {
                     defer allocator.free(outputs);
 
                     for (outputs) |input| {
                         const input_r = _cdb.readObj(input).?;
 
-                        const name = public.InterfaceInput.readStr(_cdb, input_r, .name) orelse "NO NAME!!";
-                        const value_obj = public.InterfaceInput.readSubObj(_cdb, input_r, .value) orelse continue;
+                        const name = public.InterfaceInputCdb.readStr(_cdb, input_r, .name) orelse "NO NAME!!";
+                        const value_obj = public.InterfaceInputCdb.readSubObj(_cdb, input_r, .value) orelse continue;
 
                         const uuid = try _assetdb.getOrCreateUuid(input);
                         var buffer: [128]u8 = undefined;
@@ -2949,7 +2950,7 @@ const call_graph_node_i = public.NodeI.implement(
         .type_name = public.CALL_GRAPH_NODE_TYPE_STR,
         .category = "Interface",
 
-        .settings_type = public.CallGraphNodeSettings.type_hash,
+        .settings_type = public.CallGraphNodeSettingsCdb.type_hash,
     },
     null,
     struct {
@@ -2961,15 +2962,15 @@ const call_graph_node_i = public.NodeI.implement(
             var in_pins = public.NodePinList{};
             var out_pins = public.NodePinList{};
 
-            const node_obj_r = public.NodeType.read(_cdb, node_obj).?;
-            if (public.NodeType.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
-                const settings_r = public.CallGraphNodeSettings.read(_cdb, settings).?;
-                if (public.CallGraphNodeSettings.readSubObj(_cdb, settings_r, .graph)) |graph| {
-                    const graph_r = public.GraphType.read(_cdb, graph).?;
-                    if (public.GraphType.readSubObj(_cdb, graph_r, .interface)) |iface_obj| {
-                        const iface_r = public.Interface.read(_cdb, iface_obj).?;
+            const node_obj_r = public.NodeTypeCdb.read(_cdb, node_obj).?;
+            if (public.NodeTypeCdb.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
+                const settings_r = public.CallGraphNodeSettingsCdb.read(_cdb, settings).?;
+                if (public.CallGraphNodeSettingsCdb.readSubObj(_cdb, settings_r, .graph)) |graph| {
+                    const graph_r = public.GraphTypeCdb.read(_cdb, graph).?;
+                    if (public.GraphTypeCdb.readSubObj(_cdb, graph_r, .interface)) |iface_obj| {
+                        const iface_r = public.InterfaceCdb.read(_cdb, iface_obj).?;
 
-                        if (try public.Interface.readSubObjSet(_cdb, iface_r, .inputs, allocator)) |inputs| {
+                        if (try public.InterfaceCdb.readSubObjSet(_cdb, iface_r, .inputs, allocator)) |inputs| {
                             defer allocator.free(inputs);
 
                             try in_pins.ensureTotalCapacityPrecise(allocator, inputs.len);
@@ -2977,8 +2978,8 @@ const call_graph_node_i = public.NodeI.implement(
                             for (inputs) |input| {
                                 const input_r = _cdb.readObj(input).?;
 
-                                const name = public.InterfaceInput.readStr(_cdb, input_r, .name) orelse "NO NAME!!";
-                                const value_obj = public.InterfaceInput.readSubObj(_cdb, input_r, .value) orelse continue;
+                                const name = public.InterfaceInputCdb.readStr(_cdb, input_r, .name) orelse "NO NAME!!";
+                                const value_obj = public.InterfaceInputCdb.readSubObj(_cdb, input_r, .value) orelse continue;
 
                                 const uuid = try _assetdb.getOrCreateUuid(input);
                                 var buffer: [128]u8 = undefined;
@@ -2992,7 +2993,7 @@ const call_graph_node_i = public.NodeI.implement(
                             }
                         }
 
-                        if (try public.Interface.readSubObjSet(_cdb, iface_r, .outputs, allocator)) |outputs| {
+                        if (try public.InterfaceCdb.readSubObjSet(_cdb, iface_r, .outputs, allocator)) |outputs| {
                             defer allocator.free(outputs);
 
                             try out_pins.ensureTotalCapacityPrecise(allocator, outputs.len);
@@ -3000,8 +3001,8 @@ const call_graph_node_i = public.NodeI.implement(
                             for (outputs) |input| {
                                 const input_r = _cdb.readObj(input).?;
 
-                                const name = public.InterfaceOutput.readStr(_cdb, input_r, .name) orelse "NO NAME!!";
-                                const value_obj = public.InterfaceOutput.readSubObj(_cdb, input_r, .value) orelse continue;
+                                const name = public.InterfaceOutputCdb.readStr(_cdb, input_r, .name) orelse "NO NAME!!";
+                                const value_obj = public.InterfaceOutputCdb.readSubObj(_cdb, input_r, .value) orelse continue;
 
                                 const uuid = try _assetdb.getOrCreateUuid(input);
                                 var buffer: [128]u8 = undefined;
@@ -3030,14 +3031,14 @@ const call_graph_node_i = public.NodeI.implement(
             node_obj: cdb.ObjId,
         ) ![:0]const u8 {
             _ = self; // autofix
-            const node_obj_r = public.NodeType.read(_cdb, node_obj).?;
+            const node_obj_r = public.NodeTypeCdb.read(_cdb, node_obj).?;
 
-            if (public.NodeType.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
-                const settings_r = public.CallGraphNodeSettings.read(_cdb, settings).?;
-                if (public.CallGraphNodeSettings.readSubObj(_cdb, settings_r, .graph)) |graph| {
-                    const graph_r = public.GraphType.read(_cdb, graph).?;
+            if (public.NodeTypeCdb.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
+                const settings_r = public.CallGraphNodeSettingsCdb.read(_cdb, settings).?;
+                if (public.CallGraphNodeSettingsCdb.readSubObj(_cdb, settings_r, .graph)) |graph| {
+                    const graph_r = public.GraphTypeCdb.read(_cdb, graph).?;
 
-                    if (public.GraphType.readStr(_cdb, graph_r, .name)) |name| {
+                    if (public.GraphTypeCdb.readStr(_cdb, graph_r, .name)) |name| {
                         if (name.len != 0) {
                             return allocator.dupeZ(u8, name);
                         }
@@ -3046,11 +3047,11 @@ const call_graph_node_i = public.NodeI.implement(
                     const prototype = _cdb.getPrototype(graph_r);
                     if (prototype.isEmpty()) {
                         const graph_asset = _assetdb.getAssetForObj(graph) orelse return allocator.dupeZ(u8, "");
-                        const name = cetech1.assetdb.Asset.readStr(_cdb, _cdb.readObj(graph_asset).?, .Name) orelse return allocator.dupeZ(u8, "");
+                        const name = cetech1.assetdb.AssetCdb.readStr(_cdb, _cdb.readObj(graph_asset).?, .Name) orelse return allocator.dupeZ(u8, "");
                         return allocator.dupeZ(u8, name);
                     } else {
                         const graph_asset = _assetdb.getAssetForObj(prototype) orelse return allocator.dupeZ(u8, "");
-                        const name = cetech1.assetdb.Asset.readStr(_cdb, _cdb.readObj(graph_asset).?, .Name) orelse return allocator.dupeZ(u8, "");
+                        const name = cetech1.assetdb.AssetCdb.readStr(_cdb, _cdb.readObj(graph_asset).?, .Name) orelse return allocator.dupeZ(u8, "");
                         return allocator.dupeZ(u8, name);
                     }
                 } else {
@@ -3096,14 +3097,14 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.GraphType.name,
+                public.GraphTypeCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.GraphType.propIdx(.name), .name = "name", .type = .STR },
-                    .{ .prop_idx = public.GraphType.propIdx(.nodes), .name = "nodes", .type = .SUBOBJECT_SET, .type_hash = public.NodeType.type_hash },
-                    .{ .prop_idx = public.GraphType.propIdx(.groups), .name = "groups", .type = .SUBOBJECT_SET, .type_hash = public.GroupType.type_hash },
-                    .{ .prop_idx = public.GraphType.propIdx(.connections), .name = "connections", .type = .SUBOBJECT_SET, .type_hash = public.ConnectionType.type_hash },
-                    .{ .prop_idx = public.GraphType.propIdx(.interface), .name = "interface", .type = .SUBOBJECT, .type_hash = public.Interface.type_hash },
-                    .{ .prop_idx = public.GraphType.propIdx(.data), .name = "data", .type = .SUBOBJECT_SET, .type_hash = public.GraphDataType.type_hash },
+                    .{ .prop_idx = public.GraphTypeCdb.propIdx(.name), .name = "name", .type = .STR },
+                    .{ .prop_idx = public.GraphTypeCdb.propIdx(.nodes), .name = "nodes", .type = .SUBOBJECT_SET, .type_hash = public.NodeTypeCdb.type_hash },
+                    .{ .prop_idx = public.GraphTypeCdb.propIdx(.groups), .name = "groups", .type = .SUBOBJECT_SET, .type_hash = public.GroupTypeCdb.type_hash },
+                    .{ .prop_idx = public.GraphTypeCdb.propIdx(.connections), .name = "connections", .type = .SUBOBJECT_SET, .type_hash = public.ConnectionTypeCdb.type_hash },
+                    .{ .prop_idx = public.GraphTypeCdb.propIdx(.interface), .name = "interface", .type = .SUBOBJECT, .type_hash = public.InterfaceCdb.type_hash },
+                    .{ .prop_idx = public.GraphTypeCdb.propIdx(.data), .name = "data", .type = .SUBOBJECT_SET, .type_hash = public.GraphDataTypeCdb.type_hash },
                 },
             );
         }
@@ -3112,11 +3113,11 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.GraphDataType.name,
+                public.GraphDataTypeCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.GraphDataType.propIdx(.to_node), .name = "to_node", .type = .REFERENCE, .type_hash = public.NodeType.type_hash },
-                    .{ .prop_idx = public.GraphDataType.propIdx(.to_node_pin), .name = "to_node_pin", .type = .STR },
-                    .{ .prop_idx = public.GraphDataType.propIdx(.value), .name = "value", .type = .SUBOBJECT },
+                    .{ .prop_idx = public.GraphDataTypeCdb.propIdx(.to_node), .name = "to_node", .type = .REFERENCE, .type_hash = public.NodeTypeCdb.type_hash },
+                    .{ .prop_idx = public.GraphDataTypeCdb.propIdx(.to_node_pin), .name = "to_node_pin", .type = .STR },
+                    .{ .prop_idx = public.GraphDataTypeCdb.propIdx(.value), .name = "value", .type = .SUBOBJECT },
                 },
             );
         }
@@ -3125,12 +3126,12 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.NodeType.name,
+                public.NodeTypeCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.NodeType.propIdx(.node_type), .name = "node_type", .type = .STR },
-                    .{ .prop_idx = public.NodeType.propIdx(.settings), .name = "settings", .type = .SUBOBJECT },
-                    .{ .prop_idx = public.NodeType.propIdx(.pos_x), .name = "pos_x", .type = .F32 },
-                    .{ .prop_idx = public.NodeType.propIdx(.pos_y), .name = "pos_y", .type = .F32 },
+                    .{ .prop_idx = public.NodeTypeCdb.propIdx(.node_type), .name = "node_type", .type = .STR },
+                    .{ .prop_idx = public.NodeTypeCdb.propIdx(.settings), .name = "settings", .type = .SUBOBJECT },
+                    .{ .prop_idx = public.NodeTypeCdb.propIdx(.pos_x), .name = "pos_x", .type = .F32 },
+                    .{ .prop_idx = public.NodeTypeCdb.propIdx(.pos_y), .name = "pos_y", .type = .F32 },
                 },
             );
         }
@@ -3139,14 +3140,14 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.GroupType.name,
+                public.GroupTypeCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.GroupType.propIdx(.title), .name = "title", .type = .STR },
-                    .{ .prop_idx = public.GroupType.propIdx(.color), .name = "color", .type = .SUBOBJECT, .type_hash = cdb_types.Color4f.type_hash },
-                    .{ .prop_idx = public.GroupType.propIdx(.pos_x), .name = "pos_x", .type = .F32 },
-                    .{ .prop_idx = public.GroupType.propIdx(.pos_y), .name = "pos_y", .type = .F32 },
-                    .{ .prop_idx = public.GroupType.propIdx(.size_x), .name = "size_x", .type = .F32 },
-                    .{ .prop_idx = public.GroupType.propIdx(.size_y), .name = "size_y", .type = .F32 },
+                    .{ .prop_idx = public.GroupTypeCdb.propIdx(.title), .name = "title", .type = .STR },
+                    .{ .prop_idx = public.GroupTypeCdb.propIdx(.color), .name = "color", .type = .SUBOBJECT, .type_hash = cdb_types.Color4fCdb.type_hash },
+                    .{ .prop_idx = public.GroupTypeCdb.propIdx(.pos_x), .name = "pos_x", .type = .F32 },
+                    .{ .prop_idx = public.GroupTypeCdb.propIdx(.pos_y), .name = "pos_y", .type = .F32 },
+                    .{ .prop_idx = public.GroupTypeCdb.propIdx(.size_x), .name = "size_x", .type = .F32 },
+                    .{ .prop_idx = public.GroupTypeCdb.propIdx(.size_y), .name = "size_y", .type = .F32 },
                 },
             );
         }
@@ -3155,12 +3156,12 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.ConnectionType.name,
+                public.ConnectionTypeCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.ConnectionType.propIdx(.from_node), .name = "from_node", .type = .REFERENCE, .type_hash = public.NodeType.type_hash },
-                    .{ .prop_idx = public.ConnectionType.propIdx(.to_node), .name = "to_node", .type = .REFERENCE, .type_hash = public.NodeType.type_hash },
-                    .{ .prop_idx = public.ConnectionType.propIdx(.from_pin), .name = "from_pin", .type = .STR },
-                    .{ .prop_idx = public.ConnectionType.propIdx(.to_pin), .name = "to_pin", .type = .STR },
+                    .{ .prop_idx = public.ConnectionTypeCdb.propIdx(.from_node), .name = "from_node", .type = .REFERENCE, .type_hash = public.NodeTypeCdb.type_hash },
+                    .{ .prop_idx = public.ConnectionTypeCdb.propIdx(.to_node), .name = "to_node", .type = .REFERENCE, .type_hash = public.NodeTypeCdb.type_hash },
+                    .{ .prop_idx = public.ConnectionTypeCdb.propIdx(.from_pin), .name = "from_pin", .type = .STR },
+                    .{ .prop_idx = public.ConnectionTypeCdb.propIdx(.to_pin), .name = "to_pin", .type = .STR },
                 },
             );
         }
@@ -3169,10 +3170,10 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.Interface.name,
+                public.InterfaceCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.Interface.propIdx(.inputs), .name = "inputs", .type = .SUBOBJECT_SET, .type_hash = public.InterfaceInput.type_hash },
-                    .{ .prop_idx = public.Interface.propIdx(.outputs), .name = "outputs", .type = .SUBOBJECT_SET, .type_hash = public.InterfaceOutput.type_hash },
+                    .{ .prop_idx = public.InterfaceCdb.propIdx(.inputs), .name = "inputs", .type = .SUBOBJECT_SET, .type_hash = public.InterfaceInputCdb.type_hash },
+                    .{ .prop_idx = public.InterfaceCdb.propIdx(.outputs), .name = "outputs", .type = .SUBOBJECT_SET, .type_hash = public.InterfaceOutputCdb.type_hash },
                 },
             );
         }
@@ -3181,10 +3182,10 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.InterfaceInput.name,
+                public.InterfaceInputCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.InterfaceInput.propIdx(.name), .name = "name", .type = .STR },
-                    .{ .prop_idx = public.InterfaceInput.propIdx(.value), .name = "value", .type = .SUBOBJECT },
+                    .{ .prop_idx = public.InterfaceInputCdb.propIdx(.name), .name = "name", .type = .STR },
+                    .{ .prop_idx = public.InterfaceInputCdb.propIdx(.value), .name = "value", .type = .SUBOBJECT },
                 },
             );
         }
@@ -3193,10 +3194,10 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.InterfaceOutput.name,
+                public.InterfaceOutputCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.InterfaceOutput.propIdx(.name), .name = "name", .type = .STR },
-                    .{ .prop_idx = public.InterfaceOutput.propIdx(.value), .name = "value", .type = .SUBOBJECT },
+                    .{ .prop_idx = public.InterfaceOutputCdb.propIdx(.name), .name = "name", .type = .STR },
+                    .{ .prop_idx = public.InterfaceOutputCdb.propIdx(.value), .name = "value", .type = .SUBOBJECT },
                 },
             );
         }
@@ -3205,9 +3206,9 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             CallGraphNodeSettingsIdx = try _cdb.addType(
                 db,
-                public.CallGraphNodeSettings.name,
+                public.CallGraphNodeSettingsCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.CallGraphNodeSettings.propIdx(.graph), .name = "graph", .type = .SUBOBJECT, .type_hash = public.GraphType.type_hash },
+                    .{ .prop_idx = public.CallGraphNodeSettingsCdb.propIdx(.graph), .name = "graph", .type = .SUBOBJECT, .type_hash = public.GraphTypeCdb.type_hash },
                 },
             );
         }
@@ -3215,7 +3216,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         try basic_nodes.createTypes(db);
 
         // TODO:  Move
-        AssetTypeIdx = cetech1.assetdb.Asset.typeIdx(_cdb, db);
+        AssetTypeIdx = cetech1.assetdb.AssetCdb.typeIdx(_cdb, db);
     }
 });
 

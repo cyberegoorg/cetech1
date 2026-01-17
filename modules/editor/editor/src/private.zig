@@ -8,6 +8,7 @@ const apidb = cetech1.apidb;
 const coreui = cetech1.coreui;
 const assetdb = cetech1.assetdb;
 const cdb = cetech1.cdb;
+const math = cetech1.math;
 
 const task = cetech1.task;
 
@@ -98,12 +99,12 @@ fn isColorsEnabled() bool {
     return _g.enable_colors;
 }
 
-const PROTOTYPE_PROPERTY_OVERIDED_COLOR = .{ 0.0, 0.8, 1.0, 1.0 };
-const PROTOTYPE_PROPERTY_COLOR = .{ 0.83, 0.83, 0.83, 1.0 };
-const INSIATED_COLOR = .{ 1.0, 0.6, 0.0, 1.0 };
-const NOT_OWNED_PROPERTY_COLOR = .{ 0.5, 0.5, 0.5, 1.0 };
+const PROTOTYPE_PROPERTY_OVERIDED_COLOR: math.Color4f = .{ .g = 0.8, .b = 1.0, .a = 1.0 };
+const PROTOTYPE_PROPERTY_COLOR: math.Color4f = .{ .r = 0.83, .g = 0.83, .b = 0.83, .a = 1.0 };
+const INSIATED_COLOR: math.Color4f = .{ .r = 1.0, .g = 0.6, .a = 1.0 };
+const NOT_OWNED_PROPERTY_COLOR: math.Color4f = .{ .r = 0.5, .g = 0.5, .b = 0.5, .a = 1.0 };
 
-fn getStateColor(state: cdb.ObjRelation) [4]f32 {
+fn getStateColor(state: cdb.ObjRelation) math.Color4f {
     if (!_g.enable_colors) return _coreui.getStyle().getColor(.text);
 
     return switch (state) {
@@ -115,7 +116,7 @@ fn getStateColor(state: cdb.ObjRelation) [4]f32 {
     };
 }
 
-fn getObjColor(obj: cdb.ObjId, in_set_obj: ?cdb.ObjId) ?[4]f32 {
+fn getObjColor(obj: cdb.ObjId, in_set_obj: ?cdb.ObjId) ?math.Color4f {
     const db = _cdb.getDbFromObjid(obj);
 
     if (in_set_obj) |s_obj| {
@@ -134,7 +135,7 @@ fn getObjColor(obj: cdb.ObjId, in_set_obj: ?cdb.ObjId) ?[4]f32 {
     return null;
 }
 
-fn getAssetColor(obj: cdb.ObjId) [4]f32 {
+fn getAssetColor(obj: cdb.ObjId) math.Color4f {
     if (!_g.enable_colors) return _coreui.getStyle().getColor(.text);
 
     if (obj.type_idx.eql(AssetTypeIdx)) {
@@ -148,7 +149,7 @@ fn getAssetColor(obj: cdb.ObjId) [4]f32 {
         }
         const r = _cdb.readObj(obj).?;
 
-        if (assetdb.Asset.readSubObj(_cdb, r, .Object)) |asset_obj| {
+        if (assetdb.AssetCdb.readSubObj(_cdb, r, .Object)) |asset_obj| {
             return getObjColor(asset_obj, null) orelse _coreui.getStyle().getColor(.text);
         }
     }
@@ -170,10 +171,10 @@ fn buffFormatObjLabel(allocator: std.mem.Allocator, buff: [:0]u8, obj: cdb.ObjId
             const obj_r = _cdb.readObj(asset_obj).?;
 
             if (_assetdb.isAssetFolder(obj)) {
-                const asset_name = assetdb.Asset.readStr(_cdb, obj_r, .Name) orelse "ROOT";
+                const asset_name = assetdb.AssetCdb.readStr(_cdb, obj_r, .Name) orelse "ROOT";
                 name = std.fmt.bufPrintZ(&name_buff, "{s}", .{asset_name}) catch "";
             } else {
-                const asset_name = assetdb.Asset.readStr(_cdb, obj_r, .Name) orelse "No NAME =()";
+                const asset_name = assetdb.AssetCdb.readStr(_cdb, obj_r, .Name) orelse "No NAME =()";
                 const type_name = _cdb.getTypeName(db, asset_obj.type_idx).?;
                 name = std.fmt.bufPrintZ(&name_buff, "{s}.{s}", .{ asset_name, type_name }) catch "";
             }
@@ -615,7 +616,7 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
                     if (try _platform_dialogs.openFileDialog(
                         a,
                         &.{
-                            .{ .name = "Project file", .spec = assetdb.Project.name ++ ".json" },
+                            .{ .name = "Project file", .spec = assetdb.ProjectCdb.name ++ ".json" },
                         },
                         @ptrCast(&buf),
                     )) |path| {
@@ -815,7 +816,7 @@ fn doTabs(allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) !void {
                     const fo = selected_obj;
                     if (!fo.isEmpty()) {
                         if (_assetdb.getAssetForObj(fo.top_level_obj)) |asset| {
-                            if (assetdb.Asset.readStr(_cdb, _cdb.readObj(asset) orelse continue, .Name)) |asset_name_str| {
+                            if (assetdb.AssetCdb.readStr(_cdb, _cdb.readObj(asset) orelse continue, .Name)) |asset_name_str| {
                                 const type_name = _cdb.getTypeName(_g.main_db, asset.type_idx).?;
                                 asset_name = try std.fmt.bufPrint(&asset_name_buf, "- {s}.{s}", .{ asset_name_str, type_name });
                             }
@@ -1072,7 +1073,7 @@ var AssetTypeIdx: cdb.TypeIdx = undefined;
 
 const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
     pub fn postCreateTypes(db: cdb.DbId) !void {
-        AssetTypeIdx = assetdb.Asset.typeIdx(_cdb, db);
+        AssetTypeIdx = assetdb.AssetCdb.typeIdx(_cdb, db);
     }
 });
 

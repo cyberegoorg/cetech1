@@ -8,8 +8,9 @@ const coreui = cetech1.coreui;
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
 const assetdb = cetech1.assetdb;
+const math = cetech1.math;
 
-const Tag = assetdb.Tag;
+const Tag = assetdb.TagCdb;
 
 const editor = @import("editor");
 const Icons = cetech1.coreui.Icons;
@@ -98,14 +99,14 @@ var rename_context_menu_i = editor.ObjContextMenuI.implement(struct {
                 const asset_color = _editor.getAssetColor(obj.obj);
                 _ = _editor_inspector.uiPropLabel(allocator, asset_label, asset_color, true, .{});
 
-                _editor_inspector.uiPropInputRaw(obj.obj, assetdb.Asset.propIdx(.Name), .{}) catch undefined;
+                _editor_inspector.uiPropInputRaw(obj.obj, assetdb.AssetCdb.propIdx(.Name), .{}) catch undefined;
             }
         }
     }
 });
 
 fn moveToFolderMenuInner(allocator: std.mem.Allocator, selection: []const coreui.SelectionItem, folder: cdb.ObjId, is_root: bool) !void {
-    const name = assetdb.Asset.readStr(_cdb, _cdb.readObj(folder).?, .Name);
+    const name = assetdb.AssetCdb.readStr(_cdb, _cdb.readObj(folder).?, .Name);
     const folder_obj = _assetdb.getObjForAsset(folder).?;
     var buff: [256:0]u8 = undefined;
     const label = try std.fmt.bufPrintZ(&buff, coreui.Icons.Folder ++ "  " ++ "{s}" ++ "###{s}", .{ name orelse "ROOT", name orelse "ROOT" });
@@ -144,9 +145,9 @@ fn moveToFolderMenuInner(allocator: std.mem.Allocator, selection: []const coreui
         if (_coreui.menuItem(allocator, coreui.Icons.MoveHere ++ "  " ++ "Move here" ++ "###MoveHere", .{}, null)) {
             for (selection) |obj| {
                 if (obj.obj.type_idx.eql(AssetTypeIdx)) {
-                    const w = assetdb.Asset.write(_cdb, obj.obj).?;
-                    try assetdb.Asset.setRef(_cdb, w, .Folder, folder_obj);
-                    try assetdb.Asset.commit(_cdb, w);
+                    const w = assetdb.AssetCdb.write(_cdb, obj.obj).?;
+                    try assetdb.AssetCdb.setRef(_cdb, w, .Folder, folder_obj);
+                    try assetdb.AssetCdb.commit(_cdb, w);
                 }
             }
         }
@@ -241,7 +242,7 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
         var is_root_folder = false;
         const is_folder = _assetdb.isAssetFolder(obj.obj);
         if (is_folder) {
-            const ref = assetdb.Asset.readRef(_cdb, _cdb.readObj(obj.obj).?, .Folder);
+            const ref = assetdb.AssetCdb.readRef(_cdb, _cdb.readObj(obj.obj).?, .Folder);
             is_root_folder = ref == null;
         }
 
@@ -306,7 +307,7 @@ var create_from_context_menu_i = editor.ObjContextMenuI.implement(struct {
         var is_root_folder = false;
         const is_folder = _assetdb.isAssetFolder(obj.obj);
         if (is_folder) {
-            const ref = assetdb.Asset.readRef(_cdb, _cdb.readObj(obj.obj).?, .Folder);
+            const ref = assetdb.AssetCdb.readRef(_cdb, _cdb.readObj(obj.obj).?, .Folder);
             is_root_folder = ref == null;
         }
 
@@ -414,7 +415,7 @@ var delete_context_menu_i = editor.ObjContextMenuI.implement(struct {
         var is_root_folder = false;
         const is_folder = _assetdb.isAssetFolder(obj.obj);
         if (is_folder) {
-            const ref = assetdb.Asset.readRef(_cdb, _cdb.readObj(obj.obj).?, .Folder);
+            const ref = assetdb.AssetCdb.readRef(_cdb, _cdb.readObj(obj.obj).?, .Folder);
             is_root_folder = ref == null;
         }
 
@@ -443,7 +444,7 @@ fn getFolderForSelectedObj(selected_obj: cdb.ObjId) ?cdb.ObjId {
     const asset = _assetdb.getAssetForObj(selected_obj) orelse return null;
 
     if (_cdb.readObj(asset)) |r| {
-        parent_folder = assetdb.Asset.readRef(_cdb, r, .Folder).?;
+        parent_folder = assetdb.AssetCdb.readRef(_cdb, r, .Folder).?;
     }
 
     return _assetdb.getAssetForObj(parent_folder).?;
@@ -519,7 +520,7 @@ var create_context_menu_i = editor.ObjContextMenuI.implement(struct {
 
 // Create folder
 var create_folder_i = editor.CreateAssetI.implement(
-    assetdb.Folder.type_hash,
+    assetdb.FolderCdb.type_hash,
     struct {
         pub fn create(
             allocator: std.mem.Allocator,
@@ -531,7 +532,7 @@ var create_folder_i = editor.CreateAssetI.implement(
                 allocator,
                 &buff,
                 folder,
-                _cdb.getTypeIdx(db, assetdb.Folder.type_hash).?,
+                _cdb.getTypeIdx(db, assetdb.FolderCdb.type_hash).?,
                 "NewFolder",
             );
 
@@ -574,14 +575,14 @@ var asset_visual_aspect = editor.UiVisualAspect.implement(struct {
     ) ![:0]const u8 {
         _ = allocator; // autofix
         const obj_r = _cdb.readObj(obj).?;
-        const asset_obj = assetdb.Asset.readSubObj(_cdb, obj_r, .Object).?;
+        const asset_obj = assetdb.AssetCdb.readSubObj(_cdb, obj_r, .Object).?;
 
         if (asset_obj.type_idx.eql(FolderTypeIdx)) {
-            const asset_name = assetdb.Asset.readStr(_cdb, obj_r, .Name) orelse "ROOT";
+            const asset_name = assetdb.AssetCdb.readStr(_cdb, obj_r, .Name) orelse "ROOT";
             return std.fmt.bufPrintZ(buff, "{s}", .{asset_name}) catch "";
         } else {
             const db = _cdb.getDbFromObjid(obj);
-            const asset_name = assetdb.Asset.readStr(_cdb, obj_r, .Name) orelse "No NAME =()";
+            const asset_name = assetdb.AssetCdb.readStr(_cdb, obj_r, .Name) orelse "No NAME =()";
             const type_name = _cdb.getTypeName(db, asset_obj.type_idx).?;
             return std.fmt.bufPrintZ(buff, "{s}.{s}", .{ asset_name, type_name }) catch "";
         }
@@ -594,7 +595,7 @@ var asset_visual_aspect = editor.UiVisualAspect.implement(struct {
     ) ![:0]u8 {
         const db = _cdb.getDbFromObjid(obj);
         const obj_r = _cdb.readObj(obj).?;
-        const asset_obj = assetdb.Asset.readSubObj(_cdb, obj_r, .Object).?;
+        const asset_obj = assetdb.AssetCdb.readSubObj(_cdb, obj_r, .Object).?;
 
         var icon_buf: [16:0]u8 = undefined;
 
@@ -621,7 +622,7 @@ var asset_visual_aspect = editor.UiVisualAspect.implement(struct {
 
     pub fn uiColor(
         obj: cdb.ObjId,
-    ) ![4]f32 {
+    ) !math.Color4f {
         return _editor.getAssetColor(obj);
     }
 });
@@ -630,13 +631,13 @@ var asset_visual_aspect = editor.UiVisualAspect.implement(struct {
 var folder_visual_aspect = editor.UiVisualAspect.implement(struct {
     pub fn uiColor(
         obj: cdb.ObjId,
-    ) ![4]f32 {
-        const r = assetdb.Folder.read(_cdb, obj).?;
-        if (assetdb.Folder.readSubObj(_cdb, r, .Color)) |color_obj| {
-            return cdb_types.Color4f.f.toSlice(_cdb, color_obj);
+    ) !math.Color4f {
+        const r = assetdb.FolderCdb.read(_cdb, obj).?;
+        if (assetdb.FolderCdb.readSubObj(_cdb, r, .Color)) |color_obj| {
+            return cdb_types.Color4fCdb.f.to(_cdb, color_obj);
         }
 
-        return .{ 1.0, 1.0, 1.0, 1.0 };
+        return .white;
     }
 
     pub fn uiIcons(
@@ -657,8 +658,8 @@ var folder_visual_aspect = editor.UiVisualAspect.implement(struct {
 
 // Asset tree aspect
 fn lessThanAsset(_: void, lhs: cdb.ObjId, rhs: cdb.ObjId) bool {
-    const l_name = _cdb.readStr(_cdb.readObj(lhs).?, assetdb.Asset.propIdx(.Name)) orelse return false;
-    const r_name = _cdb.readStr(_cdb.readObj(rhs).?, assetdb.Asset.propIdx(.Name)) orelse return false;
+    const l_name = _cdb.readStr(_cdb.readObj(lhs).?, assetdb.AssetCdb.propIdx(.Name)) orelse return false;
+    const r_name = _cdb.readStr(_cdb.readObj(rhs).?, assetdb.AssetCdb.propIdx(.Name)) orelse return false;
     return std.ascii.lessThanIgnoreCase(l_name, r_name);
 }
 
@@ -675,10 +676,10 @@ var asset_ui_tree_aspect = editor_tree.UiTreeAspect.implement(struct {
         var result = false;
 
         const obj_r = _cdb.readObj(obj.obj) orelse return result;
-        const asset_obj = assetdb.Asset.readSubObj(_cdb, obj_r, .Object).?;
+        const asset_obj = assetdb.AssetCdb.readSubObj(_cdb, obj_r, .Object).?;
 
         const is_folder = _assetdb.isAssetFolder(obj.obj);
-        const is_root_folder = assetdb.Asset.readRef(_cdb, obj_r, .Folder) == null;
+        const is_root_folder = assetdb.AssetCdb.readRef(_cdb, obj_r, .Folder) == null;
 
         if (!args.ignored_object.isEmpty() and args.ignored_object.eql(asset_obj)) {
             return result;
@@ -712,7 +713,7 @@ var asset_ui_tree_aspect = editor_tree.UiTreeAspect.implement(struct {
             result = true;
         }
 
-        try formatTagsToLabel(allocator, obj.obj, assetdb.Asset.propIdx(.Tags));
+        try formatTagsToLabel(allocator, obj.obj, assetdb.AssetCdb.propIdx(.Tags));
 
         if (open) {
             defer _coreui.treePop();
@@ -773,21 +774,21 @@ var asset_ui_tree_aspect = editor_tree.UiTreeAspect.implement(struct {
 
             const is_folder = _assetdb.isAssetFolder(obj);
             if (is_folder) {
-                const asset_obj = assetdb.Asset.readSubObj(_cdb, obj_r, .Object).?;
+                const asset_obj = assetdb.AssetCdb.readSubObj(_cdb, obj_r, .Object).?;
 
-                const drag_obj_folder = assetdb.Asset.readRef(_cdb, _cdb.readObj(drop_obj).?, .Folder).?;
+                const drag_obj_folder = assetdb.AssetCdb.readRef(_cdb, _cdb.readObj(drop_obj).?, .Folder).?;
                 if (!drag_obj_folder.eql(asset_obj)) {
-                    const w = assetdb.Asset.write(_cdb, drop_obj).?;
-                    try assetdb.Asset.setRef(_cdb, w, .Folder, asset_obj);
-                    try assetdb.Asset.commit(_cdb, w);
+                    const w = assetdb.AssetCdb.write(_cdb, drop_obj).?;
+                    try assetdb.AssetCdb.setRef(_cdb, w, .Folder, asset_obj);
+                    try assetdb.AssetCdb.commit(_cdb, w);
                 }
             } else {
-                const folder_obj = assetdb.Asset.readRef(_cdb, obj_r, .Folder).?;
-                const drag_obj_folder = assetdb.Asset.readRef(_cdb, _cdb.readObj(drop_obj).?, .Folder).?;
+                const folder_obj = assetdb.AssetCdb.readRef(_cdb, obj_r, .Folder).?;
+                const drag_obj_folder = assetdb.AssetCdb.readRef(_cdb, _cdb.readObj(drop_obj).?, .Folder).?;
                 if (!drag_obj_folder.eql(folder_obj)) {
-                    const w = assetdb.Asset.write(_cdb, drop_obj).?;
-                    try assetdb.Asset.setRef(_cdb, w, .Folder, folder_obj);
-                    try assetdb.Asset.commit(_cdb, w);
+                    const w = assetdb.AssetCdb.write(_cdb, drop_obj).?;
+                    try assetdb.AssetCdb.setRef(_cdb, w, .Folder, folder_obj);
+                    try assetdb.AssetCdb.commit(_cdb, w);
                 }
             }
         }
@@ -802,22 +803,22 @@ fn formatTagsToLabel(allocator: std.mem.Allocator, obj: cdb.ObjId, tag_prop_idx:
         for (tags) |tag| {
             const tag_r = _cdb.readObj(tag) orelse continue;
 
-            var tag_color: [4]f32 = .{ 1.0, 1.0, 1.0, 1.0 };
+            var tag_color: math.Color4f = .white;
             if (_editor.isColorsEnabled()) {
-                if (assetdb.Tag.readSubObj(_cdb, tag_r, .Color)) |c| {
-                    tag_color = cetech1.cdb_types.Color4f.f.toSlice(_cdb, c);
+                if (assetdb.TagCdb.readSubObj(_cdb, tag_r, .Color)) |c| {
+                    tag_color = cetech1.cdb_types.Color4fCdb.f.to(_cdb, c);
                 }
             }
-            tag_color[3] = 1.0;
+            tag_color.a = 1.0;
 
-            const tag_name = assetdb.Tag.readStr(_cdb, tag_r, .Name) orelse "No name =/";
+            const tag_name = assetdb.TagCdb.readStr(_cdb, tag_r, .Name) orelse "No name =/";
 
             _coreui.pushObjUUID(tag);
             defer _coreui.popId();
 
             const max_region = .{
-                _coreui.getContentRegionAvail()[0] + _coreui.getCursorScreenPos()[0] - _coreui.getWindowPos()[0],
-                _coreui.getContentRegionAvail()[1] + _coreui.getCursorScreenPos()[1] - _coreui.getWindowPos()[1],
+                _coreui.getContentRegionAvail().x + _coreui.getCursorScreenPos().x - _coreui.getWindowPos().x,
+                _coreui.getContentRegionAvail().y + _coreui.getCursorScreenPos().y - _coreui.getWindowPos().y,
             };
 
             const begin_offset = _coreui.getFontSize() / 2;
@@ -845,7 +846,7 @@ fn formatTagsToLabel(allocator: std.mem.Allocator, obj: cdb.ObjId, tag_prop_idx:
                 _coreui.text(name_lbl);
 
                 const tag_asset = _assetdb.getAssetForObj(tag).?;
-                const desription = assetdb.Asset.readStr(_cdb, _cdb.readObj(tag_asset).?, .Description);
+                const desription = assetdb.AssetCdb.readStr(_cdb, _cdb.readObj(tag_asset).?, .Description);
                 if (desription) |d| {
                     _coreui.text(d);
                 }
@@ -1139,29 +1140,29 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.DbId) !void {
 
         // ASSET
-        try assetdb.Asset.addAspect(
+        try assetdb.AssetCdb.addAspect(
             editor_tree.UiTreeAspect,
             _cdb,
             db,
             _g.asset_tree_aspect,
         );
 
-        try assetdb.Asset.addAspect(
+        try assetdb.AssetCdb.addAspect(
             editor.UiVisualAspect,
             _cdb,
             db,
             &asset_visual_aspect,
         );
-        try assetdb.Folder.addAspect(
+        try assetdb.FolderCdb.addAspect(
             editor.UiVisualAspect,
             _cdb,
             db,
             &folder_visual_aspect,
         );
 
-        AssetTypeIdx = assetdb.Asset.typeIdx(_cdb, db);
-        FolderTypeIdx = assetdb.Folder.typeIdx(_cdb, db);
-        ProjectTypeIdx = assetdb.Project.typeIdx(_cdb, db);
+        AssetTypeIdx = assetdb.AssetCdb.typeIdx(_cdb, db);
+        FolderTypeIdx = assetdb.FolderCdb.typeIdx(_cdb, db);
+        ProjectTypeIdx = assetdb.ProjectCdb.typeIdx(_cdb, db);
     }
 });
 
@@ -1175,21 +1176,21 @@ fn filerAsset(allocator: std.mem.Allocator, filter: [:0]const u8, tags_filter: c
     defer filter_set.deinit(allocator);
 
     if (_cdb.readObj(tags_filter)) |filter_r| {
-        if (assetdb.Tags.readRefSet(_cdb, filter_r, .Tags, allocator)) |tags| {
+        if (assetdb.TagsCdb.readRefSet(_cdb, filter_r, .Tags, allocator)) |tags| {
             defer allocator.free(tags);
             for (tags) |tag| {
                 try filter_set.put(allocator, tag, {});
             }
         }
     }
-    const set = try assetdb.AssetRoot.readSubObjSet(_cdb, _cdb.readObj(_assetdb.getAssetRootObj()).?, .Assets, allocator);
+    const set = try assetdb.AssetRootCdb.readSubObjSet(_cdb, _cdb.readObj(_assetdb.getAssetRootObj()).?, .Assets, allocator);
     if (set) |s| {
         defer allocator.free(s);
 
         for (s) |obj| {
             if (filter_set.count() != 0) {
                 if (_cdb.readObj(obj)) |asset_r| {
-                    if (assetdb.Asset.readRefSet(_cdb, asset_r, .Tags, allocator)) |asset_tags| {
+                    if (assetdb.AssetCdb.readRefSet(_cdb, asset_r, .Tags, allocator)) |asset_tags| {
                         defer allocator.free(asset_tags);
 
                         var pass_n: u32 = 0;

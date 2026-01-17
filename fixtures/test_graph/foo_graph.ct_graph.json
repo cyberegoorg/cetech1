@@ -8,8 +8,8 @@
       "__type_name": "ct_graph_node",
       "__uuid": "018f52ca-babc-73f1-8c9a-2d55df87bbf6",
       "node_type": "event_init",
-      "pos_x": 3.21e2,
-      "pos_y": 1e1
+      "pos_x": 321,
+      "pos_y": 10
     },
     {
       "__type_name": "ct_graph_node",
@@ -24,22 +24,22 @@
           "value": 22
         }
       },
-      "pos_x": 7.38e2,
-      "pos_y": 9e1
+      "pos_x": 738,
+      "pos_y": 90
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "018f52ca-babc-7408-89ab-e356c41ee60a",
       "node_type": "print",
-      "pos_x": 9.57e2,
-      "pos_y": 2.2e1
+      "pos_x": 957,
+      "pos_y": 22
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "018f6362-2438-771f-8389-57d6ca15dcb6",
       "node_type": "culling_volume",
-      "pos_x": 2.636e3,
-      "pos_y": 2.62e2
+      "pos_x": 2636,
+      "pos_y": 262
     },
     {
       "__type_name": "ct_graph_node",
@@ -51,18 +51,18 @@
         "value": {
           "__type_name": "ct_f32",
           "__uuid": "0190685b-dcc0-73b9-89b4-ac0b9bded348",
-          "value": 1e0
+          "value": 1
         }
       },
-      "pos_x": 3.22e2,
-      "pos_y": 2.66e2
+      "pos_x": 322,
+      "pos_y": 266
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "01907490-f70a-7a29-bc17-cbf857d53c0b",
       "node_type": "random_f32",
-      "pos_x": 3.22e2,
-      "pos_y": 3.78e2
+      "pos_x": 322,
+      "pos_y": 378
     },
     {
       "__type_name": "ct_graph_node",
@@ -77,8 +77,8 @@
           "__prototype_uuid": "0190603a-a2e5-77c5-8a81-43dc92decf52"
         }
       },
-      "pos_x": 5.44e2,
-      "pos_y": 6e0
+      "pos_x": 544,
+      "pos_y": 6
     },
     {
       "__type_name": "ct_graph_node",
@@ -93,8 +93,8 @@
           "__prototype_uuid": "01905fbe-3d77-7ea0-bc8e-61cb44531f81"
         }
       },
-      "pos_x": 5.44e2,
-      "pos_y": 3.62e2
+      "pos_x": 544,
+      "pos_y": 362
     },
     {
       "__type_name": "ct_graph_node",
@@ -112,15 +112,15 @@
               "__type_name": "ct_graph_node",
               "__uuid": "01914093-e0c9-7e87-a65b-3cf2f8d18fed",
               "node_type": "graph_outputs",
-              "pos_x": 7.82e2,
-              "pos_y": 3.82e2
+              "pos_x": 782,
+              "pos_y": 382
             },
             {
               "__type_name": "ct_graph_node",
               "__uuid": "01914094-0d61-7796-80a2-563339899d9b",
               "node_type": "random_f32",
-              "pos_x": 5.26e2,
-              "pos_y": 3.82e2
+              "pos_x": 526,
+              "pos_y": 382
             }
           ],
           "connections": [
@@ -157,7 +157,7 @@
               "value": {
                 "__type_name": "ct_f32",
                 "__uuid": "01914142-c6e1-752a-bf1c-12e49bd15c4e",
-                "value": 5e-1
+                "value": 0.5
               }
             },
             {
@@ -168,14 +168,14 @@
               "value": {
                 "__type_name": "ct_f32",
                 "__uuid": "01914142-cbd2-7a68-8ef1-a4db2ee650d1",
-                "value": 2e0
+                "value": 2
               }
             }
           ]
         }
       },
-      "pos_x": 5.44e2,
-      "pos_y": 2.86e2
+      "pos_x": 544,
+      "pos_y": 286
     },
     {
       "__type_name": "ct_graph_node",
@@ -196,8 +196,8 @@
           ]
         }
       },
-      "pos_x": 2.784e3,
-      "pos_y": 5.7e2
+      "pos_x": 2784,
+      "pos_y": 570
     },
     {
       "__type_name": "ct_graph_node",
@@ -207,29 +207,29 @@
         "__type_name": "ct_gpu_simple_mesh_settings",
         "__uuid": "01960624-bab1-7f3a-8b90-0546f65c8a78"
       },
-      "pos_x": 2.573e3,
-      "pos_y": 6.26e2
+      "pos_x": 2573,
+      "pos_y": 626
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "019307d6-0cb7-7636-8051-0131ad516015",
       "node_type": "node_pbr_lit",
-      "pos_x": 2.366e3,
-      "pos_y": 5.7e2
+      "pos_x": 2366,
+      "pos_y": 570
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "0193263c-1308-79b3-a821-8469a3da9dfd",
       "node_type": "gpu_abs",
-      "pos_x": 1.427e3,
-      "pos_y": 1.054e3
+      "pos_x": 1427,
+      "pos_y": 1054
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "0192d2f4-974f-7f80-8ea0-f4acfd96aae4",
       "node_type": "gpu_vertex_color",
-      "pos_x": 2.05e3,
-      "pos_y": 6.82e2
+      "pos_x": 2050,
+      "pos_y": 682
     },
     {
       "__type_name": "ct_graph_node",
@@ -242,41 +242,41 @@
         "value": {
           "__type_name": "ct_color_4f",
           "__uuid": "0193079b-544f-7272-88e5-55b02c0f40e5",
-          "r": 1e0,
-          "g": 6.58823549747467e-1,
-          "a": 1e0
+          "r": 1,
+          "g": 0.658823549747467,
+          "a": 1
         }
       },
-      "pos_x": 1.523e3,
-      "pos_y": 8.78e2
+      "pos_x": 1523,
+      "pos_y": 878
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "0192d465-f0be-748d-a07f-ed9427b180df",
       "node_type": "gpu_vertex_position",
-      "pos_x": 1.84e3,
-      "pos_y": 6.05e2
+      "pos_x": 1840,
+      "pos_y": 605
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "0192d466-087d-742f-acb6-8277bcb5a968",
       "node_type": "gpu_mul_mvp",
-      "pos_x": 2.053e3,
-      "pos_y": 5.86e2
+      "pos_x": 2053,
+      "pos_y": 586
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "01932637-adc3-783a-9093-305947ed534f",
       "node_type": "gpu_mul",
-      "pos_x": 2.035e3,
-      "pos_y": 8.38e2
+      "pos_x": 2035,
+      "pos_y": 838
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "0192d92a-9b93-7997-8fdb-3e37c9cef4d0",
       "node_type": "gpu_time",
-      "pos_x": 8.01e2,
-      "pos_y": 1.058e3
+      "pos_x": 801,
+      "pos_y": 1058
     },
     {
       "__type_name": "ct_graph_node",
@@ -286,29 +286,29 @@
         "__type_name": "ct_gpu_construct_node_settings",
         "__uuid": "0192dc53-8a2d-7132-81cf-21df26b757b3"
       },
-      "pos_x": 1.634e3,
-      "pos_y": 1.054e3
+      "pos_x": 1634,
+      "pos_y": 1054
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "0193263e-0dbc-7207-9380-fc99230668cc",
       "node_type": "gpu_sin",
-      "pos_x": 1.219e3,
-      "pos_y": 1.054e3
+      "pos_x": 1219,
+      "pos_y": 1054
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "01932635-f84b-794e-931d-2d4d4c733b7b",
       "node_type": "gpu_div",
-      "pos_x": 1.011e3,
-      "pos_y": 1.054e3
+      "pos_x": 1011,
+      "pos_y": 1054
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "0192dc52-e771-7bc8-a384-dcd81f348212",
       "node_type": "gpu_mix",
-      "pos_x": 1.779e3,
-      "pos_y": 8.38e2
+      "pos_x": 1779,
+      "pos_y": 838
     },
     {
       "__type_name": "ct_graph_node",
@@ -321,14 +321,14 @@
         "value": {
           "__type_name": "ct_color_4f",
           "__uuid": "0193079a-3871-7699-b37d-cf6acdf5ac36",
-          "r": 4.6666666865348816e-1,
-          "g": 8.313725590705872e-1,
-          "b": 5.098039284348488e-2,
-          "a": 1e0
+          "r": 0.46666666865348816,
+          "g": 0.8313725590705872,
+          "b": 0.05098039284348488,
+          "a": 1
         }
       },
-      "pos_x": 1.523e3,
-      "pos_y": 7.98e2
+      "pos_x": 1523,
+      "pos_y": 798
     },
     {
       "__type_name": "ct_graph_node",
@@ -340,8 +340,8 @@
         "name": "color",
         "result_type": "color"
       },
-      "pos_x": 1.069e3,
-      "pos_y": 6.7e2
+      "pos_x": 1038,
+      "pos_y": 606
     },
     {
       "__type_name": "ct_graph_node",
@@ -353,26 +353,47 @@
         "value": {
           "__type_name": "ct_color_4f",
           "__uuid": "0193100e-6ef1-7477-988e-f858ff70037d",
-          "r": 1e0,
-          "a": 1e0
+          "r": 1,
+          "a": 1
         }
       },
-      "pos_x": 8.66e2,
-      "pos_y": 6.66e2
+      "pos_x": 818,
+      "pos_y": 526
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "01930241-e1c4-7e28-b607-4f3c5e74cf55",
       "node_type": "node_fce1",
-      "pos_x": 1.283e3,
-      "pos_y": 6.62e2
+      "pos_x": 1283,
+      "pos_y": 654
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "019302fc-8db1-743d-8017-6470b03b7a12",
       "node_type": "node_fce1",
-      "pos_x": 1.523e3,
-      "pos_y": 6.62e2
+      "pos_x": 1523,
+      "pos_y": 662
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "019be1b4-4346-7f77-a9af-6de4036c3bb7",
+      "node_type": "get_entity",
+      "pos_x": 402,
+      "pos_y": 654
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "019be1b4-5602-79c7-99f9-c9e5e28f7a3b",
+      "node_type": "transform_get_position",
+      "pos_x": 605,
+      "pos_y": 654
+    },
+    {
+      "__type_name": "ct_graph_node",
+      "__uuid": "019be1bd-80c8-7f04-a6bd-f57370e32e0b",
+      "node_type": "vec3_to_color",
+      "pos_x": 812,
+      "pos_y": 634
     }
   ],
   "groups": [
@@ -383,13 +404,13 @@
       "color": {
         "__type_name": "ct_color_4f",
         "__uuid": "018f7d10-2e71-76e0-a355-3b644aaaca50",
-        "g": 1e0,
-        "a": 1e0
+        "g": 1,
+        "a": 1
       },
-      "pos_x": 2.88e2,
-      "pos_y": 2.24e2,
-      "size_x": 2.72e3,
-      "size_y": 1.068e3
+      "pos_x": 288,
+      "pos_y": 224,
+      "size_x": 2720,
+      "size_y": 1068
     },
     {
       "__type_name": "ct_graph_group",
@@ -398,13 +419,13 @@
       "color": {
         "__type_name": "ct_color_4f",
         "__uuid": "018f7d11-4e68-7868-a152-f62ab3d8d60d",
-        "r": 1e0,
-        "g": 7.843137383460999e-1
+        "r": 1,
+        "g": 0.7843137383460999
       },
-      "pos_x": 2.88e2,
-      "pos_y": -4.8e1,
-      "size_x": 8.48e2,
-      "size_y": 2.2e2
+      "pos_x": 288,
+      "pos_y": -48,
+      "size_x": 848,
+      "size_y": 220
     }
   ],
   "connections": [
@@ -607,6 +628,22 @@
       "to_node": "ct_graph_node:01989992-7599-7620-a6cd-d589c111e0c3",
       "from_pin": "out:index_count",
       "to_pin": "in:index_count"
+    },
+    {
+      "__type_name": "ct_graph_connection",
+      "__uuid": "019be1b4-6a79-765c-9b3f-edc8e85e4df1",
+      "from_node": "ct_graph_node:019be1b4-4346-7f77-a9af-6de4036c3bb7",
+      "to_node": "ct_graph_node:019be1b4-5602-79c7-99f9-c9e5e28f7a3b",
+      "from_pin": "out:entity",
+      "to_pin": "in:entity"
+    },
+    {
+      "__type_name": "ct_graph_connection",
+      "__uuid": "019be1bd-8ba7-77ab-88e3-28bc9edafaa4",
+      "from_node": "ct_graph_node:019be1b4-5602-79c7-99f9-c9e5e28f7a3b",
+      "to_node": "ct_graph_node:019be1bd-80c8-7f04-a6bd-f57370e32e0b",
+      "from_pin": "out:position",
+      "to_pin": "in:position"
     }
   ],
   "interface": {
@@ -622,7 +659,7 @@
       "value": {
         "__type_name": "ct_f32",
         "__uuid": "0191391a-9795-7e7c-ae07-4a7cc8f5b6b8",
-        "value": 5e-1
+        "value": 0.5
       }
     },
     {
@@ -633,7 +670,7 @@
       "value": {
         "__type_name": "ct_f32",
         "__uuid": "0191391a-9c55-7b63-bb3d-e2cc3066b8e5",
-        "value": 2e0
+        "value": 2
       }
     },
     {
@@ -644,7 +681,7 @@
       "value": {
         "__type_name": "ct_gpu_f32",
         "__uuid": "0192dc53-a8d3-7524-b141-273530dbb5f0",
-        "value": 1e0
+        "value": 1
       }
     },
     {
@@ -655,7 +692,7 @@
       "value": {
         "__type_name": "ct_gpu_f32",
         "__uuid": "01932638-1f04-7952-b760-4f78161ca988",
-        "value": 1e0
+        "value": 1
       }
     },
     {
@@ -666,9 +703,9 @@
       "value": {
         "__type_name": "ct_vec_3f",
         "__uuid": "01928593-d8f3-7ba8-a4f1-6e7f8054e871",
-        "x": -5e-1,
-        "y": -5e-1,
-        "z": -5e-1
+        "x": -0.5,
+        "y": -0.5,
+        "z": -0.5
       }
     },
     {
@@ -679,9 +716,9 @@
       "value": {
         "__type_name": "ct_vec_3f",
         "__uuid": "01928593-f086-7c24-b66e-3a9b257950c4",
-        "x": 5e-1,
-        "y": 5e-1,
-        "z": 5e-1
+        "x": 0.5,
+        "y": 0.5,
+        "z": 0.5
       }
     },
     {
@@ -692,7 +729,7 @@
       "value": {
         "__type_name": "ct_f32",
         "__uuid": "019285f0-f69a-7c77-9201-b02fb6490837",
-        "value": 1e0
+        "value": 1
       }
     },
     {
@@ -703,7 +740,7 @@
       "value": {
         "__type_name": "ct_gpu_f32",
         "__uuid": "01932636-206e-7c96-a9bb-64dccaa3cf6d",
-        "value": 1e0
+        "value": 1
       }
     },
     {

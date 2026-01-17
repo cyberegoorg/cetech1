@@ -2,6 +2,7 @@ const std = @import("std");
 
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
+const math = cetech1.math;
 
 const coreui = cetech1.coreui;
 
@@ -120,7 +121,7 @@ pub const UiPropertiesAspect = struct {
 };
 
 pub const InspectorAPI = struct {
-    uiPropLabel: *const fn (allocator: std.mem.Allocator, name: [:0]const u8, color: ?[4]f32, enabled: bool, args: cdbPropertiesViewArgs) bool,
+    uiPropLabel: *const fn (allocator: std.mem.Allocator, name: [:0]const u8, color: ?math.Color4f, enabled: bool, args: cdbPropertiesViewArgs) bool,
     uiPropInput: *const fn (obj: cdb.ObjId, prop_idx: u32, enabled: bool, args: cdbPropertiesViewArgs) anyerror!void,
     uiPropInputRaw: *const fn (obj: cdb.ObjId, prop_idx: u32, args: cdbPropertiesViewArgs) anyerror!void,
     uiPropInputBegin: *const fn (obj: cdb.ObjId, prop_idx: u32, enabled: bool) anyerror!void,

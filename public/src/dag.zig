@@ -145,6 +145,7 @@ pub fn DAG(comptime T: type) type {
                     visited_n += 1;
                 }
             }
+
             std.debug.assert(visited_n == nodes_n);
         }
     };

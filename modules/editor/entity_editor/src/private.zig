@@ -7,7 +7,6 @@ const coreui = cetech1.coreui;
 const tempalloc = cetech1.tempalloc;
 const gpu = cetech1.gpu;
 
-const zm = cetech1.math.zmath;
 const ecs = cetech1.ecs;
 
 const assetdb = cetech1.assetdb;
@@ -94,8 +93,6 @@ const EntityEditorTab = struct {
     gizmo_options: ecs.GizmoOptions = .{},
 
     flecs_port: ?u16 = null,
-
-    world_mtx: [16]f32 = zm.matToArr(zm.identity()),
 };
 
 // Fill editor tab interface
@@ -131,9 +128,13 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         const name = try std.fmt.bufPrintZ(&buf, "Entity {d}", .{tab_id});
 
         const camera_ent = w.newEntity(null);
-        _ = w.setId(transform.Transform, camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -12 } });
-        _ = w.setId(camera.Camera, camera_ent, &camera.Camera{});
-        _ = w.setId(camera_controller.CameraController, camera_ent, &camera_controller.CameraController{});
+        _ = w.setComponent(
+            transform.TransformComponent,
+            camera_ent,
+            &transform.TransformComponent{ .local = .{ .position = .{ .y = 2, .z = -12 } } },
+        );
+        _ = w.setComponent(camera.Camera, camera_ent, &camera.Camera{});
+        _ = w.setComponent(camera_controller.CameraController, camera_ent, &camera_controller.CameraController{});
 
         const gpu_backend = _kernel.getGpuBackend().?;
         const pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w);
@@ -181,7 +182,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         if (!top_level_obj.isEmpty()) {
             db = _cdb.getDbFromObjid(top_level_obj);
 
-            if (top_level_obj.type_idx.eql(assetdb.Asset.typeIdx(_cdb, db))) {
+            if (top_level_obj.type_idx.eql(assetdb.AssetCdb.typeIdx(_cdb, db))) {
                 if (!_assetdb.isAssetObjTypeOf(top_level_obj, ecs.EntityCdb.typeIdx(_cdb, db))) return;
                 top_level_entiy_obj = _assetdb.getObjForAsset(top_level_obj).?;
             } else if (top_level_obj.type_idx.eql(ecs.EntityCdb.typeIdx(_cdb, db))) {
@@ -205,7 +206,9 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             if (tab_o.light_ent) |ent| tab_o.world.destroyEntities(&.{ent});
             tab_o.viewport.frezeMainCameraCulling(false);
 
-            _ = tab_o.world.setId(transform.Transform, tab_o.camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -12 } });
+            _ = tab_o.world.setComponent(transform.TransformComponent, tab_o.camera_ent, &transform.TransformComponent{
+                .local = .{ .position = .{ .y = 2, .z = -12 } },
+            });
 
             if (tab_o.root_entity) |root_ent| {
                 tab_o.world.destroyEntities(&.{root_ent});
@@ -225,16 +228,18 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 if (light_component_n == 0) {
                     tab_o.light_ent = tab_o.world.newEntity(null);
 
-                    _ = tab_o.world.setId(
-                        transform.Transform,
+                    _ = tab_o.world.setComponent(
+                        transform.TransformComponent,
                         tab_o.light_ent.?,
-                        &transform.Transform{
-                            .position = .{ .y = 20 },
-                            .rotation = .{ .q = zm.quatFromRollPitchYaw(-130, 180, 0) },
+                        &transform.TransformComponent{
+                            .local = .{
+                                .position = .{ .y = 20 },
+                                .rotation = .fromRollPitchYaw(-130, 180, 0),
+                            },
                         },
                     );
 
-                    _ = tab_o.world.setId(
+                    _ = tab_o.world.setComponent(
                         light_component.Light,
                         tab_o.light_ent.?,
                         &light_component.Light{
@@ -258,8 +263,8 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             _coreui.image(
                 texture,
                 .{
-                    .w = size[0],
-                    .h = size[1],
+                    .w = size.x,
+                    .h = size.y,
                 },
             );
             hovered = _coreui.isItemHovered(.{});
@@ -269,7 +274,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 if (_coreui.acceptDragDropPayload("obj", .{ .source_allow_null_id = true })) |payload| {
                     const drag_obj: cdb.ObjId = std.mem.bytesToValue(cdb.ObjId, payload.data.?);
 
-                    if (drag_obj.type_idx.eql(assetdb.Asset.typeIdx(_cdb, db))) {
+                    if (drag_obj.type_idx.eql(assetdb.AssetCdb.typeIdx(_cdb, db))) {
                         const asset_entity_obj = _assetdb.getObjForAsset(drag_obj).?;
                         if (!top_level_entiy_obj.eql(asset_entity_obj)) {
                             if (asset_entity_obj.type_idx.eql(ecs.EntityCdb.typeIdx(_cdb, db))) {
@@ -291,16 +296,16 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         var gizmo_result: editor_gizmo.GizmoResult = .{};
         if (tab_o.root_entity != null) {
-            const tranform = tab_o.world.getComponent(transform.WorldTransform, tab_o.camera_ent).?;
+            const tranform = tab_o.world.getComponent(transform.WorldTransformComponent, tab_o.camera_ent).?;
             const ed_camera = tab_o.world.getComponent(camera.Camera, tab_o.camera_ent).?;
 
-            const view = zm.matToArr(zm.inverse(tranform.mtx));
-            const projection = zm.matToArr(zm.perspectiveFovLh(
-                std.math.degreesToRadians(ed_camera.fov),
-                size[0] / size[1],
-                ed_camera.near,
-                ed_camera.far,
-            ));
+            const view = tranform.world.inverse().toMat();
+            const projection = _camera.projectionMatrixFromCamera(
+                ed_camera.*,
+                size.x,
+                size.y,
+                _kernel.getGpuBackend().?.isHomogenousDepth(),
+            );
 
             _coreui.pushPtrId(tab_o);
             defer _coreui.popId();
@@ -318,7 +323,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                         obj,
                         view,
                         projection,
-                        .{ wpos[0] + cpos[0], wpos[1] + cpos[1] },
+                        wpos.add(cpos),
                         size,
                     );
                 }
@@ -334,7 +339,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                         null,
                         view,
                         projection,
-                        .{ wpos[0] + cpos[0], wpos[1] + cpos[1] },
+                        wpos.add(cpos),
                         size,
                     );
                 }
@@ -359,7 +364,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
             tab_o.flecs_port = tab_o.world.uiRemoteDebugMenuItems(allocator, tab_o.flecs_port);
 
-            _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
+            try _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
         }
 
         if (try _camera.cameraMenu(allocator, tab_o.world, tab_o.camera_ent, tab_o.viewport.getMainCamera())) |c| {
@@ -430,7 +435,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         _ = allocator; // autofix
         const db = _cdb.getDbFromObjid(selection[0].obj);
         const EntityTypeIdx = ecs.EntityCdb.typeIdx(_cdb, db);
-        const AssetTypeIdx = assetdb.Asset.typeIdx(_cdb, db);
+        const AssetTypeIdx = assetdb.AssetCdb.typeIdx(_cdb, db);
         for (selection) |obj| {
             if (!obj.obj.type_idx.eql(EntityTypeIdx) and !obj.obj.type_idx.eql(AssetTypeIdx)) return false;
             if (_assetdb.getObjForAsset(obj.obj)) |o| if (!o.type_idx.eql(EntityTypeIdx)) return false;
@@ -455,12 +460,12 @@ const entity_value_type_i = graphvm.GraphValueTypeI.implement(
     .{
         .name = "entity",
         .type_hash = graphvm.PinTypes.Entity,
-        .cdb_type_hash = cetech1.cdb_types.u64Type.type_hash,
+        .cdb_type_hash = cetech1.cdb_types.u64TypeCdb.type_hash,
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
             _ = allocator;
-            const v = cetech1.cdb_types.u64Type.readValue(u64, _cdb, _cdb.readObj(obj).?, .value);
+            const v = cetech1.cdb_types.u64TypeCdb.readValue(u64, _cdb, _cdb.readObj(obj).?, .value);
             @memcpy(value, std.mem.asBytes(&v));
         }
 

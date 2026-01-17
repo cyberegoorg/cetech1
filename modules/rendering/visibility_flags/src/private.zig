@@ -9,7 +9,6 @@ const ecs = cetech1.ecs;
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
 const assetdb = cetech1.assetdb;
-const zm = cetech1.math.zmath;
 
 const editor = @import("editor");
 const editor_inspector = @import("editor_inspector");
@@ -234,10 +233,10 @@ var tag_prop_aspect = editor_inspector.UiEmbedPropertyAspect.implement(struct {
 
                 if (true) {
                     const style = _coreui.getStyle();
-                    const pos_a = _coreui.getItemRectMax()[0];
-                    const text_size = _coreui.calcTextSize(iface.name, .{})[0] + 2 * style.frame_padding[0];
+                    const pos_a = _coreui.getItemRectMax().x;
+                    const text_size = _coreui.calcTextSize(iface.name, .{}).x + 2 * style.frame_padding.x;
 
-                    if (pos_a + text_size + style.item_spacing[0] < _coreui.getWindowPos()[0] + _coreui.getContentRegionAvail()[0]) {
+                    if (pos_a + text_size + style.item_spacing.x < _coreui.getWindowPos().x + _coreui.getContentRegionAvail().x) {
                         _coreui.sameLine(.{});
                     }
                 }
@@ -259,7 +258,7 @@ var tag_prop_aspect = editor_inspector.UiEmbedPropertyAspect.implement(struct {
     }
 });
 
-var color4f_properties_aspec = editor_inspector.UiEmbedPropertiesAspect.implement(struct {
+var Color4f_properties_aspec = editor_inspector.UiEmbedPropertiesAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
@@ -286,10 +285,10 @@ var color4f_properties_aspec = editor_inspector.UiEmbedPropertiesAspect.implemen
 
                 if (true) {
                     const style = _coreui.getStyle();
-                    const pos_a = _coreui.getItemRectMax()[0];
-                    const text_size = _coreui.calcTextSize(iface.name, .{})[0] + 2 * style.frame_padding[0];
+                    const pos_a = _coreui.getItemRectMax().x;
+                    const text_size = _coreui.calcTextSize(iface.name, .{}).x + 2 * style.frame_padding.x;
 
-                    if (pos_a + text_size + style.item_spacing[0] < _coreui.getWindowPos()[0] + _coreui.getContentRegionAvail()[0]) {
+                    if (pos_a + text_size + style.item_spacing.x < _coreui.getWindowPos().x + _coreui.getContentRegionAvail().x) {
                         _coreui.sameLine(.{});
                     }
                 }
@@ -416,7 +415,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     _g.component_value_menu_aspect = try apidb.setGlobalVarValue(editor.UiSetMenusAspect, module_name, "ct_visibility_flags_menu_aspect", flags_menu_aspect);
     _g.tag_prop_aspect = try apidb.setGlobalVarValue(editor_inspector.UiEmbedPropertyAspect, module_name, "ct_visibility_flags_embed_propery_aspect", tag_prop_aspect);
-    _g.visibility_flags_properties_aspect = try apidb.setGlobalVarValue(editor_inspector.UiEmbedPropertiesAspect, module_name, "ct_visibility_flags_embed_properties_aspect", color4f_properties_aspec);
+    _g.visibility_flags_properties_aspect = try apidb.setGlobalVarValue(editor_inspector.UiEmbedPropertiesAspect, module_name, "ct_visibility_flags_embed_properties_aspect", Color4f_properties_aspec);
 
     return true;
 }

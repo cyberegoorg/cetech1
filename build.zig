@@ -474,6 +474,7 @@ pub fn build(b: *std.Build) !void {
     const gen_ide_step = b.step("gen-ide", "init/update IDE configs");
     {
         const ide = b.option(generate_ide.EditorType, "ide", "IDE for gen-ide command") orelse .vscode;
+        const no_zls = b.option(bool, "no_zls", "Dont write zls path with gen-ide command") orelse false;
 
         const gen_ide = b.addRunArtifact(generate_ide_tool);
 
@@ -490,6 +491,10 @@ pub fn build(b: *std.Build) !void {
 
         gen_ide.addArg("--config");
         gen_ide.addDirectoryArg(b.path(".ide.zon"));
+
+        if (no_zls) {
+            gen_ide.addArg("--no-zls");
+        }
 
         gen_ide_step.dependOn(&gen_ide.step);
     }
@@ -759,6 +764,9 @@ pub const core_modules = [_][]const u8{
     "light_component",
     "light_system",
     "physics",
+    "physics_jolt",
+    "bloom",
+    "tonemap",
 };
 
 pub const samples_modules = [_][]const u8{

@@ -2,6 +2,7 @@ const std = @import("std");
 
 const cetech1 = @import("cetech1");
 const input = cetech1.input;
+const math = cetech1.math;
 
 pub const ACTIONS_KERNEL_TASK_NAME = "ActionsInit";
 pub const ACTIONS_KERNEL_TASK = cetech1.strId64(ACTIONS_KERNEL_TASK_NAME);
@@ -21,7 +22,7 @@ pub const Action = struct {
 
 pub const KeyButtonMapping = struct {
     k: input.Key,
-    axis_map: ?[]const f32 = null,
+    axis_map: ?math.Vec2f = null,
 };
 
 pub const MouseButtonMapping = struct {
@@ -30,7 +31,7 @@ pub const MouseButtonMapping = struct {
 
 pub const GamepadButtonMapping = struct {
     b: input.GamepadButton,
-    axis_map: ?[]const f32 = null,
+    axis_map: ?math.Vec2f = null,
 };
 
 pub const GamepadAxisButtonMapping = struct {
@@ -68,5 +69,5 @@ pub const ActionsAPI = struct {
     isSetActive: *const fn (action_set: cetech1.StrId32) bool,
 
     isActionDown: *const fn (action: cetech1.StrId32) bool,
-    getActionAxis: *const fn (action: cetech1.StrId32) [2]f32,
+    getActionAxis: *const fn (action: cetech1.StrId32) math.Vec2f,
 };

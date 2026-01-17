@@ -585,6 +585,7 @@ fn schedule(prereq: public.TaskID, task: public.TaskStub, config: public.Schedul
         pub fn exec(self: *@This()) void {
             self.t.task_fn(&self.t.data) catch |err| {
                 log.err("Task failed: {}", .{err});
+                _ = 1;
             };
         }
     };

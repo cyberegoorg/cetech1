@@ -11,6 +11,7 @@ const host_private = @import("host.zig");
 const cetech1 = @import("cetech1");
 const host = cetech1.host;
 const input = cetech1.input;
+const math = cetech1.math;
 
 const gamecontrollerdb = @embedFile("gamecontrollerdb");
 
@@ -31,7 +32,7 @@ pub const Window = struct {
     key_mods: input.Mods = .{},
 
     last_cursor_pos: [2]f64 = .{ 0, 0 },
-    content_scale: [2]f32 = .{ 0, 0 },
+    content_scale: math.Vec2f = .{},
     fb_size: [2]i32 = .{ 0, 0 },
 
     pub fn init(window: *anyopaque) Window {
@@ -449,7 +450,7 @@ pub const window_vt = host.Window.VTable.implement(struct {
         return true_w.fb_size;
     }
 
-    pub fn getContentScale(window: *anyopaque) [2]f32 {
+    pub fn getContentScale(window: *anyopaque) math.Vec2f {
         const true_w: *Window = @ptrCast(@alignCast(window));
         return true_w.content_scale;
     }
@@ -518,7 +519,7 @@ fn framebufferSizeCallback(window: *zglfw.Window, width: c_int, height: c_int) c
 
 fn contentScaleCallback(window: *zglfw.Window, x: f32, y: f32) callconv(.c) void {
     var w = findWindowByInternal(window).?;
-    w.content_scale = .{ x, y };
+    w.content_scale = .{ .x = x, .y = y };
 }
 
 //

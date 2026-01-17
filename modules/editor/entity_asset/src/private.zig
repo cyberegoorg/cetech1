@@ -287,7 +287,7 @@ var entity_children_drop_aspect = editor.UiDropObj.implement(struct {
 
         const db = _cdb.getDbFromObjid(obj);
 
-        if (drag_obj.type_idx.eql(assetdb.Asset.typeIdx(_cdb, db))) {
+        if (drag_obj.type_idx.eql(assetdb.AssetCdb.typeIdx(_cdb, db))) {
             const asset_entity_obj = _assetdb.getObjForAsset(drag_obj).?;
 
             if (asset_entity_obj.type_idx.eql(ecs.EntityCdb.typeIdx(_cdb, db))) {

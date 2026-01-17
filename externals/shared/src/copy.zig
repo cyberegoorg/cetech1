@@ -165,6 +165,19 @@ const sync_list = [_]RepositorySyncConfig{
             "README.md",
         },
     },
+
+    .{
+        .repo_folder = "zphysics",
+        .entries = &.{
+            "libs",
+            "src",
+            ".gitignore",
+            "build.zig",
+            "build.zig.zon",
+            "LICENSE",
+            "README.md",
+        },
+    },
 };
 
 pub fn main() !void {
