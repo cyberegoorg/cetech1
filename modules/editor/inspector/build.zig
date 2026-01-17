@@ -15,12 +15,14 @@ pub fn build(b: *std.Build) !void {
     );
 
     lib.root_module.addImport("editor", b.dependency("editor", .{}).module("editor"));
+    lib.root_module.addImport("editor_tabs", b.dependency("editor_tabs", .{}).module("editor_tabs"));
 
     _ = b.addModule("editor_inspector", .{
         .root_source_file = b.path("src/editor_inspector.zig"),
         .imports = &.{
             .{ .name = "cetech1", .module = cetech1_module },
             .{ .name = "editor", .module = b.dependency("editor", .{}).module("editor") },
+            .{ .name = "editor_tabs", .module = b.dependency("editor_tabs", .{}).module("editor_tabs") },
         },
     });
 }

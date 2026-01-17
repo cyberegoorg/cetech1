@@ -33,7 +33,7 @@
       }
     },
     {
-      "__type_name": "ct_graphvm_logic_component",
+      "__type_name": "ct_graphvm_script_component",
       "__uuid": "0191e721-f738-76a1-a055-b63b381433c9",
       "graph": {
         "__type_name": "ct_graph",

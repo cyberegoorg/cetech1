@@ -496,9 +496,9 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
         var buf: [256]u8 = undefined;
         if (try assetdb.getTmpPath(&buf)) |path| {
-            const apidb_graph_md = try std.fs.path.join(_kernel_allocator, &.{ path, "apidb_graph.d2" });
+            const apidb_graph_md = try std.fs.path.join(_kernel_allocator, &.{ path, "apidb_graph.md" });
             defer _kernel_allocator.free(apidb_graph_md);
-            try apidb.writeApiGraphD2(apidb_graph_md);
+            try apidb.writeApiGraphMD(apidb_graph_md);
         }
 
         // Create update graph.
@@ -513,10 +513,15 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
             const monitor = host.monitor_api.getPrimaryMonitor();
 
+            const vm = try monitor.?.getVideoMode();
             if (fullscreen) {
-                const vm = try monitor.?.getVideoMode();
                 w = vm.width;
                 h = vm.height;
+            } else {
+                if (w * 2 <= vm.width and w * 2 <= vm.width) {
+                    w *= 2;
+                    h *= 2;
+                }
             }
 
             log.info("Using video mode {d}x{d}", .{ w, h });
@@ -919,7 +924,7 @@ fn doKernelUpdateTasks(kernel_tick: u64, dt: f32) !void {
 }
 
 fn dumpKernelUpdatePhaseTree() !void {
-    try dumpKernelUpdatePhaseTreeD2();
+    try dumpKernelUpdatePhaseTreeMD();
 
     log.info("Kernel update phase:", .{});
     for (_phases_dag.output.keys(), 0..) |phase_hash, idx| {
@@ -960,13 +965,13 @@ fn dumpKernelUpdatePhaseTree() !void {
     }
 }
 
-fn dumpKernelUpdatePhaseTreeD2() !void {
+fn dumpKernelUpdatePhaseTreeMD() !void {
     var path_buff: [1024]u8 = undefined;
     var file_path_buff: [1024]u8 = undefined;
     // only if asset root is set.
     var path = try assetdb.api.getTmpPath(&path_buff);
     if (path == null) return;
-    path = try std.fmt.bufPrint(&file_path_buff, "{s}/" ++ "kernel_task_graph.d2", .{path.?});
+    path = try std.fmt.bufPrint(&file_path_buff, "{s}/" ++ "kernel_task_graph.md", .{path.?});
 
     var dot_file = try std.fs.createFileAbsolute(path.?, .{});
     defer dot_file.close();
@@ -976,6 +981,10 @@ fn dumpKernelUpdatePhaseTreeD2() !void {
     const writer = &bw.interface;
     defer writer.flush() catch undefined;
 
+    try writer.print("# Kernel task graph\n\n", .{});
+
+    // write header
+    try writer.print("```d2\n", .{});
     _ = try writer.write("vars: {d2-config: {layout-engine: elk}}\n\n");
 
     // write nodes
@@ -1008,6 +1017,7 @@ fn dumpKernelUpdatePhaseTreeD2() !void {
 
         try writer.print("}}\n", .{});
     }
+    try writer.print("```\n", .{});
 }
 
 fn initKernelTasks() !void {

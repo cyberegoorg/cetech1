@@ -12,5 +12,7 @@
         .editor_inspector = .{ .path = "../inspector" },
         .editor_obj_buffer = .{ .path = "../obj_buffer" },
         .graphvm = .{ .path = "../../scripting/graphvm" },
+        .editor_tabs = .{ .path = "../tabs/" },
+        .editor_assetdb = .{ .path = "../assetdb/" },
     },
 }

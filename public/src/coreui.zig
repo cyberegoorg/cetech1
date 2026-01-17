@@ -1,9 +1,10 @@
 // TODO: TMP SHIT big module
 const std = @import("std");
 
+const cetech1 = @import("root.zig");
 const cdb = @import("cdb.zig");
 const modules = @import("modules.zig");
-const cetech1 = @import("root.zig");
+const math = cetech1.math;
 
 const host = @import("host.zig");
 const gpu = @import("gpu.zig");
@@ -109,9 +110,9 @@ pub const Selection = struct {
 };
 
 pub const Colors = struct {
-    pub const Deleted = .{ 0.7, 0.0, 0.0, 1.0 };
-    pub const Remove = .{ 0.7, 0.0, 0.0, 1.0 };
-    pub const Modified = .{ 0.9, 0.9, 0.0, 1.0 };
+    pub const Deleted: math.Color4f = .{ .r = 0.7, .a = 1.0 };
+    pub const Remove: math.Color4f = .{ .r = 0.7, .a = 1.0 };
+    pub const Modified: math.Color4f = .{ .r = 0.9, .g = 0.9, .a = 1.0 };
 };
 
 pub const Icons = struct {
@@ -231,6 +232,10 @@ pub const Icons = struct {
 
     pub const FontScale = CoreIcons.FA_TEXT_WIDTH;
     pub const Culling = CoreIcons.FA_BORDER_TOP_LEFT;
+
+    pub const PhysicsShapes = CoreIcons.FA_SHAPES;
+    pub const PhysicsBody = CoreIcons.FA_PERSON;
+    pub const PhysicsWorld = CoreIcons.FA_GLOBE;
 };
 
 pub const CoreUII = struct {
@@ -466,6 +471,8 @@ pub const CoreUIApi = struct {
         return result;
     }
 
+    createClipper: *const fn () ListClipper,
+
     draw: *const fn (allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, viewid: gpu.ViewId, kernel_tick: u64, dt: f32) anyerror!void,
 
     showDemoWindow: *const fn () void,
@@ -494,6 +501,8 @@ pub const CoreUIApi = struct {
     setScrollHereX: *const fn (args: SetScrollHereX) void,
 
     getFontSize: *const fn () f32,
+    pushFontSize: *const fn (size: f32) void,
+    popFontSize: *const fn () void,
 
     getStyle: *const fn () *Style,
     pushStyleVar2f: *const fn (args: PushStyleVar2f) void,
@@ -506,10 +515,8 @@ pub const CoreUIApi = struct {
 
     tableSetBgColor: *const fn (args: TableSetBgColor) void,
 
-    colorConvertFloat4ToU32: *const fn (in: [4]f32) u32,
-
     text: *const fn (txt: []const u8) void,
-    textColored: *const fn (color: [4]f32, txt: []const u8) void,
+    textColored: *const fn (color: math.Color4f, txt: []const u8) void,
 
     colorPicker4: *const fn (label: [:0]const u8, args: ColorPicker4) bool,
     colorEdit4: *const fn (label: [:0]const u8, args: ColorEdit4) bool,
@@ -565,6 +572,8 @@ pub const CoreUIApi = struct {
     dragI64: *const fn (label: [:0]const u8, args: DragScalarGen(i64)) bool,
     dragU64: *const fn (label: [:0]const u8, args: DragScalarGen(u64)) bool,
 
+    dragVec3f: *const fn (label: [:0]const u8, args: DragFloatGen(math.Vec3f)) bool,
+
     checkbox: *const fn (label: [:0]const u8, args: Checkbox) bool,
     toggleButton: *const fn (label: [:0]const u8, toggled: *bool) bool,
     toggleMenuItem: *const fn (label: [:0]const u8, toggled: *bool) bool,
@@ -579,7 +588,7 @@ pub const CoreUIApi = struct {
     isItemClicked: *const fn (button: MouseButton) bool,
     isItemActivated: *const fn () bool,
 
-    isRectVisible: *const fn (rect: [2]f32) bool,
+    isRectVisible: *const fn (rect: math.Vec2f) bool,
     isItemVisible: *const fn () bool,
 
     beginPopupModal: *const fn (name: [:0]const u8, args: Begin) bool,
@@ -605,17 +614,20 @@ pub const CoreUIApi = struct {
     tableNextRow: *const fn (args: TableNextRow) void,
     tableSetupScrollFreeze: *const fn (cols: i32, rows: i32) void,
 
-    getItemRectMax: *const fn () [2]f32,
-    getItemRectMin: *const fn () [2]f32,
+    getItemRectMax: *const fn () math.Vec2f,
+    getItemRectMin: *const fn () math.Vec2f,
     getCursorPosX: *const fn () f32,
-    getCursorPos: *const fn () [2]f32,
-    getCursorScreenPos: *const fn () [2]f32,
-    calcTextSize: *const fn (txt: []const u8, args: CalcTextSize) [2]f32,
-    getWindowPos: *const fn () [2]f32,
-    getWindowSize: *const fn () [2]f32,
-    getContentRegionAvail: *const fn () [2]f32,
+    getCursorPos: *const fn () math.Vec2f,
+    getCursorScreenPos: *const fn () math.Vec2f,
+    calcTextSize: *const fn (txt: []const u8, args: CalcTextSize) math.Vec2f,
+    getWindowPos: *const fn () math.Vec2f,
+    getWindowSize: *const fn () math.Vec2f,
+    getContentRegionAvail: *const fn () math.Vec2f,
     setCursorPosX: *const fn (x: f32) void,
     setCursorPosY: *const fn (y: f32) void,
+    setCursorScreenPos: *const fn (pos: math.Vec2f) void,
+
+    selectable: *const fn (label: [:0]const u8, args: Selectable) bool,
 
     beginDragDropSource: *const fn (flags: DragDropFlags) bool,
     setDragDropPayload: *const fn (payload_type: [*:0]const u8, data: []const u8, cond: Condition) bool,
@@ -672,8 +684,8 @@ pub const CoreUIApi = struct {
     getScaleFactor: *const fn () f32,
 
     image: *const fn (texture: gpu.TextureHandle, args: Image) void,
-    getMousePos: *const fn () [2]f32,
-    getMouseDragDelta: *const fn (drag_button: MouseButton, args: MouseDragDelta) [2]f32,
+    getMousePos: *const fn () math.Vec2f,
+    getMouseDragDelta: *const fn (drag_button: MouseButton, args: MouseDragDelta) math.Vec2f,
     setMouseCursor: *const fn (cursor: Cursor) void,
 
     popItemWidth: *const fn () void,
@@ -700,17 +712,12 @@ pub const CoreUIApi = struct {
     gizmoSetRect: *const fn (x: f32, y: f32, width: f32, height: f32) void,
     gizmoSetDrawList: *const fn (draw_list: ?DrawList) void,
     gizmoManipulate: *const fn (
-        view: *const [16]f32,
-        projection: *const [16]f32,
+        view: math.Mat44f,
+        projection: math.Mat44f,
         operation: Operation,
         mode: GizmoMode,
-        matrix: *[16]f32,
-        opt: struct {
-            delta_matrix: ?*[16]f32 = null,
-            snap: ?*const [3]f32 = null,
-            local_bounds: ?*const [6]f32 = null,
-            bounds_snap: ?*const [3]f32 = null,
-        },
+        matrix: *math.Mat44f,
+        opt: GuizmoOpt,
     ) bool,
     gizmoSetAlternativeWindow: *const fn (window: *ImGuiWindow) void,
     gizmoIsUsing: *const fn () bool,
@@ -718,6 +725,13 @@ pub const CoreUIApi = struct {
 };
 
 pub const ImGuiWindow = opaque {};
+
+pub const GuizmoOpt = struct {
+    delta_matrix: ?*math.Mat44f = null,
+    snap: ?math.Vec3f = null,
+    local_bounds: ?*const [6]f32 = null,
+    bounds_snap: ?math.Vec3f = null,
+};
 
 pub const Operation = packed struct(u32) {
     translate_x: bool = false,
@@ -754,8 +768,8 @@ pub const Operation = packed struct(u32) {
 };
 
 pub const GizmoMode = enum(u32) {
-    local = 0,
-    world = 1,
+    Local = 0,
+    World = 1,
 };
 
 pub const DrawCmd = extern struct {
@@ -812,9 +826,9 @@ pub const DrawFlags = packed struct(c_int) {
 
 pub const DrawIdx = u16;
 pub const DrawVert = extern struct {
-    pos: [2]f32,
-    uv: [2]f32,
-    color: u32,
+    pos: math.Vec2f,
+    uv: math.Vec2f,
+    color: math.SRGBA,
 };
 
 pub const DrawListFlags = packed struct(c_int) {
@@ -827,14 +841,14 @@ pub const DrawListFlags = packed struct(c_int) {
 };
 
 pub const ClipRect = struct {
-    pmin: [2]f32,
-    pmax: [2]f32,
+    pmin: math.Vec2f,
+    pmax: math.Vec2f,
     intersect_with_current: bool = false,
 };
 
 pub const PathRect = struct {
-    bmin: [2]f32,
-    bmax: [2]f32,
+    bmin: math.Vec2f,
+    bmax: math.Vec2f,
     rounding: f32 = 0.0,
     flags: DrawFlags = .{},
 };
@@ -919,17 +933,17 @@ pub const DrawList = struct {
             self.ptr,
         );
     }
-    pub inline fn getClipRectMin(self: DrawList) [2]f32 {
+    pub inline fn getClipRectMin(self: DrawList) math.Vec2f {
         return self.vtable.getClipRectMin(
             self.ptr,
         );
     }
-    pub inline fn getClipRectMax(self: DrawList) [2]f32 {
+    pub inline fn getClipRectMax(self: DrawList) math.Vec2f {
         return self.vtable.getClipRectMax(
             self.ptr,
         );
     }
-    pub inline fn addLine(self: DrawList, args: struct { p1: [2]f32, p2: [2]f32, col: u32, thickness: f32 }) void {
+    pub inline fn addLine(self: DrawList, args: struct { p1: math.Vec2f, p2: math.Vec2f, col: math.SRGBA, thickness: f32 }) void {
         self.vtable.addLine(self.ptr, .{
             .p1 = args.p1,
             .p2 = args.p2,
@@ -938,9 +952,9 @@ pub const DrawList = struct {
         });
     }
     pub inline fn addRect(self: DrawList, args: struct {
-        pmin: [2]f32,
-        pmax: [2]f32,
-        col: u32,
+        pmin: math.Vec2f,
+        pmax: math.Vec2f,
+        col: math.SRGBA,
         rounding: f32 = 0.0,
         flags: DrawFlags = .{},
         thickness: f32 = 1.0,
@@ -962,9 +976,9 @@ pub const DrawList = struct {
         });
     }
     pub inline fn addRectFilled(self: DrawList, args: struct {
-        pmin: [2]f32,
-        pmax: [2]f32,
-        col: u32,
+        pmin: math.Vec2f,
+        pmax: math.Vec2f,
+        col: math.SRGBA,
         rounding: f32 = 0.0,
         flags: DrawFlags = .{},
     }) void {
@@ -984,8 +998,8 @@ pub const DrawList = struct {
         });
     }
     pub inline fn addRectFilledMultiColor(self: DrawList, args: struct {
-        pmin: [2]f32,
-        pmax: [2]f32,
+        pmin: math.Vec2f,
+        pmax: math.Vec2f,
         col_upr_left: u32,
         col_upr_right: u32,
         col_bot_right: u32,
@@ -1001,11 +1015,11 @@ pub const DrawList = struct {
         });
     }
     pub inline fn addQuad(self: DrawList, args: struct {
-        p1: [2]f32,
-        p2: [2]f32,
-        p3: [2]f32,
-        p4: [2]f32,
-        col: u32,
+        p1: math.Vec2f,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
+        p4: math.Vec2f,
+        col: math.SRGBA,
         thickness: f32 = 1.0,
     }) void {
         self.vtable.addQuad(self.ptr, .{
@@ -1018,11 +1032,11 @@ pub const DrawList = struct {
         });
     }
     pub inline fn addQuadFilled(self: DrawList, args: struct {
-        p1: [2]f32,
-        p2: [2]f32,
-        p3: [2]f32,
-        p4: [2]f32,
-        col: u32,
+        p1: math.Vec2f,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
+        p4: math.Vec2f,
+        col: math.SRGBA,
     }) void {
         self.vtable.addQuadFilled(self.ptr, .{
             .p1 = args.p1,
@@ -1033,10 +1047,10 @@ pub const DrawList = struct {
         });
     }
     pub inline fn addTriangle(self: DrawList, args: struct {
-        p1: [2]f32,
-        p2: [2]f32,
-        p3: [2]f32,
-        col: u32,
+        p1: math.Vec2f,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
+        col: math.SRGBA,
         thickness: f32 = 1.0,
     }) void {
         self.vtable.addTriangle(self.ptr, .{
@@ -1048,10 +1062,10 @@ pub const DrawList = struct {
         });
     }
     pub inline fn addTriangleFilled(self: DrawList, args: struct {
-        p1: [2]f32,
-        p2: [2]f32,
-        p3: [2]f32,
-        col: u32,
+        p1: math.Vec2f,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
+        col: math.SRGBA,
     }) void {
         self.vtable.addTriangleFilled(self.ptr, .{
             .p1 = args.p1,
@@ -1061,9 +1075,9 @@ pub const DrawList = struct {
         });
     }
     pub inline fn addCircle(self: DrawList, args: struct {
-        p: [2]f32,
+        p: math.Vec2f,
         r: f32,
-        col: u32,
+        col: math.SRGBA,
         num_segments: i32 = 0,
         thickness: f32 = 1.0,
     }) void {
@@ -1076,9 +1090,9 @@ pub const DrawList = struct {
         });
     }
     pub inline fn addCircleFilled(self: DrawList, args: struct {
-        p: [2]f32,
+        p: math.Vec2f,
         r: f32,
-        col: u32,
+        col: math.SRGBA,
         num_segments: u16 = 0,
     }) void {
         self.vtable.addCircleFilled(self.ptr, .{
@@ -1089,9 +1103,9 @@ pub const DrawList = struct {
         });
     }
     pub inline fn addNgon(self: DrawList, args: struct {
-        p: [2]f32,
+        p: math.Vec2f,
         r: f32,
-        col: u32,
+        col: math.SRGBA,
         num_segments: u32,
         thickness: f32 = 1.0,
     }) void {
@@ -1104,9 +1118,9 @@ pub const DrawList = struct {
         });
     }
     pub inline fn addNgonFilled(self: DrawList, args: struct {
-        p: [2]f32,
+        p: math.Vec2f,
         r: f32,
-        col: u32,
+        col: math.SRGBA,
         num_segments: u32,
     }) void {
         self.vtable.addNgonFilled(self.ptr, .{
@@ -1116,11 +1130,11 @@ pub const DrawList = struct {
             .num_segments = args.num_segments,
         });
     }
-    pub inline fn addTextUnformatted(self: DrawList, pos: [2]f32, col: u32, txt: []const u8) void {
+    pub inline fn addTextUnformatted(self: DrawList, pos: math.Vec2f, col: math.SRGBA, txt: []const u8) void {
         self.vtable.addTextUnformatted(self.ptr, pos, col, txt);
     }
-    pub inline fn addPolyline(self: DrawList, points: []const [2]f32, args: struct {
-        col: u32,
+    pub inline fn addPolyline(self: DrawList, points: []const math.Vec2f, args: struct {
+        col: math.SRGBA,
         flags: DrawFlags = .{},
         thickness: f32 = 1.0,
     }) void {
@@ -1137,15 +1151,15 @@ pub const DrawList = struct {
             .thickness = args.thickness,
         });
     }
-    pub inline fn addConvexPolyFilled(self: DrawList, points: []const [2]f32, col: u32) void {
+    pub inline fn addConvexPolyFilled(self: DrawList, points: []const math.Vec2f, col: math.SRGBA) void {
         self.vtable.addConvexPolyFilled(self.ptr, points, col);
     }
     pub inline fn addBezierCubic(self: DrawList, args: struct {
-        p1: [2]f32,
-        p2: [2]f32,
-        p3: [2]f32,
-        p4: [2]f32,
-        col: u32,
+        p1: math.Vec2f,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
+        p4: math.Vec2f,
+        col: math.SRGBA,
         thickness: f32 = 1.0,
         num_segments: u32 = 0,
     }) void {
@@ -1160,10 +1174,10 @@ pub const DrawList = struct {
         });
     }
     pub inline fn addBezierQuadratic(self: DrawList, args: struct {
-        p1: [2]f32,
-        p2: [2]f32,
-        p3: [2]f32,
-        col: u32,
+        p1: math.Vec2f,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
+        col: math.SRGBA,
         thickness: f32 = 1.0,
         num_segments: u32 = 0,
     }) void {
@@ -1177,11 +1191,11 @@ pub const DrawList = struct {
         });
     }
     pub inline fn addImage(self: DrawList, user_texture_id: gpu.TextureHandle, args: struct {
-        pmin: [2]f32,
-        pmax: [2]f32,
-        uvmin: [2]f32 = .{ 0, 0 },
-        uvmax: [2]f32 = .{ 1, 1 },
-        col: u32 = 0xff_ff_ff_ff,
+        pmin: math.Vec2f,
+        pmax: math.Vec2f,
+        uvmin: math.Vec2f = .{},
+        uvmax: math.Vec2f = .{ 1, 1 },
+        col: math.SRGBA = .white,
     }) void {
         self.vtable.addImage(self.ptr, @ptrFromInt(user_texture_id.idx), .{
             .pmin = args.pmin,
@@ -1192,15 +1206,15 @@ pub const DrawList = struct {
         });
     }
     pub inline fn addImageQuad(self: DrawList, user_texture_id: gpu.TextureHandle, args: struct {
-        p1: [2]f32,
-        p2: [2]f32,
-        p3: [2]f32,
-        p4: [2]f32,
-        uv1: [2]f32 = .{ 0, 0 },
-        uv2: [2]f32 = .{ 1, 0 },
-        uv3: [2]f32 = .{ 1, 1 },
-        uv4: [2]f32 = .{ 0, 1 },
-        col: u32 = 0xff_ff_ff_ff,
+        p1: math.Vec2f,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
+        p4: math.Vec2f,
+        uv1: math.Vec2f = .{},
+        uv2: math.Vec2f = .{ 1, 0 },
+        uv3: math.Vec2f = .{ 1, 1 },
+        uv4: math.Vec2f = .{ 0, 1 },
+        col: math.SRGBA = .white,
     }) void {
         self.vtable.addImageQuad(self.ptr, @ptrFromInt(user_texture_id.idx), .{
             .p1 = args.p1,
@@ -1215,11 +1229,11 @@ pub const DrawList = struct {
         });
     }
     pub inline fn addImageRounded(self: DrawList, user_texture_id: gpu.TextureHandle, args: struct {
-        pmin: [2]f32,
-        pmax: [2]f32,
-        uvmin: [2]f32 = .{ 0, 0 },
-        uvmax: [2]f32 = .{ 1, 1 },
-        col: u32 = 0xff_ff_ff_ff,
+        pmin: math.Vec2f,
+        pmax: math.Vec2f,
+        uvmin: math.Vec2f = .{},
+        uvmax: math.Vec2f = .{ 1, 1 },
+        col: math.SRGBA = .white,
         rounding: f32 = 4.0,
         flags: DrawFlags = .{},
     }) void {
@@ -1245,17 +1259,17 @@ pub const DrawList = struct {
             self.ptr,
         );
     }
-    pub inline fn pathLineTo(self: DrawList, pos: [2]f32) void {
+    pub inline fn pathLineTo(self: DrawList, pos: math.Vec2f) void {
         self.vtable.pathLineTo(self.ptr, pos);
     }
-    pub inline fn pathLineToMergeDuplicate(self: DrawList, pos: [2]f32) void {
+    pub inline fn pathLineToMergeDuplicate(self: DrawList, pos: math.Vec2f) void {
         self.vtable.pathLineToMergeDuplicate(self.ptr, pos);
     }
-    pub inline fn pathFillConvex(self: DrawList, col: u32) void {
+    pub inline fn pathFillConvex(self: DrawList, col: math.SRGBA) void {
         self.vtable.pathFillConvex(self.ptr, col);
     }
     pub inline fn pathStroke(self: DrawList, args: struct {
-        col: u32,
+        col: math.SRGBA,
         flags: DrawFlags = .{},
         thickness: f32 = 1.0,
     }) void {
@@ -1273,7 +1287,7 @@ pub const DrawList = struct {
         });
     }
     pub inline fn pathArcTo(self: DrawList, args: struct {
-        p: [2]f32,
+        p: math.Vec2f,
         r: f32,
         amin: f32,
         amax: f32,
@@ -1288,7 +1302,7 @@ pub const DrawList = struct {
         });
     }
     pub inline fn pathArcToFast(self: DrawList, args: struct {
-        p: [2]f32,
+        p: math.Vec2f,
         r: f32,
         amin_of_12: u16,
         amax_of_12: u16,
@@ -1301,9 +1315,9 @@ pub const DrawList = struct {
         });
     }
     pub inline fn pathBezierCubicCurveTo(self: DrawList, args: struct {
-        p2: [2]f32,
-        p3: [2]f32,
-        p4: [2]f32,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
+        p4: math.Vec2f,
         num_segments: u16 = 0,
     }) void {
         self.vtable.pathBezierCubicCurveTo(self.ptr, .{
@@ -1314,8 +1328,8 @@ pub const DrawList = struct {
         });
     }
     pub inline fn pathBezierQuadraticCurveTo(self: DrawList, args: struct {
-        p2: [2]f32,
-        p3: [2]f32,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
         num_segments: u16 = 0,
     }) void {
         self.vtable.pathBezierQuadraticCurveTo(self.ptr, .{
@@ -1345,10 +1359,10 @@ pub const DrawList = struct {
     pub inline fn primUnreserve(self: DrawList, idx_count: i32, vtx_count: i32) void {
         self.vtable.primUnreserve(self.ptr, idx_count, vtx_count);
     }
-    pub inline fn primRect(self: DrawList, a: [2]f32, b: [2]f32, col: u32) void {
+    pub inline fn primRect(self: DrawList, a: math.Vec2f, b: math.Vec2f, col: math.SRGBA) void {
         self.vtable.primRect(self.ptr, a, b, col);
     }
-    pub inline fn primRectUV(self: DrawList, a: [2]f32, b: [2]f32, uv_a: [2]f32, uv_b: [2]f32, col: u32) void {
+    pub inline fn primRectUV(self: DrawList, a: math.Vec2f, b: math.Vec2f, uv_a: math.Vec2f, uv_b: math.Vec2f, col: math.SRGBA) void {
         self.vtable.primRectUV(
             self.ptr,
             a,
@@ -1358,7 +1372,7 @@ pub const DrawList = struct {
             col,
         );
     }
-    pub inline fn primQuadUV(self: DrawList, a: [2]f32, b: [2]f32, c: [2]f32, d: [2]f32, uv_a: [2]f32, uv_b: [2]f32, uv_c: [2]f32, uv_d: [2]f32, col: u32) void {
+    pub inline fn primQuadUV(self: DrawList, a: math.Vec2f, b: math.Vec2f, c: math.Vec2f, d: math.Vec2f, uv_a: math.Vec2f, uv_b: math.Vec2f, uv_c: math.Vec2f, uv_d: math.Vec2f, col: math.SRGBA) void {
         self.vtable.primQuadUV(
             self.ptr,
             a,
@@ -1372,7 +1386,7 @@ pub const DrawList = struct {
             col,
         );
     }
-    pub inline fn primWriteVtx(self: DrawList, pos: [2]f32, uv: [2]f32, col: u32) void {
+    pub inline fn primWriteVtx(self: DrawList, pos: math.Vec2f, uv: math.Vec2f, col: math.SRGBA) void {
         self.vtable.primWriteVtx(self.ptr, pos, uv, col);
     }
     pub inline fn primWriteIdx(self: DrawList, idx: DrawIdx) void {
@@ -1403,177 +1417,177 @@ pub const DrawList = struct {
         popClipRect: *const fn (draw_list: *anyopaque) void,
         pushTextureId: *const fn (draw_list: *anyopaque, texture_id: gpu.TextureHandle) void,
         popTextureId: *const fn (draw_list: *anyopaque) void,
-        getClipRectMin: *const fn (draw_list: *anyopaque) [2]f32,
-        getClipRectMax: *const fn (draw_list: *anyopaque) [2]f32,
+        getClipRectMin: *const fn (draw_list: *anyopaque) math.Vec2f,
+        getClipRectMax: *const fn (draw_list: *anyopaque) math.Vec2f,
         addLine: *const fn (draw_list: *anyopaque, args: struct {
-            p1: [2]f32,
-            p2: [2]f32,
-            col: u32,
+            p1: math.Vec2f,
+            p2: math.Vec2f,
+            col: math.SRGBA,
             thickness: f32,
         }) void,
         addRect: *const fn (draw_list: *anyopaque, args: struct {
-            pmin: [2]f32,
-            pmax: [2]f32,
-            col: u32,
+            pmin: math.Vec2f,
+            pmax: math.Vec2f,
+            col: math.SRGBA,
             rounding: f32 = 0.0,
             flags: DrawFlags = .{},
             thickness: f32 = 1.0,
         }) void,
         addRectFilled: *const fn (draw_list: *anyopaque, args: struct {
-            pmin: [2]f32,
-            pmax: [2]f32,
-            col: u32,
+            pmin: math.Vec2f,
+            pmax: math.Vec2f,
+            col: math.SRGBA,
             rounding: f32 = 0.0,
             flags: DrawFlags = .{},
         }) void,
         addRectFilledMultiColor: *const fn (draw_list: *anyopaque, args: struct {
-            pmin: [2]f32,
-            pmax: [2]f32,
+            pmin: math.Vec2f,
+            pmax: math.Vec2f,
             col_upr_left: u32,
             col_upr_right: u32,
             col_bot_right: u32,
             col_bot_left: u32,
         }) void,
         addQuad: *const fn (draw_list: *anyopaque, args: struct {
-            p1: [2]f32,
-            p2: [2]f32,
-            p3: [2]f32,
-            p4: [2]f32,
-            col: u32,
+            p1: math.Vec2f,
+            p2: math.Vec2f,
+            p3: math.Vec2f,
+            p4: math.Vec2f,
+            col: math.SRGBA,
             thickness: f32 = 1.0,
         }) void,
         addQuadFilled: *const fn (draw_list: *anyopaque, args: struct {
-            p1: [2]f32,
-            p2: [2]f32,
-            p3: [2]f32,
-            p4: [2]f32,
-            col: u32,
+            p1: math.Vec2f,
+            p2: math.Vec2f,
+            p3: math.Vec2f,
+            p4: math.Vec2f,
+            col: math.SRGBA,
         }) void,
         addTriangle: *const fn (draw_list: *anyopaque, args: struct {
-            p1: [2]f32,
-            p2: [2]f32,
-            p3: [2]f32,
-            col: u32,
+            p1: math.Vec2f,
+            p2: math.Vec2f,
+            p3: math.Vec2f,
+            col: math.SRGBA,
             thickness: f32 = 1.0,
         }) void,
         addTriangleFilled: *const fn (draw_list: *anyopaque, args: struct {
-            p1: [2]f32,
-            p2: [2]f32,
-            p3: [2]f32,
-            col: u32,
+            p1: math.Vec2f,
+            p2: math.Vec2f,
+            p3: math.Vec2f,
+            col: math.SRGBA,
         }) void,
         addCircle: *const fn (draw_list: *anyopaque, args: struct {
-            p: [2]f32,
+            p: math.Vec2f,
             r: f32,
-            col: u32,
+            col: math.SRGBA,
             num_segments: i32 = 0,
             thickness: f32 = 1.0,
         }) void,
         addCircleFilled: *const fn (draw_list: *anyopaque, args: struct {
-            p: [2]f32,
+            p: math.Vec2f,
             r: f32,
-            col: u32,
+            col: math.SRGBA,
             num_segments: u16 = 0,
         }) void,
         addNgon: *const fn (draw_list: *anyopaque, args: struct {
-            p: [2]f32,
+            p: math.Vec2f,
             r: f32,
-            col: u32,
+            col: math.SRGBA,
             num_segments: u32,
             thickness: f32 = 1.0,
         }) void,
         addNgonFilled: *const fn (draw_list: *anyopaque, args: struct {
-            p: [2]f32,
+            p: math.Vec2f,
             r: f32,
-            col: u32,
+            col: math.SRGBA,
             num_segments: u32,
         }) void,
-        addTextUnformatted: *const fn (draw_list: *anyopaque, pos: [2]f32, col: u32, txt: []const u8) void,
-        addPolyline: *const fn (draw_list: *anyopaque, points: []const [2]f32, args: struct {
-            col: u32,
+        addTextUnformatted: *const fn (draw_list: *anyopaque, pos: math.Vec2f, col: math.SRGBA, txt: []const u8) void,
+        addPolyline: *const fn (draw_list: *anyopaque, points: []const math.Vec2f, args: struct {
+            col: math.SRGBA,
             flags: DrawFlags = .{},
             thickness: f32 = 1.0,
         }) void,
         addConvexPolyFilled: *const fn (
             draw_list: *anyopaque,
-            points: []const [2]f32,
-            col: u32,
+            points: []const math.Vec2f,
+            col: math.SRGBA,
         ) void,
         addBezierCubic: *const fn (draw_list: *anyopaque, args: struct {
-            p1: [2]f32,
-            p2: [2]f32,
-            p3: [2]f32,
-            p4: [2]f32,
-            col: u32,
+            p1: math.Vec2f,
+            p2: math.Vec2f,
+            p3: math.Vec2f,
+            p4: math.Vec2f,
+            col: math.SRGBA,
             thickness: f32 = 1.0,
             num_segments: u32 = 0,
         }) void,
         addBezierQuadratic: *const fn (draw_list: *anyopaque, args: struct {
-            p1: [2]f32,
-            p2: [2]f32,
-            p3: [2]f32,
-            col: u32,
+            p1: math.Vec2f,
+            p2: math.Vec2f,
+            p3: math.Vec2f,
+            col: math.SRGBA,
             thickness: f32 = 1.0,
             num_segments: u32 = 0,
         }) void,
         addImage: *const fn (draw_list: *anyopaque, user_texture_id: gpu.TextureHandle, args: struct {
-            pmin: [2]f32,
-            pmax: [2]f32,
-            uvmin: [2]f32 = .{ 0, 0 },
-            uvmax: [2]f32 = .{ 1, 1 },
-            col: u32 = 0xff_ff_ff_ff,
+            pmin: math.Vec2f,
+            pmax: math.Vec2f,
+            uvmin: math.Vec2f = .{},
+            uvmax: math.Vec2f = .{ .x = 1, .y = 1 },
+            col: math.SRGBA = .white,
         }) void,
         addImageQuad: *const fn (draw_list: *anyopaque, user_texture_id: gpu.TextureHandle, args: struct {
-            p1: [2]f32,
-            p2: [2]f32,
-            p3: [2]f32,
-            p4: [2]f32,
-            uv1: [2]f32 = .{ 0, 0 },
-            uv2: [2]f32 = .{ 1, 0 },
-            uv3: [2]f32 = .{ 1, 1 },
-            uv4: [2]f32 = .{ 0, 1 },
-            col: u32 = 0xff_ff_ff_ff,
+            p1: math.Vec2f,
+            p2: math.Vec2f,
+            p3: math.Vec2f,
+            p4: math.Vec2f,
+            uv1: math.Vec2f = .{},
+            uv2: math.Vec2f = .{ .x = 1 },
+            uv3: math.Vec2f = .{ .x = 1, .y = 1 },
+            uv4: math.Vec2f = .{ .y = 1 },
+            col: math.SRGBA = .white,
         }) void,
         addImageRounded: *const fn (draw_list: *anyopaque, user_texture_id: gpu.TextureHandle, args: struct {
-            pmin: [2]f32,
-            pmax: [2]f32,
-            uvmin: [2]f32 = .{ 0, 0 },
-            uvmax: [2]f32 = .{ 1, 1 },
-            col: u32 = 0xff_ff_ff_ff,
+            pmin: math.Vec2f,
+            pmax: math.Vec2f,
+            uvmin: math.Vec2f = .{},
+            uvmax: math.Vec2f = .{ .x = 1, .y = 1 },
+            col: math.SRGBA = .white,
             rounding: f32 = 4.0,
             flags: DrawFlags = .{},
         }) void,
         pathClear: *const fn (draw_list: *anyopaque) void,
-        pathLineTo: *const fn (draw_list: *anyopaque, pos: [2]f32) void,
-        pathLineToMergeDuplicate: *const fn (draw_list: *anyopaque, pos: [2]f32) void,
-        pathFillConvex: *const fn (draw_list: *anyopaque, col: u32) void,
+        pathLineTo: *const fn (draw_list: *anyopaque, pos: math.Vec2f) void,
+        pathLineToMergeDuplicate: *const fn (draw_list: *anyopaque, pos: math.Vec2f) void,
+        pathFillConvex: *const fn (draw_list: *anyopaque, col: math.SRGBA) void,
         pathStroke: *const fn (draw_list: *anyopaque, args: struct {
-            col: u32,
+            col: math.SRGBA,
             flags: DrawFlags = .{},
             thickness: f32 = 1.0,
         }) void,
         pathArcTo: *const fn (draw_list: **anyopaque, args: struct {
-            p: [2]f32,
+            p: math.Vec2f,
             r: f32,
             amin: f32,
             amax: f32,
             num_segments: u16 = 0,
         }) void,
         pathArcToFast: *const fn (draw_list: *anyopaque, args: struct {
-            p: [2]f32,
+            p: math.Vec2f,
             r: f32,
             amin_of_12: u16,
             amax_of_12: u16,
         }) void,
         pathBezierCubicCurveTo: *const fn (draw_list: *anyopaque, args: struct {
-            p2: [2]f32,
-            p3: [2]f32,
-            p4: [2]f32,
+            p2: math.Vec2f,
+            p3: math.Vec2f,
+            p4: math.Vec2f,
             num_segments: u16 = 0,
         }) void,
         pathBezierQuadraticCurveTo: *const fn (draw_list: *anyopaque, args: struct {
-            p2: [2]f32,
-            p3: [2]f32,
+            p2: math.Vec2f,
+            p3: math.Vec2f,
             num_segments: u16 = 0,
         }) void,
         pathRect: *const fn (draw_list: *anyopaque, args: PathRect) void,
@@ -1589,35 +1603,35 @@ pub const DrawList = struct {
         ) void,
         primRect: *const fn (
             draw_list: *anyopaque,
-            a: [2]f32,
-            b: [2]f32,
-            col: u32,
+            a: math.Vec2f,
+            b: math.Vec2f,
+            col: math.SRGBA,
         ) void,
         primRectUV: *const fn (
             draw_list: *anyopaque,
-            a: [2]f32,
-            b: [2]f32,
-            uv_a: [2]f32,
-            uv_b: [2]f32,
-            col: u32,
+            a: math.Vec2f,
+            b: math.Vec2f,
+            uv_a: math.Vec2f,
+            uv_b: math.Vec2f,
+            col: math.SRGBA,
         ) void,
         primQuadUV: *const fn (
             draw_list: *anyopaque,
-            a: [2]f32,
-            b: [2]f32,
-            c: [2]f32,
-            d: [2]f32,
-            uv_a: [2]f32,
-            uv_b: [2]f32,
-            uv_c: [2]f32,
-            uv_d: [2]f32,
-            col: u32,
+            a: math.Vec2f,
+            b: math.Vec2f,
+            c: math.Vec2f,
+            d: math.Vec2f,
+            uv_a: math.Vec2f,
+            uv_b: math.Vec2f,
+            uv_c: math.Vec2f,
+            uv_d: math.Vec2f,
+            col: math.SRGBA,
         ) void,
         primWriteVtx: *const fn (
             draw_list: *anyopaque,
-            pos: [2]f32,
-            uv: [2]f32,
-            col: u32,
+            pos: math.Vec2f,
+            uv: math.Vec2f,
+            col: math.SRGBA,
         ) void,
         primWriteIdx: *const fn (
             draw_list: *anyopaque,
@@ -1691,11 +1705,53 @@ pub const DrawList = struct {
     };
 };
 
+pub const ListClipper = extern struct {
+    Ctx: ?*anyopaque = null,
+    DisplayStart: c_int = 0,
+    DisplayEnd: c_int = 0,
+    ItemsCount: c_int = 0,
+    ItemsHeight: f32 = 0,
+    StartPosY: f64 = 0,
+    StartSeekOffsetY: f64 = 0,
+    TempData: ?*anyopaque = null,
+    vtable: *const VTable,
+
+    pub fn begin(self: *ListClipper, items_count: ?i32, items_height: ?f32) void {
+        self.vtable.begin(self, items_count orelse std.math.maxInt(i32), items_height orelse -1.0);
+    }
+
+    pub fn end(self: *ListClipper) void {
+        self.vtable.end(self);
+    }
+    pub fn includeItemsByIndex(self: *ListClipper, item_begin: i32, item_end: i32) void {
+        self.vtable.includeItemsByIndex(self, item_begin, item_end);
+    }
+    pub fn step(self: *ListClipper) bool {
+        return self.vtable.step(self);
+    }
+
+    pub const VTable = struct {
+        begin: *const fn (self: *ListClipper, items_count: ?i32, items_height: ?f32) void,
+        end: *const fn (self: *ListClipper) void,
+        includeItemsByIndex: *const fn (self: *ListClipper, item_begin: i32, item_end: i32) void,
+        step: *const fn (self: *ListClipper) bool,
+
+        pub fn implement(comptime T: type) VTable {
+            return VTable{
+                .begin = T.begin,
+                .end = T.end,
+                .includeItemsByIndex = T.includeItemsByIndex,
+                .step = T.step,
+            };
+        }
+    };
+};
+
 pub const Image = struct {
     w: f32,
     h: f32,
-    uv0: [2]f32 = .{ 0.0, 0.0 },
-    uv1: [2]f32 = .{ 1.0, 1.0 },
+    uv0: math.Vec2f = .{},
+    uv1: math.Vec2f = .{ .x = 1.0, .y = 1.0 },
 };
 
 // Copy from zgui (THc a.k.a Temp hack)
@@ -2196,15 +2252,15 @@ pub const TableSortSpecs = *extern struct {
 
 pub const TableBgTarget = enum(u32) {
     none = 0,
-    row_bg0 = 1,
-    row_bg1 = 2,
-    cell_bg = 3,
+    RowBg0 = 1,
+    RowBg1 = 2,
+    CellBg = 3,
 };
 
 pub const BeginTable = struct {
     column: i32,
     flags: TableFlags = .{},
-    outer_size: [2]f32 = .{ 0, 0 },
+    outer_size: math.Vec2f = .{},
     inner_width: f32 = 0,
 };
 
@@ -2302,6 +2358,23 @@ pub const PopupFlags = packed struct(c_int) {
     pub const any_popup = PopupFlags{ .any_popup_id = true, .any_popup_level = true };
 };
 
+pub const SelectableFlags = packed struct(c_int) {
+    no_auto_close_popups: bool = false,
+    span_all_columns: bool = false,
+    allow_double_click: bool = false,
+    disabled: bool = false,
+    allow_overlap: bool = false,
+    highlight: bool = false,
+    _padding: u26 = 0,
+};
+
+const Selectable = struct {
+    selected: bool = false,
+    flags: SelectableFlags = .{},
+    w: f32 = 0,
+    h: f32 = 0,
+};
+
 const Button = struct {
     w: f32 = 0.0,
     h: f32 = 0.0,
@@ -2376,7 +2449,7 @@ pub const StyleCol = enum(c_int) {
 };
 const PushStyleColor4f = struct {
     idx: StyleCol,
-    c: [4]f32,
+    c: math.Color4f,
 };
 
 const PopStyleColor = struct {
@@ -2395,7 +2468,7 @@ pub const FocusedFlags = packed struct(c_int) {
 };
 pub const TableSetBgColor = struct {
     target: TableBgTarget,
-    color: u32,
+    color: math.SRGBA,
     column_n: i32 = -1,
 };
 
@@ -2442,13 +2515,13 @@ pub const ColorEditFlags = packed struct(c_int) {
     };
 };
 const ColorPicker4 = struct {
-    col: *[4]f32,
+    col: *math.Color4f,
     flags: ColorEditFlags = .{},
     ref_col: ?[*]const f32 = null,
 };
 
 const ColorEdit4 = struct {
-    col: *[4]f32,
+    col: *math.Color4f,
     flags: ColorEditFlags = .{},
 };
 
@@ -2471,24 +2544,24 @@ pub const Style = extern struct {
     font_scale_dpi: f32,
     alpha: f32,
     disabled_alpha: f32,
-    window_padding: [2]f32,
+    window_padding: math.Vec2f,
     window_rounding: f32,
     window_border_size: f32,
     window_border_hover_padding: f32,
-    window_min_size: [2]f32,
-    window_title_align: [2]f32,
+    window_min_size: math.Vec2f,
+    window_title_align: math.Vec2f,
     window_menu_button_position: Direction,
     child_rounding: f32,
     child_border_size: f32,
     popup_rounding: f32,
     popup_border_size: f32,
-    frame_padding: [2]f32,
+    frame_padding: math.Vec2f,
     frame_rounding: f32,
     frame_border_size: f32,
-    item_spacing: [2]f32,
-    item_inner_spacing: [2]f32,
-    cell_padding: [2]f32,
-    touch_extra_padding: [2]f32,
+    item_spacing: math.Vec2f,
+    item_inner_spacing: math.Vec2f,
+    cell_padding: math.Vec2f,
+    touch_extra_padding: math.Vec2f,
     indent_spacing: f32,
     columns_min_spacing: f32,
     scrollbar_size: f32,
@@ -2504,18 +2577,18 @@ pub const Style = extern struct {
     tab_bar_border_size: f32,
     tab_bar_overline_size: f32,
     table_angled_header_angle: f32,
-    table_angled_headers_text_align: [2]f32,
+    table_angled_headers_text_align: math.Vec2f,
     tree_lines_flags: TreeNodeFlags,
     tree_lines_size: f32,
     tree_lines_rounding: f32,
     color_button_position: Direction,
-    button_text_align: [2]f32,
-    selectable_text_align: [2]f32,
+    button_text_align: math.Vec2f,
+    selectable_text_align: math.Vec2f,
     separator_text_border_size: f32,
-    separator_text_align: [2]f32,
-    separator_text_padding: [2]f32,
-    display_window_padding: [2]f32,
-    display_safe_area_padding: [2]f32,
+    separator_text_align: math.Vec2f,
+    separator_text_padding: math.Vec2f,
+    display_window_padding: math.Vec2f,
+    display_safe_area_padding: math.Vec2f,
     docking_separator_size: f32,
     mouse_cursor_scale: f32,
     anti_aliased_lines: bool,
@@ -2524,7 +2597,7 @@ pub const Style = extern struct {
     curve_tessellation_tol: f32,
     circle_tessellation_max_error: f32,
 
-    colors: [@typeInfo(StyleCol).@"enum".fields.len][4]f32,
+    colors: [@typeInfo(StyleCol).@"enum".fields.len]math.Color4f,
 
     hover_stationary_delay: f32,
     hover_delay_short: f32,
@@ -2544,10 +2617,10 @@ pub const Style = extern struct {
     pub const scaleAllSizes = zguiStyle_ScaleAllSizes;
     extern fn zguiStyle_ScaleAllSizes(style: *Style, scale_factor: f32) void;
 
-    pub inline fn getColor(style: Style, idx: StyleCol) [4]f32 {
+    pub inline fn getColor(style: Style, idx: StyleCol) math.Color4f {
         return style.colors[@intCast(@intFromEnum(idx))];
     }
-    pub inline fn setColor(style: *Style, idx: StyleCol, color: [4]f32) void {
+    pub inline fn setColor(style: *Style, idx: StyleCol, color: math.Color4f) void {
         style.colors[@intCast(@intFromEnum(idx))] = color;
     }
 };
@@ -2603,7 +2676,7 @@ pub const StyleVar = enum(c_int) {
 
 const PushStyleVar2f = struct {
     idx: StyleVar,
-    v: [2]f32,
+    v: math.Vec2f,
 };
 
 const PushStyleVar1f = struct {

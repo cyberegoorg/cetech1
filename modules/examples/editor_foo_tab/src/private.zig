@@ -6,6 +6,7 @@ const cdb = cetech1.cdb;
 const coreui = cetech1.coreui;
 
 const editor = @import("editor");
+const editor_tabs = @import("editor_tabs");
 const Icons = coreui.CoreIcons;
 
 const module_name = .editor_foo_tab;
@@ -28,17 +29,17 @@ var _coreui: *const coreui.CoreUIApi = undefined;
 
 // Global state that can surive hot-reload
 const G = struct {
-    test_tab_vt_ptr: *editor.TabTypeI = undefined,
+    test_tab_vt_ptr: *editor_tabs.TabTypeI = undefined,
 };
 var _g: *G = undefined;
 
 // Struct for tab type
 const FooTab = struct {
-    tab_i: editor.TabI,
+    tab_i: editor_tabs.TabI,
 };
 
 // Fill editor tab interface
-var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
+var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
     .tab_name = TAB_NAME,
     .tab_hash = .fromStr(TAB_NAME),
     .category = "Examples",
@@ -50,13 +51,13 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Return tab title
-    pub fn title(inst: *editor.TabO) ![:0]const u8 {
+    pub fn title(inst: *editor_tabs.TabO) ![:0]const u8 {
         _ = inst;
         return Icons.FA_ROBOT ++ "  " ++ "Foo tab";
     }
 
     // Create new tab instantce
-    pub fn create(tab_id: u32) !?*editor.TabI {
+    pub fn create(tab_id: u32) !?*editor_tabs.TabI {
         _ = tab_id;
 
         var tab_inst = _allocator.create(FooTab) catch undefined;
@@ -68,13 +69,13 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Destroy tab instantce
-    pub fn destroy(tab_inst: *editor.TabI) !void {
+    pub fn destroy(tab_inst: *editor_tabs.TabI) !void {
         const tab_o: *FooTab = @ptrCast(@alignCast(tab_inst.inst));
         _allocator.destroy(tab_o);
     }
 
     // Draw tab content
-    pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
+    pub fn ui(inst: *editor_tabs.TabO, kernel_tick: u64, dt: f32) !void {
         _ = kernel_tick; // autofix
         _ = dt; // autofix
         const tab_o: *FooTab = @ptrCast(@alignCast(inst));
@@ -82,7 +83,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Draw tab menu
-    pub fn menu(inst: *editor.TabO) !void {
+    pub fn menu(inst: *editor_tabs.TabO) !void {
         const tab_o: *FooTab = @ptrCast(@alignCast(inst));
         _ = tab_o;
         if (_coreui.beginMenu(_allocator, "foo", true, null)) {
@@ -112,9 +113,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.test_tab_vt_ptr = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, TAB_NAME, foo_tab);
+    _g.test_tab_vt_ptr = try apidb.setGlobalVarValue(editor_tabs.TabTypeI, module_name, TAB_NAME, foo_tab);
 
-    try apidb.implOrRemove(module_name, editor.TabTypeI, &foo_tab, load);
+    try apidb.implOrRemove(module_name, editor_tabs.TabTypeI, &foo_tab, load);
 
     return true;
 }

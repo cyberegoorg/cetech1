@@ -6,7 +6,6 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 const gpu = cetech1.gpu;
-const zm = cetech1.math.zmath;
 
 const public = @import("render_pipeline.zig");
 

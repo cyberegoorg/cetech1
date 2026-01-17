@@ -26,7 +26,7 @@
     {
       "__type_name": "ct_light_component",
       "__uuid": "0198f9fb-70ca-7cf1-9c8f-8d77a4434245",
-      "type": "point",
+      "type": "Point",
       "radius": 1,
       "color": {
         "__type_name": "ct_color_3f",

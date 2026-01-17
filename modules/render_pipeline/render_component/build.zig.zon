@@ -1,0 +1,21 @@
+.{
+    .name = .render_component,
+    .fingerprint = 0xbd9fd4301c5bbd46,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .instance_system = .{ .path = "../instance_system" },
+        .graphvm = .{ .path = "../../scripting/graphvm" },
+        .transform = .{ .path = "../../transform" },
+        .render_viewport = .{ .path = "../../rendering/render_viewport" },
+        .shader_system = .{ .path = "../../rendering/shader_system" },
+        .render_graph = .{ .path = "../../rendering/render_graph" },
+        .renderer_nodes = .{ .path = "../../scripting/renderer_nodes" },
+        .visibility_flags = .{ .path = "../../rendering/visibility_flags" },
+        .editor = .{ .path = "../../editor/editor" },
+    },
+}

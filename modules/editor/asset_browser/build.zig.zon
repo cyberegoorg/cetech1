@@ -9,8 +9,9 @@
     .dependencies = .{
         .cetech1 = .{ .path = "../../../public/" },
         .editor = .{ .path = "../editor" },
+        .editor_tabs = .{ .path = "../tabs/" },
         .editor_tree = .{ .path = "../tree" },
-        .editor_tags = .{ .path = "../tags" },
-        .editor_asset = .{ .path = "../asset" },
+        .editor_assetdb = .{ .path = "../assetdb" },
+        .editor_obj_buffer = .{ .path = "../obj_buffer" },
     },
 }

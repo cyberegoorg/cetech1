@@ -18,6 +18,7 @@ pub fn build(b: *std.Build) !void {
 
     lib.root_module.addImport("editor", editor.module("editor"));
     lib.root_module.addImport("editor_gizmo", b.dependency("editor_gizmo", .{}).module("editor_gizmo"));
+    lib.root_module.addImport("editor_tabs", b.dependency("editor_tabs", .{}).module("editor_tabs"));
     lib.root_module.addImport("render_viewport", b.dependency("render_viewport", .{}).module("render_viewport"));
     lib.root_module.addImport("camera", b.dependency("camera", .{}).module("camera"));
     lib.root_module.addImport("camera_controller", b.dependency("camera_controller", .{}).module("camera_controller"));

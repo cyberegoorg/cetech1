@@ -8,7 +8,7 @@
     },
     .dependencies = .{
         .cetech1 = .{ .path = "../../../public/" },
-        .camera = .{ .path = "../camera" },
+        .camera = .{ .path = "../../camera/camera" },
         .shader_system = .{ .path = "../shader_system" },
         .visibility_flags = .{ .path = "../visibility_flags" },
     },

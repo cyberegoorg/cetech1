@@ -175,6 +175,23 @@
           }
         ]
       }
+    },
+    {
+      "__type_name": "ct_physics_shape",
+      "__uuid": "019bcce7-4828-7687-80e7-0a4c4b4aefba",
+      "type": "Box",
+      "size": {
+        "__type_name": "ct_vec_3f",
+        "__uuid": "019bcce7-5e3b-7d47-a1ca-a76d46d46297",
+        "x": 0.5,
+        "y": 0.5,
+        "z": 0.5
+      }
+    },
+    {
+      "__type_name": "ct_physics_body",
+      "__uuid": "019bccf2-d99a-7e2d-8e24-ccb1edc99e5f",
+      "type": "Dynamic"
     }
   ]
 }

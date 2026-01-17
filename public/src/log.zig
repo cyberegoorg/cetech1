@@ -26,35 +26,35 @@ pub const LogAPI = struct {
     const Self = @This();
 
     pub const Level = enum {
-        invalid,
+        Invalid,
 
         /// Error: something has gone wrong. This might be recoverable or might
         /// be followed by the program exiting.
         /// Warning: it is uncertain if something has gone wrong or not, but the
-        err,
+        Err,
         /// circumstances would be worth investigating.
-        warn,
+        Warn,
         /// Info: general messages about the state of the program.
-        info,
+        Info,
         /// Debug: messages only useful for debugging.
-        debug,
+        Debug,
 
         pub fn asText(self: Level) []const u8 {
             return switch (self) {
-                .err => "E",
-                .warn => "W",
-                .info => "I",
-                .debug => "D",
+                .Err => "E",
+                .Warn => "W",
+                .Info => "I",
+                .Debug => "D",
                 else => "SHIT",
             };
         }
 
         pub fn fromStdLevel(level: std.log.Level) Level {
             return switch (level) {
-                .err => .err,
-                .warn => .warn,
-                .info => .info,
-                .debug => .debug,
+                .err => .Err,
+                .warn => .Warn,
+                .info => .Info,
+                .debug => .Debug,
             };
         }
     };

@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) !void {
     );
 
     lib.root_module.addImport("editor", b.dependency("editor", .{}).module("editor"));
-    lib.root_module.addImport("editor_asset_browser", b.dependency("editor_asset_browser", .{}).module("editor_asset_browser"));
+    lib.root_module.addImport("editor_assetdb", b.dependency("editor_assetdb", .{}).module("editor_assetdb"));
 
     _ = b.addModule("editor_fixtures", .{
         .root_source_file = b.path("src/editor_fixtures.zig"),

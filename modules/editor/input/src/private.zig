@@ -9,6 +9,7 @@ const coreui = cetech1.coreui;
 const input = cetech1.input;
 
 const editor = @import("editor");
+const editor_tabs = @import("editor_tabs");
 const Icons = coreui.CoreIcons;
 
 const module_name = .editor_input;
@@ -41,17 +42,17 @@ const LogBuffer = cetech1.ArrayList(LogEntry);
 
 // Global state that can surive hot-reload
 const G = struct {
-    log_tab_vt_ptr: *editor.TabTypeI = undefined,
+    log_tab_vt_ptr: *editor_tabs.TabTypeI = undefined,
 };
 var _g: *G = undefined;
 
 // Struct for tab type
 const InputTab = struct {
-    tab_i: editor.TabI,
+    tab_i: editor_tabs.TabI,
 };
 
 // Fill editor tab interface
-var input_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
+var input_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
     .tab_name = TAB_NAME,
     .tab_hash = .fromStr(TAB_NAME),
     .category = "Debug",
@@ -63,13 +64,13 @@ var input_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Return tab title
-    pub fn title(inst: *editor.TabO) ![:0]const u8 {
+    pub fn title(inst: *editor_tabs.TabO) ![:0]const u8 {
         _ = inst;
         return Icons.FA_GAMEPAD ++ "  " ++ "Input";
     }
 
     // Create new tab instantce
-    pub fn create(tab_id: u32) !?*editor.TabI {
+    pub fn create(tab_id: u32) !?*editor_tabs.TabI {
         _ = tab_id;
 
         var tab_inst = _allocator.create(InputTab) catch undefined;
@@ -84,13 +85,13 @@ var input_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Destroy tab instantce
-    pub fn destroy(tab_inst: *editor.TabI) !void {
+    pub fn destroy(tab_inst: *editor_tabs.TabI) !void {
         const tab_o: *InputTab = @ptrCast(@alignCast(tab_inst.inst));
         _allocator.destroy(tab_o);
     }
 
     // Draw tab content
-    pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
+    pub fn ui(inst: *editor_tabs.TabO, kernel_tick: u64, dt: f32) !void {
         _ = kernel_tick; // autofix
         _ = dt; // autofix
         const tab_o: *InputTab = @ptrCast(@alignCast(inst));
@@ -175,9 +176,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.log_tab_vt_ptr = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, TAB_NAME, input_tab);
+    _g.log_tab_vt_ptr = try apidb.setGlobalVarValue(editor_tabs.TabTypeI, module_name, TAB_NAME, input_tab);
 
-    try apidb.implOrRemove(module_name, editor.TabTypeI, &input_tab, load);
+    try apidb.implOrRemove(module_name, editor_tabs.TabTypeI, &input_tab, load);
 
     return true;
 }

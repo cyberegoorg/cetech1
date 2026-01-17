@@ -11,7 +11,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
         .graph_node = .{
             .name = "gpu_add",
             .display_name = "Add",
-            .category = "Shader/Math",
+            .category = "GPU/Math",
 
             .inputs = &.{
                 .{ .name = "a", .display_name = "A" },
@@ -33,7 +33,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
         .graph_node = .{
             .name = "gpu_sub",
             .display_name = "Sub",
-            .category = "Shader/Math",
+            .category = "GPU/Math",
 
             .inputs = &.{
                 .{ .name = "a", .display_name = "A" },
@@ -55,7 +55,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
         .graph_node = .{
             .name = "gpu_mul",
             .display_name = "Mul",
-            .category = "Shader/Math",
+            .category = "GPU/Math",
 
             .inputs = &.{
                 .{ .name = "a", .display_name = "A" },
@@ -77,7 +77,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
         .graph_node = .{
             .name = "gpu_mul_add",
             .display_name = "Mul add",
-            .category = "Shader/Math",
+            .category = "GPU/Math",
 
             .inputs = &.{
                 .{ .name = "a", .display_name = "A" },
@@ -100,7 +100,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
         .graph_node = .{
             .name = "gpu_div",
             .display_name = "Div",
-            .category = "Shader/Math",
+            .category = "GPU/Math",
 
             .inputs = &.{
                 .{ .name = "a", .display_name = "A" },
@@ -122,7 +122,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
         .graph_node = .{
             .name = "gpu_abs",
             .display_name = "Abs",
-            .category = "Shader/Math",
+            .category = "GPU/Math",
 
             .inputs = &.{
                 .{ .name = "a", .display_name = "A" },
@@ -143,7 +143,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
         .graph_node = .{
             .name = "gpu_to_rad",
             .display_name = "To RAD",
-            .category = "Shader/Math",
+            .category = "GPU/Math",
 
             .inputs = &.{
                 .{ .name = "a", .display_name = "A" },
@@ -164,7 +164,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
         .graph_node = .{
             .name = "gpu_to_deg",
             .display_name = "To DEG",
-            .category = "Shader/Math",
+            .category = "GPU/Math",
 
             .inputs = &.{
                 .{ .name = "a", .display_name = "A" },
@@ -185,7 +185,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
         .graph_node = .{
             .name = "gpu_sin",
             .display_name = "Sin",
-            .category = "Shader/Math",
+            .category = "GPU/Math",
 
             .inputs = &.{
                 .{ .name = "a", .display_name = "A" },
@@ -206,7 +206,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
         .graph_node = .{
             .name = "gpu_cos",
             .display_name = "Cos",
-            .category = "Shader/Math",
+            .category = "GPU/Math",
 
             .inputs = &.{
                 .{ .name = "a", .display_name = "A" },
@@ -227,7 +227,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
         .graph_node = .{
             .name = "gpu_mix",
             .display_name = "Mix",
-            .category = "Shader/Math",
+            .category = "GPU/Math",
 
             .inputs = &.{
                 .{ .name = "a", .display_name = "A" },

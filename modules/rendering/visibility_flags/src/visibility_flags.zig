@@ -9,7 +9,7 @@ pub const VisibilityFlags = cetech1.StaticBitSet(MAX_FLAGS);
 pub const VisibilityFlagsCdb = cdb.CdbTypeDecl(
     "ct_visibility_flags",
     enum(u32) {
-        flags = 0,
+        Flags = 0,
     },
     struct {},
 );
@@ -17,7 +17,7 @@ pub const VisibilityFlagsCdb = cdb.CdbTypeDecl(
 pub const VisibilityFlagCdb = cdb.CdbTypeDecl(
     "ct_visibility_flag",
     enum(u32) {
-        uuid = 0,
+        UUID = 0,
     },
     struct {},
 );

@@ -44,18 +44,17 @@ const test_geometry_type_aspec = editor_inspector.UiPropertyAspect.implement(str
     ) !void {
         _ = allocator; // autofix
         _ = args; // autofix
-        const r = renderer_nodes.SimpleMeshNodeSettings.read(_cdb, obj).?;
-        const type_str = renderer_nodes.SimpleMeshNodeSettings.readStr(_cdb, r, .type) orelse "cube";
-        var type_enum = std.meta.stringToEnum(renderer_nodes.SimpleMeshNodeType, type_str).?;
+        const r = renderer_nodes.SimpleMeshNodeSettingsCdb.read(_cdb, obj).?;
+        const type_str = renderer_nodes.SimpleMeshNodeSettingsCdb.readStr(_cdb, r, .Type) orelse "";
+        var type_enum = std.meta.stringToEnum(renderer_nodes.SimpleMeshNodeType, type_str) orelse .Cube;
 
         try _inspector.uiPropInputBegin(obj, prop_idx, true);
         defer _inspector.uiPropInputEnd();
 
         if (_coreui.comboFromEnum("", &type_enum)) {
-            const w = renderer_nodes.SimpleMeshNodeSettings.write(_cdb, obj).?;
-
-            try renderer_nodes.SimpleMeshNodeSettings.setStr(_cdb, w, .type, @tagName(type_enum));
-            try renderer_nodes.SimpleMeshNodeSettings.commit(_cdb, w);
+            const w = renderer_nodes.SimpleMeshNodeSettingsCdb.write(_cdb, obj).?;
+            try renderer_nodes.SimpleMeshNodeSettingsCdb.setStr(_cdb, w, .Type, @tagName(type_enum));
+            try renderer_nodes.SimpleMeshNodeSettingsCdb.commit(_cdb, w);
         }
     }
 });
@@ -69,11 +68,11 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
 const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
     pub fn postCreateTypes(db: cdb.DbId) !void {
-        try renderer_nodes.SimpleMeshNodeSettings.addPropertyAspect(
+        try renderer_nodes.SimpleMeshNodeSettingsCdb.addPropertyAspect(
             editor_inspector.UiPropertyAspect,
             _cdb,
             db,
-            .type,
+            .Type,
             _g.test_geometry_type_aspec,
         );
     }

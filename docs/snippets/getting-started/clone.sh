@@ -1,3 +1,3 @@
-git clone  https://github.com/cyberegoorg/cetech1.git
+git clone  https://codeberg.org/cyberegoorg/cetech1.git
 
 zig build init

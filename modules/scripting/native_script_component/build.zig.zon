@@ -1,0 +1,14 @@
+.{
+    .name = .native_script_component,
+    .fingerprint = 0xe0ec3dbb9a5424d0,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .editor_inspector = .{ .path = "../../editor/inspector" },
+        .editor = .{ .path = "../../editor/editor" },
+    },
+}

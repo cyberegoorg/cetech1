@@ -3,7 +3,7 @@
 	url = https://github.com/cyberegoorg/SDL_GameControllerDB.git
 [submodule "externals/shared/repo/zbgfx"]
 	path = externals/shared/repo/zbgfx
-	url = https://github.com/cyberegoorg/zbgfx.git
+	url = https://codeberg.org/cyberegoorg/zbgfx.git
 [submodule "externals/shared/repo/zf"]
 	path = externals/shared/repo/zf
 	url = https://github.com/cyberegoorg/zf.git
@@ -33,7 +33,10 @@
 	url = https://github.com/cyberegoorg/ztracy.git
 [submodule "externals/shared/repo/znfde"]
 	path = externals/shared/repo/znfde
-	url = https://github.com/cyberegoorg/znfde.git
+	url = https://codeberg.org/cyberegoorg/znfde.git
 [submodule "externals/shared/repo/tracy"]
 	path = externals/shared/repo/tracy
 	url = https://github.com/wolfpld/tracy.git
+[submodule "externals/shared/repo/zphysics"]
+	path = externals/shared/repo/zphysics
+	url = https://github.com/cyberegoorg/zphysics.git

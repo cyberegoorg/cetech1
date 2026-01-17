@@ -1,0 +1,14 @@
+.{
+    .name = .graphvm_script_component,
+    .fingerprint = 0xb9c7156fdf858b7b,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .graphvm = .{ .path = "../graphvm" },
+        .editor = .{ .path = "../../editor/editor" },
+    },
+}

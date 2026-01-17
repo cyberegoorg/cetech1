@@ -8,8 +8,8 @@
     },
     .dependencies = .{
         .cetech1 = .{ .path = "../../../public/" },
-        .transform = .{ .path = "../../rendering/transform" },
-        .camera = .{ .path = "../../rendering/camera" },
+        .transform = .{ .path = "../../transform" },
+        .camera = .{ .path = "../../camera/camera" },
         .render_viewport = .{ .path = "../../rendering/render_viewport" },
         .render_pipeline = .{ .path = "../../rendering/render_pipeline" },
     },

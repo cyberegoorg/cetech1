@@ -1,0 +1,21 @@
+.{
+    .name = .default_render_pipeline,
+    .fingerprint = 0x506a4713351a3681,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .render_graph = .{ .path = "../../rendering/render_graph" },
+        .render_pipeline = .{ .path = "../../rendering/render_pipeline" },
+
+        .shader_system = .{ .path = "../../rendering/shader_system" },
+        .transform = .{ .path = "../../transform" },
+
+        .light_system = .{ .path = "../light_system" },
+        .bloom = .{ .path = "../bloom" },
+        .tonemap = .{ .path = "../tonemap" },
+    },
+}

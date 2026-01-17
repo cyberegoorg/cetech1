@@ -4,7 +4,6 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const gpu = cetech1.gpu;
 const ecs = cetech1.ecs;
-const zm = cetech1.math.zmath;
 
 const render_graph = @import("render_graph");
 const shader_system = @import("shader_system");
@@ -40,7 +39,7 @@ pub const RenderPipeline = struct {
         return null;
     }
 
-    pub fn uiDebugMenuItems(self: *const RenderPipeline, allocator: std.mem.Allocator) void {
+    pub fn uiDebugMenuItems(self: *const RenderPipeline, allocator: std.mem.Allocator) !void {
         return self.vtable.uiDebugMenuItems(self.ptr, allocator);
     }
 
@@ -61,7 +60,7 @@ pub const RenderPipelineI = struct {
     end: *const fn (pipeline: *anyopaque, context: *shader_system.SystemContext) anyerror!void = undefined,
 
     getGlobalSystem: *const fn (pipeline: *anyopaque, name: cetech1.StrId32) ?*anyopaque = undefined,
-    uiDebugMenuItems: *const fn (pipeline: *anyopaque, allocator: std.mem.Allocator) void,
+    uiDebugMenuItems: *const fn (pipeline: *anyopaque, allocator: std.mem.Allocator) anyerror!void,
 
     pub fn implement(comptime T: type) RenderPipelineI {
         if (!std.meta.hasFn(T, "create")) @compileError("implement me");

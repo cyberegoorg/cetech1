@@ -1,6 +1,6 @@
 # About
 
-[CETech1](https://github.com/cyberegoorg/cetech1) is experimental game engine write in awesome language
+[CETech1](https://codeberg.org/cyberegoorg/cetech1) is experimental game engine write in awesome language
 named [zig](https://ziglang.org).
 Some core features like [AsseDB](assetdb.md), [CDB](cdb.md) and [ApiDB](apidb.md) is based on BitSquid/OurMachinery blog
 posts.

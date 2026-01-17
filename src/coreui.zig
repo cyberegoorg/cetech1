@@ -10,6 +10,7 @@ const tempalloc = @import("tempalloc.zig");
 const kernel = @import("kernel.zig");
 const gpu_private = @import("gpu.zig");
 const cdb_private = @import("cdb.zig");
+const host = @import("host.zig");
 
 const node_editor = zgui.node_editor;
 
@@ -23,6 +24,7 @@ const assetdb = @import("assetdb.zig");
 const cetech1 = @import("cetech1");
 const gpu = cetech1.gpu;
 const cdb = cetech1.cdb;
+const math = cetech1.math;
 const Icons = public.CoreIcons;
 const ui_node_editor = cetech1.coreui_node_editor;
 
@@ -161,10 +163,11 @@ pub var api = public.CoreUIApi{
     .end = @ptrCast(&zgui.end),
     .beginPopup = beginPopup,
 
+    .createClipper = createClipper,
     .pushStyleColor4f = @ptrCast(&zgui.pushStyleColor4f),
     .popStyleColor = @ptrCast(&zgui.popStyleColor),
     .tableSetBgColor = @ptrCast(&zgui.tableSetBgColor),
-    .colorConvertFloat4ToU32 = @ptrCast(&zgui.colorConvertFloat4ToU32),
+
     .text = @ptrCast(&zgui.textUnformatted),
     .textColored = @ptrCast(&zgui.textUnformattedColored),
     .colorPicker4 = @ptrCast(&zgui.colorPicker4),
@@ -219,6 +222,8 @@ pub var api = public.CoreUIApi{
     .getContentRegionAvail = @ptrCast(&zgui.getContentRegionAvail),
     .setCursorPosX = @ptrCast(&zgui.setCursorPosX),
     .setCursorPosY = @ptrCast(&zgui.setCursorPosY),
+    .setCursorScreenPos = @ptrCast(&zgui.setCursorScreenPos),
+    .selectable = @ptrCast(&zgui.selectable),
     .getStyle = @ptrCast(&zgui.getStyle),
     .pushStyleVar2f = @ptrCast(&zgui.pushStyleVar2f),
     .pushStyleVar1f = @ptrCast(&zgui.pushStyleVar1f),
@@ -237,6 +242,7 @@ pub var api = public.CoreUIApi{
     .inputI64 = inputI64,
     .inputU64 = inputU64,
     .dragF32 = @ptrCast(&zgui.dragFloat),
+    .dragVec3f = @ptrCast(&zgui.dragFloat3),
     .dragF64 = dragDouble,
     .dragI32 = dragI32,
     .dragU32 = dragU32,
@@ -280,6 +286,8 @@ pub var api = public.CoreUIApi{
 
     .pushPropName = pushPropName,
     .getFontSize = @ptrCast(&zgui.getFontSize),
+    .popFontSize = @ptrCast(&zgui.popFont),
+    .pushFontSize = pushFontSize,
     .showTestingWindow = showTestingWindow,
     .showExternalCredits = showExternalCredits,
     .showAuthors = showAuthors,
@@ -334,12 +342,39 @@ pub var api = public.CoreUIApi{
 
     // Gizmo
     .gizmoSetRect = @ptrCast(&zgui.gizmo.setRect),
-    .gizmoManipulate = @ptrCast(&zgui.gizmo.manipulate),
+    .gizmoManipulate = gizmoManipulate,
     .gizmoSetDrawList = gizmoSetDrawList,
     .gizmoSetAlternativeWindow = @ptrCast(&zgui.gizmo.setAlternativeWindow),
     .gizmoIsUsing = @ptrCast(&zgui.gizmo.isUsing),
     .gizmoIsOver = @ptrCast(&zgui.gizmo.isOver),
 };
+
+fn pushFontSize(font_size_base_unscaled: f32) void {
+    zgui.pushFont(null, font_size_base_unscaled);
+}
+
+fn gizmoManipulate(
+    view: math.Mat44f,
+    projection: math.Mat44f,
+    operation: public.Operation,
+    mode: public.GizmoMode,
+    matrix: *math.Mat44f,
+    opt: public.GuizmoOpt,
+) bool {
+    return zgui.gizmo.manipulate(
+        &view.toArray(),
+        &projection.toArray(),
+        @bitCast(operation),
+        @enumFromInt(@intFromEnum(mode)),
+        @ptrCast(matrix),
+        .{
+            .delta_matrix = @ptrCast(opt.delta_matrix),
+            .snap = if (opt.snap) |s| &s.toArray() else null,
+            .local_bounds = opt.local_bounds,
+            .bounds_snap = if (opt.bounds_snap) |s| &s.toArray() else null,
+        },
+    );
+}
 
 fn isMouseDoubleClicked(mouse_button: public.MouseButton) bool {
     return zgui.isMouseDoubleClicked(@enumFromInt(@intFromEnum(mouse_button)));
@@ -482,6 +517,22 @@ fn createEditor(cfg: ui_node_editor.Config) *ui_node_editor.EditorContext {
     return @ptrCast(node_editor.EditorContext.create(node_editor_cfg));
 }
 
+const clipper_vtable = public.ListClipper.VTable.implement(struct {
+    pub fn begin(self: *public.ListClipper, items_count: ?i32, items_height: ?f32) void {
+        zgui.ListClipper.begin(@ptrCast(self), items_count, items_height);
+    }
+
+    pub fn end(self: *public.ListClipper) void {
+        zgui.ListClipper.end(@ptrCast(self));
+    }
+    pub fn includeItemsByIndex(self: *public.ListClipper, item_begin: i32, item_end: i32) void {
+        zgui.ListClipper.includeItemsByIndex(@ptrCast(self), item_begin, item_end);
+    }
+    pub fn step(self: *public.ListClipper) bool {
+        return zgui.ListClipper.step(@ptrCast(self));
+    }
+});
+
 const drawlist_vtable = public.DrawList.VTable.implement(struct {
     pub fn getOwnerName(draw_list: *anyopaque) ?[*:0]const u8 {
         const dl: zgui.DrawList = @ptrCast(draw_list);
@@ -548,8 +599,8 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
     pub fn pushClipRect(draw_list: *anyopaque, args: public.ClipRect) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         return dl.pushClipRect(.{
-            .pmin = args.pmin,
-            .pmax = args.pmax,
+            .pmin = args.pmin.toArray(),
+            .pmax = args.pmax.toArray(),
             .intersect_with_current = args.intersect_with_current,
         });
     }
@@ -569,36 +620,36 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         return dl.popTexture();
     }
-    pub fn getClipRectMin(draw_list: *anyopaque) [2]f32 {
+    pub fn getClipRectMin(draw_list: *anyopaque) math.Vec2f {
         const dl: zgui.DrawList = @ptrCast(draw_list);
-        return dl.getClipRectMin();
+        return .fromArray(dl.getClipRectMin());
     }
-    pub fn getClipRectMax(draw_list: *anyopaque) [2]f32 {
+    pub fn getClipRectMax(draw_list: *anyopaque) math.Vec2f {
         const dl: zgui.DrawList = @ptrCast(draw_list);
-        return dl.getClipRectMax();
+        return .fromArray(dl.getClipRectMax());
     }
-    pub fn addLine(draw_list: *anyopaque, args: struct { p1: [2]f32, p2: [2]f32, col: u32, thickness: f32 }) void {
+    pub fn addLine(draw_list: *anyopaque, args: struct { p1: math.Vec2f, p2: math.Vec2f, col: math.SRGBA, thickness: f32 }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.addLine(.{
-            .p1 = args.p1,
-            .p2 = args.p2,
-            .col = args.col,
+            .p1 = args.p1.toArray(),
+            .p2 = args.p2.toArray(),
+            .col = args.col.toU32(),
             .thickness = args.thickness,
         });
     }
     pub fn addRect(draw_list: *anyopaque, args: struct {
-        pmin: [2]f32,
-        pmax: [2]f32,
-        col: u32,
+        pmin: math.Vec2f,
+        pmax: math.Vec2f,
+        col: math.SRGBA,
         rounding: f32 = 0.0,
         flags: public.DrawFlags = .{},
         thickness: f32 = 1.0,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.addRect(.{
-            .pmin = args.pmin,
-            .pmax = args.pmax,
-            .col = args.col,
+            .pmin = args.pmin.toArray(),
+            .pmax = args.pmax.toArray(),
+            .col = args.col.toU32(),
             .rounding = args.rounding,
             .flags = .{
                 .closed = args.flags.closed,
@@ -612,17 +663,17 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
         });
     }
     pub fn addRectFilled(draw_list: *anyopaque, args: struct {
-        pmin: [2]f32,
-        pmax: [2]f32,
-        col: u32,
+        pmin: math.Vec2f,
+        pmax: math.Vec2f,
+        col: math.SRGBA,
         rounding: f32 = 0.0,
         flags: public.DrawFlags = .{},
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.addRectFilled(.{
-            .pmin = args.pmin,
-            .pmax = args.pmax,
-            .col = args.col,
+            .pmin = args.pmin.toArray(),
+            .pmax = args.pmax.toArray(),
+            .col = args.col.toU32(),
             .rounding = args.rounding,
             .flags = .{
                 .closed = args.flags.closed,
@@ -635,8 +686,8 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
         });
     }
     pub fn addRectFilledMultiColor(draw_list: *anyopaque, args: struct {
-        pmin: [2]f32,
-        pmax: [2]f32,
+        pmin: math.Vec2f,
+        pmax: math.Vec2f,
         col_upr_left: u32,
         col_upr_right: u32,
         col_bot_right: u32,
@@ -644,8 +695,8 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.addRectFilledMultiColor(.{
-            .pmin = args.pmin,
-            .pmax = args.pmax,
+            .pmin = args.pmin.toArray(),
+            .pmax = args.pmax.toArray(),
             .col_upr_left = args.col_upr_left,
             .col_upr_right = args.col_upr_right,
             .col_bot_right = args.col_bot_right,
@@ -653,143 +704,143 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
         });
     }
     pub fn addQuad(draw_list: *anyopaque, args: struct {
-        p1: [2]f32,
-        p2: [2]f32,
-        p3: [2]f32,
-        p4: [2]f32,
-        col: u32,
+        p1: math.Vec2f,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
+        p4: math.Vec2f,
+        col: math.SRGBA,
         thickness: f32 = 1.0,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.addQuad(.{
-            .p1 = args.p1,
-            .p2 = args.p2,
-            .p3 = args.p3,
-            .p4 = args.p4,
-            .col = args.col,
+            .p1 = args.p1.toArray(),
+            .p2 = args.p2.toArray(),
+            .p3 = args.p3.toArray(),
+            .p4 = args.p4.toArray(),
+            .col = args.col.toU32(),
             .thickness = args.thickness,
         });
     }
 
     pub fn addQuadFilled(draw_list: *anyopaque, args: struct {
-        p1: [2]f32,
-        p2: [2]f32,
-        p3: [2]f32,
-        p4: [2]f32,
-        col: u32,
+        p1: math.Vec2f,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
+        p4: math.Vec2f,
+        col: math.SRGBA,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.addQuadFilled(.{
-            .p1 = args.p1,
-            .p2 = args.p2,
-            .p3 = args.p3,
-            .p4 = args.p4,
-            .col = args.col,
+            .p1 = args.p1.toArray(),
+            .p2 = args.p2.toArray(),
+            .p3 = args.p3.toArray(),
+            .p4 = args.p4.toArray(),
+            .col = args.col.toU32(),
         });
     }
     pub fn addTriangle(draw_list: *anyopaque, args: struct {
-        p1: [2]f32,
-        p2: [2]f32,
-        p3: [2]f32,
-        col: u32,
+        p1: math.Vec2f,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
+        col: math.SRGBA,
         thickness: f32 = 1.0,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.addTriangle(.{
-            .p1 = args.p1,
-            .p2 = args.p2,
-            .p3 = args.p3,
-            .col = args.col,
+            .p1 = args.p1.toArray(),
+            .p2 = args.p2.toArray(),
+            .p3 = args.p3.toArray(),
+            .col = args.col.toU32(),
             .thickness = args.thickness,
         });
     }
     pub fn addTriangleFilled(draw_list: *anyopaque, args: struct {
-        p1: [2]f32,
-        p2: [2]f32,
-        p3: [2]f32,
-        col: u32,
+        p1: math.Vec2f,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
+        col: math.SRGBA,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.addTriangleFilled(.{
-            .p1 = args.p1,
-            .p2 = args.p2,
-            .p3 = args.p3,
-            .col = args.col,
+            .p1 = args.p1.toArray(),
+            .p2 = args.p2.toArray(),
+            .p3 = args.p3.toArray(),
+            .col = args.col.toU32(),
         });
     }
     pub fn addCircle(draw_list: *anyopaque, args: struct {
-        p: [2]f32,
+        p: math.Vec2f,
         r: f32,
-        col: u32,
+        col: math.SRGBA,
         num_segments: i32 = 0,
         thickness: f32 = 1.0,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.addCircle(.{
-            .p = args.p,
+            .p = args.p.toArray(),
             .r = args.r,
-            .col = args.col,
+            .col = args.col.toU32(),
             .num_segments = args.num_segments,
             .thickness = args.thickness,
         });
     }
     pub fn addCircleFilled(draw_list: *anyopaque, args: struct {
-        p: [2]f32,
+        p: math.Vec2f,
         r: f32,
-        col: u32,
+        col: math.SRGBA,
         num_segments: u16 = 0,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
 
         dl.addCircleFilled(.{
-            .p = args.p,
+            .p = args.p.toArray(),
             .r = args.r,
-            .col = args.col,
+            .col = args.col.toU32(),
             .num_segments = args.num_segments,
         });
     }
     pub fn addNgon(draw_list: *anyopaque, args: struct {
-        p: [2]f32,
+        p: math.Vec2f,
         r: f32,
-        col: u32,
+        col: math.SRGBA,
         num_segments: u32,
         thickness: f32 = 1.0,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.addNgon(.{
-            .p = args.p,
+            .p = args.p.toArray(),
             .r = args.r,
-            .col = args.col,
+            .col = args.col.toU32(),
             .num_segments = args.num_segments,
             .thickness = args.thickness,
         });
     }
     pub fn addNgonFilled(draw_list: *anyopaque, args: struct {
-        p: [2]f32,
+        p: math.Vec2f,
         r: f32,
-        col: u32,
+        col: math.SRGBA,
         num_segments: u32,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.addNgonFilled(.{
-            .p = args.p,
+            .p = args.p.toArray(),
             .r = args.r,
-            .col = args.col,
+            .col = args.col.toU32(),
             .num_segments = args.num_segments,
         });
     }
-    pub fn addTextUnformatted(draw_list: *anyopaque, pos: [2]f32, col: u32, txt: []const u8) void {
+    pub fn addTextUnformatted(draw_list: *anyopaque, pos: math.Vec2f, col: math.SRGBA, txt: []const u8) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
-        dl.addTextUnformatted(pos, col, txt);
+        dl.addTextUnformatted(pos.toArray(), col.toU32(), txt);
     }
-    pub fn addPolyline(draw_list: *anyopaque, points: []const [2]f32, args: struct {
-        col: u32,
+    pub fn addPolyline(draw_list: *anyopaque, points: []const math.Vec2f, args: struct {
+        col: math.SRGBA,
         flags: public.DrawFlags = .{},
         thickness: f32 = 1.0,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
-        dl.addPolyline(points, .{
-            .col = args.col,
+        dl.addPolyline(std.mem.bytesAsSlice([2]f32, std.mem.sliceAsBytes(points)), .{
+            .col = args.col.toU32(),
             .flags = .{
                 .closed = args.flags.closed,
                 .round_corners_top_left = args.flags.round_corners_top_left,
@@ -801,107 +852,107 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
             .thickness = args.thickness,
         });
     }
-    pub fn addConvexPolyFilled(draw_list: *anyopaque, points: []const [2]f32, col: u32) void {
+    pub fn addConvexPolyFilled(draw_list: *anyopaque, points: []const math.Vec2f, col: math.SRGBA) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
-        dl.addConvexPolyFilled(points, col);
+        dl.addConvexPolyFilled(std.mem.bytesAsSlice([2]f32, std.mem.sliceAsBytes(points)), col.toU32());
     }
     pub fn addBezierCubic(draw_list: *anyopaque, args: struct {
-        p1: [2]f32,
-        p2: [2]f32,
-        p3: [2]f32,
-        p4: [2]f32,
-        col: u32,
+        p1: math.Vec2f,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
+        p4: math.Vec2f,
+        col: math.SRGBA,
         thickness: f32 = 1.0,
         num_segments: u32 = 0,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.addBezierCubic(.{
-            .p1 = args.p1,
-            .p2 = args.p2,
-            .p3 = args.p3,
-            .p4 = args.p4,
-            .col = args.col,
+            .p1 = args.p1.toArray(),
+            .p2 = args.p2.toArray(),
+            .p3 = args.p3.toArray(),
+            .p4 = args.p4.toArray(),
+            .col = args.col.toU32(),
             .thickness = args.thickness,
             .num_segments = args.num_segments,
         });
     }
     pub fn addBezierQuadratic(draw_list: *anyopaque, args: struct {
-        p1: [2]f32,
-        p2: [2]f32,
-        p3: [2]f32,
-        col: u32,
+        p1: math.Vec2f,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
+        col: math.SRGBA,
         thickness: f32 = 1.0,
         num_segments: u32 = 0,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.addBezierQuadratic(.{
-            .p1 = args.p1,
-            .p2 = args.p2,
-            .p3 = args.p3,
-            .col = args.col,
+            .p1 = args.p1.toArray(),
+            .p2 = args.p2.toArray(),
+            .p3 = args.p3.toArray(),
+            .col = args.col.toU32(),
             .thickness = args.thickness,
             .num_segments = args.num_segments,
         });
     }
     pub fn addImage(draw_list: *anyopaque, user_texture_id: gpu.TextureHandle, args: struct {
-        pmin: [2]f32,
-        pmax: [2]f32,
-        uvmin: [2]f32 = .{ 0, 0 },
-        uvmax: [2]f32 = .{ 1, 1 },
-        col: u32 = 0xff_ff_ff_ff,
+        pmin: math.Vec2f,
+        pmax: math.Vec2f,
+        uvmin: math.Vec2f = .{},
+        uvmax: math.Vec2f = .{ .x = 1, .y = 1 },
+        col: math.SRGBA = .white,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.addImage(.{ .tex_id = @enumFromInt(user_texture_id.idx), .tex_data = null }, .{
-            .pmin = args.pmin,
-            .pmax = args.pmax,
-            .uvmin = args.uvmin,
-            .uvmax = args.uvmax,
-            .col = args.col,
+            .pmin = args.pmin.toArray(),
+            .pmax = args.pmax.toArray(),
+            .uvmin = args.uvmin.toArray(),
+            .uvmax = args.uvmax.toArray(),
+            .col = args.col.toU32(),
         });
     }
     pub fn addImageQuad(draw_list: *anyopaque, user_texture_id: gpu.TextureHandle, args: struct {
-        p1: [2]f32,
-        p2: [2]f32,
-        p3: [2]f32,
-        p4: [2]f32,
-        uv1: [2]f32 = .{ 0, 0 },
-        uv2: [2]f32 = .{ 1, 0 },
-        uv3: [2]f32 = .{ 1, 1 },
-        uv4: [2]f32 = .{ 0, 1 },
-        col: u32 = 0xff_ff_ff_ff,
+        p1: math.Vec2f,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
+        p4: math.Vec2f,
+        uv1: math.Vec2f = .{},
+        uv2: math.Vec2f = .{ .x = 1 },
+        uv3: math.Vec2f = .{ .x = 1, .y = 1 },
+        uv4: math.Vec2f = .{ .y = 1 },
+        col: math.SRGBA = .white,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
 
         dl.addImageQuad(.{ .tex_id = @enumFromInt(user_texture_id.idx), .tex_data = null }, .{
-            .p1 = args.p1,
-            .p2 = args.p2,
-            .p3 = args.p3,
-            .p4 = args.p4,
-            .uv1 = args.uv1,
-            .uv2 = args.uv2,
-            .uv3 = args.uv3,
-            .uv4 = args.uv4,
-            .col = args.col,
+            .p1 = args.p1.toArray(),
+            .p2 = args.p2.toArray(),
+            .p3 = args.p3.toArray(),
+            .p4 = args.p4.toArray(),
+            .uv1 = args.uv1.toArray(),
+            .uv2 = args.uv2.toArray(),
+            .uv3 = args.uv3.toArray(),
+            .uv4 = args.uv4.toArray(),
+            .col = args.col.toU32(),
         });
     }
 
     pub fn addImageRounded(draw_list: *anyopaque, user_texture_id: gpu.TextureHandle, args: struct {
-        pmin: [2]f32,
-        pmax: [2]f32,
-        uvmin: [2]f32 = .{ 0, 0 },
-        uvmax: [2]f32 = .{ 1, 1 },
-        col: u32 = 0xff_ff_ff_ff,
+        pmin: math.Vec2f,
+        pmax: math.Vec2f,
+        uvmin: math.Vec2f = .{},
+        uvmax: math.Vec2f = .{ .x = 1, .y = 1 },
+        col: math.SRGBA = .white,
         rounding: f32 = 4.0,
         flags: public.DrawFlags = .{},
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
 
         dl.addImageRounded(.{ .tex_data = null, .tex_id = @enumFromInt(user_texture_id.idx) }, .{
-            .pmin = args.pmin,
-            .pmax = args.pmax,
-            .uvmin = args.uvmin,
-            .uvmax = args.uvmax,
-            .col = args.col,
+            .pmin = args.pmin.toArray(),
+            .pmax = args.pmax.toArray(),
+            .uvmin = args.uvmin.toArray(),
+            .uvmax = args.uvmax.toArray(),
+            .col = args.col.toU32(),
             .rounding = args.rounding,
             .flags = .{
                 .closed = args.flags.closed,
@@ -917,26 +968,26 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.pathClear();
     }
-    pub fn pathLineTo(draw_list: *anyopaque, pos: [2]f32) void {
+    pub fn pathLineTo(draw_list: *anyopaque, pos: math.Vec2f) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
-        dl.pathLineTo(pos);
+        dl.pathLineTo(pos.toArray());
     }
-    pub fn pathLineToMergeDuplicate(draw_list: *anyopaque, pos: [2]f32) void {
+    pub fn pathLineToMergeDuplicate(draw_list: *anyopaque, pos: math.Vec2f) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
-        dl.pathLineToMergeDuplicate(pos);
+        dl.pathLineToMergeDuplicate(pos.toArray());
     }
-    pub fn pathFillConvex(draw_list: *anyopaque, col: u32) void {
+    pub fn pathFillConvex(draw_list: *anyopaque, col: math.SRGBA) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
-        dl.pathFillConvex(col);
+        dl.pathFillConvex(col.toU32());
     }
     pub fn pathStroke(draw_list: *anyopaque, args: struct {
-        col: u32,
+        col: math.SRGBA,
         flags: public.DrawFlags = .{},
         thickness: f32 = 1.0,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.pathStroke(.{
-            .col = args.col,
+            .col = args.col.toU32(),
             .flags = .{
                 .closed = args.flags.closed,
                 .round_corners_top_left = args.flags.round_corners_top_left,
@@ -949,7 +1000,7 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
         });
     }
     pub fn pathArcTo(draw_list: *anyopaque, args: struct {
-        p: [2]f32,
+        p: math.Vec2f,
         r: f32,
         amin: f32,
         amax: f32,
@@ -957,7 +1008,7 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.pathArcTo(.{
-            .p = args.p,
+            .p = args.p.toArray(),
             .r = args.r,
             .amin = args.amin,
             .amax = args.amax,
@@ -965,50 +1016,50 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
         });
     }
     pub fn pathArcToFast(draw_list: *anyopaque, args: struct {
-        p: [2]f32,
+        p: math.Vec2f,
         r: f32,
         amin_of_12: u16,
         amax_of_12: u16,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.pathArcToFast(.{
-            .p = args.p,
+            .p = args.p.toArray(),
             .r = args.r,
             .amin_of_12 = args.amin_of_12,
             .amax_of_12 = args.amax_of_12,
         });
     }
     pub fn pathBezierCubicCurveTo(draw_list: *anyopaque, args: struct {
-        p2: [2]f32,
-        p3: [2]f32,
-        p4: [2]f32,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
+        p4: math.Vec2f,
         num_segments: u16 = 0,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.pathBezierCubicCurveTo(.{
-            .p2 = args.p2,
-            .p3 = args.p3,
-            .p4 = args.p4,
+            .p2 = args.p2.toArray(),
+            .p3 = args.p3.toArray(),
+            .p4 = args.p4.toArray(),
             .num_segments = args.num_segments,
         });
     }
     pub fn pathBezierQuadraticCurveTo(draw_list: *anyopaque, args: struct {
-        p2: [2]f32,
-        p3: [2]f32,
+        p2: math.Vec2f,
+        p3: math.Vec2f,
         num_segments: u16 = 0,
     }) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.pathBezierQuadraticCurveTo(.{
-            .p2 = args.p2,
-            .p3 = args.p3,
+            .p2 = args.p2.toArray(),
+            .p3 = args.p3.toArray(),
             .num_segments = args.num_segments,
         });
     }
     pub fn pathRect(draw_list: *anyopaque, args: public.PathRect) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.pathRect(.{
-            .bmin = args.bmin,
-            .bmax = args.bmax,
+            .bmin = args.bmin.toArray(),
+            .bmax = args.bmax.toArray(),
             .rounding = args.rounding,
             .flags = .{
                 .closed = args.flags.closed,
@@ -1028,37 +1079,37 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.primUnreserve(idx_count, vtx_count);
     }
-    pub fn primRect(draw_list: *anyopaque, a: [2]f32, b: [2]f32, col: u32) void {
+    pub fn primRect(draw_list: *anyopaque, a: math.Vec2f, b: math.Vec2f, col: math.SRGBA) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
-        dl.primRect(a, b, col);
+        dl.primRect(a.toArray(), b.toArray(), col.toU32());
     }
-    pub fn primRectUV(draw_list: *anyopaque, a: [2]f32, b: [2]f32, uv_a: [2]f32, uv_b: [2]f32, col: u32) void {
+    pub fn primRectUV(draw_list: *anyopaque, a: math.Vec2f, b: math.Vec2f, uv_a: math.Vec2f, uv_b: math.Vec2f, col: math.SRGBA) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.primRectUV(
-            a,
-            b,
-            uv_a,
-            uv_b,
-            col,
+            a.toArray(),
+            b.toArray(),
+            uv_a.toArray(),
+            uv_b.toArray(),
+            col.toU32(),
         );
     }
-    pub fn primQuadUV(draw_list: *anyopaque, a: [2]f32, b: [2]f32, c: [2]f32, d: [2]f32, uv_a: [2]f32, uv_b: [2]f32, uv_c: [2]f32, uv_d: [2]f32, col: u32) void {
+    pub fn primQuadUV(draw_list: *anyopaque, a: math.Vec2f, b: math.Vec2f, c: math.Vec2f, d: math.Vec2f, uv_a: math.Vec2f, uv_b: math.Vec2f, uv_c: math.Vec2f, uv_d: math.Vec2f, col: math.SRGBA) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
         dl.primQuadUV(
-            a,
-            b,
-            c,
-            d,
-            uv_a,
-            uv_b,
-            uv_c,
-            uv_d,
-            col,
+            a.toArray(),
+            b.toArray(),
+            c.toArray(),
+            d.toArray(),
+            uv_a.toArray(),
+            uv_b.toArray(),
+            uv_c.toArray(),
+            uv_d.toArray(),
+            col.toU32(),
         );
     }
-    pub fn primWriteVtx(draw_list: *anyopaque, pos: [2]f32, uv: [2]f32, col: u32) void {
+    pub fn primWriteVtx(draw_list: *anyopaque, pos: math.Vec2f, uv: math.Vec2f, col: math.SRGBA) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
-        dl.primWriteVtx(pos, uv, col);
+        dl.primWriteVtx(pos.toArray(), uv.toArray(), col.toU32());
     }
     pub fn primWriteIdx(draw_list: *anyopaque, idx: public.DrawIdx) void {
         const dl: zgui.DrawList = @ptrCast(draw_list);
@@ -1073,6 +1124,14 @@ const drawlist_vtable = public.DrawList.VTable.implement(struct {
         dl.addResetRenderStateCallback();
     }
 });
+
+pub fn createClipper() public.ListClipper {
+    const new_zgui = zgui.ListClipper.init();
+    var new = public.ListClipper{ .vtable = &clipper_vtable };
+    std.mem.copyForwards(u8, std.mem.asBytes(&new), std.mem.asBytes(&new_zgui));
+
+    return new;
+}
 
 const BgfxImage = extern struct {
     handle: gpu.TextureHandle,
@@ -1097,8 +1156,8 @@ fn image(texture: gpu.TextureHandle, args: public.Image) void {
     zgui.image(.{ .tex_data = null, .tex_id = tt.toTextureIdent() }, .{
         .w = args.w,
         .h = args.h,
-        .uv0 = args.uv0,
-        .uv1 = args.uv1,
+        .uv0 = args.uv0.toArray(),
+        .uv1 = args.uv1.toArray(),
     });
 }
 
@@ -1349,10 +1408,11 @@ pub fn initFonts(font_size: f32) void {
 pub fn enableWithWindow(window: ?cetech1.host.Window, gpu_backend: ?gpu.GpuBackend) !void {
     _scale_factor = scale_factor: {
         if (builtin.os.tag.isDarwin()) break :scale_factor 1;
+        if (host.window_api.getWMType() == .Wayland) break :scale_factor 1;
 
         if (window) |w| {
             const scale = w.getContentScale();
-            break :scale_factor @max(scale[0], scale[1]);
+            break :scale_factor @max(scale.x, scale.y);
         }
 
         break :scale_factor 1; // Headless mode
@@ -1372,7 +1432,7 @@ pub fn enableWithWindow(window: ?cetech1.host.Window, gpu_backend: ?gpu.GpuBacke
 
     // Headless
     if (window == null) {
-        zgui.io.setDisplaySize(1024, 768);
+        zgui.io.setDisplaySize(1024 * 2, 768 * 2);
     }
 
     _backed_initialised = true;

@@ -6,7 +6,7 @@ const coreui = cetech1.coreui;
 const cdb = cetech1.cdb;
 
 const editor = @import("editor");
-const editor_asset_browser = @import("editor_asset_browser");
+const editor_assetdb = @import("editor_assetdb");
 
 const Icons = cetech1.coreui.CoreIcons;
 
@@ -31,7 +31,7 @@ const G = struct {};
 var _g: *G = undefined;
 
 // Create foo asset
-var create_foo_asset_i = editor.CreateAssetI.implement(
+var create_foo_asset_i = editor_assetdb.CreateAssetI.implement(
     cetech1.assetdb.FooAsset.type_hash,
     struct {
         pub fn create(
@@ -108,7 +108,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
-    try apidb.implOrRemove(module_name, editor.CreateAssetI, &create_foo_asset_i, load);
+    try apidb.implOrRemove(module_name, editor_assetdb.CreateAssetI, &create_foo_asset_i, load);
     return true;
 }
 

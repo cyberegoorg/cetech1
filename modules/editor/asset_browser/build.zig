@@ -15,9 +15,10 @@ pub fn build(b: *std.Build) !void {
     );
 
     lib.root_module.addImport("editor", b.dependency("editor", .{}).module("editor"));
+    lib.root_module.addImport("editor_tabs", b.dependency("editor_tabs", .{}).module("editor_tabs"));
     lib.root_module.addImport("editor_tree", b.dependency("editor_tree", .{}).module("editor_tree"));
-    lib.root_module.addImport("editor_tags", b.dependency("editor_tags", .{}).module("editor_tags"));
-    lib.root_module.addImport("editor_asset", b.dependency("editor_asset", .{}).module("editor_asset"));
+    lib.root_module.addImport("editor_assetdb", b.dependency("editor_assetdb", .{}).module("editor_assetdb"));
+    lib.root_module.addImport("editor_obj_buffer", b.dependency("editor_obj_buffer", .{}).module("editor_obj_buffer"));
 
     _ = b.addModule("editor_asset_browser", .{
         .root_source_file = b.path("src/asset_browser.zig"),

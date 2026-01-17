@@ -150,6 +150,12 @@ pub const MouseButton = enum(u32) {
     count,
 };
 
+pub const MouseAxis = enum(u32) {
+    scroll_x = 9,
+    scroll_y = 10,
+    count,
+};
+
 pub const Mods = packed struct(u32) {
     shift: bool = false,
     control: bool = false,
@@ -158,16 +164,6 @@ pub const Mods = packed struct(u32) {
     caps_lock: bool = false,
     num_lock: bool = false,
     _padding: i26 = 0,
-};
-
-pub const GamepadAxis = enum(u8) {
-    left_x = 15,
-    left_y = 16,
-    right_x = 17,
-    right_y = 18,
-    left_trigger = 19,
-    right_trigger = 20,
-    count,
 };
 
 pub const GamepadButton = enum(u8) {
@@ -192,6 +188,16 @@ pub const GamepadButton = enum(u8) {
     const circle = GamepadButton.b;
     const square = GamepadButton.x;
     const triangle = GamepadButton.y;
+};
+
+pub const GamepadAxis = enum(u8) {
+    left_x = 15,
+    left_y = 16,
+    right_x = 17,
+    right_y = 18,
+    left_trigger = 19,
+    right_trigger = 20,
+    count,
 };
 
 pub const ControlerId = u64;

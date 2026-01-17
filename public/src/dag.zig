@@ -17,7 +17,7 @@ pub fn DAG(comptime T: type) type {
 
     return struct {
         const Self = @This();
-        allocator: Allocator,
+        arena: std.heap.ArenaAllocator,
 
         graph: Graph = .{},
         depends_on: Depends = .{},
@@ -27,25 +27,22 @@ pub fn DAG(comptime T: type) type {
 
         pub fn init(allocator: Allocator) Self {
             return .{
-                .allocator = allocator,
+                .arena = .init(allocator),
             };
         }
 
         pub fn deinit(self: *Self) void {
-            for (self.graph.values()) |*dep_arr| {
-                dep_arr.deinit(self.allocator);
-            }
+            self.arena.deinit();
+        }
 
-            for (self.depends_on.values()) |*dep_arr| {
-                dep_arr.deinit(self.allocator);
-            }
-
-            self.graph.deinit(self.allocator);
-            self.output.deinit(self.allocator);
-            self.depends_on.deinit(self.allocator);
-
-            self.build.deinit(self.allocator);
-            self.degrees.deinit(self.allocator);
+        // Reset state but not dealocate memory.
+        pub fn reset(self: *Self) !void {
+            _ = self.arena.reset(.retain_capacity);
+            self.graph = .{};
+            self.depends_on = .{};
+            self.output = .{};
+            self.build = .{};
+            self.degrees = .{};
         }
 
         // Return all node that depend on given node
@@ -64,87 +61,73 @@ pub fn DAG(comptime T: type) type {
 
         // Add node to graph
         pub fn add(self: *Self, name: T, depends: []const T) !void {
+            const allocator = self.arena.allocator();
+
             if (!self.graph.contains(name)) {
                 const dep_arr = Set{};
-                try self.graph.put(self.allocator, name, dep_arr);
+                try self.graph.put(allocator, name, dep_arr);
             }
 
             if (!self.depends_on.contains(name)) {
                 var dep_arr = Set{};
 
                 for (depends) |dep| {
-                    try dep_arr.put(self.allocator, dep, {});
+                    try dep_arr.put(allocator, dep, {});
                 }
 
-                try self.depends_on.put(self.allocator, name, dep_arr);
+                try self.depends_on.put(allocator, name, dep_arr);
             }
 
             for (depends) |dep_name| {
                 if (!self.graph.contains(dep_name)) {
-                    try self.graph.put(self.allocator, dep_name, .{});
+                    try self.graph.put(allocator, dep_name, .{});
                 }
 
                 var dep_arr = self.graph.getPtr(dep_name).?;
-                try dep_arr.put(self.allocator, name, {});
+                try dep_arr.put(allocator, name, {});
             }
-        }
-
-        // Reset state but not dealocate memory.
-        pub fn reset(self: *Self) !void {
-            for (self.graph.values()) |*dep_arr| {
-                dep_arr.deinit(self.allocator);
-            }
-
-            for (self.depends_on.values()) |*dep_arr| {
-                dep_arr.deinit(self.allocator);
-            }
-
-            self.graph.clearRetainingCapacity();
-            self.depends_on.clearRetainingCapacity();
-            self.output.clearRetainingCapacity();
-
-            self.build.clearRetainingCapacity();
         }
 
         // Build for all root nodes
         pub fn build_all(self: *Self) !void {
+            const allocator = self.arena.allocator();
+
             const nodes_n = self.graph.count();
 
             self.build.clearRetainingCapacity();
             self.degrees.clearRetainingCapacity();
 
             for (self.depends_on.keys()) |root| {
-                const dep_arr = self.depends_on.getPtr(root);
-                if (dep_arr) |arr| {
+                if (self.depends_on.getPtr(root)) |arr| {
                     if (arr.count() != 0) {
-                        try self.degrees.put(self.allocator, root, @intCast(arr.count()));
+                        try self.degrees.put(allocator, root, @intCast(arr.count()));
                     }
                 }
             }
 
             for (self.depends_on.keys(), self.depends_on.values()) |k, v| {
                 if (v.count() != 0) continue;
-                try self.build.put(self.allocator, k, {});
+                try self.build.put(allocator, k, {});
             }
 
             var visited_n: usize = 0;
             while (self.build.count() != 0) {
                 const value = self.build.pop().?;
-                try self.output.put(self.allocator, value.key, {});
+                try self.output.put(allocator, value.key, {});
 
-                const dep_arr = self.graph.getPtr(value.key);
-                if (dep_arr) |arr| {
+                if (self.graph.getPtr(value.key)) |arr| {
                     for (arr.keys()) |dep| {
                         if (self.degrees.getPtr(dep)) |deg_ptr| {
                             deg_ptr.* -= 1;
                             if (deg_ptr.* == 0) {
-                                try self.build.put(self.allocator, dep, {});
+                                try self.build.put(allocator, dep, {});
                             }
                         }
                     }
                     visited_n += 1;
                 }
             }
+
             std.debug.assert(visited_n == nodes_n);
         }
     };

@@ -313,13 +313,12 @@ pub fn build(b: *std.Build) !void {
         .{
             .target = target,
             .optimize = options.externals_optimize,
-            .backend = .glfw,
+            .backend = .glfw, // TODO: move to module
             .with_implot = true,
             .with_gizmo = true,
             .with_node_editor = true,
             .with_te = true,
             .with_freetype = options.with_freetype,
-            // .disable_obsolete = false
         },
     );
 
@@ -338,6 +337,8 @@ pub fn build(b: *std.Build) !void {
         .{
             .target = target,
             .optimize = options.externals_optimize,
+            .keep_assert = optimize == .Debug,
+            .soft_assert = optimize == .Debug,
         },
     );
 
@@ -473,7 +474,8 @@ pub fn build(b: *std.Build) !void {
     //
     const gen_ide_step = b.step("gen-ide", "init/update IDE configs");
     {
-        const ide = b.option(generate_ide.EditorType, "ide", "IDE for gen-ide command") orelse .vscode;
+        const ide = b.option(generate_ide.EditorType, "ide", "IDE for gen-ide command") orelse .VSCode;
+        const no_zls = b.option(bool, "no_zls", "Dont write zls path with gen-ide command") orelse false;
 
         const gen_ide = b.addRunArtifact(generate_ide_tool);
 
@@ -490,6 +492,10 @@ pub fn build(b: *std.Build) !void {
 
         gen_ide.addArg("--config");
         gen_ide.addDirectoryArg(b.path(".ide.zon"));
+
+        if (no_zls) {
+            gen_ide.addArg("--no-zls");
+        }
 
         gen_ide_step.dependOn(&gen_ide.step);
     }
@@ -713,13 +719,13 @@ fn ensureZigVersion() !void {
 
 pub const studio_modules = [_][]const u8{
     "editor",
-    "editor_asset",
+    "editor_tabs",
+    "editor_assetdb",
     "editor_asset_browser",
     "editor_explorer",
     "editor_fixtures",
     "editor_inspector",
     "editor_obj_buffer",
-    "editor_tags",
     "editor_tree",
     "editor_log",
     "editor_graph",
@@ -748,8 +754,8 @@ pub const core_modules = [_][]const u8{
     "default_render_pipeline",
     "shader_system",
     "render_component",
-    "graphvm_logic_component",
-    "native_logic_component",
+    "graphvm_script_component",
+    "native_script_component",
     "transform",
     "camera",
     "camera_controller",
@@ -759,6 +765,9 @@ pub const core_modules = [_][]const u8{
     "light_component",
     "light_system",
     "physics",
+    "physics_jolt",
+    "bloom",
+    "tonemap",
 };
 
 pub const samples_modules = [_][]const u8{

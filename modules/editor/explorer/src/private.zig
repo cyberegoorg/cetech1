@@ -8,6 +8,7 @@ const cdb = cetech1.cdb;
 
 const editor = @import("editor");
 const editor_tree = @import("editor_tree");
+const editor_tabs = @import("editor_tabs");
 
 const Icons = cetech1.coreui.CoreIcons;
 
@@ -25,28 +26,30 @@ var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
 var _log: *const cetech1.log.LogAPI = undefined;
 var _cdb: *const cdb.CdbAPI = undefined;
 var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
-var _editor: *const editor.EditorAPI = undefined;
 var _editortree: *const editor_tree.TreeAPI = undefined;
 var _assetdb: *const assetdb.AssetDBAPI = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 var _uuid: *const cetech1.uuid.UuidAPI = undefined;
 
+var _editor: *const editor.EditorAPI = undefined;
+var _tabs: *const editor_tabs.TabsAPI = undefined;
+
 // Global state
 const G = struct {
-    tab_vt: *editor.TabTypeI = undefined,
+    tab_vt: *editor_tabs.TabTypeI = undefined,
 };
 var _g: *G = undefined;
 
 const ExplorerTab = struct {
-    tab_i: editor.TabI,
+    tab_i: editor_tabs.TabI,
 
     selection: coreui.SelectionItem = coreui.SelectionItem.empty(),
     inter_selection: coreui.Selection,
 };
 
 // Fill editor tab interface
-var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
+var explorer_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
     .tab_name = EXPLORER_TAB_NAME,
     .tab_hash = .fromStr(EXPLORER_TAB_NAME),
 
@@ -69,13 +72,13 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Return tab title
-    pub fn title(inst: *editor.TabO) ![:0]const u8 {
+    pub fn title(inst: *editor_tabs.TabO) ![:0]const u8 {
         _ = inst;
         return coreui.Icons.Explorer ++ "  " ++ "Explorer";
     }
 
     // Create new FooTab instantce
-    pub fn create(tab_id: u32) !?*editor.TabI {
+    pub fn create(tab_id: u32) !?*editor_tabs.TabI {
         _ = tab_id;
         var tab_inst = try _allocator.create(ExplorerTab);
 
@@ -91,13 +94,13 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Destroy FooTab instantce
-    pub fn destroy(tab_inst: *editor.TabI) !void {
+    pub fn destroy(tab_inst: *editor_tabs.TabI) !void {
         const tab_o: *ExplorerTab = @ptrCast(@alignCast(tab_inst.inst));
         tab_o.inter_selection.deinit();
         _allocator.destroy(tab_o);
     }
 
-    pub fn focused(inst: *editor.TabO) !void {
+    pub fn focused(inst: *editor_tabs.TabO) !void {
         const tab_o: *ExplorerTab = @ptrCast(@alignCast(inst));
 
         const allocator = try _tempalloc.create();
@@ -105,12 +108,12 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         if (tab_o.inter_selection.toSlice(allocator)) |objs| {
             defer allocator.free(objs);
-            _editor.propagateSelection(inst, objs);
+            _tabs.propagateSelection(inst, objs);
         }
     }
 
     // Draw tab menu
-    pub fn menu(inst: *editor.TabO) !void {
+    pub fn menu(inst: *editor_tabs.TabO) !void {
         var tab_o: *ExplorerTab = @ptrCast(@alignCast(inst));
 
         if (_coreui.beginMenu(_allocator, coreui.Icons.ContextMenu ++ "###ObjContextMenu", !tab_o.selection.isEmpty(), null)) {
@@ -134,7 +137,7 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Draw tab content
-    pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
+    pub fn ui(inst: *editor_tabs.TabO, kernel_tick: u64, dt: f32) !void {
         _ = kernel_tick;
         _ = dt;
 
@@ -175,7 +178,7 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 if (r) {
                     if (tab_o.inter_selection.toSlice(allocator)) |objs| {
                         defer allocator.free(objs);
-                        _editor.propagateSelection(inst, objs);
+                        _tabs.propagateSelection(inst, objs);
                     }
                 }
             }
@@ -183,7 +186,7 @@ var explorer_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) !void {
+    pub fn objSelected(inst: *editor_tabs.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) !void {
         _ = sender_tab_hash; // autofix
 
         var tab_o: *ExplorerTab = @ptrCast(@alignCast(inst));
@@ -208,7 +211,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
                     ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
                     ctx.windowFocus(_coreui, "");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###ROOT/###foo.ct_foo_asset", .{}, null);
+                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(_coreui, .DoubleClick, "**/###foo.ct_foo_asset", .{}, null);
 
                     ctx.setRef(_coreui, "###ct_editor_explorer_tab_1");
                     ctx.windowFocus(_coreui, "");
@@ -228,7 +232,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
                     ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
                     ctx.windowFocus(_coreui, "");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###ROOT/###foo.ct_foo_asset", .{}, null);
+                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(_coreui, .DoubleClick, "**/###foo.ct_foo_asset", .{}, null);
 
                     ctx.menuAction(_coreui, .Click, "###ObjContextMenu/###OpenIn_ct_editor_explorer_tab");
 
@@ -252,7 +257,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
                     ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
                     ctx.windowFocus(_coreui, "");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###ROOT/###empty.ct_foo_asset", .{}, null);
+                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(_coreui, .DoubleClick, "**/###empty.ct_foo_asset", .{}, null);
 
                     ctx.setRef(_coreui, "###ct_editor_explorer_tab_1");
                     ctx.windowFocus(_coreui, "");
@@ -288,7 +294,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
                     ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
                     ctx.windowFocus(_coreui, "");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###ROOT/###child_asset.ct_foo_asset", .{}, null);
+                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(_coreui, .DoubleClick, "**/###child_asset.ct_foo_asset", .{}, null);
 
                     ctx.setRef(_coreui, "###ct_editor_explorer_tab_1");
                     ctx.windowFocus(_coreui, "");
@@ -330,8 +337,10 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     _kernel.openAssetRoot("fixtures/test_explorer");
                     ctx.yield(_coreui, 1);
 
-                    ctx.windowFocus(_coreui, "###ct_editor_asset_browser_tab_1");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###ROOT/###parent_asset.ct_foo_asset", .{}, null);
+                    ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
+                    ctx.windowFocus(_coreui, "");
+                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(_coreui, .DoubleClick, "**/###parent_asset.ct_foo_asset", .{}, null);
 
                     ctx.setRef(_coreui, "###ct_editor_explorer_tab_1");
                     ctx.windowFocus(_coreui, "");
@@ -367,7 +376,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
                     ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
                     ctx.windowFocus(_coreui, "");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###ROOT/###child_asset.ct_foo_asset", .{}, null);
+                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(_coreui, .DoubleClick, "**/###child_asset.ct_foo_asset", .{}, null);
 
                     ctx.setRef(_coreui, "###ct_editor_explorer_tab_1");
                     ctx.windowFocus(_coreui, "");
@@ -413,20 +423,22 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _apidb = apidb;
     _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
     _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
-    _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
     _assetdb = apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
     _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
     _tempalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
     _editortree = apidb.getZigApi(module_name, editor_tree.TreeAPI).?;
     _uuid = apidb.getZigApi(module_name, cetech1.uuid.UuidAPI).?;
 
+    _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
+    _tabs = apidb.getZigApi(module_name, editor_tabs.TabsAPI).?;
+
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
-    _g.tab_vt = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, EXPLORER_TAB_NAME, explorer_tab);
+    _g.tab_vt = try apidb.setGlobalVarValue(editor_tabs.TabTypeI, module_name, EXPLORER_TAB_NAME, explorer_tab);
 
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
-    try apidb.implOrRemove(module_name, editor.TabTypeI, &explorer_tab, load);
+    try apidb.implOrRemove(module_name, editor_tabs.TabTypeI, &explorer_tab, load);
     try apidb.implOrRemove(module_name, coreui.RegisterTestsI, &register_tests_i, load);
 
     return true;

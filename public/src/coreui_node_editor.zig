@@ -7,6 +7,7 @@ const cetech1 = @import("root.zig");
 const host = @import("host.zig");
 
 const coreui = @import("coreui.zig");
+const math = cetech1.math;
 
 const log = std.log.scoped(.coreui_node_editor);
 
@@ -32,15 +33,15 @@ const Style = extern struct {
     pin_rounding: f32 = 4,
     pin_border_width: f32 = 0,
     link_strength: f32 = 100,
-    source_direction: [2]f32 = .{ 1, 0 },
-    target_direction: [2]f32 = .{ -1, 0 },
+    source_direction: math.Vec2f = .{ .x = 1, .y = 0 },
+    target_direction: math.Vec2f = .{ .x = -1, .y = 0 },
     scroll_duration: f32 = 0.35,
     flow_marker_distance: f32 = 30,
     flow_speed: f32 = 150.0,
     flow_duration: f32 = 2.0,
-    pivot_alignment: [2]f32 = .{ 0.5, 0.5 },
-    pivot_size: [2]f32 = .{ 0, 0 },
-    pivot_scale: [2]f32 = .{ 1, 1 },
+    pivot_alignment: math.Vec2f = .{ .x = 0.5, .y = 0.5 },
+    pivot_size: math.Vec2f = .{ .y = 0 },
+    pivot_scale: math.Vec2f = .{ .x = 1, .y = 1 },
     pin_corners: f32 = 240,
     pin_radius: f32 = 0,
     pin_arrow_size: f32 = 0,
@@ -50,12 +51,12 @@ const Style = extern struct {
     highlight_connected_links: f32 = 0,
     snap_link_to_pin_dir: f32 = 0,
 
-    colors: [@typeInfo(StyleColor).@"enum".fields.len][4]f32,
+    colors: [@typeInfo(StyleColor).@"enum".fields.len]math.Color4f,
 
-    pub fn getColor(style: Style, idx: StyleColor) [4]f32 {
+    pub fn getColor(style: Style, idx: StyleColor) math.Color4f {
         return style.colors[@intCast(@intFromEnum(idx))];
     }
-    pub fn setColor(style: *Style, idx: StyleColor, color: [4]f32) void {
+    pub fn setColor(style: *Style, idx: StyleColor, color: math.Color4f) void {
         style.colors[@intCast(@intFromEnum(idx))] = color;
     }
 };
@@ -160,7 +161,7 @@ pub const NodeEditorApi = struct {
     destroyEditor: *const fn (editor: *EditorContext) void,
 
     setCurrentEditor: *const fn (editor: ?*EditorContext) void,
-    begin: *const fn (id: [:0]const u8, size: [2]f32) void,
+    begin: *const fn (id: [:0]const u8, size: math.Vec2f) void,
     end: *const fn () void,
 
     suspend_: *const fn () void,
@@ -176,23 +177,23 @@ pub const NodeEditorApi = struct {
     endNode: *const fn () void,
     deleteNode: *const fn (id: NodeId) bool,
 
-    setNodePosition: *const fn (id: NodeId, pos: [2]f32) void,
-    getNodePosition: *const fn (id: NodeId) [2]f32,
-    getNodeSize: *const fn (id: NodeId) [2]f32,
+    setNodePosition: *const fn (id: NodeId, pos: math.Vec2f) void,
+    getNodePosition: *const fn (id: NodeId) math.Vec2f,
+    getNodeSize: *const fn (id: NodeId) math.Vec2f,
 
     beginPin: *const fn (id: PinId, kind: PinKind) void,
     endPin: *const fn () void,
     pinHadAnyLinks: *const fn (pinId: PinId) bool,
 
-    link: *const fn (id: LinkId, startPinId: PinId, endPinId: PinId, color: [4]f32, thickness: f32) void,
+    link: *const fn (id: LinkId, startPinId: PinId, endPinId: PinId, color: math.Color4f, thickness: f32) void,
     deleteLink: *const fn (id: LinkId) bool,
 
     beginCreate: *const fn () bool,
     endCreate: *const fn () void,
 
     queryNewLink: *const fn (startId: *?PinId, endId: *?PinId) bool,
-    acceptNewItem: *const fn (color: [4]f32, thickness: f32) bool,
-    rejectNewItem: *const fn (color: [4]f32, thickness: f32) void,
+    acceptNewItem: *const fn (color: math.Color4f, thickness: f32) bool,
+    rejectNewItem: *const fn (color: math.Color4f, thickness: f32) void,
 
     beginDelete: *const fn () bool,
     endDelete: *const fn () void,
@@ -208,10 +209,10 @@ pub const NodeEditorApi = struct {
 
     getStyleColorName: *const fn (colorIndex: StyleColor) [*c]const u8,
     getStyle: *const fn () Style,
-    pushStyleColor: *const fn (colorIndex: StyleColor, color: [4]f32) void,
+    pushStyleColor: *const fn (colorIndex: StyleColor, color: math.Color4f) void,
     popStyleColor: *const fn (count: c_int) void,
     pushStyleVar1f: *const fn (varIndex: StyleVar, value: f32) void,
-    pushStyleVar2f: *const fn (varIndex: StyleVar, value: [2]f32) void,
+    pushStyleVar2f: *const fn (varIndex: StyleVar, value: math.Vec2f) void,
     pushStyleVar4f: *const fn (varIndex: StyleVar, value: [4]f32) void,
     popStyleVar: *const fn (count: c_int) void,
 
@@ -223,15 +224,15 @@ pub const NodeEditorApi = struct {
     selectNode: *const fn (nodeId: NodeId, append: bool) void,
     selectLink: *const fn (linkId: LinkId, append: bool) void,
 
-    group: *const fn (size: [2]f32) void,
+    group: *const fn (size: math.Vec2f) void,
 
     getHintForegroundDrawList: *const fn () coreui.DrawList,
     getHintBackgroundDrawList: *const fn () coreui.DrawList,
     getNodeBackgroundDrawList: *const fn (node_id: NodeId) coreui.DrawList,
 
-    pinRect: *const fn (a: [2]f32, b: [2]f32) void,
-    pinPivotRect: *const fn (a: [2]f32, b: [2]f32) void,
-    pinPivotSize: *const fn (size: [2]f32) void,
-    pinPivotScale: *const fn (scale: [2]f32) void,
-    pinPivotAlignment: *const fn (alignment: [2]f32) void,
+    pinRect: *const fn (a: math.Vec2f, b: math.Vec2f) void,
+    pinPivotRect: *const fn (a: math.Vec2f, b: math.Vec2f) void,
+    pinPivotSize: *const fn (size: math.Vec2f) void,
+    pinPivotScale: *const fn (scale: math.Vec2f) void,
+    pinPivotAlignment: *const fn (alignment: math.Vec2f) void,
 };

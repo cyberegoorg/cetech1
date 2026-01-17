@@ -1,4 +1,7 @@
 const std = @import("std");
+const cetech1 = @import("root.zig");
+const math = cetech1.math;
+
 const Src = std.builtin.SourceLocation;
 pub const profiler_enabled = @import("cetech1_options").with_tracy;
 
@@ -35,7 +38,7 @@ pub const AllocatorProfiler = struct {
         } else {
             var buffer: [128]u8 = undefined;
             const msg = std.fmt.bufPrint(&buffer, "alloc failed requesting {d}", .{len}) catch return result;
-            self.profiler_api.msgWithColor(msg, 0xFF0000);
+            self.profiler_api.msgWithColor(msg, .fromU32(0xFF0000));
         }
         return result;
     }
@@ -60,7 +63,7 @@ pub const AllocatorProfiler = struct {
         } else {
             var buffer: [128]u8 = undefined;
             const msg = std.fmt.bufPrint(&buffer, "resize failed requesting {d} -> {d}", .{ buf.len, new_len }) catch return result;
-            self.profiler_api.msgWithColor(msg, 0xFF0000);
+            self.profiler_api.msgWithColor(msg, .fromU32(0xFF0000));
         }
         return result;
     }
@@ -100,7 +103,7 @@ pub const AllocatorProfiler = struct {
         } else {
             var buffer: [128]u8 = undefined;
             const msg = std.fmt.bufPrint(&buffer, "resize failed requesting {d} -> {d}", .{ buf.len, new_len }) catch return result;
-            self.profiler_api.msgWithColor(msg, 0xFF0000);
+            self.profiler_api.msgWithColor(msg, .fromU32(0xFF0000));
         }
         return result;
     }
@@ -126,39 +129,39 @@ pub const ProfilerAPI = struct {
 
     pub inline fn Zone(self: *const Self, comptime src: Src) ZoneCtx {
         if (!profiler_enabled) return .{};
-        return self.initZone(src, null, 0, 0);
+        return self.initZone(src, null, .{}, 0);
     }
 
     pub inline fn ZoneN(self: *const Self, comptime src: Src, name: [*:0]const u8) ZoneCtx {
         if (!profiler_enabled) return .{};
-        return self.initZone(src, name, 0, 0);
+        return self.initZone(src, name, .{}, 0);
     }
-    pub inline fn ZoneC(self: *const Self, comptime src: Src, color: u32) ZoneCtx {
+    pub inline fn ZoneC(self: *const Self, comptime src: Src, color: math.SRGBA) ZoneCtx {
         if (!profiler_enabled) return .{};
         return self.initZone(src, null, color, 0);
     }
-    pub inline fn ZoneNC(self: *const Self, comptime src: Src, name: [*:0]const u8, color: u32) ZoneCtx {
+    pub inline fn ZoneNC(self: *const Self, comptime src: Src, name: [*:0]const u8, color: math.SRGBA) ZoneCtx {
         if (!profiler_enabled) return .{};
         return self.initZone(src, name, color, 0);
     }
     pub inline fn ZoneS(self: *const Self, comptime src: Src, depth: i32) ZoneCtx {
         if (!profiler_enabled) return .{};
-        return self.initZone(src, null, 0, depth);
+        return self.initZone(src, null, .{}, depth);
     }
     pub inline fn ZoneNS(self: *const Self, comptime src: Src, name: [*:0]const u8, depth: i32) ZoneCtx {
         if (!profiler_enabled) return .{};
-        return self.initZone(src, name, 0, depth);
+        return self.initZone(src, name, .{}, depth);
     }
-    pub inline fn ZoneCS(self: *const Self, comptime src: Src, color: u32, depth: i32) ZoneCtx {
+    pub inline fn ZoneCS(self: *const Self, comptime src: Src, color: math.SRGBA, depth: i32) ZoneCtx {
         if (!profiler_enabled) return .{};
         return self.initZone(src, null, color, depth);
     }
-    pub inline fn ZoneNCS(self: *const Self, comptime src: Src, name: [*:0]const u8, color: u32, depth: i32) ZoneCtx {
+    pub inline fn ZoneNCS(self: *const Self, comptime src: Src, name: [*:0]const u8, color: math.SRGBA, depth: i32) ZoneCtx {
         if (!profiler_enabled) return .{};
         return self.initZone(src, name, color, depth);
     }
 
-    inline fn initZone(self: *const Self, comptime src: Src, name: ?[*:0]const u8, color: u32, depth: c_int) ZoneCtx {
+    inline fn initZone(self: *const Self, comptime src: Src, name: ?[*:0]const u8, color: math.SRGBA, depth: c_int) ZoneCtx {
         if (!profiler_enabled) return .{};
 
         _ = depth; // autofix
@@ -190,7 +193,7 @@ pub const ProfilerAPI = struct {
     }
 
     /// Trace this msg with color
-    pub inline fn msgWithColor(self: Self, text: []const u8, color: u32) void {
+    pub inline fn msgWithColor(self: Self, text: []const u8, color: math.SRGBA) void {
         if (!profiler_enabled) return;
         self.msgWithColorFn(text, color);
     }
@@ -238,7 +241,7 @@ pub const ProfilerAPI = struct {
     }
 
     //#region Pointers to implementation
-    msgWithColorFn: *const fn (text: []const u8, color: u32) void,
+    msgWithColorFn: *const fn (text: []const u8, color: math.SRGBA) void,
     allocFn: *const fn (ptr: ?*const anyopaque, size: usize) void,
     freeFn: *const fn (ptr: ?*const anyopaque) void,
     allocNamedFn: *const fn (name: [*:0]const u8, ptr: ?*const anyopaque, size: usize) void,
@@ -259,7 +262,7 @@ pub const _tracy_source_location_data = extern struct {
     function: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     file: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     line: u32 = @import("std").mem.zeroes(u32),
-    color: u32 = @import("std").mem.zeroes(u32),
+    color: math.SRGBA = @import("std").mem.zeroes(math.SRGBA),
 };
 pub const _tracy_c_zone_context = extern struct {
     id: u32 = @import("std").mem.zeroes(u32),

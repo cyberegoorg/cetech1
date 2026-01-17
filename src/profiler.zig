@@ -5,6 +5,7 @@ pub const ztracy = @import("ztracy");
 pub const profiler_enabled = @import("cetech1_options").with_tracy;
 
 const cetech1 = @import("cetech1");
+const math = cetech1.math;
 const apidb = @import("apidb.zig");
 const public = cetech1.profiler;
 
@@ -23,8 +24,8 @@ pub fn registerToApi() !void {
     try apidb.api.setZigApi(module_name, public.ProfilerAPI, &api);
 }
 
-fn msgWithColor(text: []const u8, color: u32) void {
-    ztracy.MessageC(text, color);
+fn msgWithColor(text: []const u8, color: math.SRGBA) void {
+    ztracy.MessageC(text, color.toU32());
 }
 
 fn alloc(ptr: ?*const anyopaque, size: usize) void {

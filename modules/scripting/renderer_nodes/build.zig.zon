@@ -1,0 +1,20 @@
+.{
+    .name = .renderer_nodes,
+    .fingerprint = 0xc4a83eb755f4282a,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .transform = .{ .path = "../../transform" },
+        .graphvm = .{ .path = "../graphvm" },
+        .camera = .{ .path = "../../camera/camera" },
+        .shader_system = .{ .path = "../../rendering/shader_system" },
+        .render_graph = .{ .path = "../../rendering/render_graph" },
+        .render_viewport = .{ .path = "../../rendering/render_viewport" },
+        .vertex_system = .{ .path = "../../render_pipeline/vertex_system" },
+        .visibility_flags = .{ .path = "../../rendering/visibility_flags" },
+    },
+}

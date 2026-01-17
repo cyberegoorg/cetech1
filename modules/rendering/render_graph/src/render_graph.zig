@@ -4,7 +4,8 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const gpu = cetech1.gpu;
 const ecs = cetech1.ecs;
-const zm = cetech1.math.zmath;
+
+const math = cetech1.math;
 
 const camera = @import("camera");
 const shader_system = @import("shader_system");
@@ -16,8 +17,8 @@ pub const RENDERER_GRAPH_KERNEL_TASK = cetech1.strId64("Renderer graph");
 
 pub const ViewersList = cetech1.ArrayList(Viewer);
 pub const Viewer = struct {
-    mtx: [16]f32,
-    proj: [16]f32,
+    mtx: math.Mat44f,
+    proj: math.Mat44f,
     camera: camera.Camera,
     viewid: ?gpu.ViewId,
     visibility_mask: visibility_flags.VisibilityFlags,
@@ -28,7 +29,7 @@ pub const Viewer = struct {
 
 pub const PassApi = struct {
     setup: *const fn (pass: *Pass, builder: GraphBuilder) anyerror!void,
-    execute: *const fn (pass: *const Pass, builder: GraphBuilder, gpu_backend: gpu.GpuBackend, vp_size: [2]f32, viewid: gpu.ViewId) anyerror!void,
+    execute: *const fn (pass: *const Pass, builder: GraphBuilder, gpu_backend: gpu.GpuBackend, vp_size: math.Vec2f, viewid: gpu.ViewId) anyerror!void,
 
     pub fn implement(comptime T: type) PassApi {
         if (!std.meta.hasFn(T, "setup")) @compileError("implement me");
@@ -44,22 +45,47 @@ pub const PassApi = struct {
 };
 
 pub const Pass = struct {
-    data: ?[]const u8 = null,
     name: []const u8,
+    const_data: ?[]const u8 = null,
+    runtime_data_size: usize = 0,
     api: *const PassApi,
+
+    runtime_data: ?[]u8 = null,
+};
+
+pub const EditorMenuUII = struct {
+    name: [:0]const u8,
+    data: *anyopaque,
+    menui: *const fn (allocator: std.mem.Allocator, data: *anyopaque) anyerror!void,
+
+    pub fn implement(
+        name: [:0]const u8,
+        data: *anyopaque,
+        comptime T: type,
+    ) EditorMenuUII {
+        if (!std.meta.hasFn(T, "menui")) @compileError("implement me");
+
+        return EditorMenuUII{
+            .name = name,
+            .data = data,
+            .menui = T.menui,
+        };
+    }
 };
 
 pub const Module = struct {
     pub fn addPass(self: Module, pass: Pass) !void {
         return self.vtable.addPass(self.ptr, pass);
     }
-    pub fn addPassWithData(self: Module, comptime DataT: type, name: []const u8, data: DataT, pass_api: *const PassApi) !void {
+    pub fn addPassWithData(self: Module, name: []const u8, comptime ConstDataT: type, RuntimeDataT: type, const_data: *const ConstDataT, pass_api: *const PassApi) !void {
         return self.vtable.addPass(self.ptr, Pass{
             .name = name,
+            .const_data = std.mem.asBytes(const_data),
+            .runtime_data_size = @sizeOf(RuntimeDataT),
             .api = pass_api,
-            .data = &std.mem.toBytes(data),
         });
     }
+
     pub fn addModule(self: Module, module: Module) !void {
         return self.vtable.addModule(self.ptr, module);
     }
@@ -69,8 +95,13 @@ pub const Module = struct {
     pub fn addToExtensionPoint(self: Module, name: cetech1.StrId32, module: Module) !void {
         return self.vtable.addToExtensionPoint(self.ptr, name, module);
     }
-    pub fn cleanup(self: Module) !void {
-        return self.vtable.cleanup(self.ptr);
+
+    pub fn setEditorMenuUi(self: Module, editor_menu_ui: EditorMenuUII) void {
+        return self.vtable.setEditorMenuUi(self.ptr, editor_menu_ui);
+    }
+
+    pub fn editorMenuUi(self: Module, allocator: std.mem.Allocator) !void {
+        return self.vtable.editorMenuUi(self.ptr, allocator);
     }
 
     ptr: *anyopaque,
@@ -81,19 +112,23 @@ pub const Module = struct {
         addModule: *const fn (self: *anyopaque, module: Module) anyerror!void,
         addExtensionPoint: *const fn (self: *anyopaque, name: cetech1.StrId32) anyerror!void,
         addToExtensionPoint: *const fn (self: *anyopaque, name: cetech1.StrId32, module: Module) anyerror!void,
-        cleanup: *const fn (self: *anyopaque) anyerror!void,
+        setEditorMenuUi: *const fn (self: *anyopaque, editor_menu_ui: EditorMenuUII) void,
+        editorMenuUi: *const fn (self: *anyopaque, allocator: std.mem.Allocator) anyerror!void,
 
         pub fn implement(comptime T: type) VTable {
             if (!std.meta.hasFn(T, "addPass")) @compileError("implement me");
             if (!std.meta.hasFn(T, "addModule")) @compileError("implement me");
             if (!std.meta.hasFn(T, "addExtensionPoint")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "cleanup")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "setEditorMenuUi")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "editorMenuUi")) @compileError("implement me");
 
             return VTable{
                 .addPass = &T.addPass,
                 .addModule = &T.addModule,
                 .addExtensionPoint = &T.addExtensionPoint,
                 .cleanup = &T.cleanup,
+                .setEditorMenuUi = &T.setEditorMenuUi,
+                .editorMenuUi = &T.editorMenuUi,
             };
         }
     };
@@ -108,7 +143,7 @@ pub const TextureInfo = struct {
     flags: gpu.TextureFlags,
     sampler_flags: gpu.SamplerFlags = .{},
     ratio: f32 = 1,
-    clear_color: ?u32 = null,
+    clear_color: ?math.SRGBA = null,
     clear_depth: ?f32 = null,
 
     pub fn eql(self: TextureInfo, other: TextureInfo) bool {
@@ -118,7 +153,7 @@ pub const TextureInfo = struct {
             std.meta.eql(self.flags, other.flags) and
             std.meta.eql(self.sampler_flags, other.sampler_flags) and
             self.ratio == other.ratio and
-            self.clear_color == other.clear_color and
+            std.meta.eql(self.clear_color, other.clear_color) and
             self.clear_depth == other.clear_depth;
     }
 };
@@ -131,6 +166,7 @@ pub const BlackboardValue = union(enum) {
     boolean: bool,
     data: *anyopaque,
     str: []const u8,
+    resource_Id: ResourceId,
 };
 
 pub const GraphBuilder = struct {
@@ -181,7 +217,7 @@ pub const GraphBuilder = struct {
     pub inline fn compile(builder: GraphBuilder, allocator: std.mem.Allocator, module: Module) !void {
         return builder.vtable.compile(builder.ptr, allocator, module);
     }
-    pub inline fn execute(builder: GraphBuilder, allocator: std.mem.Allocator, vp_size: [2]f32, viewers: []const Viewer, freze_mtx: ?zm.Mat) !void {
+    pub inline fn execute(builder: GraphBuilder, allocator: std.mem.Allocator, vp_size: math.Vec2f, viewers: []const Viewer, freze_mtx: ?math.Mat44f) !void {
         return builder.vtable.execute(builder.ptr, allocator, vp_size, viewers, freze_mtx);
     }
 
@@ -224,7 +260,7 @@ pub const GraphBuilder = struct {
         getViewers: *const fn (builder: *anyopaque) []Viewer,
 
         compile: *const fn (builder: *anyopaque, allocator: std.mem.Allocator, module: Module) anyerror!void,
-        execute: *const fn (builder: *anyopaque, allocator: std.mem.Allocator, vp_size: [2]f32, viewers: []const Viewer, freze_mtx: ?zm.Mat) anyerror!void,
+        execute: *const fn (builder: *anyopaque, allocator: std.mem.Allocator, vp_size: math.Vec2f, viewers: []const Viewer, freze_mtx: ?math.Mat44f) anyerror!void,
 
         clear: *const fn (builder: *anyopaque) anyerror!void,
 
@@ -239,4 +275,6 @@ pub const RenderGraphApi = struct {
 
     createBuilder: *const fn (allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend) anyerror!GraphBuilder,
     destroyBuilder: *const fn (builder: GraphBuilder) void,
+
+    screenSpaceQuad: *const fn (gpu_backend: gpu.GpuBackend, e: gpu.GpuEncoder, origin_mottom_left: bool, width: f32, height: f32) void,
 };

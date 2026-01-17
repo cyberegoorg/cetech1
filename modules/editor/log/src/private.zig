@@ -6,8 +6,10 @@ const Allocator = std.mem.Allocator;
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const coreui = cetech1.coreui;
+const math = cetech1.math;
 
 const editor = @import("editor");
+const editor_tabs = @import("editor_tabs");
 const Icons = coreui.CoreIcons;
 
 const module_name = .editor_log;
@@ -39,7 +41,7 @@ const LogBuffer = cetech1.ArrayList(LogEntry);
 
 // Global state that can surive hot-reload
 const G = struct {
-    log_tab_vt_ptr: *editor.TabTypeI = undefined,
+    log_tab_vt_ptr: *editor_tabs.TabTypeI = undefined,
 
     log_buffer: ?LogBuffer = null,
     log_buffer_lock: std.Thread.Mutex = .{},
@@ -48,7 +50,7 @@ var _g: *G = undefined;
 
 // Struct for tab type
 const LogTab = struct {
-    tab_i: editor.TabI,
+    tab_i: editor_tabs.TabI,
 
     filter_buff: [256:0]u8 = std.mem.zeroes([256:0]u8),
     filter: ?[:0]const u8 = null,
@@ -63,10 +65,10 @@ const LogTab = struct {
 
         pub fn pass(enabled_levels: @This(), level: cetech1.log.LogAPI.Level) bool {
             return switch (level) {
-                .err => enabled_levels.err,
-                .warn => enabled_levels.warn,
-                .info => enabled_levels.info,
-                .debug => enabled_levels.debug,
+                .Err => enabled_levels.err,
+                .Warn => enabled_levels.warn,
+                .Info => enabled_levels.info,
+                .Debug => enabled_levels.debug,
                 else => false,
             };
         }
@@ -75,27 +77,27 @@ const LogTab = struct {
 
 pub fn levelIcon(level: cetech1.log.LogAPI.Level) [:0]const u8 {
     return switch (level) {
-        .err => Icons.FA_RADIATION,
-        .warn => Icons.FA_TRIANGLE_EXCLAMATION,
-        .info => Icons.FA_CIRCLE_INFO,
-        .debug => Icons.FA_BUG,
+        .Err => Icons.FA_RADIATION,
+        .Warn => Icons.FA_TRIANGLE_EXCLAMATION,
+        .Info => Icons.FA_CIRCLE_INFO,
+        .Debug => Icons.FA_BUG,
         else => "SHIT",
     };
 }
 
-pub fn levelColor(level: cetech1.log.LogAPI.Level) [4]f32 {
+pub fn levelColor(level: cetech1.log.LogAPI.Level) math.Color4f {
     if (!_editor.isColorsEnabled()) return _coreui.getStyle().getColor(.text);
     const one = 0.80;
     return switch (level) {
-        .err => .{ one, 0.0, 0.0, 1.0 },
-        .warn => .{ one, one, 0.0, 1.0 },
-        .debug => .{ 0.0, one, 0.0, 1.0 },
+        .Err => .{ .r = one, .a = 1.0 },
+        .Warn => .{ .r = one, .g = one, .a = 1.0 },
+        .Debug => .{ .g = one, .a = 1.0 },
         else => _coreui.getStyle().getColor(.text),
     };
 }
 
 // Fill editor tab interface
-var log_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
+var log_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
     .tab_name = TAB_NAME,
     .tab_hash = .fromStr(TAB_NAME),
     .create_on_init = true,
@@ -108,13 +110,13 @@ var log_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Return tab title
-    pub fn title(inst: *editor.TabO) ![:0]const u8 {
+    pub fn title(inst: *editor_tabs.TabO) ![:0]const u8 {
         _ = inst;
         return Icons.FA_SCROLL ++ "  " ++ " Log";
     }
 
     // Create new tab instantce
-    pub fn create(tab_id: u32) !?*editor.TabI {
+    pub fn create(tab_id: u32) !?*editor_tabs.TabI {
         _ = tab_id;
 
         var tab_inst = _allocator.create(LogTab) catch undefined;
@@ -129,13 +131,13 @@ var log_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Destroy tab instantce
-    pub fn destroy(tab_inst: *editor.TabI) !void {
+    pub fn destroy(tab_inst: *editor_tabs.TabI) !void {
         const tab_o: *LogTab = @ptrCast(@alignCast(tab_inst.inst));
         _allocator.destroy(tab_o);
     }
 
     // Draw tab content
-    pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
+    pub fn ui(inst: *editor_tabs.TabO, kernel_tick: u64, dt: f32) !void {
         _ = kernel_tick; // autofix
         _ = dt; // autofix
         const tab_o: *LogTab = @ptrCast(@alignCast(inst));
@@ -149,32 +151,32 @@ var log_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         }
 
         {
-            _coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.err) });
+            _coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.Err) });
             defer _coreui.popStyleColor(.{ .count = 1 });
 
             _coreui.sameLine(.{});
-            if (_coreui.toggleButton(levelIcon(.err), &tab_o.enabled_levels.err)) {}
+            if (_coreui.toggleButton(levelIcon(.Err), &tab_o.enabled_levels.err)) {}
         }
         {
-            _coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.debug) });
+            _coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.Debug) });
             defer _coreui.popStyleColor(.{ .count = 1 });
 
             _coreui.sameLine(.{});
-            if (_coreui.toggleButton(levelIcon(.debug), &tab_o.enabled_levels.debug)) {}
+            if (_coreui.toggleButton(levelIcon(.Debug), &tab_o.enabled_levels.debug)) {}
         }
         {
-            _coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.warn) });
+            _coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.Warn) });
             defer _coreui.popStyleColor(.{ .count = 1 });
 
             _coreui.sameLine(.{});
-            if (_coreui.toggleButton(levelIcon(.warn), &tab_o.enabled_levels.warn)) {}
+            if (_coreui.toggleButton(levelIcon(.Warn), &tab_o.enabled_levels.warn)) {}
         }
         {
-            _coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.info) });
+            _coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.Info) });
             defer _coreui.popStyleColor(.{ .count = 1 });
 
             _coreui.sameLine(.{});
-            if (_coreui.toggleButton(levelIcon(.info), &tab_o.enabled_levels.info)) {}
+            if (_coreui.toggleButton(levelIcon(.Info), &tab_o.enabled_levels.info)) {}
         }
 
         _coreui.sameLine(.{});
@@ -224,7 +226,7 @@ var log_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Draw tab menu
-    // pub fn menu(inst: *editor.TabO) !void {
+    // pub fn menu(inst: *editor_tabs.TabO) !void {
     //     const tab_o: *LogTab = @alignCast(@ptrCast(inst));
     //     _ = tab_o; // autofix
     // }
@@ -258,9 +260,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.log_tab_vt_ptr = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, TAB_NAME, log_tab);
+    _g.log_tab_vt_ptr = try apidb.setGlobalVarValue(editor_tabs.TabTypeI, module_name, TAB_NAME, log_tab);
 
-    try apidb.implOrRemove(module_name, editor.TabTypeI, &log_tab, load);
+    try apidb.implOrRemove(module_name, editor_tabs.TabTypeI, &log_tab, load);
     try apidb.implOrRemove(module_name, cetech1.log.LogHandlerI, &handler, load);
 
     if (!reload and !load) {

@@ -8,6 +8,6 @@
     },
     .dependencies = .{
         .cetech1 = .{ .path = "../../../public/" },
-        .native_logic_component = .{ .path = "../../../modules/scripting/native_logic_component" },
+        .native_script_component = .{ .path = "../../../modules/scripting/native_script_component" },
     },
 }

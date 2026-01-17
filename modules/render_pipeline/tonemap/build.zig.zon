@@ -1,0 +1,19 @@
+.{
+    .name = .tonemap,
+    .fingerprint = 0x3aff2b7d66078382,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .transform = .{ .path = "../../transform" },
+        .render_viewport = .{ .path = "../../rendering/render_viewport" },
+        .render_graph = .{ .path = "../../rendering/render_graph" },
+        .render_pipeline = .{ .path = "../../rendering/render_pipeline" },
+        .shader_system = .{ .path = "../../rendering/shader_system" },
+        .visibility_flags = .{ .path = "../../rendering/visibility_flags" },
+        .editor_inspector = .{ .path = "../../editor/inspector" },
+    },
+}

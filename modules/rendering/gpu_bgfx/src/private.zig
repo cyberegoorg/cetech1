@@ -10,14 +10,12 @@ const bgfx = zbgfx.bgfx;
 const profiler = cetech1.profiler;
 const task = cetech1.task;
 const tempalloc = cetech1.tempalloc;
+const math = cetech1.math;
+const host = cetech1.host;
 
 const public = cetech1.gpu;
 
-const zm = cetech1.math.zmath;
-
-const bgfx_shader = @embedFile("embed/bgfx_shader.sh");
-const bgfx_compute = @embedFile("embed/bgfx_compute.sh");
-const core_shader = bgfx_shader ++ "\n\n" ++ bgfx_compute;
+const core_shader = @import("shaders.zig").core_shader;
 
 const module_name = .gpu_bgfx;
 
@@ -39,6 +37,7 @@ var _metrics: *const cetech1.metrics.MetricsAPI = undefined;
 var _task: *const cetech1.task.TaskAPI = undefined;
 var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
 var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
+var _window: *const host.WindowApi = undefined;
 
 // Global state
 const G = struct {};
@@ -49,16 +48,16 @@ const ThreadId = std.Thread.Id;
 const EncoderMap = cetech1.AutoArrayHashMap(ThreadId, *bgfx.Encoder);
 
 const EncoderArray = cetech1.ArrayList(?*bgfx.Encoder);
-const PalletColorMap = cetech1.AutoArrayHashMap(u32, u8);
+const PalletColorMap = cetech1.AutoArrayHashMap(math.SRGBA, u8);
 
 pub const PrimitiveType = enum {
     pub fn toState(self: public.PrimitiveType) bgfx.StateFlags {
         return switch (self) {
-            .triangles => 0,
-            .triangles_strip => bgfx.StateFlags_PtTristrip,
-            .lines => bgfx.StateFlags_PtLines,
-            .lines_strip => bgfx.StateFlags_PtLinestrip,
-            .points => bgfx.StateFlags_PtPoints,
+            .Triangles => 0,
+            .TrianglesStrip => bgfx.StateFlags_PtTristrip,
+            .Lines => bgfx.StateFlags_PtLines,
+            .LinesStrip => bgfx.StateFlags_PtLinestrip,
+            .Points => bgfx.StateFlags_PtPoints,
         };
     }
 };
@@ -69,13 +68,13 @@ pub const RasterState = struct {
 
         if (self.cullmode) |cullmode| {
             switch (cullmode) {
-                .front => {
+                .Front => {
                     if (self.front_face) |front_face| {
                         switch (front_face) {
-                            .cw => {
+                            .Cw => {
                                 r |= bgfx.StateFlags_CullCw;
                             },
-                            .ccw => {
+                            .Ccw => {
                                 r |= bgfx.StateFlags_CullCcw;
                                 r |= bgfx.StateFlags_FrontCcw;
                             },
@@ -85,13 +84,13 @@ pub const RasterState = struct {
                         r |= bgfx.StateFlags_FrontCcw;
                     }
                 },
-                .back => {
+                .Back => {
                     if (self.front_face) |front_face| {
                         switch (front_face) {
-                            .cw => {
+                            .Cw => {
                                 r |= bgfx.StateFlags_CullCcw;
                             },
-                            .ccw => {
+                            .Ccw => {
                                 r |= bgfx.StateFlags_CullCw;
                                 r |= bgfx.StateFlags_FrontCcw;
                             },
@@ -100,14 +99,14 @@ pub const RasterState = struct {
                         r |= bgfx.StateFlags_CullCw;
                     }
                 },
-                .none => {},
+                .None => {},
             }
         }
 
         if (self.front_face) |front_face| {
             switch (front_face) {
-                .cw => {},
-                .ccw => {
+                .Cw => {},
+                .Ccw => {
                     r |= bgfx.StateFlags_FrontCcw;
                 },
             }
@@ -125,13 +124,13 @@ pub const DepthStencilState = struct {
             if (depth_test_enable) {
                 if (self.depth_comapre_op) |depth_comapre_op| {
                     switch (depth_comapre_op) {
-                        .never => r |= bgfx.StateFlags_DepthTestNever,
-                        .less => r |= bgfx.StateFlags_DepthTestLess,
-                        .equal => r |= bgfx.StateFlags_DepthTestEqual,
-                        .less_equal => r |= bgfx.StateFlags_DepthTestLequal,
-                        .greater => r |= bgfx.StateFlags_DepthTestGreater,
-                        .not_equal => r |= bgfx.StateFlags_DepthTestNotequal,
-                        .greater_equal => r |= bgfx.StateFlags_DepthTestGequal,
+                        .Never => r |= bgfx.StateFlags_DepthTestNever,
+                        .Less => r |= bgfx.StateFlags_DepthTestLess,
+                        .Equal => r |= bgfx.StateFlags_DepthTestEqual,
+                        .LessEqual => r |= bgfx.StateFlags_DepthTestLequal,
+                        .Greater => r |= bgfx.StateFlags_DepthTestGreater,
+                        .NotEqual => r |= bgfx.StateFlags_DepthTestNotequal,
+                        .GreaterEqual => r |= bgfx.StateFlags_DepthTestGequal,
                     }
                 }
             }
@@ -237,44 +236,44 @@ pub const SamplerFlags = struct {
 
         if (self.min_filter) |min_filter| {
             r |= switch (min_filter) {
-                .point => bgfx.SamplerFlags_MinPoint,
-                .linear => 0,
+                .Point => bgfx.SamplerFlags_MinPoint,
+                .Linear => 0,
             };
         }
 
         if (self.max_filter) |max_filter| {
             r |= switch (max_filter) {
-                .point => bgfx.SamplerFlags_MagPoint,
-                .linear => 0,
+                .Point => bgfx.SamplerFlags_MagPoint,
+                .Linear => 0,
             };
         }
 
         if (self.mip_mode) |mip_mode| {
             r |= switch (mip_mode) {
-                .point => bgfx.SamplerFlags_MinPoint,
-                .linear => 0,
+                .Point => bgfx.SamplerFlags_MinPoint,
+                .Linear => 0,
             };
         }
 
         if (self.u) |adress_u| {
             r |= switch (adress_u) {
-                .clamp => bgfx.SamplerFlags_UClamp,
-                .border => bgfx.SamplerFlags_UBorder,
-                .wrap => 0,
+                .Clamp => bgfx.SamplerFlags_UClamp,
+                .Border => bgfx.SamplerFlags_UBorder,
+                .Wrap => 0,
             };
         }
         if (self.v) |adress_v| {
             r |= switch (adress_v) {
-                .clamp => bgfx.SamplerFlags_VClamp,
-                .border => bgfx.SamplerFlags_VBorder,
-                .wrap => 0,
+                .Clamp => bgfx.SamplerFlags_VClamp,
+                .Border => bgfx.SamplerFlags_VBorder,
+                .Wrap => 0,
             };
         }
         if (self.w) |adress_w| {
             r |= switch (adress_w) {
-                .clamp => bgfx.SamplerFlags_WClamp,
-                .border => bgfx.SamplerFlags_WBorder,
-                .wrap => 0,
+                .Clamp => bgfx.SamplerFlags_WClamp,
+                .Border => bgfx.SamplerFlags_WBorder,
+                .Wrap => 0,
             };
         }
 
@@ -295,12 +294,12 @@ pub const TextureFlags = struct {
         if (self.rt_write_only) r |= bgfx.TextureFlags_RtWriteOnly;
 
         r |= switch (self.rt) {
-            .no_rt => 0,
-            .rt => bgfx.TextureFlags_RtWriteOnly,
-            .mssaa_x2 => bgfx.TextureFlags_RtMsaaX2,
-            .mssaa_x4 => bgfx.TextureFlags_RtMsaaX4,
-            .mssaa_x8 => bgfx.TextureFlags_RtMsaaX8,
-            .mssaa_x16 => bgfx.TextureFlags_RtMsaaX16,
+            .NoRT => 0,
+            .RT => bgfx.TextureFlags_RtWriteOnly,
+            .MssaaX2 => bgfx.TextureFlags_RtMsaaX2,
+            .MssaaX4 => bgfx.TextureFlags_RtMsaaX4,
+            .MssaaX8 => bgfx.TextureFlags_RtMsaaX8,
+            .MssaaX16 => bgfx.TextureFlags_RtMsaaX16,
         };
 
         return r;
@@ -333,15 +332,15 @@ pub const BufferFlags = struct {
         }
         if (self.compute_format) |compute_format| {
             r |= switch (compute_format) {
-                .x8x1 => bgfx.BufferFlags_ComputeFormat8x1,
-                .x8x2 => bgfx.BufferFlags_ComputeFormat8x2,
-                .x8x4 => bgfx.BufferFlags_ComputeFormat8x4,
-                .x16x1 => bgfx.BufferFlags_ComputeFormat16x1,
-                .x16x2 => bgfx.BufferFlags_ComputeFormat16x2,
-                .x16x4 => bgfx.BufferFlags_ComputeFormat16x4,
-                .x32x1 => bgfx.BufferFlags_ComputeFormat32x1,
-                .x32x2 => bgfx.BufferFlags_ComputeFormat32x2,
-                .x32x4 => bgfx.BufferFlags_ComputeFormat32x4,
+                .X8x1 => bgfx.BufferFlags_ComputeFormat8x1,
+                .X8x2 => bgfx.BufferFlags_ComputeFormat8x2,
+                .X8x4 => bgfx.BufferFlags_ComputeFormat8x4,
+                .X16x1 => bgfx.BufferFlags_ComputeFormat16x1,
+                .X16x2 => bgfx.BufferFlags_ComputeFormat16x2,
+                .X16x4 => bgfx.BufferFlags_ComputeFormat16x4,
+                .X32x1 => bgfx.BufferFlags_ComputeFormat32x1,
+                .X32x2 => bgfx.BufferFlags_ComputeFormat32x2,
+                .X32x4 => bgfx.BufferFlags_ComputeFormat32x4,
             };
         }
         return r;
@@ -372,10 +371,10 @@ pub const ResetFlags = struct {
 
         if (self.msaa) |msaa| {
             r |= switch (msaa) {
-                .x2 => bgfx.ResetFlags_MsaaX2,
-                .x4 => bgfx.ResetFlags_MsaaX4,
-                .x8 => bgfx.ResetFlags_MsaaX8,
-                .x16 => bgfx.ResetFlags_MsaaX16,
+                .X2 => bgfx.ResetFlags_MsaaX2,
+                .X4 => bgfx.ResetFlags_MsaaX4,
+                .X8 => bgfx.ResetFlags_MsaaX8,
+                .X16 => bgfx.ResetFlags_MsaaX16,
             };
         }
 
@@ -604,7 +603,7 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
         const b = std.mem.toBytes(context.bgfxInit.resolution);
         return std.mem.bytesToValue(public.Resolution, &b);
     }
-    pub fn addPaletteColor(self: *anyopaque, color: u32) u8 {
+    pub fn addPaletteColor(self: *anyopaque, color: math.SRGBA) u8 {
         const inst: *BgfxBackend = @ptrCast(@alignCast(self));
 
         const pallet_id = inst.pallet_map.get(color);
@@ -612,7 +611,7 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
 
         const idx: u8 = @truncate(pallet_id_counter.fetchAdd(1, .monotonic));
 
-        bgfx.setPaletteColorRgba8(idx, color);
+        bgfx.setPaletteColorRgba8(idx, color.toU32());
         inst.pallet_map.put(_allocator, color, idx) catch undefined;
 
         return idx;
@@ -1147,7 +1146,7 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
     //     _ = self;
     //     return bgfx.topologyConvert(@enumFromInt(@intFromEnum(_conversion)), _dst, _dstSize, _indices, _numIndices, _index32);
     // }
-    // pub fn topologySortTriList(self: *anyopaque, _sort: public.TopologySort, _dst: ?*anyopaque, _dstSize: u32, _dir: [3]f32, _pos: [3]f32, _vertices: ?*const anyopaque, _stride: u32, _indices: ?*const anyopaque, _numIndices: u32, _index32: bool) void {
+    // pub fn topologySortTriList(self: *anyopaque, _sort: public.TopologySort, _dst: ?*anyopaque, _dstSize: u32, _dir: math.Vec3f, _pos: math.Vec3f, _vertices: ?*const anyopaque, _stride: u32, _indices: ?*const anyopaque, _numIndices: u32, _index32: bool) void {
     //     _ = self;
     //     return bgfx.topologySortTriList(@enumFromInt(@intFromEnum(_sort)), _dst, _dstSize, _dir, _pos, _vertices, _stride, _indices, _numIndices, _index32);
     // }
@@ -1201,7 +1200,7 @@ fn initBgfx(context: *BgfxBackend, backend: bgfx.RendererType, vsync: bool, head
         context.bgfxInit.platformData.ndt = context.window.?.getOsDisplayHandler();
 
         // TODO: wayland
-        context.bgfxInit.platformData.type = bgfx.NativeWindowHandleType.Default;
+        context.bgfxInit.platformData.type = if (_window.getWMType() == .Wayland) bgfx.NativeWindowHandleType.Wayland else .Default;
     }
 
     // // Do not create render thread.
@@ -1591,8 +1590,8 @@ const dd_encoder_vt = public.DDEncoder.implement(struct {
         zbgfx.debugdraw.Encoder.setState(@ptrCast(@alignCast(dde)), _depthTest, _depthWrite, _clockwise);
     }
 
-    pub fn setColor(dde: *anyopaque, _abgr: u32) void {
-        zbgfx.debugdraw.Encoder.setColor(@ptrCast(@alignCast(dde)), _abgr);
+    pub fn setColor(dde: *anyopaque, _abgr: math.SRGBA) void {
+        zbgfx.debugdraw.Encoder.setColor(@ptrCast(@alignCast(dde)), _abgr.toU32());
     }
 
     pub fn setLod(dde: *anyopaque, _lod: u8) void {
@@ -1611,64 +1610,64 @@ const dd_encoder_vt = public.DDEncoder.implement(struct {
         zbgfx.debugdraw.Encoder.setSpin(@ptrCast(@alignCast(dde)), _spin);
     }
 
-    pub fn setTransform(dde: *anyopaque, _mtx: ?*const anyopaque) void {
-        zbgfx.debugdraw.Encoder.setTransform(@ptrCast(@alignCast(dde)), @constCast(_mtx));
+    pub fn setTransform(dde: *anyopaque, _mtx: math.Mat44f) void {
+        zbgfx.debugdraw.Encoder.setTransform(@ptrCast(@alignCast(dde)), &_mtx.toArray());
     }
 
-    pub fn setTranslate(dde: *anyopaque, _xyz: [3]f32) void {
-        zbgfx.debugdraw.Encoder.setTranslate(@ptrCast(@alignCast(dde)), _xyz);
+    pub fn setTranslate(dde: *anyopaque, _xyz: math.Vec3f) void {
+        zbgfx.debugdraw.Encoder.setTranslate(@ptrCast(@alignCast(dde)), _xyz.toArray());
     }
 
-    pub fn pushTransform(dde: *anyopaque, _mtx: *const anyopaque) void {
-        zbgfx.debugdraw.Encoder.pushTransform(@ptrCast(@alignCast(dde)), @constCast(_mtx));
+    pub fn pushTransform(dde: *anyopaque, _mtx: math.Mat44f) void {
+        zbgfx.debugdraw.Encoder.pushTransform(@ptrCast(@alignCast(dde)), @constCast(&_mtx.toArray()));
     }
 
     pub fn popTransform(dde: *anyopaque) void {
         zbgfx.debugdraw.Encoder.popTransform(@ptrCast(@alignCast(dde)));
     }
 
-    pub fn moveTo(dde: *anyopaque, _xyz: [3]f32) void {
-        zbgfx.debugdraw.Encoder.moveTo(@ptrCast(@alignCast(dde)), _xyz);
+    pub fn moveTo(dde: *anyopaque, _xyz: math.Vec3f) void {
+        zbgfx.debugdraw.Encoder.moveTo(@ptrCast(@alignCast(dde)), _xyz.toArray());
     }
 
-    pub fn lineTo(dde: *anyopaque, _xyz: [3]f32) void {
-        zbgfx.debugdraw.Encoder.lineTo(@ptrCast(@alignCast(dde)), _xyz);
+    pub fn lineTo(dde: *anyopaque, _xyz: math.Vec3f) void {
+        zbgfx.debugdraw.Encoder.lineTo(@ptrCast(@alignCast(dde)), _xyz.toArray());
     }
 
     pub fn close(dde: *anyopaque) void {
         zbgfx.debugdraw.Encoder.close(@ptrCast(@alignCast(dde)));
     }
 
-    pub fn drawAABB(dde: *anyopaque, min: [3]f32, max: [3]f32) void {
-        zbgfx.debugdraw.Encoder.drawAABB(@ptrCast(@alignCast(dde)), min, max);
+    pub fn drawAABB(dde: *anyopaque, min: math.Vec3f, max: math.Vec3f) void {
+        zbgfx.debugdraw.Encoder.drawAABB(@ptrCast(@alignCast(dde)), min.toArray(), max.toArray());
     }
 
-    pub fn drawCylinder(dde: *anyopaque, pos: [3]f32, _end: [3]f32, radius: f32) void {
-        zbgfx.debugdraw.Encoder.drawCylinder(@ptrCast(@alignCast(dde)), pos, _end, radius);
+    pub fn drawCylinder(dde: *anyopaque, pos: math.Vec3f, _end: math.Vec3f, radius: f32) void {
+        zbgfx.debugdraw.Encoder.drawCylinder(@ptrCast(@alignCast(dde)), pos.toArray(), _end.toArray(), radius);
     }
 
-    pub fn drawCapsule(dde: *anyopaque, pos: [3]f32, _end: [3]f32, radius: f32) void {
-        zbgfx.debugdraw.Encoder.drawCapsule(@ptrCast(@alignCast(dde)), pos, _end, radius);
+    pub fn drawCapsule(dde: *anyopaque, pos: math.Vec3f, _end: math.Vec3f, radius: f32) void {
+        zbgfx.debugdraw.Encoder.drawCapsule(@ptrCast(@alignCast(dde)), pos.toArray(), _end.toArray(), radius);
     }
 
-    pub fn drawDisk(dde: *anyopaque, center: [3]f32, normal: [3]f32, radius: f32) void {
-        zbgfx.debugdraw.Encoder.drawDisk(@ptrCast(@alignCast(dde)), center, normal, radius);
+    pub fn drawDisk(dde: *anyopaque, center: math.Vec3f, normal: math.Vec3f, radius: f32) void {
+        zbgfx.debugdraw.Encoder.drawDisk(@ptrCast(@alignCast(dde)), center.toArray(), normal.toArray(), radius);
     }
 
-    pub fn drawObb(dde: *anyopaque, _obb: [3]f32) void {
-        zbgfx.debugdraw.Encoder.drawObb(@ptrCast(@alignCast(dde)), _obb);
+    pub fn drawObb(dde: *anyopaque, _obb: math.Vec3f) void {
+        zbgfx.debugdraw.Encoder.drawObb(@ptrCast(@alignCast(dde)), _obb.toArray());
     }
 
-    pub fn drawSphere(dde: *anyopaque, center: [3]f32, radius: f32) void {
-        zbgfx.debugdraw.Encoder.drawSphere(@ptrCast(@alignCast(dde)), center, radius);
+    pub fn drawSphere(dde: *anyopaque, center: math.Vec3f, radius: f32) void {
+        zbgfx.debugdraw.Encoder.drawSphere(@ptrCast(@alignCast(dde)), center.toArray(), radius);
     }
 
-    pub fn drawTriangle(dde: *anyopaque, v0: [3]f32, v1: [3]f32, v2: [3]f32) void {
-        zbgfx.debugdraw.Encoder.drawTriangle(@ptrCast(@alignCast(dde)), v0, v1, v2);
+    pub fn drawTriangle(dde: *anyopaque, v0: math.Vec3f, v1: math.Vec3f, v2: math.Vec3f) void {
+        zbgfx.debugdraw.Encoder.drawTriangle(@ptrCast(@alignCast(dde)), v0.toArray(), v1.toArray(), v2.toArray());
     }
 
-    pub fn drawCone(dde: *anyopaque, pos: [3]f32, _end: [3]f32, radius: f32) void {
-        zbgfx.debugdraw.Encoder.drawCone(@ptrCast(@alignCast(dde)), pos, _end, radius);
+    pub fn drawCone(dde: *anyopaque, pos: math.Vec3f, _end: math.Vec3f, radius: f32) void {
+        zbgfx.debugdraw.Encoder.drawCone(@ptrCast(@alignCast(dde)), pos.toArray(), _end.toArray(), radius);
     }
 
     pub fn drawGeometry(dde: *anyopaque, _handle: public.DDGeometryHandle) void {
@@ -1683,48 +1682,48 @@ const dd_encoder_vt = public.DDEncoder.implement(struct {
         zbgfx.debugdraw.Encoder.drawTriList(@ptrCast(@alignCast(dde)), _numVertices, std.mem.bytesAsSlice(zbgfx.debugdraw.Vertex, std.mem.sliceAsBytes(_vertices)), _numIndices, _indices.?);
     }
 
-    pub fn drawFrustum(dde: *anyopaque, _viewProj: [16]f32) void {
-        zbgfx.debugdraw.Encoder.drawFrustum(@ptrCast(@alignCast(dde)), @constCast(&_viewProj));
+    pub fn drawFrustum(dde: *anyopaque, _viewProj: math.Mat44f) void {
+        zbgfx.debugdraw.Encoder.drawFrustum(@ptrCast(@alignCast(dde)), @constCast(&_viewProj.toArray()));
     }
 
-    pub fn drawArc(dde: *anyopaque, _axis: public.DDAxis, _xyz: [3]f32, _radius: f32, _degrees: f32) void {
-        zbgfx.debugdraw.Encoder.drawArc(@ptrCast(@alignCast(dde)), @enumFromInt(@intFromEnum(_axis)), _xyz, _radius, _degrees);
+    pub fn drawArc(dde: *anyopaque, _axis: public.DDAxis, _xyz: math.Vec3f, _radius: f32, _degrees: f32) void {
+        zbgfx.debugdraw.Encoder.drawArc(@ptrCast(@alignCast(dde)), @enumFromInt(@intFromEnum(_axis)), _xyz.toArray(), _radius, _degrees);
     }
 
-    pub fn drawCircle(dde: *anyopaque, _normal: [3]f32, _center: [3]f32, _radius: f32, _weight: f32) void {
-        zbgfx.debugdraw.Encoder.drawCircle(@ptrCast(@alignCast(dde)), _normal, _center, _radius, _weight);
+    pub fn drawCircle(dde: *anyopaque, _normal: math.Vec3f, _center: math.Vec3f, _radius: f32, _weight: f32) void {
+        zbgfx.debugdraw.Encoder.drawCircle(@ptrCast(@alignCast(dde)), _normal.toArray(), _center.toArray(), _radius, _weight);
     }
 
-    pub fn drawCircleAxis(dde: *anyopaque, _axis: public.DDAxis, _xyz: [3]f32, _radius: f32, _weight: f32) void {
-        zbgfx.debugdraw.Encoder.drawCircleAxis(@ptrCast(@alignCast(dde)), @enumFromInt(@intFromEnum(_axis)), _xyz, _radius, _weight);
+    pub fn drawCircleAxis(dde: *anyopaque, _axis: public.DDAxis, _xyz: math.Vec3f, _radius: f32, _weight: f32) void {
+        zbgfx.debugdraw.Encoder.drawCircleAxis(@ptrCast(@alignCast(dde)), @enumFromInt(@intFromEnum(_axis)), _xyz.toArray(), _radius, _weight);
     }
 
-    pub fn drawQuad(dde: *anyopaque, _normal: [3]f32, _center: [3]f32, _size: f32) void {
-        zbgfx.debugdraw.Encoder.drawQuad(@ptrCast(@alignCast(dde)), _normal, _center, _size);
+    pub fn drawQuad(dde: *anyopaque, _normal: math.Vec3f, _center: math.Vec3f, _size: f32) void {
+        zbgfx.debugdraw.Encoder.drawQuad(@ptrCast(@alignCast(dde)), _normal.toArray(), _center.toArray(), _size);
     }
 
-    pub fn drawQuadSprite(dde: *anyopaque, _handle: public.DDSpriteHandle, _normal: [3]f32, _center: [3]f32, _size: f32) void {
-        zbgfx.debugdraw.Encoder.drawQuadSprite(@ptrCast(@alignCast(dde)), .{ .idx = _handle.idx }, _normal, _center, _size);
+    pub fn drawQuadSprite(dde: *anyopaque, _handle: public.DDSpriteHandle, _normal: math.Vec3f, _center: math.Vec3f, _size: f32) void {
+        zbgfx.debugdraw.Encoder.drawQuadSprite(@ptrCast(@alignCast(dde)), .{ .idx = _handle.idx }, _normal.toArray(), _center.toArray(), _size);
     }
 
-    pub fn drawQuadTexture(dde: *anyopaque, _handle: public.TextureHandle, _normal: [3]f32, _center: [3]f32, _size: f32) void {
-        zbgfx.debugdraw.Encoder.drawQuadTexture(@ptrCast(@alignCast(dde)), .{ .idx = _handle.idx }, _normal, _center, _size);
+    pub fn drawQuadTexture(dde: *anyopaque, _handle: public.TextureHandle, _normal: math.Vec3f, _center: math.Vec3f, _size: f32) void {
+        zbgfx.debugdraw.Encoder.drawQuadTexture(@ptrCast(@alignCast(dde)), .{ .idx = _handle.idx }, _normal.toArray(), _center.toArray(), _size);
     }
 
-    pub fn drawAxis(dde: *anyopaque, _xyz: [3]f32, _len: f32, _highlight: public.DDAxis, _thickness: f32) void {
-        zbgfx.debugdraw.Encoder.drawAxis(@ptrCast(@alignCast(dde)), _xyz, _len, @enumFromInt(@intFromEnum(_highlight)), _thickness);
+    pub fn drawAxis(dde: *anyopaque, _xyz: math.Vec3f, _len: f32, _highlight: public.DDAxis, _thickness: f32) void {
+        zbgfx.debugdraw.Encoder.drawAxis(@ptrCast(@alignCast(dde)), _xyz.toArray(), _len, @enumFromInt(@intFromEnum(_highlight)), _thickness);
     }
 
-    pub fn drawGrid(dde: *anyopaque, _normal: [3]f32, _center: [3]f32, _size: u32, _step: f32) void {
-        zbgfx.debugdraw.Encoder.drawGrid(@ptrCast(@alignCast(dde)), _normal, _center, _size, _step);
+    pub fn drawGrid(dde: *anyopaque, _normal: math.Vec3f, _center: math.Vec3f, _size: u32, _step: f32) void {
+        zbgfx.debugdraw.Encoder.drawGrid(@ptrCast(@alignCast(dde)), _normal.toArray(), _center.toArray(), _size, _step);
     }
 
-    pub fn drawGridAxis(dde: *anyopaque, _axis: public.DDAxis, _center: [3]f32, _size: u32, _step: f32) void {
-        zbgfx.debugdraw.Encoder.drawGridAxis(@ptrCast(@alignCast(dde)), @enumFromInt(@intFromEnum(_axis)), _center, _size, _step);
+    pub fn drawGridAxis(dde: *anyopaque, _axis: public.DDAxis, _center: math.Vec3f, _size: u32, _step: f32) void {
+        zbgfx.debugdraw.Encoder.drawGridAxis(@ptrCast(@alignCast(dde)), @enumFromInt(@intFromEnum(_axis)), _center.toArray(), _size, _step);
     }
 
-    pub fn drawOrb(dde: *anyopaque, _xyz: [3]f32, _radius: f32, _highlight: public.DDAxis) void {
-        zbgfx.debugdraw.Encoder.drawOrb(@ptrCast(@alignCast(dde)), _xyz, _radius, @enumFromInt(@intFromEnum(_highlight)));
+    pub fn drawOrb(dde: *anyopaque, _xyz: math.Vec3f, _radius: f32, _highlight: public.DDAxis) void {
+        zbgfx.debugdraw.Encoder.drawOrb(@ptrCast(@alignCast(dde)), _xyz.toArray(), _radius, @enumFromInt(@intFromEnum(_highlight)));
     }
 });
 
@@ -1764,6 +1763,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _task = apidb.getZigApi(module_name, cetech1.task.TaskAPI).?;
     _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
     _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
+    _window = apidb.getZigApi(module_name, host.WindowApi).?;
 
     // create global variable that can survive reload
     _g = try _apidb.setGlobalVar(G, module_name, "_g", .{});

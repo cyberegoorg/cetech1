@@ -9,12 +9,13 @@
     .dependencies = .{
         .cetech1 = .{ .path = "../../../public/" },
         .editor = .{ .path = "../editor" },
+        .editor_tabs = .{ .path = "../tabs" },
         .render_viewport = .{ .path = "../../rendering/render_viewport" },
         .render_graph = .{ .path = "../../rendering/render_graph" },
         .render_pipeline = .{ .path = "../../rendering/render_pipeline" },
-        .light_component = .{ .path = "../../rendering/light_component" },
-        .camera = .{ .path = "../../rendering/camera" },
-        .camera_controller = .{ .path = "../../rendering/camera_controller" },
-        .transform = .{ .path = "../../rendering/transform" },
+        .light_component = .{ .path = "../../render_pipeline/light_component" },
+        .camera = .{ .path = "../../camera/camera" },
+        .camera_controller = .{ .path = "../../camera/camera_controller" },
+        .transform = .{ .path = "../../transform" },
     },
 }
