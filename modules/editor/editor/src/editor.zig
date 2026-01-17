@@ -3,6 +3,7 @@ const cetech1 = @import("cetech1");
 
 const cdb = cetech1.cdb;
 const coreui = cetech1.coreui;
+const math = cetech1.math;
 
 const log = std.log.scoped(.editor);
 
@@ -65,7 +66,7 @@ pub const UiVisualAspect = struct {
 
     ui_color: ?*const fn (
         obj: cdb.ObjId,
-    ) anyerror![4]f32 = null,
+    ) anyerror!math.Color4f = null,
 
     ui_tooltip: ?*const fn (
         allocator: std.mem.Allocator,
@@ -265,9 +266,9 @@ pub const EditorAPI = struct {
 
     buffFormatObjLabel: *const fn (allocator: std.mem.Allocator, buff: [:0]u8, obj: cdb.ObjId, with_id: bool, uuid_id: bool) ?[:0]u8,
 
-    getStateColor: *const fn (state: cdb.ObjRelation) [4]f32,
-    getObjColor: *const fn (obj: cdb.ObjId, in_set_obj: ?cdb.ObjId) ?[4]f32,
-    getAssetColor: *const fn (obj: cdb.ObjId) [4]f32,
+    getStateColor: *const fn (state: cdb.ObjRelation) math.Color4f,
+    getObjColor: *const fn (obj: cdb.ObjId, in_set_obj: ?cdb.ObjId) ?math.Color4f,
+    getAssetColor: *const fn (obj: cdb.ObjId) math.Color4f,
 
     isColorsEnabled: *const fn () bool,
     selectObjFromMenu: *const fn (allocator: std.mem.Allocator, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) ?cdb.ObjId,

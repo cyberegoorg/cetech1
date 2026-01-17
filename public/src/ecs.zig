@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const cetech1 = @import("root.zig");
 const zm = cetech1.math.zm;
 const coreui = cetech1.coreui;
+const math = cetech1.math;
 
 const cdb = @import("cdb.zig");
 const gpu = @import("gpu.zig");
@@ -100,16 +101,16 @@ pub const TraverseFlags = Self_ | Up | Trav | Cascade | Desc;
 pub const TermRefFlags = TraverseFlags | IsVariable | IsEntity | IsName;
 
 pub const InOutKind = enum(i32) {
-    InOutDefault,
+    InOutDefault = 0,
     InOutNone,
-    EcsInOutFilter,
+    InOutFilter,
     InOut,
     In,
     Out,
 };
 
 pub const OperatorKind = enum(i32) {
-    And,
+    And = 0,
     Or,
     Not,
     Optional,
@@ -136,7 +137,7 @@ pub const QueryTerm = struct {
 
 pub const IterO = opaque {};
 
-// TODO: =(
+// TODO: SHIT =(
 
 pub const GizmoOptions = struct {
     translate_x: bool = false,
@@ -156,7 +157,7 @@ pub const GizmoOptions = struct {
 
     mode: coreui.GizmoMode = .world,
     snap_enabled: bool = false,
-    snap: [3]f32 = @splat(1),
+    snap: math.Vec3f = .{ .x = 1, .y = 1, .z = 1 },
 
     pub const translate: GizmoOptions = .{ .translate_x = true, .translate_y = true, .translate_z = true };
     pub const rotate: GizmoOptions = .{ .rotate_x = true, .rotate_y = true, .rotate_z = true };
@@ -179,6 +180,22 @@ pub const GizmoOptions = struct {
     }
 };
 
+///
+pub const ComponentCategoryI = struct {
+    pub const c_name = "ct_ecs_component_category_i";
+    pub const name_hash = cetech1.strId64(@This().c_name);
+
+    name: [:0]const u8 = undefined,
+    order: f32 = std.math.inf(f32),
+
+    pub fn implement(args: ComponentCategoryI) ComponentCategoryI {
+        return ComponentCategoryI{
+            .name = args.name,
+            .order = args.order,
+        };
+    }
+};
+
 pub const ComponentI = struct {
     const Self = @This();
     pub const c_name = "ct_ecs_component_i";
@@ -195,10 +212,14 @@ pub const ComponentI = struct {
     cdb_type_hash: cdb.TypeHash = .{},
 
     with: ?[]const cetech1.StrId32 = null,
+    singleton: bool = false,
 
-    onAdd: ?*const fn (iter: *IterO) callconv(.c) void = null,
-    onSet: ?*const fn (iter: *IterO) callconv(.c) void = null,
-    onRemove: ?*const fn (iter: *IterO) callconv(.c) void = null,
+    createManager: ?*const fn (world: World) anyerror!*anyopaque = null,
+    destroyManager: ?*const fn (world: World, manager: *anyopaque) void = null,
+
+    onAdd: ?*const fn (manager: ?*anyopaque, iter: *Iter) anyerror!void = null,
+    onSet: ?*const fn (manager: ?*anyopaque, iter: *Iter) anyerror!void = null,
+    onRemove: ?*const fn (manager: ?*anyopaque, iter: *Iter) anyerror!void = null,
 
     onCreate: ?*const fn (ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void = null,
     onDestroy: ?*const fn (ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void = null,
@@ -223,7 +244,7 @@ pub const ComponentI = struct {
         world: World,
         entites: []const EntityId,
         data: []const u8,
-        size: [2]f32,
+        size: math.Vec2f,
     ) anyerror!void = null,
 
     gizmoPriority: f32 = 0,
@@ -238,25 +259,16 @@ pub const ComponentI = struct {
         entity: EntityId,
         entity_obj: cdb.ObjId,
         component_obj: cdb.ObjId,
-        world_mtx: *zm.Mat,
-        local_mtx: *zm.Mat,
+        world_mtx: *math.Mat44f,
+        local_mtx: *math.Mat44f,
     ) anyerror!void = null,
     gizmoSetMatrix: ?*const fn (
         world: World,
         entity: EntityId,
         entity_obj: cdb.ObjId,
         component_obj: cdb.ObjId,
-        mat: zm.Mat,
+        mat: math.Mat44f,
     ) anyerror!void = null,
-
-    pub fn nameFromType(
-        comptime T: type,
-    ) [:0]const u8 {
-        var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
-        const name = name_iter.first();
-        const cname = name[0..name.len :0];
-        return cname;
-    }
 
     pub fn implement(comptime T: type, args: ComponentI, comptime Hooks: type) Self {
         return Self{
@@ -270,24 +282,14 @@ pub const ComponentI = struct {
             .category = args.category,
             .category_order = args.category_order,
             .with = args.with,
+            .singleton = args.singleton,
 
-            .onAdd = if (std.meta.hasFn(Hooks, "onAdd")) struct {
-                fn f(iter: *IterO) callconv(.c) void {
-                    Hooks.onAdd(iter) catch undefined;
-                }
-            }.f else null,
+            .onAdd = if (std.meta.hasFn(Hooks, "onAdd")) Hooks.onAdd else null,
+            .onSet = if (std.meta.hasFn(Hooks, "onSet")) Hooks.onSet else null,
+            .onRemove = if (std.meta.hasFn(Hooks, "onRemove")) Hooks.onRemove else null,
 
-            .onSet = if (std.meta.hasFn(Hooks, "onSet")) struct {
-                fn f(iter: *IterO) callconv(.c) void {
-                    Hooks.onSet(iter) catch undefined;
-                }
-            }.f else null,
-
-            .onRemove = if (std.meta.hasFn(Hooks, "onRemove")) struct {
-                fn f(iter: *IterO) callconv(.c) void {
-                    Hooks.onRemove(iter) catch undefined;
-                }
-            }.f else null,
+            .createManager = if (std.meta.hasFn(Hooks, "createManager")) Hooks.createManager else null,
+            .destroyManager = if (std.meta.hasFn(Hooks, "destroyManager")) Hooks.destroyManager else null,
 
             .onCreate = if (std.meta.hasFn(Hooks, "onCreate")) struct {
                 fn f(ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void {
@@ -358,17 +360,31 @@ pub const ComponentI = struct {
     }
 };
 
-pub const ComponentCategoryI = struct {
-    pub const c_name = "ct_ecs_component_category_i";
+pub const TagI = struct {
+    const Self = @This();
+    pub const c_name = "ct_ecs_tag_i";
     pub const name_hash = cetech1.strId64(@This().c_name);
 
     name: [:0]const u8 = undefined,
-    order: f32 = std.math.inf(f32),
+    id: cetech1.StrId32 = undefined,
 
-    pub fn implement(args: ComponentCategoryI) ComponentCategoryI {
-        return ComponentCategoryI{
-            .name = args.name,
-            .order = args.order,
+    category: ?[:0]const u8 = null,
+    category_order: f32 = 0,
+
+    cdb_type_hash: cdb.TypeHash = .{},
+
+    uiIcons: ?[:0]const u8 = null,
+
+    pub fn implement(comptime T: type, args: ComponentI) Self {
+        return Self{
+            .name = nameFromType(T),
+            .id = id(T),
+            .cdb_type_hash = args.cdb_type_hash,
+
+            .category = args.category,
+            .category_order = args.category_order,
+
+            .uiIcons = args.uiIcons,
         };
     }
 };
@@ -377,8 +393,8 @@ pub const SystemI = struct {
     pub const c_name = "ct_ecs_system_i";
     pub const name_hash = cetech1.strId64(@This().c_name);
 
-    name: [:0]const u8 = undefined,
-    phase: cetech1.StrId32 = undefined,
+    name: [:0]const u8,
+    phase: cetech1.StrId32,
     query: []const QueryTerm,
     multi_threaded: bool = false,
     immediate: bool = false,
@@ -386,8 +402,14 @@ pub const SystemI = struct {
 
     simulation: bool = false,
 
-    update: ?*const fn (world: World, iter: *Iter, dt: f32) anyerror!void = undefined,
-    iterate: ?*const fn (world: World, iter: *Iter, dt: f32) anyerror!void = undefined,
+    orderByComponent: ?cetech1.StrId32 = null,
+    orderByCallback: ?*const fn (e1: EntityId, c1: *const anyopaque, e2: EntityId, c2: *const anyopaque) callconv(.c) i32 = null, // TODO: how without callconv?
+
+    // One per tick.
+    tick: ?*const fn (world: World, iter: *Iter, dt: f32) anyerror!void = null,
+
+    // For every table.
+    iterate: ?*const fn (world: World, iter: *Iter, dt: f32) anyerror!void = null,
 
     pub fn implement(args: SystemI, comptime T: type) SystemI {
         return SystemI{
@@ -398,6 +420,32 @@ pub const SystemI = struct {
             .immediate = args.immediate,
             .cache_kind = args.cache_kind,
             .simulation = args.simulation,
+
+            .iterate = if (std.meta.hasFn(T, "iterate")) T.iterate else null,
+            .tick = if (std.meta.hasFn(T, "tick")) T.tick else null,
+            .orderByCallback = if (std.meta.hasFn(T, "orderByCallback")) T.orderByCallback else null,
+        };
+    }
+};
+
+pub const ObserverI = struct {
+    pub const c_name = "ct_ecs_observer_i";
+    pub const name_hash = cetech1.strId64(@This().c_name);
+
+    name: [:0]const u8,
+    id: cetech1.StrId32 = undefined,
+    query: []const QueryTerm,
+    events: []const cetech1.StrId32,
+
+    update: ?*const fn (world: World, iter: *Iter, dt: f32) anyerror!void = undefined,
+    iterate: ?*const fn (world: World, iter: *Iter, dt: f32) anyerror!void = undefined,
+
+    pub fn implement(args: ObserverI, comptime T: type) ObserverI {
+        return ObserverI{
+            .name = args.name,
+            .id = .fromStr(args.name),
+            .query = args.query,
+            .events = args.events,
 
             .update = if (std.meta.hasFn(T, "update")) T.update else null,
             .iterate = if (std.meta.hasFn(T, "iterate")) T.iterate else null,
@@ -438,7 +486,6 @@ pub const QueryCount = struct {
 };
 
 pub const Query = struct {
-    world: World,
     ptr: *anyopaque,
     vtable: *const VTable,
 
@@ -451,7 +498,7 @@ pub const Query = struct {
     }
 
     pub inline fn iter(self: *Query) !Iter {
-        return self.vtable.iter(self.ptr, self.world);
+        return self.vtable.iter(self.ptr);
     }
 
     pub inline fn next(self: *Query, it: *Iter) bool {
@@ -461,7 +508,7 @@ pub const Query = struct {
     pub const VTable = struct {
         destroy: *const fn (query: *anyopaque) void,
         count: *const fn (query: *anyopaque) QueryCount,
-        iter: *const fn (query: *anyopaque, world: World) anyerror!Iter,
+        iter: *const fn (query: *anyopaque) anyerror!Iter,
         next: *const fn (query: *anyopaque, it: *Iter) bool,
 
         pub fn implement(comptime T: type) VTable {
@@ -480,6 +527,12 @@ pub const Query = struct {
     };
 };
 
+pub const QueryDesc = struct {
+    query: []const QueryTerm,
+    orderByComponent: ?cetech1.StrId32 = null,
+    orderByCallback: ?*const fn (e1: EntityId, c1: *const anyopaque, e2: EntityId, c2: *const anyopaque) callconv(.c) i32 = null, // TODO: how without callconv?
+};
+
 pub const World = struct {
     pub inline fn newEntity(self: World, name: ?[:0]const u8) EntityId {
         return self.vtable.newEntity(self.ptr, name);
@@ -493,8 +546,12 @@ pub const World = struct {
         return self.vtable.destroyEntities(self.ptr, ents);
     }
 
-    pub inline fn setId(self: World, comptime T: type, entity: EntityId, ptr: ?*const T) EntityId {
+    pub inline fn setComponent(self: World, comptime T: type, entity: EntityId, ptr: ?*const T) EntityId {
         return self.vtable.setComponent(self.ptr, entity, id(T), @sizeOf(T), ptr);
+    }
+
+    pub inline fn setComponentRaw(self: World, entity: EntityId, cid: cetech1.StrId32, size: usize, ptr: ?*const anyopaque) EntityId {
+        return self.vtable.setComponent(self.ptr, entity, cid, size, ptr);
     }
 
     pub inline fn getMutComponent(self: World, comptime T: type, entity: EntityId) ?*T {
@@ -512,15 +569,49 @@ pub const World = struct {
         return ptr;
     }
 
-    pub inline fn setIdRaw(self: World, entity: EntityId, cid: cetech1.StrId32, size: usize, ptr: ?*const anyopaque) EntityId {
-        return self.vtable.setComponent(self.ptr, entity, cid, size, ptr);
+    pub inline fn setSingletonComponent(self: World, comptime T: type, ptr: ?*const T) void {
+        self.vtable.setSingletonComponent(self.ptr, id(T), @sizeOf(T), ptr);
+    }
+
+    pub inline fn getSingletonComponent(self: World, comptime T: type) ?*const T {
+        const ptr = self.vtable.getSingletonComponent(self.ptr, id(T));
+        return @ptrCast(@alignCast(ptr));
+    }
+
+    pub inline fn getComponentManager(self: World, comptime ComponentT: type, comptime ManagerT: type) ?*ManagerT {
+        const ptr = self.vtable.getComponentManager(self.ptr, id(ComponentT));
+        return @ptrCast(@alignCast(ptr));
+    }
+
+    pub inline fn getComponentManagerRaw(self: World, component_id: cetech1.StrId32) ?*anyopaque {
+        return self.vtable.getComponentManager(self.ptr, component_id);
+    }
+
+    pub inline fn removeComponent(self: World, comptime T: type, entity: EntityId) void {
+        return self.vtable.removeComponent(self.ptr, entity, id(T));
+    }
+
+    pub inline fn modified(self: World, entity: EntityId, comptime T: type) void {
+        return self.vtable.modified(self.ptr, entity, id(T));
+    }
+
+    pub inline fn modifiedRaw(self: World, entity: EntityId, component_id: cetech1.StrId32) void {
+        return self.vtable.modified(self.ptr, entity, component_id);
+    }
+
+    pub inline fn parent(self: World, entity: EntityId) ?EntityId {
+        return self.vtable.parent(self.ptr, entity);
+    }
+
+    pub inline fn children(self: World, entity: EntityId) Iter {
+        return self.vtable.children(self.ptr, entity);
     }
 
     pub inline fn progress(self: World, dt: f32) bool {
         return self.vtable.progress(self.ptr, dt);
     }
 
-    pub inline fn createQuery(self: World, query: []const QueryTerm) !Query {
+    pub inline fn createQuery(self: World, query: QueryDesc) !Query {
         return self.vtable.createQuery(self.ptr, query);
     }
 
@@ -556,6 +647,10 @@ pub const World = struct {
         return self.vtable.isSimulate(self.ptr);
     }
 
+    pub fn enableObserver(self: World, observer_id: cetech1.StrId32, enable: bool) void {
+        return self.vtable.enableObserver(self.ptr, observer_id, enable);
+    }
+
     pub fn doStep(self: World) void {
         return self.vtable.doStep(self.ptr);
     }
@@ -588,8 +683,18 @@ pub const World = struct {
         getMutComponent: *const fn (world: *anyopaque, entity: EntityId, id: cetech1.StrId32) ?*anyopaque,
         getComponent: *const fn (world: *anyopaque, entity: EntityId, id: cetech1.StrId32) ?*const anyopaque,
 
-        createQuery: *const fn (world: *anyopaque, query: []const QueryTerm) anyerror!Query,
+        setSingletonComponent: *const fn (world: *anyopaque, id: cetech1.StrId32, size: usize, ptr: ?*const anyopaque) void,
+        getSingletonComponent: *const fn (world: *anyopaque, id: cetech1.StrId32) ?*const anyopaque,
 
+        removeComponent: *const fn (world: *anyopaque, entity: EntityId, id: cetech1.StrId32) void,
+
+        getComponentManager: *const fn (world: *anyopaque, id: cetech1.StrId32) ?*anyopaque,
+
+        parent: *const fn (world: *anyopaque, entity: EntityId) ?EntityId,
+        children: *const fn (world: *anyopaque, entity: EntityId) Iter,
+
+        createQuery: *const fn (world: *anyopaque, query: QueryDesc) anyerror!Query,
+        modified: *const fn (world: *anyopaque, entity: EntityId, id: cetech1.StrId32) void,
         progress: *const fn (world: *anyopaque, dt: f32) bool,
 
         deferBegin: *const fn (world: *anyopaque) bool,
@@ -603,6 +708,8 @@ pub const World = struct {
         setSimulate: *const fn (world: *anyopaque, simulate: bool) void,
         isSimulate: *const fn (world: *anyopaque) bool,
         doStep: *const fn (world: *anyopaque) void,
+
+        enableObserver: *const fn (world: *anyopaque, id: cetech1.StrId32, simulate: bool) void,
 
         clear: *const fn (world: *anyopaque) void,
 
@@ -664,11 +771,15 @@ pub const Iter = struct {
         return self.vtable.next(&self.data);
     }
 
+    pub inline fn nextChildren(self: *Iter) bool {
+        return self.vtable.nextChildren(&self.data);
+    }
+
     pub inline fn getSystem(self: *Iter) *const SystemI {
         return self.vtable.getSystem();
     }
 
-    data: [360]u8,
+    data: [360]u8, // TODO: SHIT
     vtable: *const VTable,
 
     pub const VTable = struct {
@@ -685,7 +796,7 @@ pub const Iter = struct {
         isSelf: *const fn (self: *anyopaque, index: i8) bool,
 
         next: *const fn (self: *anyopaque) bool,
-
+        nextChildren: *const fn (self: *anyopaque) bool,
         getSystem: *const fn (self: *anyopaque) *const SystemI,
 
         pub fn implement(comptime T: type) VTable {
@@ -713,21 +824,22 @@ pub const Iter = struct {
                 .skip = T.skip,
                 .isSelf = T.isSelf,
                 .next = T.next,
+                .nextChildren = T.nextChildren,
                 .getSystem = T.getSystem,
             };
         }
     };
 };
 
-pub const ECS_WORLD_CONTEXT = cetech1.strId32("ecs_world_context");
+pub const ECS_WORLD_CONTEXT = cetech1.strId32("ecs_world_context"); // TODO: This is bad as context because it can change. we need something like exxecuteargs.
 pub const ECS_ENTITY_CONTEXT = cetech1.strId32("ecs_entity_context");
 
 pub const EcsAPI = struct {
     createWorld: *const fn () anyerror!World,
     destroyWorld: *const fn (world: World) void,
 
+    // TODO: REMOVE !!!
     toWorld: *const fn (world: *anyopaque) World,
-    toIter: *const fn (iter: *IterO) Iter,
 
     findComponentIById: *const fn (name: cetech1.StrId32) ?*const ComponentI,
     findComponentIByCdbHash: *const fn (cdb_hash: cdb.TypeHash) ?*const ComponentI,
@@ -735,3 +847,10 @@ pub const EcsAPI = struct {
 
     spawnManyFromCDB: *const fn (allocator: std.mem.Allocator, world: World, obj: cdb.ObjId, count: usize) anyerror![]EntityId,
 };
+
+fn nameFromType(comptime T: type) [:0]const u8 {
+    var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
+    const name = name_iter.first();
+    const cname = name[0..name.len :0];
+    return cname;
+}

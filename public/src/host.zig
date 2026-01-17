@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const input = @import("input.zig");
+const math = @import("math.zig");
 
 pub const CursorMode = enum(u32) {
     normal = 0,
@@ -29,7 +30,7 @@ pub const Window = struct {
         return self.vtable.getFramebufferSize(self.ptr);
     }
 
-    pub inline fn getContentScale(self: Window) [2]f32 {
+    pub inline fn getContentScale(self: Window) math.Vec2f {
         return self.vtable.getContentScale(self.ptr);
     }
 
@@ -55,7 +56,7 @@ pub const Window = struct {
         shouldClose: *const fn (window: *anyopaque) bool,
         getInternalHandler: *const fn (window: *anyopaque) *const anyopaque,
         getFramebufferSize: *const fn (window: *anyopaque) [2]i32,
-        getContentScale: *const fn (window: *anyopaque) [2]f32,
+        getContentScale: *const fn (window: *anyopaque) math.Vec2f,
         getOsWindowHandler: *const fn (window: *anyopaque) ?*anyopaque,
         getOsDisplayHandler: *const fn (window: *anyopaque) ?*anyopaque,
         getCursorPos: *const fn (window: *anyopaque) [2]f64,

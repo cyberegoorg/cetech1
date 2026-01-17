@@ -7,7 +7,8 @@ const cetech1 = @import("cetech1");
 const coreui = cetech1.coreui;
 const cdb = cetech1.cdb;
 const assetdb = cetech1.assetdb;
-const Tag = assetdb.Tag;
+const math = cetech1.math;
+const Tag = assetdb.TagCdb;
 
 const editor = @import("editor");
 const Icons = cetech1.coreui.Icons;
@@ -57,7 +58,12 @@ fn tagButton(db: cdb.DbId, filter: ?[:0]const u8, tag: cdb.ObjId, wrap: bool) bo
     const tag_color = getTagColor(db, tag_r);
 
     const color_scale = 0.80;
-    const tag_color_normal = .{ tag_color[0] * color_scale, tag_color[1] * color_scale, tag_color[2] * color_scale, 1.0 };
+    const tag_color_normal: math.Color4f = .{
+        .r = tag_color.r * color_scale,
+        .g = tag_color.g * color_scale,
+        .b = tag_color.b * color_scale,
+        .a = 1.0,
+    };
 
     _coreui.pushObjUUID(tag);
     defer _coreui.popId();
@@ -70,10 +76,10 @@ fn tagButton(db: cdb.DbId, filter: ?[:0]const u8, tag: cdb.ObjId, wrap: bool) bo
 
     if (wrap) {
         const style = _coreui.getStyle();
-        const pos_a = _coreui.getItemRectMax()[0];
-        const text_size = _coreui.calcTextSize(label, .{})[0] + 2 * style.frame_padding[0];
+        const pos_a = _coreui.getItemRectMax().x;
+        const text_size = _coreui.calcTextSize(label, .{}).x + 2 * style.frame_padding.x;
 
-        if (pos_a + text_size + style.item_spacing[0] < _coreui.getWindowPos()[0] + _coreui.getContentRegionAvail()[0]) {
+        if (pos_a + text_size + style.item_spacing.x < _coreui.getWindowPos().x + _coreui.getContentRegionAvail().x) {
             _coreui.sameLine(.{});
         }
     }
@@ -84,7 +90,7 @@ fn tagButton(db: cdb.DbId, filter: ?[:0]const u8, tag: cdb.ObjId, wrap: bool) bo
     defer _coreui.popStyleColor(.{ .count = 3 });
 
     _coreui.pushStyleVar1f(.{ .idx = .frame_rounding, .v = 10 });
-    _coreui.pushStyleVar2f(.{ .idx = .frame_padding, .v = .{ 6, 3 } });
+    _coreui.pushStyleVar2f(.{ .idx = .frame_padding, .v = .{ .x = 6, .y = 3 } });
     defer _coreui.popStyleVar(.{ .count = 2 });
 
     const button = (_coreui.button(label, .{}));
@@ -128,7 +134,7 @@ fn tagsInput(
 
         _g.filter = _coreui.uiFilter(&_g.filter_buff, _g.filter);
 
-        if (_cdb.getAllObjectByType(allocator, db, assetdb.Tag.typeIdx(_cdb, db))) |tags| {
+        if (_cdb.getAllObjectByType(allocator, db, assetdb.TagCdb.typeIdx(_cdb, db))) |tags| {
             for (tags) |tag| {
                 if (_cdb.isInSet(obj_r, prop_idx, tag)) continue;
                 if (tagButton(db, _g.filter, tag, true)) {
@@ -149,7 +155,7 @@ fn tagsInput(
 //
 
 var create_tag_asset_i = editor.CreateAssetI.implement(
-    assetdb.Tag.type_hash,
+    assetdb.TagCdb.type_hash,
     struct {
         pub fn create(
             allocator: std.mem.Allocator,
@@ -161,13 +167,13 @@ var create_tag_asset_i = editor.CreateAssetI.implement(
                 allocator,
                 &buff,
                 folder,
-                _cdb.getTypeIdx(db, assetdb.Tag.type_hash).?,
+                _cdb.getTypeIdx(db, assetdb.TagCdb.type_hash).?,
                 "NewTag",
             );
-            const new_obj = try assetdb.Tag.createObject(_cdb, db);
+            const new_obj = try assetdb.TagCdb.createObject(_cdb, db);
             {
                 const w = _cdb.writeObj(new_obj).?;
-                try assetdb.Tag.setStr(_cdb, w, .Name, name);
+                try assetdb.TagCdb.setStr(_cdb, w, .Name, name);
                 try _cdb.writeCommit(w);
             }
 
@@ -194,14 +200,14 @@ var tag_prop_aspect = editor_inspector.UiEmbedPropertyAspect.implement(struct {
 
 //
 
-fn getTagColor(db: cdb.DbId, tag_r: *cdb.Obj) [4]f32 {
+fn getTagColor(db: cdb.DbId, tag_r: *cdb.Obj) math.Color4f {
     _ = db; // autofix
-    if (!_editor.isColorsEnabled()) return .{ 1.0, 1.0, 1.0, 1.0 };
+    if (!_editor.isColorsEnabled()) return .white;
 
     const tag_color_obj = Tag.readSubObj(_cdb, tag_r, .Color);
-    var color: [4]f32 = .{ 1.0, 1.0, 1.0, 1.0 };
+    var color: math.Color4f = .white;
     if (tag_color_obj) |color_obj| {
-        color = cetech1.cdb_types.Color4f.f.toSlice(_cdb, color_obj);
+        color = cetech1.cdb_types.Color4fCdb.f.to(_cdb, color_obj);
     }
     return color;
 }
@@ -233,11 +239,11 @@ var tag_visual_aspect = editor.UiVisualAspect.implement(struct {
 
     pub fn uiColor(
         obj: cdb.ObjId,
-    ) ![4]f32 {
+    ) !math.Color4f {
         if (Tag.readSubObj(_cdb, _cdb.readObj(obj).?, .Color)) |color_obj| {
-            return cetech1.cdb_types.Color4f.f.toSlice(_cdb, color_obj);
+            return cetech1.cdb_types.Color4fCdb.f.to(_cdb, color_obj);
         }
-        return .{ 1.0, 1.0, 1.0, 1.0 };
+        return .white;
     }
 });
 
@@ -246,21 +252,21 @@ var tag_visual_aspect = editor.UiVisualAspect.implement(struct {
 // Create cdb types
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.DbId) !void {
-        try assetdb.Tag.addAspect(
+        try assetdb.TagCdb.addAspect(
             editor_inspector.UiPropertiesConfigAspect,
             _cdb,
             db,
             _g.noproto_config_aspect,
         );
 
-        try assetdb.Tag.addAspect(
+        try assetdb.TagCdb.addAspect(
             editor.UiVisualAspect,
             _cdb,
             db,
             _g.tag_visual_aspect,
         );
 
-        try assetdb.Asset.addPropertyAspect(
+        try assetdb.AssetCdb.addPropertyAspect(
             editor_inspector.UiEmbedPropertyAspect,
             _cdb,
             db,

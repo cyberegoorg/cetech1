@@ -13,8 +13,6 @@ const task = @import("task.zig");
 const cetech1 = @import("cetech1");
 const public = cetech1.gpu;
 
-const zm = cetech1.math.zmath;
-
 const log = std.log.scoped(.gpu);
 const module_name = .gpu;
 

@@ -4,9 +4,9 @@ const Allocator = std.mem.Allocator;
 const cetech1 = @import("cetech1");
 
 const cdb = cetech1.cdb;
+const math = cetech1.math;
 const ecs = cetech1.ecs;
 
-const zm = cetech1.math.zmath;
 const gpu = cetech1.gpu;
 const dag = cetech1.dag;
 const coreui = cetech1.coreui;
@@ -65,17 +65,18 @@ const G = struct {
 var _g: *G = undefined;
 
 const EnabledDebugDrawSet = cetech1.ArraySet(cetech1.StrId32);
+const ComponentQueryMap = cetech1.AutoArrayHashMap(cetech1.StrId32, ecs.Query);
 
 const Viewport = struct {
     name: [:0]u8,
 
     output: gpu.TextureHandle = .{},
-    size: [2]f32 = .{ 0, 0 },
-    new_size: [2]f32 = .{ 0, 0 },
+    size: math.Vec2f = .{},
+    new_size: math.Vec2f = .{},
 
     world: ?ecs.World,
     main_camera_entity: ?ecs.EntityId = null,
-    main_camera_entity_freze_mtx: ?zm.Mat = null,
+    main_camera_entity_freze_mtx: ?math.Mat44f = null,
 
     renderables_culling: culling.CullingSystem,
     shaderables_culling: culling.CullingSystem,
@@ -115,12 +116,16 @@ const Viewport = struct {
 
     output_to_backbuffer: bool,
 
+    // Queries
+    query_map: ComponentQueryMap = .{},
+    collect_camera_query: ecs.Query,
+
     fn init(name: [:0]const u8, gpu_backend: gpu.GpuBackend, pipeline: render_pipeline.RenderPipeline, world: ?ecs.World, output_to_backbuffer: bool) !Viewport {
         const dupe_name = try _allocator.dupeZ(u8, name);
 
         var buf: [128]u8 = undefined;
 
-        return .{
+        var self = Viewport{
             .name = dupe_name,
             .world = world,
             .renderMe = false,
@@ -148,13 +153,67 @@ const Viewport = struct {
             .enabled_dd_set = EnabledDebugDrawSet.init(),
             .gpu = gpu_backend,
             .output_to_backbuffer = output_to_backbuffer,
+            .query_map = .{},
+
+            .collect_camera_query = try world.?.createQuery(.{
+                .query = &.{
+                    .{ .id = ecs.id(transform.WorldTransformComponent), .inout = .In },
+                    .{ .id = ecs.id(camera.Camera), .inout = .In },
+                },
+            }),
         };
+
+        //
+        // Shaderables queries
+        //
+        {
+            const impls = try _apidb.getImpl(_allocator, public.ShaderableComponentI);
+            defer _allocator.free(impls);
+            for (impls) |shaderable| {
+                const q = try world.?.createQuery(.{
+                    .query = &.{
+                        .{ .id = ecs.id(transform.WorldTransformComponent), .inout = .In },
+                        .{ .id = shaderable.component_id, .inout = .In },
+                    },
+                    .orderByComponent = if (shaderable.orderByCallback != null) shaderable.component_id else null,
+                    .orderByCallback = shaderable.orderByCallback,
+                });
+
+                try self.query_map.put(_allocator, shaderable.component_id, q);
+            }
+        }
+        //
+        // Renderables queries
+        //
+        {
+            const impls = try _apidb.getImpl(_allocator, public.RendereableComponentI);
+            defer _allocator.free(impls);
+            for (impls) |renderables| {
+                const q = try world.?.createQuery(.{
+                    .query = &.{
+                        .{ .id = ecs.id(transform.WorldTransformComponent), .inout = .In },
+                        .{ .id = renderables.component_id, .inout = .In },
+                    },
+                    .orderByComponent = if (renderables.orderByCallback != null) renderables.component_id else null,
+                    .orderByCallback = renderables.orderByCallback,
+                });
+
+                try self.query_map.put(_allocator, renderables.component_id, q);
+            }
+        }
+        return self;
     }
 
     fn deinit(self: *Viewport) void {
         if (self.output.isValid()) {
             self.gpu.destroyTexture(self.output);
         }
+
+        for (self.query_map.values()) |*query| {
+            query.destroy();
+        }
+        self.query_map.deinit(_allocator);
+        self.collect_camera_query.destroy();
 
         self.shaderables_culling.deinit();
         self.renderables_culling.deinit();
@@ -195,6 +254,18 @@ fn createViewport(name: [:0]const u8, gpu_backend: gpu.GpuBackend, pipeline: ren
     const new_viewport = try _g.viewport_pool.create();
     new_viewport.* = try .init(name, gpu_backend, pipeline, world, output_to_backbuffer);
 
+    const allocator = try _tmpalloc.create();
+    defer _tmpalloc.destroy(allocator);
+
+    const impls = try _apidb.getImpl(allocator, public.ShaderableComponentI);
+    defer allocator.free(impls);
+    for (impls) |iface| {
+        if (iface.injectGraphModule) |injectGraphModule| {
+            const manager = world.?.getComponentManagerRaw(iface.component_id);
+            try injectGraphModule(allocator, manager, pipeline.getMainModule());
+        }
+    }
+
     try _g.viewport_set.put(_allocator, new_viewport, {});
     return public.Viewport{
         .ptr = new_viewport,
@@ -209,7 +280,7 @@ fn destroyViewport(viewport: public.Viewport) void {
     _g.viewport_pool.destroy(true_viewport);
 }
 
-fn uiDebugMenuItems(allocator: std.mem.Allocator, viewport: public.Viewport) void {
+fn uiDebugMenuItems(allocator: std.mem.Allocator, viewport: public.Viewport) !void {
     const true_viewport: *Viewport = @ptrCast(@alignCast(viewport.ptr));
 
     // if (_coreui.beginMenu(allocator, coreui.Icons.Debug ++ "  " ++ "Viewport", true, null)) {
@@ -227,7 +298,7 @@ fn uiDebugMenuItems(allocator: std.mem.Allocator, viewport: public.Viewport) voi
         for (impls) |iface| {
             if (iface.debugdraw) |_| {
                 var icon_buff: [32:0]u8 = undefined;
-                const icon = (iface.uiIcons.?(&icon_buff, allocator, .{}) catch undefined);
+                const icon = if (iface.uiIcons) |uiIcons| (uiIcons(&icon_buff, allocator, .{}) catch undefined) else "";
 
                 var dd_enabled = true_viewport.enabled_dd_set.contains(iface.id);
                 if (_coreui.menuItemPtr(
@@ -290,7 +361,7 @@ fn uiDebugMenuItems(allocator: std.mem.Allocator, viewport: public.Viewport) voi
     //
     _coreui.separatorText(coreui.Icons.RenderPipeline ++ "  " ++ "Render pipeline");
     {
-        true_viewport.render_pipeline.uiDebugMenuItems(allocator);
+        try true_viewport.render_pipeline.uiDebugMenuItems(allocator);
     }
     // }
 }
@@ -302,10 +373,10 @@ pub const api = public.RenderViewportApi{
 };
 
 pub const viewport_vt = public.Viewport.VTable.implement(struct {
-    pub fn setSize(viewport: *anyopaque, size: [2]f32) void {
+    pub fn setSize(viewport: *anyopaque, size: math.Vec2f) void {
         const true_viewport: *Viewport = @ptrCast(@alignCast(viewport));
-        true_viewport.new_size[0] = @max(size[0], 1);
-        true_viewport.new_size[1] = @max(size[1], 1);
+        true_viewport.new_size.x = @max(size.x, 1);
+        true_viewport.new_size.y = @max(size.y, 1);
     }
 
     pub fn getTexture(viewport: *anyopaque) ?gpu.TextureHandle {
@@ -315,7 +386,7 @@ pub const viewport_vt = public.Viewport.VTable.implement(struct {
         return if (txt.isValid()) txt else null;
     }
 
-    pub fn getSize(viewport: *anyopaque) [2]f32 {
+    pub fn getSize(viewport: *anyopaque) math.Vec2f {
         const true_viewport: *Viewport = @ptrCast(@alignCast(viewport));
         return true_viewport.size;
     }
@@ -355,86 +426,22 @@ pub const viewport_vt = public.Viewport.VTable.implement(struct {
         const true_viewport: *Viewport = @ptrCast(@alignCast(viewport));
         if (freeze) {
             if (true_viewport.main_camera_entity) |camera_ent| {
-                true_viewport.main_camera_entity_freze_mtx = zm.inverse(true_viewport.world.?.getComponent(transform.WorldTransform, camera_ent).?.mtx);
+                const world_transform = true_viewport.world.?.getComponent(transform.WorldTransformComponent, camera_ent).?;
+                const ccamera = true_viewport.world.?.getComponent(camera.Camera, camera_ent).?;
+                const proj = _camera.projectionMatrixFromCamera(
+                    ccamera.*,
+                    true_viewport.size.x,
+                    true_viewport.size.y,
+                    true_viewport.gpu.isHomogenousDepth(),
+                );
+
+                true_viewport.main_camera_entity_freze_mtx = world_transform.world.inverse().toMat().mul(proj);
             }
         } else {
             true_viewport.main_camera_entity_freze_mtx = null;
         }
     }
 });
-
-const PosVertex = struct {
-    x: f32,
-    y: f32,
-    z: f32,
-    u: f32,
-    v: f32,
-
-    fn init(x: f32, y: f32, z: f32, u: f32, v: f32) PosVertex {
-        return .{
-            .x = x,
-            .y = y,
-            .z = z,
-            .u = u,
-            .v = v,
-        };
-    }
-
-    fn layoutInit(gpu_backend: gpu.GpuBackend) gpu.VertexLayout {
-        // static local
-        const L = struct {
-            var posColorLayout = std.mem.zeroes(gpu.VertexLayout);
-        };
-        _ = gpu_backend.layoutBegin(&L.posColorLayout);
-        _ = gpu_backend.layoutAdd(&L.posColorLayout, gpu.Attrib.Position, 3, gpu.AttribType.Float, false, false);
-        _ = gpu_backend.layoutAdd(&L.posColorLayout, gpu.Attrib.TexCoord0, 2, gpu.AttribType.Float, false, false);
-        gpu_backend.layoutEnd(&L.posColorLayout);
-
-        return L.posColorLayout;
-    }
-};
-
-var _vertex_pos_layout: gpu.VertexLayout = undefined;
-fn screenSpaceQuad(gpu_backend: gpu.GpuBackend, e: gpu.GpuEncoder, origin_mottom_left: bool, width: f32, height: f32) void {
-    if (3 == gpu_backend.getAvailTransientVertexBuffer(3, &_vertex_pos_layout)) {
-        var vb: gpu.TransientVertexBuffer = undefined;
-        gpu_backend.allocTransientVertexBuffer(&vb, 3, &_vertex_pos_layout);
-        var vertex: [*]PosVertex = @ptrCast(@alignCast(vb.data));
-
-        const zz: f32 = 0.0;
-
-        const minx = -width;
-        const maxx = width;
-        const miny = 0.0;
-        const maxy = height * 2.0;
-
-        var minv: f32 = 0.0;
-        var maxv: f32 = 2.0;
-
-        if (origin_mottom_left) {
-            const temp = minv;
-            minv = maxv;
-            maxv = temp;
-
-            minv -= 1.0;
-            maxv -= 1.0;
-        }
-
-        vertex[0].x = minx;
-        vertex[0].y = miny;
-        vertex[0].z = zz;
-
-        vertex[1].x = maxx;
-        vertex[1].y = miny;
-        vertex[1].z = zz;
-
-        vertex[2].x = maxx;
-        vertex[2].y = maxy;
-        vertex[2].z = zz;
-
-        e.setTransientVertexBuffer(0, &vb, 0, 3);
-    }
-}
 
 const RenderViewportTask = struct {
     viewport: *Viewport,
@@ -461,7 +468,6 @@ const RenderViewportTask = struct {
 
         // Main viewer
         const fb_size = viewport.size;
-        const aspect_ratio = fb_size[0] / fb_size[1];
 
         if (viewport.world) |world| {
             var system_context = try _shader.createSystemContext();
@@ -478,40 +484,24 @@ const RenderViewportTask = struct {
 
             // Collect camera components
             {
-                var q = try world.createQuery(&.{
-                    .{ .id = ecs.id(transform.WorldTransform), .inout = .In },
-                    .{ .id = ecs.id(camera.Camera), .inout = .In },
-                });
-                defer q.destroy();
+                var q = viewport.collect_camera_query;
                 var it = try q.iter();
 
                 while (q.next(&it)) {
                     const entities = it.entities();
-                    const camera_transforms = it.field(transform.WorldTransform, 0).?;
+                    const camera_transforms = it.field(transform.WorldTransformComponent, 0).?;
                     const cameras = it.field(camera.Camera, 1).?;
 
                     for (0..camera_transforms.len) |idx| {
-                        const pmtx = switch (cameras[idx].type) {
-                            .perspective => _camera.perspectiveFov(
-                                std.math.degreesToRadians(cameras[idx].fov),
-                                aspect_ratio,
-                                cameras[idx].near,
-                                cameras[idx].far,
-                                self.gpu.isHomogenousDepth(),
-                            ),
-                            .ortho => _camera.orthographic(
-                                fb_size[0],
-                                fb_size[1],
-                                cameras[idx].near,
-                                cameras[idx].far,
-                                self.gpu.isHomogenousDepth(),
-                            ),
-                        };
+                        const pmtx = _camera.projectionMatrixFromCamera(
+                            cameras[idx],
+                            fb_size.x,
+                            fb_size.y,
+                            self.gpu.isHomogenousDepth(),
+                        );
 
                         const cv = culling.Viewer{
-                            .camera = cameras[idx],
-                            .mtx = zm.matToArr(zm.inverse(camera_transforms[idx].mtx)),
-                            .proj = zm.matToArr(pmtx),
+                            .frustum = .fromMat44(camera_transforms[idx].world.inverse().toMat().mul(pmtx)),
                             .visibility_mask = _visibility_flags.fromName(.fromStr("viewport")).?,
                         };
 
@@ -524,9 +514,9 @@ const RenderViewportTask = struct {
                             const system_uniform = (try _shader.createUniformBuffer(system_io)).?;
 
                             const pos = [4]f32{
-                                camera_transforms[idx].mtx[3][0],
-                                camera_transforms[idx].mtx[3][1],
-                                camera_transforms[idx].mtx[3][2],
+                                camera_transforms[idx].world.position.x,
+                                camera_transforms[idx].world.position.y,
+                                camera_transforms[idx].world.position.z,
                                 1,
                             };
                             // log.debug("{any}", .{pos});
@@ -539,8 +529,8 @@ const RenderViewportTask = struct {
 
                             const v = render_graph.Viewer{
                                 .camera = cameras[idx],
-                                .mtx = zm.matToArr(zm.inverse(camera_transforms[idx].mtx)),
-                                .proj = zm.matToArr(pmtx),
+                                .mtx = camera_transforms[idx].world.inverse().toMat(),
+                                .proj = pmtx,
                                 .viewid = null,
                                 .viewer_system = system,
                                 .visibility_mask = _visibility_flags.fromName(.fromStr("viewport")).?,
@@ -556,6 +546,10 @@ const RenderViewportTask = struct {
 
             if (culling_viewers.items.len == 0) return;
 
+            if (viewport.main_camera_entity_freze_mtx) |mtx| {
+                culling_viewers.items[0].frustum = .fromMat44(mtx);
+            }
+
             const graph_builder = self.viewport.graph_builder;
             try graph_builder.clear();
 
@@ -568,61 +562,56 @@ const RenderViewportTask = struct {
 
                 const impls = try _apidb.getImpl(allocator, public.ShaderableComponentI);
                 defer allocator.free(impls);
-                for (impls) |iface| {
-                    try shaderables.put(allocator, iface.component_id, iface);
+                for (impls) |shaderable| {
+                    try shaderables.put(allocator, shaderable.component_id, shaderable);
 
-                    if (iface.inject_graph_module) |inject_graph_module| {
-                        try inject_graph_module(allocator, render_module);
-                    }
+                    const ci = _ecs.findComponentIById(shaderable.component_id).?;
 
-                    const ci = _ecs.findComponentIById(iface.component_id).?;
-
-                    var q = try world.createQuery(&.{
-                        .{ .id = ecs.id(transform.WorldTransform), .inout = .In },
-                        .{ .id = iface.component_id, .inout = .In },
-                    });
-                    defer q.destroy();
+                    var q = viewport.query_map.get(shaderable.component_id).?;
                     const c = q.count();
 
-                    const rq = try viewport.shaderables_culling.getNewRequest(iface.component_id, @intCast(c.entities), ci.size);
+                    const rq = try viewport.shaderables_culling.getNewRequest(
+                        shaderable.component_id,
+                        @intCast(c.entities),
+                        ci.size,
+                    );
 
                     var it = try q.iter();
                     var data_cnt: usize = 0;
                     while (q.next(&it)) {
-                        const t = it.field(transform.WorldTransform, 0).?;
-                        const rc = it.fieldRaw(ci.size, ci.aligment, 1).?;
+                        const transforms = it.field(transform.WorldTransformComponent, 0).?;
+                        const components = it.fieldRaw(ci.size, ci.aligment, 1).?;
 
                         // TODO: this or only copy like before? (poniter vs copy components).
-                        for (0..t.len) |idx| {
-                            rq.data.items[data_cnt + idx] = rc.ptr + (idx * ci.size);
+                        for (0..transforms.len) |idx| {
+                            rq.data.items[data_cnt + idx] = components.ptr + (idx * ci.size);
                             // rq.data.items[data_cnt + idx] = std.mem.alignPointer(rc.ptr + (idx * ci.size), ci.aligment).?;
                         }
 
-                        {
-                            var zzz = _profiler.ZoneN(@src(), "Render viewport -  Shedarables init callback");
-                            defer zzz.End();
-                            if (iface.init) |init| {
-                                try init(allocator, rq.data.items[data_cnt .. data_cnt + t.len]);
-                            }
+                        data_cnt += transforms.len;
+                        rq.mtx.appendSliceAssumeCapacity(transforms);
+                    }
+
+                    {
+                        var zzz = _profiler.ZoneN(@src(), "Render viewport -  Shedarables init callback");
+                        defer zzz.End();
+                        if (shaderable.init) |init| {
+                            try init(allocator, rq.data.items);
                         }
+                    }
 
-                        {
-                            var zzz = _profiler.ZoneN(@src(), "Render viewport -  Shedarables fill sphere bounding box");
-                            defer zzz.End();
+                    {
+                        var zzz = _profiler.ZoneN(@src(), "Render viewport -  Shedarables fill sphere bounding box");
+                        defer zzz.End();
 
-                            rq.mtx.appendSliceAssumeCapacity(t);
-
-                            try iface.fill_bounding_volumes(
-                                allocator,
-                                null,
-                                t,
-                                rq.data.items[data_cnt .. data_cnt + t.len],
-                                .sphere,
-                                std.mem.sliceAsBytes(rq.sphere_volumes.items[data_cnt .. data_cnt + t.len]),
-                            );
-
-                            data_cnt += t.len;
-                        }
+                        try shaderable.fillBoundingVolumes(
+                            allocator,
+                            null,
+                            rq.mtx.items,
+                            rq.data.items,
+                            .sphere,
+                            std.mem.sliceAsBytes(rq.sphere_volumes.items),
+                        );
                     }
 
                     viewport.all_shaderables_counter.* += @floatFromInt(c.entities);
@@ -638,7 +627,10 @@ const RenderViewportTask = struct {
                 defer counter.end();
 
                 // First culling phase
-                _ = try viewport.shaderables_culling.doCullingSpheres(allocator, culling_viewers.items[0..1], viewport.main_camera_entity_freze_mtx);
+                _ = try viewport.shaderables_culling.doCullingSpheres(
+                    allocator,
+                    culling_viewers.items[0..1],
+                );
 
                 // Fill boxes
                 for (shaderables.keys(), shaderables.values()) |renderable_id, shaderable| {
@@ -650,7 +642,7 @@ const RenderViewportTask = struct {
 
                     if (result.sphere_entites_idx.items.len == 0) continue;
 
-                    try shaderable.fill_bounding_volumes(
+                    try shaderable.fillBoundingVolumes(
                         allocator,
                         result.sphere_entites_idx.items,
                         rq.mtx.items,
@@ -661,7 +653,10 @@ const RenderViewportTask = struct {
                 }
 
                 // Last box phase
-                try viewport.shaderables_culling.doCullingBox(allocator, culling_viewers.items[0..1], viewport.main_camera_entity_freze_mtx);
+                try viewport.shaderables_culling.doCullingBox(
+                    allocator,
+                    culling_viewers.items[0..1],
+                );
             }
 
             // Update shaderable
@@ -719,11 +714,13 @@ const RenderViewportTask = struct {
 
             for (all_viewers) |*v| {
                 all_culling_viewers.appendAssumeCapacity(.{
-                    .camera = v.camera,
-                    .mtx = v.mtx,
-                    .proj = v.proj,
+                    .frustum = .fromMat44(v.mtx.mul(v.proj)),
                     .visibility_mask = v.visibility_mask,
                 });
+            }
+
+            if (viewport.main_camera_entity_freze_mtx) |mtx| {
+                all_culling_viewers.items[0].frustum = .fromMat44(mtx);
             }
 
             // Render renderables
@@ -749,20 +746,20 @@ const RenderViewportTask = struct {
 
                         const ci = _ecs.findComponentIById(renderable.component_id).?;
 
-                        var q = try world.createQuery(&.{
-                            .{ .id = ecs.id(transform.WorldTransform), .inout = .In },
-                            .{ .id = renderable.component_id, .inout = .In },
-                        });
-                        defer q.destroy();
+                        var q = viewport.query_map.get(renderable.component_id).?;
                         const c = q.count();
 
-                        const rq = try viewport.renderables_culling.getNewRequest(renderable.component_id, @intCast(c.entities), ci.size);
+                        const rq = try viewport.renderables_culling.getNewRequest(
+                            renderable.component_id,
+                            @intCast(c.entities),
+                            ci.size,
+                        );
 
                         var it = try q.iter();
 
                         var data_cnt: usize = 0;
                         while (q.next(&it)) {
-                            const t = it.field(transform.WorldTransform, 0).?;
+                            const t = it.field(transform.WorldTransformComponent, 0).?;
                             const rc = it.fieldRaw(ci.size, ci.aligment, 1).?;
 
                             // TODO: this or only copy like before? (poniter vs copy components).
@@ -770,30 +767,30 @@ const RenderViewportTask = struct {
                                 rq.data.items[data_cnt + idx] = rc.ptr + (idx * ci.size);
                             }
 
-                            if (renderable.init) |init| {
-                                try init(allocator, rq.data.items[data_cnt .. data_cnt + t.len]);
-                            }
+                            rq.mtx.appendSliceAssumeCapacity(t);
+                            data_cnt += t.len;
+                        }
+                        viewport.all_renderables_counter.* += @floatFromInt(rq.mtx.items.len);
 
-                            {
-                                var zzz = _profiler.ZoneN(@src(), "Render viewport - Fill sphere culling callback");
-                                defer zzz.End();
+                        //if (data_cnt == 0) continue;
 
-                                rq.mtx.appendSliceAssumeCapacity(t);
-
-                                try renderable.fill_bounding_volumes(
-                                    allocator,
-                                    null,
-                                    t,
-                                    rq.data.items[data_cnt .. data_cnt + t.len],
-                                    .sphere,
-                                    std.mem.sliceAsBytes(rq.sphere_volumes.items[data_cnt .. data_cnt + t.len]),
-                                );
-
-                                data_cnt += t.len;
-                            }
+                        if (renderable.init) |init| {
+                            try init(allocator, rq.data.items);
                         }
 
-                        viewport.all_renderables_counter.* += @floatFromInt(rq.mtx.items.len);
+                        {
+                            var zzz = _profiler.ZoneN(@src(), "Render viewport - Fill sphere culling callback");
+                            defer zzz.End();
+
+                            try renderable.fillBoundingVolumes(
+                                allocator,
+                                null,
+                                rq.mtx.items,
+                                rq.data.items,
+                                .sphere,
+                                std.mem.sliceAsBytes(rq.sphere_volumes.items),
+                            );
+                        }
                     }
                 }
 
@@ -806,11 +803,11 @@ const RenderViewportTask = struct {
                     defer counter.end();
 
                     // First culling phase
-                    viewport.renderable_sphere_passed.* = @floatFromInt(try viewport.renderables_culling.doCullingSpheres(
+                    const passed_spheres = try viewport.renderables_culling.doCullingSpheres(
                         allocator,
                         all_culling_viewers.items,
-                        viewport.main_camera_entity_freze_mtx,
-                    ));
+                    );
+                    viewport.renderable_sphere_passed.* = @floatFromInt(passed_spheres);
 
                     // Fill boxes
                     for (renderables.keys(), renderables.values()) |renderable_id, renderable| {
@@ -822,7 +819,7 @@ const RenderViewportTask = struct {
 
                         if (result.sphere_entites_idx.items.len == 0) continue;
 
-                        try renderable.fill_bounding_volumes(
+                        try renderable.fillBoundingVolumes(
                             allocator,
                             result.sphere_entites_idx.items,
                             rq.mtx.items,
@@ -833,7 +830,10 @@ const RenderViewportTask = struct {
                     }
 
                     // Last box phase
-                    try viewport.renderables_culling.doCullingBox(allocator, all_culling_viewers.items, viewport.main_camera_entity_freze_mtx);
+                    try viewport.renderables_culling.doCullingBox(
+                        allocator,
+                        all_culling_viewers.items,
+                    );
                 }
             }
 
@@ -901,8 +901,10 @@ const RenderViewportTask = struct {
                     for (impls) |iface| {
                         if (iface.debugdraw) |debugdraw| {
                             if (self.viewport.enabled_dd_set.contains(iface.id)) {
-                                var q = try world.createQuery(&.{
-                                    .{ .id = iface.id, .inout = .In },
+                                var q = try world.createQuery(.{
+                                    .query = &.{
+                                        .{ .id = iface.id, .inout = .In },
+                                    },
                                 });
                                 defer q.destroy();
                                 var it = try q.iter();
@@ -926,28 +928,7 @@ const RenderViewportTask = struct {
                     }
 
                     if (viewport.main_camera_entity_freze_mtx) |mtx| {
-                        const fake_camera = all_viewers[0].camera;
-
-                        const pmtx = switch (fake_camera.type) {
-                            .perspective => _camera.perspectiveFov(
-                                std.math.degreesToRadians(fake_camera.fov),
-                                aspect_ratio,
-                                fake_camera.near,
-                                fake_camera.far,
-                                self.gpu.isHomogenousDepth(),
-                            ),
-                            .ortho => _camera.orthographic(
-                                fb_size[0],
-                                fb_size[1],
-                                fake_camera.near,
-                                fake_camera.far,
-                                self.gpu.isHomogenousDepth(),
-                            ),
-                        };
-
-                        const m = zm.mul(mtx, pmtx);
-                        const mm = zm.matToArr(m);
-                        dd.drawFrustum(mm);
+                        dd.drawFrustum(mtx);
                     }
                 }
             }
@@ -974,7 +955,7 @@ fn renderAllViewports(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend,
         if (!viewport.renderMe) continue;
         viewport.renderMe = false;
 
-        const recreate = viewport.new_size[0] != viewport.size[0] or viewport.new_size[1] != viewport.size[1];
+        const recreate = viewport.new_size.x != viewport.size.x or viewport.new_size.y != viewport.size.y;
 
         if (recreate) {
             if (viewport.output.isValid()) {
@@ -982,8 +963,8 @@ fn renderAllViewports(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend,
             }
 
             const t = gpu_backend.createTexture2D(
-                @intFromFloat(viewport.new_size[0]),
-                @intFromFloat(viewport.new_size[1]),
+                @intFromFloat(viewport.new_size.x),
+                @intFromFloat(viewport.new_size.y),
                 false,
                 1,
                 gpu.TextureFormat.BGRA8,
@@ -1094,10 +1075,18 @@ fn renderAll(gpu_backend: gpu.GpuBackend, kernel_tick: u64, dt: f32, vsync: bool
             defer allocator.free(variants);
             const variant = variants[0];
 
-            const projMtx = zm.matToArr(zm.orthographicOffCenterRh(0, 1, 1, 0, 0, 100));
+            const projMtx = math.Mat44f.orthographicOffCenterRh(
+                0,
+                1,
+                1,
+                0,
+                0,
+                100,
+                gpu_backend.isHomogenousDepth(),
+            ).toArray();
             gpu_backend.setViewTransform(present_viewid, null, &projMtx);
 
-            screenSpaceQuad(gpu_backend, encoder, false, 1, 1);
+            _render_graph.screenSpaceQuad(gpu_backend, encoder, false, 1, 1);
 
             encoder.setState(variant.state, variant.rgba);
             encoder.submit(present_viewid, variant.prg.?, 0, .all);
@@ -1131,7 +1120,6 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
         pub fn init() !void {
             _g.viewport_set = .{};
             _g.viewport_pool = ViewportPool.init(_allocator);
-            _vertex_pos_layout = PosVertex.layoutInit(_kernel.getGpuBackend().?);
 
             try _shader.addShaderDefiniton("tobb", .{
                 .color_state = .rgba,

@@ -7,7 +7,6 @@ const coreui = cetech1.coreui;
 const tempalloc = cetech1.tempalloc;
 const gpu = cetech1.gpu;
 
-const zm = cetech1.math.zmath;
 const ecs = cetech1.ecs;
 
 const assetdb = cetech1.assetdb;
@@ -120,9 +119,9 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         const name = try std.fmt.bufPrintZ(&buf, "Simulator {d}", .{tab_id});
 
         const camera_ent = w.newEntity(null);
-        _ = w.setId(transform.Transform, camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -12 } });
-        _ = w.setId(camera.Camera, camera_ent, &camera.Camera{});
-        _ = w.setId(camera_controller.CameraController, camera_ent, &camera_controller.CameraController{});
+        _ = w.setComponent(transform.LocalTransformComponent, camera_ent, &transform.LocalTransformComponent{ .local = .{ .position = .{ .y = 2, .z = -12 } } });
+        _ = w.setComponent(camera.Camera, camera_ent, &camera.Camera{});
+        _ = w.setComponent(camera_controller.CameraController, camera_ent, &camera_controller.CameraController{});
 
         const gpu_backend = _kernel.getGpuBackend().?;
         const pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w);
@@ -166,7 +165,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         if (!selected_obj.isEmpty()) {
             db = _cdb.getDbFromObjid(selected_obj);
 
-            if (selected_obj.type_idx.eql(assetdb.Asset.typeIdx(_cdb, db))) {
+            if (selected_obj.type_idx.eql(assetdb.AssetCdb.typeIdx(_cdb, db))) {
                 if (!_assetdb.isAssetObjTypeOf(selected_obj, ecs.EntityCdb.typeIdx(_cdb, db))) return;
                 entiy_obj = _assetdb.getObjForAsset(selected_obj).?;
             } else if (selected_obj.type_idx.eql(ecs.EntityCdb.typeIdx(_cdb, db))) {
@@ -198,8 +197,8 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             _coreui.image(
                 texture,
                 .{
-                    .w = size[0],
-                    .h = size[1],
+                    .w = size.x,
+                    .h = size.y,
                 },
             );
 
@@ -225,7 +224,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         if (_coreui.beginMenu(allocator, cetech1.coreui.Icons.Debug, true, null)) {
             defer _coreui.endMenu();
             tab_o.flecs_port = tab_o.world.uiRemoteDebugMenuItems(allocator, tab_o.flecs_port);
-            _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
+            try _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
         }
 
         if (try _camera.cameraMenu(allocator, tab_o.world, tab_o.camera_ent, tab_o.viewport.getMainCamera())) |c| {
@@ -251,12 +250,12 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
                 // Spawn light
                 const light_ent = tab_o.world.newEntity(null);
-                _ = tab_o.world.setId(transform.Transform, light_ent, &transform.Transform{ .position = .{ .y = 20 } });
-                _ = tab_o.world.setId(light_component.Light, light_ent, &light_component.Light{ .radius = 100, .power = 10000 });
+                _ = tab_o.world.setComponent(transform.LocalTransformComponent, light_ent, &transform.LocalTransformComponent{ .local = .{ .position = .{ .y = 20 } } });
+                _ = tab_o.world.setComponent(light_component.Light, light_ent, &light_component.Light{ .radius = 100, .power = 10000 });
 
                 // Set random velocity.
                 for (entities) |ent| {
-                    _ = tab_o.world.setId(physics.Velocity, ent, &physics.Velocity{
+                    _ = tab_o.world.setComponent(physics.Velocity, ent, &physics.Velocity{
                         .y = (rnd.float(f32) * 2 - 1) * 3.0,
                         .x = (rnd.float(f32) * 2 - 1) * 3.0,
                         .z = (rnd.float(f32) * 2 - 1) * 3.0,
@@ -312,7 +311,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         _ = allocator; // autofix
         const db = _cdb.getDbFromObjid(selection[0].obj);
         const EntityTypeIdx = ecs.EntityCdb.typeIdx(_cdb, db);
-        const AssetTypeIdx = assetdb.Asset.typeIdx(_cdb, db);
+        const AssetTypeIdx = assetdb.AssetCdb.typeIdx(_cdb, db);
         for (selection) |obj| {
             if (!obj.obj.type_idx.eql(EntityTypeIdx) and !obj.obj.type_idx.eql(AssetTypeIdx)) return false;
             if (_assetdb.getObjForAsset(obj.obj)) |o| if (!o.type_idx.eql(EntityTypeIdx)) return false;

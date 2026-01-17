@@ -1,23 +1,32 @@
 .{
     .externals = .{
+        .{ .name = "zphysics", .license = "externals/shared/lib/zphysics/LICENSE" },
+
+        .{ .name = "glfw", .license = "externals/shared/lib/zglfw/libs/glfw/LICENSE.md" },
         .{ .name = "zglfw", .license = "externals/shared/lib/zglfw/LICENSE" },
+
         .{ .name = "ztracy", .license = "externals/shared/lib/ztracy/LICENSE" },
-        .{ .name = "zgui", .license = "externals/shared/lib/zgui/LICENSE" },
+
         .{ .name = "zflecs", .license = "externals/shared/lib/zflecs/LICENSE" },
+        .{ .name = "flecs", .license = "externals/shared/lib/zflecs/libs/flecs/LICENSE" },
+
         .{ .name = "imgui", .license = "externals/shared/lib/zgui/libs/imgui/LICENSE.txt" },
         .{ .name = "imgui_test_engine", .license = "externals/shared/lib/zgui/libs/imgui_test_engine/LICENSE.txt" },
         .{ .name = "implot", .license = "externals/shared/lib/zgui/libs/implot/LICENSE" },
         .{ .name = "imguizmo", .license = "externals/shared/lib/zgui/libs/imguizmo/LICENSE" },
         .{ .name = "imgui_node_editor", .license = "externals/shared/lib/zgui/libs/node_editor/LICENSE" },
-        .{ .name = "FLECS", .license = "externals/shared/lib/zflecs/libs/flecs/LICENSE" },
-        .{ .name = "glfw", .license = "externals/shared/lib/zglfw/libs/glfw/LICENSE.md" },
+        .{ .name = "zgui", .license = "externals/shared/lib/zgui/LICENSE" },
+
         .{ .name = "SDL_GameControllerDB", .license = "externals/shared/lib/SDL_GameControllerDB/LICENSE" },
         .{ .name = "zf", .license = "externals/shared/lib/zf/LICENSE" },
         .{ .name = "zig-uuid", .license = "externals/shared/lib/zig-uuid/LICENSE" },
         .{ .name = "nativefiledialog-extended", .license = "externals/shared/lib/znfde/nativefiledialog/LICENSE" },
+
+        .{ .name = "ziglang-set", .license = "externals/shared/lib/ziglang-set/LICENSE" },
+
         .{ .name = "bgfx", .license = "externals/shared/lib/zbgfx/libs/bgfx/LICENSE" },
         .{ .name = "zbgfx", .license = "externals/shared/lib/zbgfx/LICENSE" },
-        .{ .name = "ziglang-set", .license = "externals/shared/lib/ziglang-set/LICENSE" },
+
         .{ .name = "cetech1", .license = "LICENSE" },
     },
 }

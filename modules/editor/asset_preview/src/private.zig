@@ -6,7 +6,7 @@ const cdb = cetech1.cdb;
 const coreui = cetech1.coreui;
 const tempalloc = cetech1.tempalloc;
 const gpu = cetech1.gpu;
-const zm = cetech1.math.zmath;
+
 const ecs = cetech1.ecs;
 const assetdb = cetech1.assetdb;
 const uuid = cetech1.uuid;
@@ -115,9 +115,9 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         const name = try std.fmt.bufPrintZ(&buf, "Asset preview {d}", .{tab_id});
 
         const camera_ent = w.newEntity(null);
-        _ = w.setId(transform.Transform, camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -5 } });
-        _ = w.setId(camera.Camera, camera_ent, &camera.Camera{});
-        _ = w.setId(camera_controller.CameraController, camera_ent, &camera_controller.CameraController{});
+        _ = w.setComponent(transform.LocalTransformComponent, camera_ent, &transform.LocalTransformComponent{ .local = .{ .position = .{ .y = 2, .z = -5 } } });
+        _ = w.setComponent(camera.Camera, camera_ent, &camera.Camera{});
+        _ = w.setComponent(camera_controller.CameraController, camera_ent, &camera_controller.CameraController{});
 
         const gpu_backend = _kernel.getGpuBackend().?;
         const pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w);
@@ -165,8 +165,8 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         if (selected_obj.isEmpty()) {
             const txt = "Select asset";
             const txt_size = _coreui.calcTextSize(txt, .{});
-            _coreui.setCursorPosX(wsize[0] / 2 - txt_size[0] / 2);
-            _coreui.setCursorPosY(wsize[1] / 2 + txt_size[1]);
+            _coreui.setCursorPosX(wsize.x / 2 - txt_size.x / 2);
+            _coreui.setCursorPosY(wsize.y / 2 + txt_size.y);
             _coreui.text(txt);
             return;
         }
@@ -183,8 +183,8 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 _coreui.image(
                     texture,
                     .{
-                        .w = size[0],
-                        .h = size[1],
+                        .w = size.x,
+                        .h = size.y,
                     },
                 );
                 const hovered = _coreui.isItemHovered(.{});
@@ -202,8 +202,8 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             } else {
                 const txt = "No preview";
                 const txt_size = _coreui.calcTextSize(txt, .{});
-                _coreui.setCursorPosX(wsize[0] / 2 - txt_size[0] / 2);
-                _coreui.setCursorPosY(wsize[1] / 2 + txt_size[1]);
+                _coreui.setCursorPosX(wsize.x / 2 - txt_size.x / 2);
+                _coreui.setCursorPosY(wsize.y / 2 + txt_size.y);
                 _coreui.text(txt);
             }
         }
@@ -219,7 +219,7 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         if (_coreui.beginMenu(allocator, cetech1.coreui.Icons.Debug, true, null)) {
             defer _coreui.endMenu();
             tab_o.flecs_port = tab_o.world.uiRemoteDebugMenuItems(allocator, tab_o.flecs_port);
-            _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
+            try _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
         }
     }
 
@@ -236,7 +236,7 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         const db = _cdb.getDbFromObjid(selected_obj);
 
-        if (selected_obj.type_idx.eql(assetdb.Asset.typeIdx(_cdb, db))) {
+        if (selected_obj.type_idx.eql(assetdb.AssetCdb.typeIdx(_cdb, db))) {
             asset_obj = _assetdb.getObjForAsset(selected_obj).?;
         } else {
             asset_obj = selected_obj;
@@ -250,7 +250,11 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 tab_o.root_entity = null;
                 tab_o.world.clear();
 
-                _ = tab_o.world.setId(transform.Transform, tab_o.camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -5 } });
+                _ = tab_o.world.setComponent(
+                    transform.LocalTransformComponent,
+                    tab_o.camera_ent,
+                    &transform.LocalTransformComponent{ .local = .{ .position = .{ .y = 2, .z = -5 } } },
+                );
             }
 
             if (_cdb.getAspect(public.AssetPreviewAspectI, db, asset_obj.type_idx)) |iface| {
@@ -262,24 +266,28 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                     tab_o.root_entity = ent;
 
                     {
-                        var q = try tab_o.world.createQuery(&.{
-                            .{ .id = ecs.id(light_component.Light), .inout = .In },
+                        var q = try tab_o.world.createQuery(.{
+                            .query = &.{
+                                .{ .id = ecs.id(light_component.Light), .inout = .In },
+                            },
                         });
                         defer q.destroy();
                         const light_component_n = q.count().entities;
                         if (light_component_n == 0) {
                             tab_o.light_ent = tab_o.world.newEntity(null);
 
-                            _ = tab_o.world.setId(
-                                transform.Transform,
+                            _ = tab_o.world.setComponent(
+                                transform.LocalTransformComponent,
                                 tab_o.light_ent.?,
-                                &transform.Transform{
-                                    .position = .{ .y = 20 },
-                                    .rotation = .{ .q = zm.quatFromRollPitchYaw(-130, 180, 0) },
+                                &transform.LocalTransformComponent{
+                                    .local = .{
+                                        .position = .{ .y = 20 },
+                                        .rotation = .fromRollPitchYaw(-130, 180, 0),
+                                    },
                                 },
                             );
 
-                            _ = tab_o.world.setId(
+                            _ = tab_o.world.setComponent(
                                 light_component.Light,
                                 tab_o.light_ent.?,
                                 &light_component.Light{

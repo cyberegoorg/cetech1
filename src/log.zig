@@ -4,6 +4,7 @@ const cetech1 = @import("cetech1");
 const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");
 const task = @import("task.zig");
+const math = cetech1.math;
 
 pub const api = cetech1.log.LogAPI{
     .logFn = logFn,
@@ -51,12 +52,12 @@ pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]cons
 
     if (profiler.profiler_enabled) {
         const LOG_FORMAT_TRACY = "{s}: {s}";
-        const color: u32 = switch (level) {
-            .info => 0x00_ff_ff_ff,
-            .debug => 0x00_00_ff_00,
-            .warn => 0x00_ff_ef_00,
-            .err => 0x00_ff_00_00,
-            else => 0x00_ff_00_00,
+        const color: math.SRGBA = switch (level) {
+            .info => .fromU32(0x00_ff_ff_ff),
+            .debug => .fromU32(0x00_00_ff_00),
+            .warn => .fromU32(0x00_ff_ef_00),
+            .err => .fromU32(0x00_ff_00_00),
+            else => .fromU32(0x00_ff_00_00),
         };
         if (std.fmt.bufPrintZ(&buffer, LOG_FORMAT_TRACY, .{ scope, msg })) |_| {
             profiler.api.msgWithColor(&buffer, color);

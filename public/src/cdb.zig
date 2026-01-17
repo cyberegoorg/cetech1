@@ -56,14 +56,16 @@ pub const ObjId = packed struct(u64) {
         try std.fmt.format(writer, "{d}:{d}-{d}-{d}", .{ self.id, self.gen, self.type_idx.idx, self.db.idx });
     }
 
-    pub fn toU64(self: *const ObjId) u64 {
-        const ptr: *u64 = @ptrFromInt(@intFromPtr(self));
-        return ptr.*;
+    pub fn toU64(self: ObjId) u64 {
+        return @bitCast(self);
+    }
+
+    pub fn toI64(self: ObjId) i64 {
+        return @bitCast(self);
     }
 
     pub fn fromU64(value: u64) ObjId {
-        const ptr: *ObjId = @ptrFromInt(@intFromPtr(&value));
-        return ptr.*;
+        return @bitCast(value);
     }
 };
 

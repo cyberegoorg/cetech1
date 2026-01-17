@@ -4,6 +4,7 @@ const zgui = @import("zgui");
 const cetech1 = @import("cetech1");
 const gpu = cetech1.gpu;
 const zm = cetech1.math.zm;
+const math = cetech1.math;
 
 pub var backend_init = false;
 
@@ -73,24 +74,6 @@ pub fn newFrame() void {
 
 pub fn draw(gpu_backend: gpu.GpuBackend, viewid: gpu.ViewId) void {
     renderDrawData(gpu_backend, viewid) catch undefined;
-}
-
-fn orthographic(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32, homogenous_depth: bool) zm.Mat {
-    return if (homogenous_depth) zm.orthographicOffCenterLh(
-        left,
-        right,
-        top,
-        bottom,
-        near,
-        far,
-    ) else zm.orthographicOffCenterLhGl(
-        left,
-        right,
-        top,
-        bottom,
-        near,
-        far,
-    );
 }
 
 const BgfxImage = extern struct {
@@ -219,7 +202,16 @@ fn renderDrawData(gpu_api: gpu.GpuBackend, view_id: gpu.ViewId) !void {
         const width = draw_data.display_size[0];
         const heigh = draw_data.display_size[1];
 
-        const ortho = zm.matToArr(orthographic(x, x + width, y + heigh, y, 0.0, 1000.0, gpu_api.isHomogenousDepth()));
+        const ortho = math.Mat44f.orthographicOffCenterLh(
+            x,
+            x + width,
+            y + heigh,
+            y,
+            0.0,
+            1000.0,
+            gpu_api.isHomogenousDepth(),
+        ).toArray();
+
         gpu_api.setViewTransform(view_id, null, &ortho);
         gpu_api.setViewRect(view_id, 0, 0, @intFromFloat(dispWidth), @intFromFloat(dispHeight));
     }

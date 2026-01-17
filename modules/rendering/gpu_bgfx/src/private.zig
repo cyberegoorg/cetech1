@@ -10,14 +10,11 @@ const bgfx = zbgfx.bgfx;
 const profiler = cetech1.profiler;
 const task = cetech1.task;
 const tempalloc = cetech1.tempalloc;
+const math = cetech1.math;
 
 const public = cetech1.gpu;
 
-const zm = cetech1.math.zmath;
-
-const bgfx_shader = @embedFile("embed/bgfx_shader.sh");
-const bgfx_compute = @embedFile("embed/bgfx_compute.sh");
-const core_shader = bgfx_shader ++ "\n\n" ++ bgfx_compute;
+const core_shader = @import("shaders.zig").core_shader;
 
 const module_name = .gpu_bgfx;
 
@@ -49,7 +46,7 @@ const ThreadId = std.Thread.Id;
 const EncoderMap = cetech1.AutoArrayHashMap(ThreadId, *bgfx.Encoder);
 
 const EncoderArray = cetech1.ArrayList(?*bgfx.Encoder);
-const PalletColorMap = cetech1.AutoArrayHashMap(u32, u8);
+const PalletColorMap = cetech1.AutoArrayHashMap(math.SRGBA, u8);
 
 pub const PrimitiveType = enum {
     pub fn toState(self: public.PrimitiveType) bgfx.StateFlags {
@@ -604,7 +601,7 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
         const b = std.mem.toBytes(context.bgfxInit.resolution);
         return std.mem.bytesToValue(public.Resolution, &b);
     }
-    pub fn addPaletteColor(self: *anyopaque, color: u32) u8 {
+    pub fn addPaletteColor(self: *anyopaque, color: math.SRGBA) u8 {
         const inst: *BgfxBackend = @ptrCast(@alignCast(self));
 
         const pallet_id = inst.pallet_map.get(color);
@@ -612,7 +609,7 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
 
         const idx: u8 = @truncate(pallet_id_counter.fetchAdd(1, .monotonic));
 
-        bgfx.setPaletteColorRgba8(idx, color);
+        bgfx.setPaletteColorRgba8(idx, color.toU32());
         inst.pallet_map.put(_allocator, color, idx) catch undefined;
 
         return idx;
@@ -1147,7 +1144,7 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
     //     _ = self;
     //     return bgfx.topologyConvert(@enumFromInt(@intFromEnum(_conversion)), _dst, _dstSize, _indices, _numIndices, _index32);
     // }
-    // pub fn topologySortTriList(self: *anyopaque, _sort: public.TopologySort, _dst: ?*anyopaque, _dstSize: u32, _dir: [3]f32, _pos: [3]f32, _vertices: ?*const anyopaque, _stride: u32, _indices: ?*const anyopaque, _numIndices: u32, _index32: bool) void {
+    // pub fn topologySortTriList(self: *anyopaque, _sort: public.TopologySort, _dst: ?*anyopaque, _dstSize: u32, _dir: math.Vec3f, _pos: math.Vec3f, _vertices: ?*const anyopaque, _stride: u32, _indices: ?*const anyopaque, _numIndices: u32, _index32: bool) void {
     //     _ = self;
     //     return bgfx.topologySortTriList(@enumFromInt(@intFromEnum(_sort)), _dst, _dstSize, _dir, _pos, _vertices, _stride, _indices, _numIndices, _index32);
     // }
@@ -1591,8 +1588,8 @@ const dd_encoder_vt = public.DDEncoder.implement(struct {
         zbgfx.debugdraw.Encoder.setState(@ptrCast(@alignCast(dde)), _depthTest, _depthWrite, _clockwise);
     }
 
-    pub fn setColor(dde: *anyopaque, _abgr: u32) void {
-        zbgfx.debugdraw.Encoder.setColor(@ptrCast(@alignCast(dde)), _abgr);
+    pub fn setColor(dde: *anyopaque, _abgr: math.SRGBA) void {
+        zbgfx.debugdraw.Encoder.setColor(@ptrCast(@alignCast(dde)), _abgr.toU32());
     }
 
     pub fn setLod(dde: *anyopaque, _lod: u8) void {
@@ -1611,64 +1608,64 @@ const dd_encoder_vt = public.DDEncoder.implement(struct {
         zbgfx.debugdraw.Encoder.setSpin(@ptrCast(@alignCast(dde)), _spin);
     }
 
-    pub fn setTransform(dde: *anyopaque, _mtx: ?*const anyopaque) void {
-        zbgfx.debugdraw.Encoder.setTransform(@ptrCast(@alignCast(dde)), @constCast(_mtx));
+    pub fn setTransform(dde: *anyopaque, _mtx: math.Mat44f) void {
+        zbgfx.debugdraw.Encoder.setTransform(@ptrCast(@alignCast(dde)), &_mtx.toArray());
     }
 
-    pub fn setTranslate(dde: *anyopaque, _xyz: [3]f32) void {
-        zbgfx.debugdraw.Encoder.setTranslate(@ptrCast(@alignCast(dde)), _xyz);
+    pub fn setTranslate(dde: *anyopaque, _xyz: math.Vec3f) void {
+        zbgfx.debugdraw.Encoder.setTranslate(@ptrCast(@alignCast(dde)), _xyz.toArray());
     }
 
-    pub fn pushTransform(dde: *anyopaque, _mtx: *const anyopaque) void {
-        zbgfx.debugdraw.Encoder.pushTransform(@ptrCast(@alignCast(dde)), @constCast(_mtx));
+    pub fn pushTransform(dde: *anyopaque, _mtx: math.Mat44f) void {
+        zbgfx.debugdraw.Encoder.pushTransform(@ptrCast(@alignCast(dde)), @constCast(&_mtx.toArray()));
     }
 
     pub fn popTransform(dde: *anyopaque) void {
         zbgfx.debugdraw.Encoder.popTransform(@ptrCast(@alignCast(dde)));
     }
 
-    pub fn moveTo(dde: *anyopaque, _xyz: [3]f32) void {
-        zbgfx.debugdraw.Encoder.moveTo(@ptrCast(@alignCast(dde)), _xyz);
+    pub fn moveTo(dde: *anyopaque, _xyz: math.Vec3f) void {
+        zbgfx.debugdraw.Encoder.moveTo(@ptrCast(@alignCast(dde)), _xyz.toArray());
     }
 
-    pub fn lineTo(dde: *anyopaque, _xyz: [3]f32) void {
-        zbgfx.debugdraw.Encoder.lineTo(@ptrCast(@alignCast(dde)), _xyz);
+    pub fn lineTo(dde: *anyopaque, _xyz: math.Vec3f) void {
+        zbgfx.debugdraw.Encoder.lineTo(@ptrCast(@alignCast(dde)), _xyz.toArray());
     }
 
     pub fn close(dde: *anyopaque) void {
         zbgfx.debugdraw.Encoder.close(@ptrCast(@alignCast(dde)));
     }
 
-    pub fn drawAABB(dde: *anyopaque, min: [3]f32, max: [3]f32) void {
-        zbgfx.debugdraw.Encoder.drawAABB(@ptrCast(@alignCast(dde)), min, max);
+    pub fn drawAABB(dde: *anyopaque, min: math.Vec3f, max: math.Vec3f) void {
+        zbgfx.debugdraw.Encoder.drawAABB(@ptrCast(@alignCast(dde)), min.toArray(), max.toArray());
     }
 
-    pub fn drawCylinder(dde: *anyopaque, pos: [3]f32, _end: [3]f32, radius: f32) void {
-        zbgfx.debugdraw.Encoder.drawCylinder(@ptrCast(@alignCast(dde)), pos, _end, radius);
+    pub fn drawCylinder(dde: *anyopaque, pos: math.Vec3f, _end: math.Vec3f, radius: f32) void {
+        zbgfx.debugdraw.Encoder.drawCylinder(@ptrCast(@alignCast(dde)), pos.toArray(), _end.toArray(), radius);
     }
 
-    pub fn drawCapsule(dde: *anyopaque, pos: [3]f32, _end: [3]f32, radius: f32) void {
-        zbgfx.debugdraw.Encoder.drawCapsule(@ptrCast(@alignCast(dde)), pos, _end, radius);
+    pub fn drawCapsule(dde: *anyopaque, pos: math.Vec3f, _end: math.Vec3f, radius: f32) void {
+        zbgfx.debugdraw.Encoder.drawCapsule(@ptrCast(@alignCast(dde)), pos.toArray(), _end.toArray(), radius);
     }
 
-    pub fn drawDisk(dde: *anyopaque, center: [3]f32, normal: [3]f32, radius: f32) void {
-        zbgfx.debugdraw.Encoder.drawDisk(@ptrCast(@alignCast(dde)), center, normal, radius);
+    pub fn drawDisk(dde: *anyopaque, center: math.Vec3f, normal: math.Vec3f, radius: f32) void {
+        zbgfx.debugdraw.Encoder.drawDisk(@ptrCast(@alignCast(dde)), center.toArray(), normal.toArray(), radius);
     }
 
-    pub fn drawObb(dde: *anyopaque, _obb: [3]f32) void {
-        zbgfx.debugdraw.Encoder.drawObb(@ptrCast(@alignCast(dde)), _obb);
+    pub fn drawObb(dde: *anyopaque, _obb: math.Vec3f) void {
+        zbgfx.debugdraw.Encoder.drawObb(@ptrCast(@alignCast(dde)), _obb.toArray());
     }
 
-    pub fn drawSphere(dde: *anyopaque, center: [3]f32, radius: f32) void {
-        zbgfx.debugdraw.Encoder.drawSphere(@ptrCast(@alignCast(dde)), center, radius);
+    pub fn drawSphere(dde: *anyopaque, center: math.Vec3f, radius: f32) void {
+        zbgfx.debugdraw.Encoder.drawSphere(@ptrCast(@alignCast(dde)), center.toArray(), radius);
     }
 
-    pub fn drawTriangle(dde: *anyopaque, v0: [3]f32, v1: [3]f32, v2: [3]f32) void {
-        zbgfx.debugdraw.Encoder.drawTriangle(@ptrCast(@alignCast(dde)), v0, v1, v2);
+    pub fn drawTriangle(dde: *anyopaque, v0: math.Vec3f, v1: math.Vec3f, v2: math.Vec3f) void {
+        zbgfx.debugdraw.Encoder.drawTriangle(@ptrCast(@alignCast(dde)), v0.toArray(), v1.toArray(), v2.toArray());
     }
 
-    pub fn drawCone(dde: *anyopaque, pos: [3]f32, _end: [3]f32, radius: f32) void {
-        zbgfx.debugdraw.Encoder.drawCone(@ptrCast(@alignCast(dde)), pos, _end, radius);
+    pub fn drawCone(dde: *anyopaque, pos: math.Vec3f, _end: math.Vec3f, radius: f32) void {
+        zbgfx.debugdraw.Encoder.drawCone(@ptrCast(@alignCast(dde)), pos.toArray(), _end.toArray(), radius);
     }
 
     pub fn drawGeometry(dde: *anyopaque, _handle: public.DDGeometryHandle) void {
@@ -1683,48 +1680,48 @@ const dd_encoder_vt = public.DDEncoder.implement(struct {
         zbgfx.debugdraw.Encoder.drawTriList(@ptrCast(@alignCast(dde)), _numVertices, std.mem.bytesAsSlice(zbgfx.debugdraw.Vertex, std.mem.sliceAsBytes(_vertices)), _numIndices, _indices.?);
     }
 
-    pub fn drawFrustum(dde: *anyopaque, _viewProj: [16]f32) void {
-        zbgfx.debugdraw.Encoder.drawFrustum(@ptrCast(@alignCast(dde)), @constCast(&_viewProj));
+    pub fn drawFrustum(dde: *anyopaque, _viewProj: math.Mat44f) void {
+        zbgfx.debugdraw.Encoder.drawFrustum(@ptrCast(@alignCast(dde)), @constCast(&_viewProj.toArray()));
     }
 
-    pub fn drawArc(dde: *anyopaque, _axis: public.DDAxis, _xyz: [3]f32, _radius: f32, _degrees: f32) void {
-        zbgfx.debugdraw.Encoder.drawArc(@ptrCast(@alignCast(dde)), @enumFromInt(@intFromEnum(_axis)), _xyz, _radius, _degrees);
+    pub fn drawArc(dde: *anyopaque, _axis: public.DDAxis, _xyz: math.Vec3f, _radius: f32, _degrees: f32) void {
+        zbgfx.debugdraw.Encoder.drawArc(@ptrCast(@alignCast(dde)), @enumFromInt(@intFromEnum(_axis)), _xyz.toArray(), _radius, _degrees);
     }
 
-    pub fn drawCircle(dde: *anyopaque, _normal: [3]f32, _center: [3]f32, _radius: f32, _weight: f32) void {
-        zbgfx.debugdraw.Encoder.drawCircle(@ptrCast(@alignCast(dde)), _normal, _center, _radius, _weight);
+    pub fn drawCircle(dde: *anyopaque, _normal: math.Vec3f, _center: math.Vec3f, _radius: f32, _weight: f32) void {
+        zbgfx.debugdraw.Encoder.drawCircle(@ptrCast(@alignCast(dde)), _normal.toArray(), _center.toArray(), _radius, _weight);
     }
 
-    pub fn drawCircleAxis(dde: *anyopaque, _axis: public.DDAxis, _xyz: [3]f32, _radius: f32, _weight: f32) void {
-        zbgfx.debugdraw.Encoder.drawCircleAxis(@ptrCast(@alignCast(dde)), @enumFromInt(@intFromEnum(_axis)), _xyz, _radius, _weight);
+    pub fn drawCircleAxis(dde: *anyopaque, _axis: public.DDAxis, _xyz: math.Vec3f, _radius: f32, _weight: f32) void {
+        zbgfx.debugdraw.Encoder.drawCircleAxis(@ptrCast(@alignCast(dde)), @enumFromInt(@intFromEnum(_axis)), _xyz.toArray(), _radius, _weight);
     }
 
-    pub fn drawQuad(dde: *anyopaque, _normal: [3]f32, _center: [3]f32, _size: f32) void {
-        zbgfx.debugdraw.Encoder.drawQuad(@ptrCast(@alignCast(dde)), _normal, _center, _size);
+    pub fn drawQuad(dde: *anyopaque, _normal: math.Vec3f, _center: math.Vec3f, _size: f32) void {
+        zbgfx.debugdraw.Encoder.drawQuad(@ptrCast(@alignCast(dde)), _normal.toArray(), _center.toArray(), _size);
     }
 
-    pub fn drawQuadSprite(dde: *anyopaque, _handle: public.DDSpriteHandle, _normal: [3]f32, _center: [3]f32, _size: f32) void {
-        zbgfx.debugdraw.Encoder.drawQuadSprite(@ptrCast(@alignCast(dde)), .{ .idx = _handle.idx }, _normal, _center, _size);
+    pub fn drawQuadSprite(dde: *anyopaque, _handle: public.DDSpriteHandle, _normal: math.Vec3f, _center: math.Vec3f, _size: f32) void {
+        zbgfx.debugdraw.Encoder.drawQuadSprite(@ptrCast(@alignCast(dde)), .{ .idx = _handle.idx }, _normal.toArray(), _center.toArray(), _size);
     }
 
-    pub fn drawQuadTexture(dde: *anyopaque, _handle: public.TextureHandle, _normal: [3]f32, _center: [3]f32, _size: f32) void {
-        zbgfx.debugdraw.Encoder.drawQuadTexture(@ptrCast(@alignCast(dde)), .{ .idx = _handle.idx }, _normal, _center, _size);
+    pub fn drawQuadTexture(dde: *anyopaque, _handle: public.TextureHandle, _normal: math.Vec3f, _center: math.Vec3f, _size: f32) void {
+        zbgfx.debugdraw.Encoder.drawQuadTexture(@ptrCast(@alignCast(dde)), .{ .idx = _handle.idx }, _normal.toArray(), _center.toArray(), _size);
     }
 
-    pub fn drawAxis(dde: *anyopaque, _xyz: [3]f32, _len: f32, _highlight: public.DDAxis, _thickness: f32) void {
-        zbgfx.debugdraw.Encoder.drawAxis(@ptrCast(@alignCast(dde)), _xyz, _len, @enumFromInt(@intFromEnum(_highlight)), _thickness);
+    pub fn drawAxis(dde: *anyopaque, _xyz: math.Vec3f, _len: f32, _highlight: public.DDAxis, _thickness: f32) void {
+        zbgfx.debugdraw.Encoder.drawAxis(@ptrCast(@alignCast(dde)), _xyz.toArray(), _len, @enumFromInt(@intFromEnum(_highlight)), _thickness);
     }
 
-    pub fn drawGrid(dde: *anyopaque, _normal: [3]f32, _center: [3]f32, _size: u32, _step: f32) void {
-        zbgfx.debugdraw.Encoder.drawGrid(@ptrCast(@alignCast(dde)), _normal, _center, _size, _step);
+    pub fn drawGrid(dde: *anyopaque, _normal: math.Vec3f, _center: math.Vec3f, _size: u32, _step: f32) void {
+        zbgfx.debugdraw.Encoder.drawGrid(@ptrCast(@alignCast(dde)), _normal.toArray(), _center.toArray(), _size, _step);
     }
 
-    pub fn drawGridAxis(dde: *anyopaque, _axis: public.DDAxis, _center: [3]f32, _size: u32, _step: f32) void {
-        zbgfx.debugdraw.Encoder.drawGridAxis(@ptrCast(@alignCast(dde)), @enumFromInt(@intFromEnum(_axis)), _center, _size, _step);
+    pub fn drawGridAxis(dde: *anyopaque, _axis: public.DDAxis, _center: math.Vec3f, _size: u32, _step: f32) void {
+        zbgfx.debugdraw.Encoder.drawGridAxis(@ptrCast(@alignCast(dde)), @enumFromInt(@intFromEnum(_axis)), _center.toArray(), _size, _step);
     }
 
-    pub fn drawOrb(dde: *anyopaque, _xyz: [3]f32, _radius: f32, _highlight: public.DDAxis) void {
-        zbgfx.debugdraw.Encoder.drawOrb(@ptrCast(@alignCast(dde)), _xyz, _radius, @enumFromInt(@intFromEnum(_highlight)));
+    pub fn drawOrb(dde: *anyopaque, _xyz: math.Vec3f, _radius: f32, _highlight: public.DDAxis) void {
+        zbgfx.debugdraw.Encoder.drawOrb(@ptrCast(@alignCast(dde)), _xyz.toArray(), _radius, @enumFromInt(@intFromEnum(_highlight)));
     }
 });
 

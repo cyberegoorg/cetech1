@@ -6,6 +6,7 @@ const Allocator = std.mem.Allocator;
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const coreui = cetech1.coreui;
+const math = cetech1.math;
 
 const editor = @import("editor");
 const Icons = coreui.CoreIcons;
@@ -83,13 +84,13 @@ pub fn levelIcon(level: cetech1.log.LogAPI.Level) [:0]const u8 {
     };
 }
 
-pub fn levelColor(level: cetech1.log.LogAPI.Level) [4]f32 {
+pub fn levelColor(level: cetech1.log.LogAPI.Level) math.Color4f {
     if (!_editor.isColorsEnabled()) return _coreui.getStyle().getColor(.text);
     const one = 0.80;
     return switch (level) {
-        .err => .{ one, 0.0, 0.0, 1.0 },
-        .warn => .{ one, one, 0.0, 1.0 },
-        .debug => .{ 0.0, one, 0.0, 1.0 },
+        .err => .{ .r = one, .a = 1.0 },
+        .warn => .{ .r = one, .g = one, .a = 1.0 },
+        .debug => .{ .g = one, .a = 1.0 },
         else => _coreui.getStyle().getColor(.text),
     };
 }

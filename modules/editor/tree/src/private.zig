@@ -5,6 +5,7 @@ const public = @import("editor_tree.zig");
 
 const cetech1 = @import("cetech1");
 const coreui = cetech1.coreui;
+const math = cetech1.math;
 
 const cdb = cetech1.cdb;
 
@@ -20,10 +21,10 @@ pub const std_options: std.Options = .{
 };
 const log = std.log.scoped(module_name);
 
-const PROTOTYPE_PROPERTY_COLOR = .{ 0.5, 0.5, 0.5, 1.0 };
-const PROTOTYPE_PROPERTY_OVERIDED_COLOR = .{ 0.0, 0.8, 1.0, 1.0 };
-const INSIATED_COLOR = .{ 1.0, 0.6, 0.0, 1.0 };
-const REMOVED_COLOR = .{ 0.7, 0.0, 0.0, 1.0 };
+const PROTOTYPE_PROPERTY_COLOR: math.Color4f = .{ .r = 0.5, .g = 0.5, .b = 0.5, .a = 1.0 };
+const PROTOTYPE_PROPERTY_OVERIDED_COLOR: math.Color4f = .{ .g = 0.8, .b = 1.0, .a = 1.0 };
+const INSIATED_COLOR: math.Color4f = .{ .r = 1.0, .g = 0.6, .a = 1.0 };
+const REMOVED_COLOR: math.Color4f = .{ .r = 0.7, .a = 1.0 };
 
 var _allocator: Allocator = undefined;
 var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
@@ -266,7 +267,7 @@ fn cdbTreeView(
     var prop_name_buff: [128:0]u8 = undefined;
 
     for (prop_defs, 0..) |prop_def, idx| {
-        const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionAvail()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
+        const visible = _coreui.isRectVisible(.{ .x = _coreui.getContentRegionAvail().x, .y = _coreui.getFontSize() * _coreui.getScaleFactor() });
 
         const prop_idx: u32 = @truncate(idx);
         const prop_name = if (visible) try formatedPropNameToBuff(&prop_name_buff, prop_def.name) else "";
@@ -426,7 +427,11 @@ fn cdbTreeView(
                                 try inisiated_prototypes.put(_cdb.getPrototype(_cdb.readObj(subobj).?), {});
                             }
 
-                            const visible_item = _coreui.isRectVisible(.{ _coreui.getContentRegionAvail()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
+                            const visible_item = _coreui.isRectVisible(.{
+                                .x = _coreui.getContentRegionAvail().x,
+                                .y = _coreui.getFontSize() * _coreui.getScaleFactor(),
+                            });
+
                             const set_state = if (visible_item) _cdb.getRelation(obj.top_level_obj, obj.obj, prop_idx, subobj) else .not_owned;
                             const set_color = _editor.getStateColor(set_state);
 
@@ -522,7 +527,7 @@ var ProjectTypeIdx: cdb.TypeIdx = undefined;
 
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db_: cdb.DbId) !void {
-        ProjectTypeIdx = cetech1.assetdb.Project.typeIdx(_cdb, db_);
+        ProjectTypeIdx = cetech1.assetdb.ProjectCdb.typeIdx(_cdb, db_);
     }
 });
 

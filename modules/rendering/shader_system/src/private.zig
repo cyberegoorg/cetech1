@@ -7,10 +7,10 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
 const ecs = cetech1.ecs;
+const math = cetech1.math;
 
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
-const zm = cetech1.math.zmath;
 
 const public = @import("shader_system.zig");
 
@@ -18,7 +18,6 @@ const graphvm = @import("graphvm");
 const editor_inspector = @import("editor_inspector");
 
 const basic_nodes = @import("basic_nodes.zig");
-const render_viewport = @import("render_viewport");
 
 const module_name = .shader_system;
 
@@ -27,7 +26,7 @@ const MAX_PROGRAMS = 1_000; // =D very naive
 const MAX_UNIFORM_BUFFERS = 4 * 1024;
 const MAX_RESOUREC_BUFFERS = 4 * 1024;
 const MAX_system_context = 128;
-const MAX_UNIFORM_VALUE_SIZE = @sizeOf(zm.Mat);
+const MAX_UNIFORM_VALUE_SIZE = @sizeOf(math.Mat44f);
 const MAX_RESOURCE_IN_BUFFER = 16;
 const MAX_RESOURCE_VALUE_SIZE = @sizeOf(public.BufferHandle);
 
@@ -201,10 +200,12 @@ const ShaderIO = struct {
 
     pub fn clear(self: *ShaderIO, gpu_backend: gpu.GpuBackend) void {
         for (self.uniform_buffer_pool.allocatedItems()) |*obj| {
+            if (self.uniform_buffer_pool.isFree(obj)) continue;
             self.uniform_buffer_pool.destroy(&obj.data);
         }
 
         for (self.resource_buffer_pool.allocatedItems()) |*obj| {
+            if (self.resource_buffer_pool.isFree(obj)) continue;
             self.resource_buffer_pool.destroy(&obj.data);
         }
 
@@ -2643,12 +2644,12 @@ const gpu_vec4_value_type_i = graphvm.GraphValueTypeI.implement(
     .{
         .name = "GPU vec4",
         .type_hash = public.PinTypes.GPU_VEC4,
-        .cdb_type_hash = public.Vec4f.type_hash,
+        .cdb_type_hash = public.GpuVec4fCdb.type_hash,
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            const v = public.Vec4f.f.toSlice(_cdb, obj);
-            const s = try std.fmt.allocPrint(allocator, "vec4({d},{d},{d},{d})", .{ v[0], v[1], v[2], v[3] });
+            const v = public.GpuVec4fCdb.f.toSlice(_cdb, obj);
+            const s = try std.fmt.allocPrint(allocator, "vec4({d},{d},{d},{d})", .{ v.x, v.y, v.z, v.w });
             const gv = std.mem.bytesAsValue(public.GpuValue, value);
             gv.str = s;
         }
@@ -2669,12 +2670,12 @@ const gpu_vec2_value_type_i = graphvm.GraphValueTypeI.implement(
     .{
         .name = "GPU vec2",
         .type_hash = public.PinTypes.GPU_VEC2,
-        .cdb_type_hash = public.Vec2f.type_hash,
+        .cdb_type_hash = public.GpuVec2fCdb.type_hash,
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            const v = public.Vec2f.f.toSlice(_cdb, obj);
-            const s = try std.fmt.allocPrint(allocator, "vec2({d},{d})", .{ v[0], v[1] });
+            const v = public.GpuVec2fCdb.f.toSlice(_cdb, obj);
+            const s = try std.fmt.allocPrint(allocator, "vec2({d},{d})", .{ v.x, v.y });
             const gv = std.mem.bytesAsValue(public.GpuValue, value);
             gv.str = s;
         }
@@ -2695,12 +2696,12 @@ const gpu_vec3_value_type_i = graphvm.GraphValueTypeI.implement(
     .{
         .name = "GPU vec3",
         .type_hash = public.PinTypes.GPU_VEC3,
-        .cdb_type_hash = public.Vec3f.type_hash,
+        .cdb_type_hash = public.GpuVec3fCdb.type_hash,
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            const v = public.Vec3f.f.toSlice(_cdb, obj);
-            const s = try std.fmt.allocPrint(allocator, "vec3({d},{d},{d})", .{ v[0], v[1], v[2] });
+            const v = public.GpuVec3fCdb.f.toSlice(_cdb, obj);
+            const s = try std.fmt.allocPrint(allocator, "vec3({d},{d},{d})", .{ v.x, v.y, v.y });
             const gv = std.mem.bytesAsValue(public.GpuValue, value);
             gv.str = s;
         }
@@ -2721,12 +2722,12 @@ const gpu_float_value_type_i = graphvm.GraphValueTypeI.implement(
     .{
         .name = "GPU float",
         .type_hash = public.PinTypes.GPU_FLOAT,
-        .cdb_type_hash = public.f32Type.type_hash,
+        .cdb_type_hash = public.Gpuf32Cdb.type_hash,
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            const r = public.f32Type.read(_cdb, obj).?;
-            const v = public.f32Type.readValue(f32, _cdb, r, .value);
+            const r = public.Gpuf32Cdb.read(_cdb, obj).?;
+            const v = public.Gpuf32Cdb.readValue(f32, _cdb, r, .value);
             const s = try std.fmt.allocPrint(allocator, "{d}", .{v});
             const gv = std.mem.bytesAsValue(public.GpuValue, value);
             gv.str = s;
@@ -2984,7 +2985,7 @@ const gpu_construct_node_i = graphvm.NodeI.implement(
         .name = "Construct",
         .type_name = "gpu_construct",
         .category = "Shader",
-        .settings_type = public.ConstructNodeSettings.type_hash,
+        .settings_type = public.ConstructNodeSettingsCdb.type_hash,
     },
     null,
     struct {
@@ -2994,15 +2995,15 @@ const gpu_construct_node_i = graphvm.NodeI.implement(
             _ = self; // autofix
             _ = graph_obj; // autofix
 
-            const node_obj_r = graphvm.NodeType.read(_cdb, node_obj).?;
+            const node_obj_r = graphvm.NodeTypeCdb.read(_cdb, node_obj).?;
 
             var output_type: cetech1.StrId32 = .{};
             var in_pins: []graphvm.NodePin = undefined;
 
-            if (graphvm.NodeType.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
-                const settings_r = public.ConstructNodeSettings.read(_cdb, settings).?;
+            if (graphvm.NodeTypeCdb.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
+                const settings_r = public.ConstructNodeSettingsCdb.read(_cdb, settings).?;
 
-                const type_str = public.ConstructNodeSettings.readStr(_cdb, settings_r, .result_type) orelse "vec4";
+                const type_str = public.ConstructNodeSettingsCdb.readStr(_cdb, settings_r, .result_type) orelse "vec4";
                 const type_enum = std.meta.stringToEnum(public.ConstructNodeResultType, type_str).?;
 
                 in_pins = blk: switch (type_enum) {
@@ -3044,7 +3045,7 @@ const gpu_construct_node_i = graphvm.NodeI.implement(
             node_obj: cdb.ObjId,
         ) ![:0]const u8 {
             _ = self; // autofix
-            const node_obj_r = graphvm.NodeType.read(_cdb, node_obj).?;
+            const node_obj_r = graphvm.NodeTypeCdb.read(_cdb, node_obj).?;
             _ = node_obj_r; // autofix
             const header_label = "Make";
 
@@ -3058,9 +3059,9 @@ const gpu_construct_node_i = graphvm.NodeI.implement(
             const real_state = std.mem.bytesAsValue(public.GpuTranspileState, state);
             _ = real_state; // autofix
 
-            const settings_r = public.ConstructNodeSettings.read(_cdb, args.settings.?).?;
+            const settings_r = public.ConstructNodeSettingsCdb.read(_cdb, args.settings.?).?;
 
-            const type_str = public.ConstructNodeSettings.readStr(_cdb, settings_r, .result_type) orelse "vec4";
+            const type_str = public.ConstructNodeSettingsCdb.readStr(_cdb, settings_r, .result_type) orelse "vec4";
             const type_enum = std.meta.stringToEnum(public.ConstructNodeResultType, type_str).?;
 
             const str = str_blk: switch (type_enum) {
@@ -3117,7 +3118,7 @@ const gpu_const_node_i = graphvm.NodeI.implement(
         .name = "Const",
         .type_name = "gpu_const",
         .category = "Shader",
-        .settings_type = public.ConstNodeSettings.type_hash,
+        .settings_type = public.ConstNodeSettingsCdb.type_hash,
     },
     null,
     struct {
@@ -3127,12 +3128,12 @@ const gpu_const_node_i = graphvm.NodeI.implement(
             _ = self; // autofix
             _ = graph_obj; // autofix
 
-            const node_obj_r = graphvm.NodeType.read(_cdb, node_obj).?;
+            const node_obj_r = graphvm.NodeTypeCdb.read(_cdb, node_obj).?;
             var output_type: cetech1.StrId32 = .{};
-            if (graphvm.NodeType.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
-                const settings_r = public.ConstructNodeSettings.read(_cdb, settings).?;
+            if (graphvm.NodeTypeCdb.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
+                const settings_r = public.ConstructNodeSettingsCdb.read(_cdb, settings).?;
 
-                const type_str = public.ConstructNodeSettings.readStr(_cdb, settings_r, .result_type) orelse "vec4";
+                const type_str = public.ConstructNodeSettingsCdb.readStr(_cdb, settings_r, .result_type) orelse "vec4";
                 const type_enum = std.meta.stringToEnum(public.ConstNodeResultType, type_str).?;
 
                 output_type = switch (type_enum) {
@@ -3158,7 +3159,7 @@ const gpu_const_node_i = graphvm.NodeI.implement(
             node_obj: cdb.ObjId,
         ) ![:0]const u8 {
             _ = self; // autofix
-            const node_obj_r = graphvm.NodeType.read(_cdb, node_obj).?;
+            const node_obj_r = graphvm.NodeTypeCdb.read(_cdb, node_obj).?;
             _ = node_obj_r; // autofix
             const header_label = "GPU const";
 
@@ -3173,19 +3174,19 @@ const gpu_const_node_i = graphvm.NodeI.implement(
             const real_state = std.mem.bytesAsValue(public.GpuTranspileState, state);
             _ = real_state; // autofix
 
-            const settings_r = public.ConstNodeSettings.read(_cdb, args.settings.?).?;
+            const settings_r = public.ConstNodeSettingsCdb.read(_cdb, args.settings.?).?;
 
-            const type_str = public.ConstNodeSettings.readStr(_cdb, settings_r, .result_type) orelse "vec4";
+            const type_str = public.ConstNodeSettingsCdb.readStr(_cdb, settings_r, .result_type) orelse "vec4";
             const type_enum = std.meta.stringToEnum(public.ConstNodeResultType, type_str).?;
 
-            const value = public.ConstNodeSettings.readSubObj(_cdb, settings_r, .value);
+            const value = public.ConstNodeSettingsCdb.readSubObj(_cdb, settings_r, .value);
 
             const str = str_blk: switch (type_enum) {
                 .float => {
                     const v: f32 = blk: {
                         if (value) |v| {
-                            const v_r = cdb_types.f32Type.read(_cdb, v) orelse break :blk 0.0;
-                            break :blk cdb_types.f32Type.readValue(f32, _cdb, v_r, .value);
+                            const v_r = cdb_types.f32TypeCdb.read(_cdb, v) orelse break :blk 0.0;
+                            break :blk cdb_types.f32TypeCdb.readValue(f32, _cdb, v_r, .value);
                         }
                         break :blk 0.0;
                     };
@@ -3194,20 +3195,20 @@ const gpu_const_node_i = graphvm.NodeI.implement(
                 },
 
                 .vec2 => {
-                    const v = if (value) |v| cdb_types.Vec2f.f.toSlice(_cdb, v) else .{ 0, 0 };
-                    break :str_blk try std.fmt.allocPrint(args.allocator, "vec2({d},{d})", .{ v[0], v[1] });
+                    const v: math.Vec2f = if (value) |v| cdb_types.Vec2fCdb.f.to(_cdb, v) else .{};
+                    break :str_blk try std.fmt.allocPrint(args.allocator, "vec2({d},{d})", .{ v.x, v.y });
                 },
                 .vec3 => {
-                    const v = if (value) |v| cdb_types.Vec3f.f.toSlice(_cdb, v) else .{ 0, 0, 0 };
-                    break :str_blk try std.fmt.allocPrint(args.allocator, "vec3({d},{d},{d})", .{ v[0], v[1], v[2] });
+                    const v: math.Vec3f = if (value) |v| cdb_types.Vec3fCdb.f.to(_cdb, v) else .{};
+                    break :str_blk try std.fmt.allocPrint(args.allocator, "vec3({d},{d},{d})", .{ v.x, v.y, v.z });
                 },
                 .vec4 => {
-                    const v = if (value) |v| cdb_types.Vec4f.f.toSlice(_cdb, v) else .{ 0, 0, 0, 0 };
-                    break :str_blk try std.fmt.allocPrint(args.allocator, "vec4({d},{d},{d},{d})", .{ v[0], v[1], v[2], v[3] });
+                    const v: math.Vec4f = if (value) |v| cdb_types.Vec4fCdb.f.to(_cdb, v) else .{};
+                    break :str_blk try std.fmt.allocPrint(args.allocator, "vec4({d},{d},{d},{d})", .{ v.x, v.y, v.z, v.w });
                 },
                 .color => {
-                    const v = if (value) |v| cdb_types.Color4f.f.toSlice(_cdb, v) else .{ 0, 0, 0, 1 };
-                    break :str_blk try std.fmt.allocPrint(args.allocator, "vec4({d},{d},{d},{d})", .{ v[0], v[1], v[2], v[3] });
+                    const v: math.Color4f = if (value) |v| cdb_types.Color4fCdb.f.to(_cdb, v) else .one_alpha;
+                    break :str_blk try std.fmt.allocPrint(args.allocator, "vec4({d},{d},{d},{d})", .{ v.r, v.g, v.b, v.a });
                 },
             };
 
@@ -3246,7 +3247,7 @@ const gpu_uniform_node_i = graphvm.NodeI.implement(
         .name = "Uniform",
         .type_name = "gpu_uniform",
         .category = "Shader",
-        .settings_type = public.UniformNodeSettings.type_hash,
+        .settings_type = public.UniformNodeSettingsCdb.type_hash,
         .transpile_border = true,
     },
     UniformNodeState,
@@ -3257,19 +3258,19 @@ const gpu_uniform_node_i = graphvm.NodeI.implement(
             _ = self; // autofix
             _ = graph_obj; // autofix
 
-            const node_obj_r = graphvm.NodeType.read(_cdb, node_obj).?;
+            const node_obj_r = graphvm.NodeTypeCdb.read(_cdb, node_obj).?;
             var in_type: cetech1.StrId32 = .{};
             var output_type: cetech1.StrId32 = .{};
 
-            if (graphvm.NodeType.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
-                const settings_r = public.UniformNodeSettings.read(_cdb, settings).?;
+            if (graphvm.NodeTypeCdb.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
+                const settings_r = public.UniformNodeSettingsCdb.read(_cdb, settings).?;
 
-                const type_str = public.UniformNodeSettings.readStr(_cdb, settings_r, .result_type) orelse "vec4";
+                const type_str = public.UniformNodeSettingsCdb.readStr(_cdb, settings_r, .result_type) orelse "vec4";
                 const type_enum = std.meta.stringToEnum(public.UniformNodeResultType, type_str).?;
 
                 in_type = switch (type_enum) {
                     .vec4 => graphvm.PinTypes.VEC4F,
-                    .color => graphvm.PinTypes.COLOR4F,
+                    .color => graphvm.PinTypes.Color4f,
                 };
 
                 output_type = switch (type_enum) {
@@ -3292,12 +3293,12 @@ const gpu_uniform_node_i = graphvm.NodeI.implement(
             _ = self; // autofix
             _ = graph_obj; // autofix
 
-            const node_obj_r = graphvm.NodeType.read(_cdb, node_obj).?;
+            const node_obj_r = graphvm.NodeTypeCdb.read(_cdb, node_obj).?;
             var output_type: cetech1.StrId32 = .{};
-            if (graphvm.NodeType.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
-                const settings_r = public.UniformNodeSettings.read(_cdb, settings).?;
+            if (graphvm.NodeTypeCdb.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
+                const settings_r = public.UniformNodeSettingsCdb.read(_cdb, settings).?;
 
-                const type_str = public.UniformNodeSettings.readStr(_cdb, settings_r, .result_type) orelse "vec4";
+                const type_str = public.UniformNodeSettingsCdb.readStr(_cdb, settings_r, .result_type) orelse "vec4";
                 const type_enum = std.meta.stringToEnum(public.UniformNodeResultType, type_str).?;
 
                 output_type = switch (type_enum) {
@@ -3317,7 +3318,7 @@ const gpu_uniform_node_i = graphvm.NodeI.implement(
             node_obj: cdb.ObjId,
         ) ![:0]const u8 {
             _ = self; // autofix
-            const node_obj_r = graphvm.NodeType.read(_cdb, node_obj).?;
+            const node_obj_r = graphvm.NodeTypeCdb.read(_cdb, node_obj).?;
             _ = node_obj_r; // autofix
             const header_label = "Uniform";
 
@@ -3341,12 +3342,12 @@ const gpu_uniform_node_i = graphvm.NodeI.implement(
             _ = stage; // autofix
             const real_state = public.GpuTranspileState.fromBytes(state);
 
-            const settings_r = public.UniformNodeSettings.read(_cdb, args.settings.?).?;
+            const settings_r = public.UniformNodeSettingsCdb.read(_cdb, args.settings.?).?;
 
-            const name = public.UniformNodeSettings.readStr(_cdb, settings_r, .name) orelse "INVALLID";
+            const name = public.UniformNodeSettingsCdb.readStr(_cdb, settings_r, .name) orelse "INVALLID";
             const str = try std.fmt.allocPrint(args.allocator, "{s}", .{name});
 
-            const type_str = public.UniformNodeSettings.readStr(_cdb, settings_r, .result_type) orelse "vec4";
+            const type_str = public.UniformNodeSettingsCdb.readStr(_cdb, settings_r, .result_type) orelse "vec4";
 
             const type_enum = if (std.mem.eql(u8, type_str, "color")) .vec4 else std.meta.stringToEnum(public.DefMainImportVariableType, type_str).?;
 
@@ -3374,9 +3375,9 @@ const gpu_uniform_node_i = graphvm.NodeI.implement(
             _ = out_pins; // autofix
             const cs_state: *public.GpuShaderValue = @ptrCast(@alignCast(args.transpiler_node_state.?));
 
-            const settings_r = public.UniformNodeSettings.read(_cdb, args.settings.?).?;
+            const settings_r = public.UniformNodeSettingsCdb.read(_cdb, args.settings.?).?;
 
-            const name = public.UniformNodeSettings.readStr(_cdb, settings_r, .name) orelse "INVALLID";
+            const name = public.UniformNodeSettingsCdb.readStr(_cdb, settings_r, .name) orelse "INVALLID";
 
             const real_state = args.getState(UniformNodeState).?;
 
@@ -3409,22 +3410,22 @@ const construct_node_result_type_aspec = editor_inspector.UiPropertyAspect.imple
     ) !void {
         _ = allocator; // autofix
         _ = args; // autofix
-        const r = public.ConstructNodeSettings.read(_cdb, obj).?;
-        const type_str = public.ConstructNodeSettings.readStr(_cdb, r, .result_type) orelse "vec4";
+        const r = public.ConstructNodeSettingsCdb.read(_cdb, obj).?;
+        const type_str = public.ConstructNodeSettingsCdb.readStr(_cdb, r, .result_type) orelse "vec4";
         var type_enum = std.meta.stringToEnum(public.ConstructNodeResultType, type_str).?;
 
         try _inspector.uiPropInputBegin(obj, prop_idx, true);
         defer _inspector.uiPropInputEnd();
 
         if (_coreui.comboFromEnum("", &type_enum)) {
-            const w = public.ConstructNodeSettings.write(_cdb, obj).?;
+            const w = public.ConstructNodeSettingsCdb.write(_cdb, obj).?;
             const str = switch (type_enum) {
                 .vec2 => "vec2",
                 .vec3 => "vec3",
                 .vec4 => "vec4",
             };
-            try public.ConstructNodeSettings.setStr(_cdb, w, .result_type, str);
-            try public.ConstructNodeSettings.commit(_cdb, w);
+            try public.ConstructNodeSettingsCdb.setStr(_cdb, w, .result_type, str);
+            try public.ConstructNodeSettingsCdb.commit(_cdb, w);
         }
     }
 });
@@ -3438,31 +3439,31 @@ const const_node_result_type_aspec = editor_inspector.UiPropertyAspect.implement
     ) !void {
         _ = allocator; // autofix
         _ = args; // autofix
-        const r = public.ConstNodeSettings.read(_cdb, obj).?;
-        const type_str = public.ConstNodeSettings.readStr(_cdb, r, .result_type) orelse "vec4";
+        const r = public.ConstNodeSettingsCdb.read(_cdb, obj).?;
+        const type_str = public.ConstNodeSettingsCdb.readStr(_cdb, r, .result_type) orelse "vec4";
         var type_enum = std.meta.stringToEnum(public.ConstNodeResultType, type_str).?;
 
         try _inspector.uiPropInputBegin(obj, prop_idx, true);
         defer _inspector.uiPropInputEnd();
 
         if (_coreui.comboFromEnum("", &type_enum)) {
-            const w = public.ConstNodeSettings.write(_cdb, obj).?;
+            const w = public.ConstNodeSettingsCdb.write(_cdb, obj).?;
 
             const db = _cdb.getDbFromObj(w);
             const value_obj = switch (type_enum) {
-                .float => try cdb_types.f32Type.createObject(_cdb, db),
-                .vec2 => try cdb_types.Vec2f.createObject(_cdb, db),
-                .vec3 => try cdb_types.Vec3f.createObject(_cdb, db),
-                .vec4 => try cdb_types.Vec4f.createObject(_cdb, db),
-                .color => try cdb_types.Color4f.createObject(_cdb, db),
+                .float => try cdb_types.f32TypeCdb.createObject(_cdb, db),
+                .vec2 => try cdb_types.Vec2fCdb.createObject(_cdb, db),
+                .vec3 => try cdb_types.Vec3fCdb.createObject(_cdb, db),
+                .vec4 => try cdb_types.Vec4fCdb.createObject(_cdb, db),
+                .color => try cdb_types.Color4fCdb.createObject(_cdb, db),
             };
 
             const value_w = _cdb.writeObj(value_obj).?;
-            try public.ConstNodeSettings.setSubObj(_cdb, w, .value, value_w);
+            try public.ConstNodeSettingsCdb.setSubObj(_cdb, w, .value, value_w);
             try _cdb.writeCommit(value_w);
 
-            try public.ConstNodeSettings.setStr(_cdb, w, .result_type, @tagName(type_enum));
-            try public.ConstNodeSettings.commit(_cdb, w);
+            try public.ConstNodeSettingsCdb.setStr(_cdb, w, .result_type, @tagName(type_enum));
+            try public.ConstNodeSettingsCdb.commit(_cdb, w);
         }
     }
 });
@@ -3476,18 +3477,18 @@ const uniform_node_result_type_aspec = editor_inspector.UiPropertyAspect.impleme
     ) !void {
         _ = allocator; // autofix
         _ = args; // autofix
-        const r = public.UniformNodeSettings.read(_cdb, obj).?;
-        const type_str = public.UniformNodeSettings.readStr(_cdb, r, .result_type) orelse "vec4";
+        const r = public.UniformNodeSettingsCdb.read(_cdb, obj).?;
+        const type_str = public.UniformNodeSettingsCdb.readStr(_cdb, r, .result_type) orelse "vec4";
         var type_enum = std.meta.stringToEnum(public.UniformNodeResultType, type_str).?;
 
         try _inspector.uiPropInputBegin(obj, prop_idx, true);
         defer _inspector.uiPropInputEnd();
 
         if (_coreui.comboFromEnum("", &type_enum)) {
-            const w = public.UniformNodeSettings.write(_cdb, obj).?;
+            const w = public.UniformNodeSettingsCdb.write(_cdb, obj).?;
             const str = @tagName(type_enum);
-            try public.UniformNodeSettings.setStr(_cdb, w, .result_type, str);
-            try public.UniformNodeSettings.commit(_cdb, w);
+            try public.UniformNodeSettingsCdb.setStr(_cdb, w, .result_type, str);
+            try public.UniformNodeSettingsCdb.commit(_cdb, w);
         }
     }
 });
@@ -3515,9 +3516,9 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.f32Type.name,
+                public.Gpuf32Cdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.f32Type.propIdx(.value), .name = "value", .type = .F32 },
+                    .{ .prop_idx = public.Gpuf32Cdb.propIdx(.value), .name = "value", .type = .F32 },
                 },
             );
         }
@@ -3526,10 +3527,10 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.Vec2f.name,
+                public.GpuVec2fCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.Vec2f.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Vec2f.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.GpuVec2fCdb.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.GpuVec2fCdb.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
                 },
             );
         }
@@ -3538,11 +3539,11 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.Vec3f.name,
+                public.GpuVec3fCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.Vec3f.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Vec3f.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Vec3f.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.GpuVec3fCdb.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.GpuVec3fCdb.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.GpuVec3fCdb.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
                 },
             );
         }
@@ -3551,12 +3552,12 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.Vec4f.name,
+                public.GpuVec4fCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.Vec4f.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Vec4f.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Vec4f.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Vec4f.propIdx(.W), .name = "w", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.GpuVec4fCdb.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.GpuVec4fCdb.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.GpuVec4fCdb.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.GpuVec4fCdb.propIdx(.W), .name = "w", .type = cdb.PropType.F32 },
                 },
             );
         }
@@ -3565,10 +3566,10 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             const type_idx = try _cdb.addType(
                 db,
-                public.ConstructNodeSettings.name,
+                public.ConstructNodeSettingsCdb.name,
                 &[_]cdb.PropDef{
                     .{
-                        .prop_idx = public.ConstructNodeSettings.propIdx(.result_type),
+                        .prop_idx = public.ConstructNodeSettingsCdb.propIdx(.result_type),
                         .name = "result_type",
                         .type = cdb.PropType.STR,
                     },
@@ -3576,7 +3577,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
             );
             _ = type_idx; // autofix
 
-            try public.ConstructNodeSettings.addPropertyAspect(
+            try public.ConstructNodeSettingsCdb.addPropertyAspect(
                 editor_inspector.UiPropertyAspect,
                 _cdb,
                 db,
@@ -3589,15 +3590,15 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             const type_idx = try _cdb.addType(
                 db,
-                public.ConstNodeSettings.name,
+                public.ConstNodeSettingsCdb.name,
                 &[_]cdb.PropDef{
                     .{
-                        .prop_idx = public.ConstNodeSettings.propIdx(.result_type),
+                        .prop_idx = public.ConstNodeSettingsCdb.propIdx(.result_type),
                         .name = "result_type",
                         .type = .STR,
                     },
                     .{
-                        .prop_idx = public.ConstNodeSettings.propIdx(.value),
+                        .prop_idx = public.ConstNodeSettingsCdb.propIdx(.value),
                         .name = "value",
                         .type = .SUBOBJECT,
                     },
@@ -3605,7 +3606,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
             );
             _ = type_idx; // autofix
 
-            try public.ConstNodeSettings.addPropertyAspect(
+            try public.ConstNodeSettingsCdb.addPropertyAspect(
                 editor_inspector.UiPropertyAspect,
                 _cdb,
                 db,
@@ -3618,15 +3619,15 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             const type_idx = try _cdb.addType(
                 db,
-                public.UniformNodeSettings.name,
+                public.UniformNodeSettingsCdb.name,
                 &[_]cdb.PropDef{
                     .{
-                        .prop_idx = public.UniformNodeSettings.propIdx(.name),
+                        .prop_idx = public.UniformNodeSettingsCdb.propIdx(.name),
                         .name = "name",
                         .type = cdb.PropType.STR,
                     },
                     .{
-                        .prop_idx = public.UniformNodeSettings.propIdx(.result_type),
+                        .prop_idx = public.UniformNodeSettingsCdb.propIdx(.result_type),
                         .name = "result_type",
                         .type = cdb.PropType.STR,
                     },
@@ -3634,7 +3635,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
             );
             _ = type_idx; // autofix
 
-            try public.UniformNodeSettings.addPropertyAspect(
+            try public.UniformNodeSettingsCdb.addPropertyAspect(
                 editor_inspector.UiPropertyAspect,
                 _cdb,
                 db,

@@ -50,7 +50,7 @@ fn findScriptById(allocator: std.mem.Allocator, id: cetech1.StrId32) ?*const pub
     return null;
 }
 
-const init_logic_system_i = ecs.SystemI.implement(
+const init_native_logic_system_i = ecs.SystemI.implement(
     .{
         .name = "native_script_component.init",
         .multi_threaded = true,
@@ -61,18 +61,18 @@ const init_logic_system_i = ecs.SystemI.implement(
         },
     },
     struct {
-        pub fn update(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
+        pub fn iterate(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
             _ = dt;
 
             const alloc = try _tmpalloc.create();
             defer _tmpalloc.destroy(alloc);
 
             const ents = it.entities();
-            const logic_component = it.field(public.NativeLogicComponent, 1).?;
-            for (ents, logic_component) |ent, component| {
+            const logic_components = it.field(public.NativeLogicComponent, 1).?;
+            for (ents, logic_components) |ent, component| {
                 if (component.native_script) |native_script| {
                     if (findScriptById(alloc, native_script)) |iface| {
-                        _ = world.setId(public.NativeLogicComponentInstance, ent, &public.NativeLogicComponentInstance{
+                        _ = world.setComponent(public.NativeLogicComponentInstance, ent, &public.NativeLogicComponentInstance{
                             .iface = iface,
                             .inst = try iface.init(_allocator),
                         });
@@ -83,7 +83,7 @@ const init_logic_system_i = ecs.SystemI.implement(
     },
 );
 
-const tick_logic_system_i = ecs.SystemI.implement(
+const tick_native_logic_system_i = ecs.SystemI.implement(
     .{
         .name = "native_script_component.tick",
         .multi_threaded = true,
@@ -95,12 +95,12 @@ const tick_logic_system_i = ecs.SystemI.implement(
         },
     },
     struct {
-        pub fn update(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
+        pub fn iterate(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
             _ = world;
             _ = dt;
 
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
+            // const alloc = try _tmpalloc.create();
+            // defer _tmpalloc.destroy(alloc);
 
             const ents = it.entities();
             const components = it.field(public.NativeLogicComponentInstance, 0).?;
@@ -166,18 +166,16 @@ const logic_instance_c = ecs.ComponentI.implement(
             }
         }
 
-        pub fn onRemove(iter: *ecs.IterO) !void {
-            var it = _ecs.toIter(iter);
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
-            const components = it.field(public.NativeLogicComponentInstance, 0).?;
+        pub fn onRemove(manager: ?*anyopaque, iter: *ecs.Iter) !void {
+            _ = manager;
+
+            // const alloc = try _tmpalloc.create();
+            // defer _tmpalloc.destroy(alloc);
+            const components = iter.field(public.NativeLogicComponentInstance, 0).?;
 
             for (components) |component| {
                 try component.iface.shutdown(_allocator, component.inst);
             }
-
-            // TODO: real multi call
-            //try _graphvm.executeNode(alloc, toContanerSlice(components), graphvm.EVENT_SHUTDOWN_NODE_TYPE, .{ .use_tasks = false });
         }
     },
 );
@@ -278,8 +276,8 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     try apidb.implOrRemove(module_name, ecs.ComponentI, &logic_c, load);
     try apidb.implOrRemove(module_name, ecs.ComponentI, &logic_instance_c, load);
-    try apidb.implOrRemove(module_name, ecs.SystemI, &init_logic_system_i, load);
-    try apidb.implOrRemove(module_name, ecs.SystemI, &tick_logic_system_i, load);
+    try apidb.implOrRemove(module_name, ecs.SystemI, &init_native_logic_system_i, load);
+    try apidb.implOrRemove(module_name, ecs.SystemI, &tick_native_logic_system_i, load);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});

@@ -7,7 +7,6 @@ const coreui = cetech1.coreui;
 const tempalloc = cetech1.tempalloc;
 const gpu = cetech1.gpu;
 
-const zm = cetech1.math.zmath;
 const ecs = cetech1.ecs;
 const assetdb = cetech1.assetdb;
 const uuid = cetech1.uuid;
@@ -102,9 +101,9 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         const camera_ent = w.newEntity(null);
 
-        _ = w.setId(transform.Transform, camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -12 } });
-        _ = w.setId(camera.Camera, camera_ent, &camera.Camera{});
-        _ = w.setId(camera_controller.CameraController, camera_ent, &camera_controller.CameraController{});
+        _ = w.setComponent(transform.LocalTransformComponent, camera_ent, &transform.LocalTransformComponent{ .local = .{ .position = .{ .y = 2, .z = -12 } } });
+        _ = w.setComponent(camera.Camera, camera_ent, &camera.Camera{});
+        _ = w.setComponent(camera_controller.CameraController, camera_ent, &camera_controller.CameraController{});
 
         const gpu_backend = _kernel.getGpuBackend().?;
         const pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w);
@@ -148,8 +147,8 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             _coreui.image(
                 texture,
                 .{
-                    .w = size[0],
-                    .h = size[1],
+                    .w = size.x,
+                    .h = size.y,
                 },
             );
             const hovered = _coreui.isItemHovered(.{});
@@ -171,7 +170,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         if (_coreui.beginMenu(allocator, cetech1.coreui.Icons.Debug, true, null)) {
             defer _coreui.endMenu();
             tab_o.flecs_port = tab_o.world.uiRemoteDebugMenuItems(allocator, tab_o.flecs_port);
-            _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
+            try _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
         }
     }
 });

@@ -98,7 +98,7 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 .inst = @ptrCast(tab_inst),
             },
 
-            .tags = try assetdb.Tags.createObject(_cdb, _assetdb.getDb()),
+            .tags = try assetdb.TagsCdb.createObject(_cdb, _assetdb.getDb()),
             .selection_obj = coreui.Selection.init(_allocator),
         };
         return &tab_inst.tab_i;
@@ -202,7 +202,7 @@ var asset_browser_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         var real_obj = selected_obj.obj;
         if (_cdb.readObj(selected_obj.obj)) |r| {
             if (selected_obj.obj.type_idx.eql(AssetTypeIdx)) {
-                real_obj = assetdb.Asset.readSubObj(_cdb, r, .Object).?;
+                real_obj = assetdb.AssetCdb.readSubObj(_cdb, r, .Object).?;
 
                 var buff: [1024]u8 = undefined;
                 const path = _assetdb.getFilePathForAsset(&buff, selected_obj.obj) catch undefined;
@@ -244,7 +244,7 @@ fn filterType(allocator: std.mem.Allocator, tab: *editor.TabO, db: cdb.DbId) !vo
         const impls = try _apidb.getImpl(allocator, editor.CreateAssetI);
         defer allocator.free(impls);
 
-        const folder_type_idx = assetdb.Folder.typeIdx(_cdb, db);
+        const folder_type_idx = assetdb.FolderCdb.typeIdx(_cdb, db);
 
         for (impls) |iface| {
             const menu_name = try iface.menu_item();
@@ -292,7 +292,7 @@ fn uiAssetBrowser(
     const new_filter = _coreui.uiFilter(filter_buff, filter);
     try filterType(allocator, tab, root_folder.db);
     _coreui.sameLine(.{});
-    const tag_filter_used = try _tags.tagsInput(allocator, tags_filter, assetdb.Tags.propIdx(.Tags), false, null);
+    const tag_filter_used = try _tags.tagsInput(allocator, tags_filter, assetdb.TagsCdb.propIdx(.Tags), false, null);
 
     var buff: [128]u8 = undefined;
     const final_label = try std.fmt.bufPrintZ(
@@ -464,7 +464,7 @@ var AssetTypeIdx: cdb.TypeIdx = undefined;
 
 const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
     pub fn postCreateTypes(db: cdb.DbId) !void {
-        AssetTypeIdx = assetdb.Asset.typeIdx(_cdb, db);
+        AssetTypeIdx = assetdb.AssetCdb.typeIdx(_cdb, db);
     }
 });
 

@@ -38,6 +38,8 @@ const Id2StrId = cetech1.AutoArrayHashMap(public.Id, cetech1.StrId32);
 const ChangedObjsSet = cetech1.ArraySet(cdb.ObjId);
 const ComponentVersionMap = cetech1.AutoArrayHashMap(cdb.TypeIdx, cdb.TypeVersion);
 
+const ObserverMaps = cetech1.AutoArrayHashMap(cetech1.StrId32, public.EntityId);
+
 const World = struct {
     allocator: std.mem.Allocator,
 
@@ -48,6 +50,7 @@ const World = struct {
 
     id_map: IdMap = .{},
     simulated_systems: SimulatedSystemsList = .{},
+    observer_map: ObserverMaps = .{},
 
     IsFromCdb: zflecs.entity_t = undefined,
 
@@ -63,6 +66,8 @@ const World = struct {
             .IsFromCdb = zflecs.new_entity(w, "IsFromCdb"),
             .allocator = allocator,
         };
+
+        zflecs.add_id(w, self.IsFromCdb, EcsDontFragment);
 
         try self.id_map.map(self.allocator, public.Wildcard, EcsWildcard);
         try self.id_map.map(self.allocator, public.Any, EcsAny);
@@ -116,8 +121,17 @@ const World = struct {
     }
 
     pub fn deinit(self: *World) void {
+        for (_component_by_id.values()) |iface| {
+            if (iface.destroyManager) |destroyManager| {
+                const info = zflecs.get_type_info(self.w, self.id_map.find(iface.id).?);
+                destroyManager(self.toPublic(), info.hooks.ctx.?);
+            }
+        }
+
         _ = ecs_fini(self.w);
+
         self.simulated_systems.deinit(self.allocator);
+        self.observer_map.deinit(self.allocator);
         self.id_map.deinit(self.allocator);
         self.obj2parent_obj.deinit(self.allocator);
         self.obj2prefab.deinit(self.allocator);
@@ -163,6 +177,37 @@ const World = struct {
         return zflecs.get_id(self.w, entity, self.id_map.find(id).?);
     }
 
+    pub fn setSingletonComponent(self: *World, id: cetech1.StrId32, size: usize, ptr: ?*const anyopaque) void {
+        _ = zflecs.set_id(self.w, self.id_map.find(id).?, self.id_map.find(id).?, size, ptr);
+    }
+
+    pub fn getSingletonComponent(self: *World, id: cetech1.StrId32) ?*const anyopaque {
+        return zflecs.get_id(self.w, self.id_map.find(id).?, self.id_map.find(id).?);
+    }
+
+    pub fn getComponentManager(self: *World, id: cetech1.StrId32) ?*anyopaque {
+        const ti = zflecs.get_type_info(self.w, self.id_map.find(id).?);
+        return ti.hooks.ctx;
+    }
+
+    pub fn removeComponent(self: *World, entity: public.EntityId, id: cetech1.StrId32) void {
+        return zflecs.remove_id(self.w, entity, self.id_map.find(id).?);
+    }
+
+    pub fn modified(self: *World, entity: public.EntityId, id: cetech1.StrId32) void {
+        zflecs.modified_id(self.w, entity, self.id_map.find(id).?);
+    }
+
+    pub fn parent(self: *World, entity: public.EntityId) ?public.EntityId {
+        const p = zflecs.get_parent(self.w, entity);
+        return if (p == 0) return null else p;
+    }
+
+    pub fn children(self: *World, entity: public.EntityId) public.Iter {
+        var it = zflecs.children(self.w, entity);
+        return toIter(@ptrCast(&it));
+    }
+
     pub fn progress(self: *World, dt: f32) bool {
         var zone_ctx = profiler_private.ztracy.ZoneN(@src(), "ECS: World progress");
         defer zone_ctx.End();
@@ -187,10 +232,15 @@ const World = struct {
         return ret;
     }
 
-    pub fn createQuery(self: *World, query: []const public.QueryTerm) !public.Query {
+    pub fn createQuery(self: *World, query: public.QueryDesc) !public.Query {
         var qd = zflecs.query_desc_t{};
 
-        for (query, 0..) |term, idx| {
+        if (query.orderByComponent) |c| {
+            qd.order_by = self.id_map.find(c).?;
+            qd.order_by_callback = query.orderByCallback;
+        }
+
+        for (query.query, 0..) |term, idx| {
             qd.terms[idx] = .{
                 .id = self.id_map.find(term.id) orelse continue,
                 .inout = @enumFromInt(@intFromEnum(term.inout)),
@@ -202,7 +252,6 @@ const World = struct {
         return .{
             .ptr = q,
             .vtable = &query_vt,
-            .world = self.toPublic(),
         };
     }
 
@@ -251,6 +300,10 @@ const World = struct {
             zflecs.enable(self.w, value, simulate);
         }
         self.simulate = simulate;
+    }
+
+    pub fn enableObserver(self: *World, id: cetech1.StrId32, enable: bool) void {
+        zflecs.enable(self.w, self.observer_map.get(id).?, enable);
     }
 
     pub fn doStep(self: *World) void {
@@ -455,9 +508,9 @@ var _component_version: ComponentVersionMap = undefined;
 var _entity_version: cdb.TypeVersion = 0;
 
 // TODO: SHIT!!!!!!
-var sync_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
+var sync_changes_from_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
     cetech1.kernel.OnLoad,
-    "ECS: sync cdb",
+    "ECS: sync changes from cdb",
     &[_]cetech1.StrId64{},
     null,
     struct {
@@ -475,6 +528,10 @@ var sync_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
             defer deleted_ent_obj.deinit(alloc);
 
             const db = assetdb_private.getDb();
+
+            //
+            // Ents
+            //
 
             // TODO: clean maps on delete components and entities
             {
@@ -544,8 +601,10 @@ var sync_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
                 _entity_version = changed.last_version;
             }
 
+            //
             // Components
-            const impls = apidb.api.getImpl(_allocator, public.ComponentI) catch undefined;
+            //
+            const impls = try apidb.api.getImpl(_allocator, public.ComponentI);
             defer _allocator.free(impls);
             for (impls) |iface| {
                 if (iface.cdb_type_hash.isEmpty()) continue;
@@ -602,7 +661,7 @@ var sync_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
                                 }
 
                                 // Propagate to prefab
-                                _ = w.setIdRaw(prefab_ent, iface.id, iface.size, component_data.ptr);
+                                _ = w.setComponentRaw(prefab_ent, iface.id, iface.size, component_data.ptr);
 
                                 // Propagate to prefab instances
                                 var qd = zflecs.query_desc_t{};
@@ -613,7 +672,8 @@ var sync_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
                                 while (zflecs.iter_next(&it)) {
                                     const ents = it.entities();
                                     for (ents) |ent| {
-                                        _ = w.setIdRaw(ent, iface.id, iface.size, component_data.ptr);
+                                        _ = w.setComponentRaw(ent, iface.id, iface.size, component_data.ptr);
+                                        w.modifiedRaw(ent, iface.id);
                                     }
                                 }
                             } else {
@@ -712,7 +772,12 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(
                     &[_]cdb.PropDef{
                         .{ .prop_idx = public.EntityCdb.propIdx(.name), .name = "name", .type = cdb.PropType.STR },
                         .{ .prop_idx = public.EntityCdb.propIdx(.components), .name = "components", .type = cdb.PropType.SUBOBJECT_SET },
-                        .{ .prop_idx = public.EntityCdb.propIdx(.childrens), .name = "childrens", .type = cdb.PropType.SUBOBJECT_SET, .type_hash = public.EntityCdb.type_hash },
+                        .{
+                            .prop_idx = public.EntityCdb.propIdx(.childrens),
+                            .name = "childrens",
+                            .type = cdb.PropType.SUBOBJECT_SET,
+                            .type_hash = public.EntityCdb.type_hash,
+                        },
                     },
                 );
             }
@@ -723,11 +788,8 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(
 pub fn registerToApi() !void {
     try apidb.api.setZigApi(module_name, public.EcsAPI, &api);
 
-    // try apidb.api.implOrRemove(module_name, graphvm.GraphValueTypeI, &entity_value_type_i, true);
-    // try apidb.api.implOrRemove(module_name, graphvm.NodeI, &get_entity_node_i, true);
-
     try apidb.api.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, true);
-    try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &sync_cdb_task, true);
+    try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &sync_changes_from_cdb_task, true);
     try apidb.api.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &update_task, true);
 }
 
@@ -735,7 +797,6 @@ pub var api = cetech1.ecs.EcsAPI{
     .createWorld = createWorld,
     .destroyWorld = destroyWorld,
     .toWorld = @ptrCast(&toWorld),
-    .toIter = toIter,
     .findCategoryById = findCategoryById,
     .findComponentIByCdbHash = findComponentIByCdbHash,
     .findComponentIById = findComponentIById,
@@ -744,6 +805,7 @@ pub var api = cetech1.ecs.EcsAPI{
 
 const CategoryByIdMap = cetech1.AutoArrayHashMap(cetech1.StrId32, *const public.ComponentCategoryI);
 const ComponentByIdMap = cetech1.AutoArrayHashMap(cetech1.StrId32, *const public.ComponentI);
+
 var _category_by_id: CategoryByIdMap = undefined;
 var _component_by_id: ComponentByIdMap = undefined;
 var _component_by_cdb_hash: ComponentByIdMap = undefined;
@@ -794,7 +856,7 @@ fn getOrCreatePrefab(allocator: std.mem.Allocator, world: public.World, db: cdb.
                 try fromCdb(allocator, component_obj, component_data);
             }
 
-            _ = world.setIdRaw(prefab_ent, iface.id, iface.size, component_data.ptr);
+            _ = world.setComponentRaw(prefab_ent, iface.id, iface.size, component_data.ptr);
         }
     }
 
@@ -825,11 +887,25 @@ const world_vt = public.World.VTable{
     .newEntity = @ptrCast(&World.newEntity),
     .newEntities = @ptrCast(&World.newEntities),
     .destroyEntities = @ptrCast(&World.destroyEntities),
+
     .setComponent = @ptrCast(&World.setComponent),
     .getMutComponent = @ptrCast(&World.getMutComponent),
     .getComponent = @ptrCast(&World.getComponent),
+
+    .removeComponent = @ptrCast(&World.removeComponent),
+    .setSingletonComponent = @ptrCast(&World.setSingletonComponent),
+    .getSingletonComponent = @ptrCast(&World.getSingletonComponent),
+
+    .getComponentManager = @ptrCast(&World.getComponentManager),
+    .modified = @ptrCast(&World.modified),
+
+    .parent = @ptrCast(&World.parent),
+    .children = @ptrCast(&World.children),
+
     .progress = @ptrCast(&World.progress),
+
     .createQuery = @ptrCast(&World.createQuery),
+
     .deferBegin = @ptrCast(&World.deferBegin),
     .deferEnd = @ptrCast(&World.deferEnd),
     .deferSuspend = @ptrCast(&World.deferSuspend),
@@ -837,6 +913,7 @@ const world_vt = public.World.VTable{
     .isRemoteDebugActive = @ptrCast(&World.isRemoteDebugActive),
     .setRemoteDebugActive = @ptrCast(&World.setRemoteDebugActive),
     .setSimulate = @ptrCast(&World.setSimulate),
+    .enableObserver = @ptrCast(&World.enableObserver),
     .isSimulate = @ptrCast(&World.isSimulate),
     .doStep = @ptrCast(&World.doStep),
     .clear = @ptrCast(&World.clear),
@@ -891,6 +968,11 @@ const iter_vt = public.Iter.VTable.implement(struct {
         return zflecs.iter_next(it);
     }
 
+    pub fn nextChildren(self: *anyopaque) bool {
+        const it: *zflecs.iter_t = @ptrCast(@alignCast(self));
+        return zflecs.children_next(it);
+    }
+
     pub fn changed(self: *anyopaque) bool {
         const it: *zflecs.iter_t = @ptrCast(@alignCast(self));
         return zflecs.query_changed(@constCast(it.query));
@@ -921,10 +1003,9 @@ const query_vt = public.Query.VTable.implement(struct {
         zflecs.query_fini(@ptrCast(@alignCast(self)));
     }
 
-    pub fn iter(self: *anyopaque, world: public.World) !public.Iter {
+    pub fn iter(self: *anyopaque) !public.Iter {
         const q: *zflecs.query_t = @ptrCast(@alignCast(self));
-        const w = getWorldPtr(world);
-        const it = zflecs.query_iter(w.w, q);
+        const it = zflecs.query_iter(q.world.?, q);
 
         return .{ .data = std.mem.toBytes(it), .vtable = &iter_vt };
     }
@@ -1072,42 +1153,93 @@ pub fn createWorld() !public.World {
         const impls = apidb.api.getImpl(_allocator, public.ComponentI) catch undefined;
         defer _allocator.free(impls);
         for (impls) |iface| {
-            if (iface.size != 0) {
-                const component_id = zflecs.component_init(world, &.{
-                    .entity = zflecs.entity_init(world, &.{
-                        .use_low_id = true,
-                        .name = iface.name,
-                        .symbol = iface.name,
-                    }),
-                    .type = .{
-                        .name = iface.name,
-                        .alignment = @intCast(iface.aligment),
-                        .size = @intCast(iface.size),
-                        .hooks = .{
-                            .on_add = if (iface.onAdd) |onAdd| @ptrCast(onAdd) else null,
-                            .on_set = if (iface.onSet) |onSet| @ptrCast(onSet) else null,
-                            .on_remove = if (iface.onRemove) |onRemove| @ptrCast(onRemove) else null,
-                            .ctor = if (iface.onCreate) |onCreate| @ptrCast(onCreate) else null,
-                            .dtor = if (iface.onDestroy) |onDestroy| @ptrCast(onDestroy) else null,
-                            .copy = if (iface.onCopy) |onCopy| @ptrCast(onCopy) else null,
-                            .move = if (iface.onMove) |onMove| @ptrCast(onMove) else null,
-                        },
-                    },
-                });
-                try w.id_map.map(w.allocator, iface.id, component_id);
-            } else {
-                const component_id = zflecs.entity_init(world, &.{
+            if (iface.size == 0) {
+                log.err("Component must have size", .{});
+                continue;
+            }
+
+            const component_id = zflecs.component_init(world, &.{
+                .entity = zflecs.entity_init(world, &.{
                     .use_low_id = true,
                     .name = iface.name,
-                });
-                try w.id_map.map(w.allocator, iface.id, component_id);
-            }
+                    .symbol = iface.name,
+                }),
+                .type = .{
+                    .name = iface.name,
+                    .alignment = @intCast(iface.aligment),
+                    .size = @intCast(iface.size),
+                    .hooks = .{
+                        .binding_ctx = @constCast(iface),
+                        .ctx = if (iface.createManager) |createManager| try createManager(wd) else null,
+
+                        .ctor = if (iface.onCreate) |onCreate| @ptrCast(onCreate) else null,
+                        .dtor = if (iface.onDestroy) |onDestroy| @ptrCast(onDestroy) else null,
+                        .copy = if (iface.onCopy) |onCopy| @ptrCast(onCopy) else null,
+                        .move = if (iface.onMove) |onMove| @ptrCast(onMove) else null,
+
+                        .on_add = if (iface.onAdd != null) struct {
+                            pub fn f(iter: *zflecs.iter_t) callconv(.c) void {
+                                const manager: ?*anyopaque = @ptrCast(@alignCast(iter.ctx));
+                                const component_i: ?*public.ComponentI = @ptrCast(@alignCast(iter.callback_ctx));
+
+                                var it = toIter(@ptrCast(iter));
+
+                                component_i.?.onAdd.?(manager, &it) catch undefined;
+                            }
+                        }.f else null,
+
+                        .on_set = if (iface.onSet != null) struct {
+                            pub fn f(iter: *zflecs.iter_t) callconv(.c) void {
+                                const manager: ?*anyopaque = @ptrCast(@alignCast(iter.ctx));
+                                const component_i: ?*public.ComponentI = @ptrCast(@alignCast(iter.callback_ctx));
+
+                                var it = toIter(@ptrCast(iter));
+
+                                component_i.?.onSet.?(manager, &it) catch undefined;
+                            }
+                        }.f else null,
+
+                        .on_remove = if (iface.onRemove != null) struct {
+                            pub fn f(iter: *zflecs.iter_t) callconv(.c) void {
+                                const manager: ?*anyopaque = @ptrCast(@alignCast(iter.ctx));
+                                const component_i: ?*public.ComponentI = @ptrCast(@alignCast(iter.callback_ctx));
+
+                                var it = toIter(@ptrCast(iter));
+
+                                component_i.?.onRemove.?(manager, &it) catch undefined;
+                            }
+                        }.f else null,
+                    },
+                },
+            });
+            try w.id_map.map(w.allocator, iface.id, component_id);
 
             if (iface.with) |with| {
                 for (with) |value| {
-                    zflecs.add_pair(world, w.id_map.find(iface.id).?, EcsWith, w.id_map.find(value).?);
+                    if (w.id_map.find(value)) |second| {
+                        zflecs.add_pair(world, w.id_map.find(iface.id).?, EcsWith, second);
+                    }
                 }
             }
+
+            if (iface.singleton) {
+                zflecs.add_id(world, w.id_map.find(iface.id).?, EcsSingleton);
+            }
+        }
+    }
+
+    {
+        var zz = profiler_private.ztracy.ZoneN(@src(), "ECS: register tags");
+        defer zz.End();
+
+        const impls = apidb.api.getImpl(_allocator, public.TagI) catch undefined;
+        defer _allocator.free(impls);
+        for (impls) |iface| {
+            const component_id = zflecs.entity_init(world, &.{
+                .use_low_id = false,
+                .name = iface.name,
+            });
+            try w.id_map.map(w.allocator, iface.id, component_id);
         }
     }
 
@@ -1120,9 +1252,84 @@ pub fn createWorld() !public.World {
         defer _allocator.free(simpls);
         for (simpls) |iface| {
             var system_desc = zflecs.system_desc_t{
-                .callback = if (iface.update != null) struct {
+                .callback = if (iface.iterate != null) struct {
                     pub fn f(iter: *zflecs.iter_t) callconv(.c) void {
                         const s: *const public.SystemI = @ptrCast(@alignCast(iter.ctx));
+
+                        var zone_ctx = profiler_private.api.Zone(@src());
+                        zone_ctx.Name(s.name);
+                        defer zone_ctx.End();
+
+                        var it = toIter(@ptrCast(iter));
+                        const it_world: *World = @ptrCast(@alignCast(zflecs.get_binding_ctx(iter.world).?));
+                        var ww = it_world.cloneForFakeWorld(iter.world);
+                        const pw = ww.toPublic();
+
+                        s.iterate.?(pw, &it, iter.delta_time) catch undefined;
+                    }
+                }.f else null,
+                .run = if (iface.tick != null) struct {
+                    pub fn f(iter: *zflecs.iter_t) callconv(.c) void {
+                        const s: *const public.SystemI = @ptrCast(@alignCast(iter.ctx));
+
+                        var zone_ctx = profiler_private.api.Zone(@src());
+                        zone_ctx.Name(s.name);
+                        defer zone_ctx.End();
+
+                        var it = toIter(@ptrCast(iter));
+                        const it_world: *World = @ptrCast(@alignCast(zflecs.get_binding_ctx(iter.world).?));
+                        var ww = it_world.cloneForFakeWorld(iter.world);
+
+                        const pw = ww.toPublic();
+
+                        s.tick.?(pw, &it, iter.delta_time) catch undefined;
+                    }
+                }.f else null,
+                .multi_threaded = iface.multi_threaded,
+                .immediate = iface.immediate,
+
+                .ctx = @ptrCast(@constCast(iface)),
+            };
+
+            // TODO:
+            system_desc.query.cache_kind = @enumFromInt(@intFromEnum(iface.cache_kind));
+
+            if (iface.orderByComponent) |c| {
+                system_desc.query.order_by = w.id_map.find(c).?;
+                system_desc.query.order_by_callback = iface.orderByCallback;
+            }
+
+            for (iface.query, 0..) |term, idx| {
+                system_desc.query.terms[idx] = .{
+                    .id = w.id_map.find(term.id) orelse undefined,
+                    .inout = @enumFromInt(@intFromEnum(term.inout)),
+                    .oper = @enumFromInt(@intFromEnum(term.oper)),
+                    .src = std.mem.bytesToValue(zflecs.term_ref_t, std.mem.asBytes(&term.src)),
+                    .first = std.mem.bytesToValue(zflecs.term_ref_t, std.mem.asBytes(&term.first)),
+                    .second = std.mem.bytesToValue(zflecs.term_ref_t, std.mem.asBytes(&term.second)),
+                };
+            }
+
+            _ = zflecs.SYSTEM(world, iface.name, w.id_map.find(iface.phase).?, &system_desc);
+
+            if (iface.simulation) {
+                try w.simulated_systems.append(w.allocator, system_desc.entity);
+            }
+        }
+    }
+
+    // Register Observers
+    {
+        var zz = profiler_private.ztracy.ZoneN(@src(), "ECS: register observers");
+        defer zz.End();
+
+        const simpls = apidb.api.getImpl(_allocator, public.ObserverI) catch undefined;
+        defer _allocator.free(simpls);
+        for (simpls) |iface| {
+            var system_desc = zflecs.observer_desc_t{
+                .callback = if (iface.update != null) struct {
+                    pub fn f(iter: *zflecs.iter_t) callconv(.c) void {
+                        const s: *const public.ObserverI = @ptrCast(@alignCast(iter.ctx));
 
                         var zone_ctx = profiler_private.api.Zone(@src());
                         zone_ctx.Name(s.name);
@@ -1138,7 +1345,7 @@ pub fn createWorld() !public.World {
                 }.f else null,
                 .run = if (iface.iterate != null) struct {
                     pub fn f(iter: *zflecs.iter_t) callconv(.c) void {
-                        const s: *const public.SystemI = @ptrCast(@alignCast(iter.ctx));
+                        const s: *const public.ObserverI = @ptrCast(@alignCast(iter.ctx));
 
                         var zone_ctx = profiler_private.api.Zone(@src());
                         zone_ctx.Name(s.name);
@@ -1153,17 +1360,12 @@ pub fn createWorld() !public.World {
                         s.iterate.?(pw, &it, iter.delta_time) catch undefined;
                     }
                 }.f else null,
-                .multi_threaded = iface.multi_threaded,
-                .immediate = iface.immediate,
                 .ctx = @ptrCast(@constCast(iface)),
             };
 
-            // TODO:
-            system_desc.query.cache_kind = @enumFromInt(@intFromEnum(iface.cache_kind));
-
             for (iface.query, 0..) |term, idx| {
                 system_desc.query.terms[idx] = .{
-                    .id = w.id_map.find(term.id) orelse continue,
+                    .id = w.id_map.find(term.id) orelse undefined,
                     .inout = @enumFromInt(@intFromEnum(term.inout)),
                     .oper = @enumFromInt(@intFromEnum(term.oper)),
                     .src = std.mem.bytesToValue(zflecs.term_ref_t, std.mem.asBytes(&term.src)),
@@ -1172,11 +1374,12 @@ pub fn createWorld() !public.World {
                 };
             }
 
-            _ = zflecs.SYSTEM(world, iface.name, w.id_map.find(iface.phase).?, &system_desc);
-
-            if (iface.simulation) {
-                try w.simulated_systems.append(w.allocator, system_desc.entity);
+            for (iface.events, 0..) |term, idx| {
+                system_desc.events[idx] = w.id_map.find(term) orelse undefined;
             }
+
+            const observer_id = zflecs.OBSERVER(world, iface.name, &system_desc);
+            try w.observer_map.put(w.allocator, .fromStr(iface.name), observer_id);
         }
     }
 

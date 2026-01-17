@@ -38,97 +38,6 @@ var _graphvm: *const graphvm.GraphVMApi = undefined;
 const G = struct {};
 var _g: *G = undefined;
 
-const init_logic_system_i = ecs.SystemI.implement(
-    .{
-        .name = "logic_component.init",
-        .multi_threaded = true,
-        .phase = ecs.OnLoad,
-        .query = &.{
-            .{ .id = ecs.id(public.GraphVMLogicComponentInstance), .inout = .Out, .oper = .Not },
-            .{ .id = ecs.id(public.GraphVMLogicComponent), .inout = .In },
-        },
-    },
-    struct {
-        pub fn update(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
-            _ = dt;
-
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
-
-            //const world = it.getWorld();
-            const ents = it.entities();
-            const logic_component = it.field(public.GraphVMLogicComponent, 1).?;
-
-            const instances = try alloc.alloc(graphvm.GraphInstance, logic_component.len);
-            defer alloc.free(instances);
-
-            // TODO: SHIT
-            if (logic_component[0].graph.isEmpty()) return;
-
-            try _graphvm.createInstances(alloc, logic_component[0].graph, instances);
-
-            try _graphvm.buildInstances(alloc, instances);
-
-            for (0..it.count()) |idx| {
-                _ = world.setId(public.GraphVMLogicComponentInstance, ents[idx], &public.GraphVMLogicComponentInstance{ .graph_container = instances[idx] });
-
-                try _graphvm.setInstanceContext(instances[idx], ecs.ECS_WORLD_CONTEXT, world.ptr);
-                try _graphvm.setInstanceContext(instances[idx], ecs.ECS_ENTITY_CONTEXT, @ptrFromInt(ents[idx]));
-            }
-
-            // world.deferSuspend();
-            //_ = world.deferBegin();
-            try _graphvm.executeNode(alloc, instances, graphvm.EVENT_INIT_NODE_TYPE, .{ .use_tasks = false });
-            //_ = world.deferEnd();
-            // world.deferResume();
-        }
-    },
-);
-
-pub fn toContanerSlice(from: anytype) []const graphvm.GraphInstance {
-    var containers: []const graphvm.GraphInstance = undefined;
-    containers.ptr = @ptrCast(@alignCast(from.ptr));
-    containers.len = from.len;
-    return containers;
-}
-
-const tick_logic_system_i = ecs.SystemI.implement(
-    .{
-        .name = "logic_component.tick",
-        .multi_threaded = true,
-        .phase = ecs.OnUpdate,
-        .simulation = true,
-        .query = &.{
-            .{ .id = ecs.id(public.GraphVMLogicComponentInstance), .inout = .In },
-            .{ .id = ecs.id(public.GraphVMLogicComponent), .inout = .In },
-        },
-    },
-    struct {
-        pub fn update(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
-            _ = dt;
-
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
-
-            //const world = it.getWorld();
-            const render_component = it.field(public.GraphVMLogicComponentInstance, 0).?;
-
-            const ents = it.entities();
-
-            for (0..it.count()) |idx| {
-                try _graphvm.setInstanceContext(toContanerSlice(render_component)[idx], ecs.ECS_WORLD_CONTEXT, world.ptr);
-
-                // TODO: WTF need re set this? (its set in init)
-                try _graphvm.setInstanceContext(toContanerSlice(render_component)[idx], ecs.ECS_ENTITY_CONTEXT, @ptrFromInt(ents[idx]));
-            }
-
-            // world.deferSuspend();
-            try _graphvm.executeNode(alloc, toContanerSlice(render_component), graphvm.EVENT_TICK_NODE_TYPE, .{ .use_tasks = false });
-            // world.deferResume();
-        }
-    },
-);
-
 const logic_c = ecs.ComponentI.implement(
     public.GraphVMLogicComponent,
     .{
@@ -168,8 +77,8 @@ const logic_instance_c = ecs.ComponentI.implement(
     struct {
         pub fn onDestroy(components: []public.GraphVMLogicComponentInstance) !void {
             for (components) |c| {
-                if (c.graph_container.isValid()) {
-                    _graphvm.destroyInstance(c.graph_container);
+                if (c.instance.isValid()) {
+                    _graphvm.destroyInstance(c.instance);
                 }
             }
         }
@@ -179,18 +88,198 @@ const logic_instance_c = ecs.ComponentI.implement(
                 dst.* = src.*;
 
                 // Prevent double delete
-                src.graph_container = .{};
+                src.instance = .{};
             }
         }
 
-        pub fn onRemove(iter: *ecs.IterO) !void {
-            var it = _ecs.toIter(iter);
+        pub fn onRemove(manager: ?*anyopaque, iter: *ecs.Iter) !void {
+            _ = manager;
+
             const alloc = try _tmpalloc.create();
             defer _tmpalloc.destroy(alloc);
-            const components = it.field(public.GraphVMLogicComponentInstance, 0).?;
+            const components = iter.field(public.GraphVMLogicComponentInstance, 0).?;
 
             // TODO: real multi call
             try _graphvm.executeNode(alloc, toContanerSlice(components), graphvm.EVENT_SHUTDOWN_NODE_TYPE, .{ .use_tasks = false });
+        }
+    },
+);
+
+const init_logic_system_i = ecs.SystemI.implement(
+    .{
+        .name = "logic_component.init",
+        .multi_threaded = true,
+        .phase = ecs.OnLoad,
+        .query = &.{
+            .{ .id = ecs.id(public.GraphVMLogicComponentInstance), .inout = .Out, .oper = .Not },
+            .{ .id = ecs.id(public.GraphVMLogicComponent), .inout = .In },
+        },
+    },
+    struct {
+        pub fn tick(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
+            _ = dt;
+
+            const alloc = try _tmpalloc.create();
+            defer _tmpalloc.destroy(alloc);
+
+            var all_instances = cetech1.ArrayList(graphvm.GraphInstance){};
+            defer all_instances.deinit(alloc);
+
+            while (it.next()) {
+                const ents = it.entities();
+
+                const render_components = it.field(public.GraphVMLogicComponent, 1).?;
+
+                // TODO: SHIT
+                if (render_components[0].graph.isEmpty()) return;
+
+                const instances = try alloc.alloc(graphvm.GraphInstance, ents.len);
+                defer alloc.free(instances);
+
+                try _graphvm.createInstances(alloc, render_components[0].graph, instances);
+
+                try all_instances.appendSlice(alloc, instances);
+
+                for (0..it.count()) |idx| {
+                    _ = world.setComponent(public.GraphVMLogicComponentInstance, ents[idx], &.{ .instance = instances[idx] });
+                    try _graphvm.setInstanceContext(instances[idx], ecs.ECS_WORLD_CONTEXT, world.ptr);
+                    try _graphvm.setInstanceContext(instances[idx], ecs.ECS_ENTITY_CONTEXT, @ptrFromInt(ents[idx]));
+                }
+            }
+
+            // world.deferSuspend();
+            if (all_instances.items.len > 0) {
+                try _graphvm.buildInstances(alloc, all_instances.items);
+                try _graphvm.executeNode(alloc, all_instances.items, graphvm.EVENT_INIT_NODE_TYPE, .{ .use_tasks = true });
+            }
+            // world.deferResume();
+        }
+    },
+);
+
+pub fn toContanerSlice(from: anytype) []const graphvm.GraphInstance {
+    var containers: []const graphvm.GraphInstance = undefined;
+    containers.ptr = @ptrCast(@alignCast(from.ptr));
+    containers.len = from.len;
+    return containers;
+}
+
+const tick_logic_system_i = ecs.SystemI.implement(
+    .{
+        .name = "logic_component.tick",
+        .multi_threaded = true,
+        .phase = ecs.OnUpdate,
+        .simulation = true,
+        .query = &.{
+            .{ .id = ecs.id(public.GraphVMLogicComponentInstance), .inout = .In },
+            .{ .id = ecs.id(public.GraphVMLogicComponent), .inout = .In },
+        },
+        .orderByComponent = ecs.id(public.GraphVMLogicComponentInstance),
+    },
+    struct {
+        pub fn orderByCallback(e1: ecs.EntityId, c1: *const anyopaque, e2: ecs.EntityId, c2: *const anyopaque) callconv(.c) i32 {
+            const ci1: *const public.GraphVMLogicComponentInstance = @ptrCast(@alignCast(c1));
+            const ci2: *const public.GraphVMLogicComponentInstance = @ptrCast(@alignCast(c2));
+            _ = e1;
+            _ = e2;
+
+            return @truncate(ci1.*.instance.graph.toI64() - ci2.*.instance.graph.toI64());
+        }
+
+        pub fn tick(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
+            _ = dt;
+
+            const alloc = try _tmpalloc.create();
+            defer _tmpalloc.destroy(alloc);
+
+            var all_instances = cetech1.ArrayList(graphvm.GraphInstance){};
+            defer all_instances.deinit(alloc);
+
+            while (it.next()) {
+                const ents = it.entities();
+
+                const render_component = it.field(public.GraphVMLogicComponentInstance, 0).?;
+                const instances = toContanerSlice(render_component);
+                try all_instances.appendSlice(alloc, instances);
+
+                for (0..it.count()) |idx| {
+                    try _graphvm.setInstanceContext(instances[idx], ecs.ECS_WORLD_CONTEXT, world.ptr);
+
+                    // TODO: WTF need re set this? (its set in init)
+                    try _graphvm.setInstanceContext(instances[idx], ecs.ECS_ENTITY_CONTEXT, @ptrFromInt(ents[idx]));
+                }
+            }
+
+            // world.deferSuspend();
+            if (all_instances.items.len > 0) {
+                // log.debug("Tick {any}", .{all_instances.items});
+                try _graphvm.executeNode(alloc, all_instances.items, graphvm.EVENT_TICK_NODE_TYPE, .{ .use_tasks = true, .sort = false });
+            }
+            // world.deferResume();
+        }
+    },
+);
+
+const deleted_observer_i = ecs.ObserverI.implement(
+    .{
+        .name = "graphvm_logic.deleted_observer",
+        .query = &.{
+            .{ .id = ecs.id(public.GraphVMLogicComponent), .inout = .In },
+            .{ .id = ecs.id(public.GraphVMLogicComponentInstance), .inout = .InOutFilter },
+        },
+        .events = &.{ecs.OnRemove},
+    },
+    struct {
+        pub fn update(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
+            _ = dt;
+
+            const ents = it.entities();
+
+            for (0..it.count()) |idx| {
+                world.removeComponent(public.GraphVMLogicComponentInstance, ents[idx]);
+            }
+        }
+    },
+);
+
+const change_observer_i = ecs.ObserverI.implement(
+    .{
+        .name = "graphvm_logic.change_observer",
+        .query = &.{
+            .{ .id = ecs.id(public.GraphVMLogicComponent), .inout = .In },
+            .{ .id = ecs.id(public.GraphVMLogicComponentInstance), .inout = .InOutFilter },
+        },
+        .events = &.{ecs.OnSet},
+    },
+    struct {
+        pub fn update(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
+            _ = dt;
+
+            const alloc = try _tmpalloc.create();
+            defer _tmpalloc.destroy(alloc);
+
+            const logic_components = it.field(public.GraphVMLogicComponent, 0).?;
+            const instance_components = it.field(public.GraphVMLogicComponentInstance, 1).?;
+
+            const ents = it.entities();
+
+            for (0..it.count()) |idx| {
+                if (instance_components[idx].instance.graph.eql(logic_components[idx].graph)) continue;
+
+                _graphvm.destroyInstance(instance_components[idx].instance);
+                var instances: [1]graphvm.GraphInstance = undefined;
+
+                try _graphvm.createInstances(alloc, logic_components[idx].graph, &instances);
+
+                try _graphvm.buildInstances(alloc, &instances);
+
+                _ = world.setComponent(public.GraphVMLogicComponentInstance, ents[idx], &public.GraphVMLogicComponentInstance{ .instance = instances[idx] });
+
+                try _graphvm.setInstanceContext(instances[idx], ecs.ECS_WORLD_CONTEXT, world.ptr);
+                try _graphvm.setInstanceContext(instances[idx], ecs.ECS_ENTITY_CONTEXT, @ptrFromInt(ents[idx]));
+
+                // log.debug("changed logic: {d} {any} {any}", .{ idx, logic_components, instance_components });
+            }
         }
     },
 );
@@ -211,7 +300,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
                         .prop_idx = public.GraphVMLogicComponentCdb.propIdx(.graph),
                         .name = "graph",
                         .type = cdb.PropType.SUBOBJECT,
-                        .type_hash = graphvm.GraphType.type_hash,
+                        .type_hash = graphvm.GraphTypeCdb.type_hash,
                     },
                 },
             );
@@ -235,10 +324,17 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // impl interface
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
 
+    // Components
     try apidb.implOrRemove(module_name, ecs.ComponentI, &logic_c, load);
     try apidb.implOrRemove(module_name, ecs.ComponentI, &logic_instance_c, load);
+
+    // Systems
     try apidb.implOrRemove(module_name, ecs.SystemI, &init_logic_system_i, load);
     try apidb.implOrRemove(module_name, ecs.SystemI, &tick_logic_system_i, load);
+
+    // Observers
+    try apidb.implOrRemove(module_name, ecs.ObserverI, &change_observer_i, load);
+    try apidb.implOrRemove(module_name, ecs.ObserverI, &deleted_observer_i, load);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});

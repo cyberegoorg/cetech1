@@ -1,0 +1,19 @@
+.{
+    .name = .light_system,
+    .fingerprint = 0x2c9cc5f2794e04e9,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+        .transform = .{ .path = "../../transform" },
+        .light_component = .{ .path = "../light_component" },
+        .shader_system = .{ .path = "../../rendering/shader_system" },
+        .render_graph = .{ .path = "../../rendering/render_graph" },
+        .render_viewport = .{ .path = "../../rendering/render_viewport" },
+        .render_pipeline = .{ .path = "../../rendering/render_pipeline" },
+        .visibility_flags = .{ .path = "../../rendering/visibility_flags" },
+    },
+}
