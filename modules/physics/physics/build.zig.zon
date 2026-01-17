@@ -9,5 +9,6 @@
     .dependencies = .{
         .cetech1 = .{ .path = "../../../public/" },
         .transform = .{ .path = "../../rendering/transform" },
+        .editor_inspector = .{ .path = "../../editor/inspector" },
     },
 }

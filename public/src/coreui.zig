@@ -231,6 +231,10 @@ pub const Icons = struct {
 
     pub const FontScale = CoreIcons.FA_TEXT_WIDTH;
     pub const Culling = CoreIcons.FA_BORDER_TOP_LEFT;
+
+    pub const PhysicsShapes = CoreIcons.FA_SHAPES;
+    pub const PhysicsBody = CoreIcons.FA_PERSON;
+    pub const PhysicsWorld = CoreIcons.FA_GLOBE;
 };
 
 pub const CoreUII = struct {

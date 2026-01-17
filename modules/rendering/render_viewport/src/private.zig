@@ -227,7 +227,7 @@ fn uiDebugMenuItems(allocator: std.mem.Allocator, viewport: public.Viewport) voi
         for (impls) |iface| {
             if (iface.debugdraw) |_| {
                 var icon_buff: [32:0]u8 = undefined;
-                const icon = (iface.uiIcons.?(&icon_buff, allocator, .{}) catch undefined);
+                const icon = if (iface.uiIcons) |uiIcons| (uiIcons(&icon_buff, allocator, .{}) catch undefined) else "";
 
                 var dd_enabled = true_viewport.enabled_dd_set.contains(iface.id);
                 if (_coreui.menuItemPtr(

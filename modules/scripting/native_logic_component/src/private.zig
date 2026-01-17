@@ -72,7 +72,7 @@ const init_logic_system_i = ecs.SystemI.implement(
             for (ents, logic_component) |ent, component| {
                 if (component.native_script) |native_script| {
                     if (findScriptById(alloc, native_script)) |iface| {
-                        _ = world.setId(public.NativeLogicComponentInstance, ent, &public.NativeLogicComponentInstance{
+                        _ = world.setComponent(public.NativeLogicComponentInstance, ent, &public.NativeLogicComponentInstance{
                             .iface = iface,
                             .inst = try iface.init(_allocator),
                         });
@@ -99,8 +99,8 @@ const tick_logic_system_i = ecs.SystemI.implement(
             _ = world;
             _ = dt;
 
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
+            // const alloc = try _tmpalloc.create();
+            // defer _tmpalloc.destroy(alloc);
 
             const ents = it.entities();
             const components = it.field(public.NativeLogicComponentInstance, 0).?;
@@ -168,8 +168,8 @@ const logic_instance_c = ecs.ComponentI.implement(
 
         pub fn onRemove(iter: *ecs.IterO) !void {
             var it = _ecs.toIter(iter);
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
+            // const alloc = try _tmpalloc.create();
+            // defer _tmpalloc.destroy(alloc);
             const components = it.field(public.NativeLogicComponentInstance, 0).?;
 
             for (components) |component| {

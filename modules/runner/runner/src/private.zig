@@ -68,8 +68,8 @@ var runner_kernel_task = cetech1.kernel.KernelTaskI.implement(
 
             // TODO: SHIT
             _g.camera_ent = w.newEntity(null);
-            _ = w.setId(transform.Transform, _g.camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -10 } });
-            _ = w.setId(camera.Camera, _g.camera_ent, &camera.Camera{});
+            _ = w.setComponent(transform.Transform, _g.camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -10 } });
+            _ = w.setComponent(camera.Camera, _g.camera_ent, &camera.Camera{});
 
             const gpu_backend = _kernel.getGpuBackend().?;
             _g.render_pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w);

@@ -127,19 +127,14 @@ var camera_type_aspec = editor_inspector.UiPropertyAspect.implement(struct {
         _ = args; // autofix
         const r = public.CameraCdb.read(_cdb, obj).?;
         const type_str = public.CameraCdb.readStr(_cdb, r, .Type) orelse "perspective";
-        const type_enum: public.CameraType = if (std.mem.eql(u8, type_str, "perspective")) .perspective else .ortho;
+        var type_enum: public.CameraType = std.meta.stringToEnum(public.CameraType, type_str) orelse .perspective;
 
         try _inspector.uiPropInputBegin(obj, prop_idx, true);
         defer _inspector.uiPropInputEnd();
 
-        var cur_idx: i32 = @intFromEnum(type_enum);
-        if (_coreui.combo("", .{
-            .current_item = &cur_idx,
-            .items_separated_by_zeros = "perspective\x00" ++ "ortho\x00",
-        })) {
+        if (_coreui.comboFromEnum("", &type_enum)) {
             const w = public.CameraCdb.write(_cdb, obj).?;
-            const enum_v: public.CameraType = @enumFromInt(cur_idx);
-            try public.CameraCdb.setStr(_cdb, w, .Type, @tagName(enum_v));
+            try public.CameraCdb.setStr(_cdb, w, .Type, @tagName(type_enum));
             try public.CameraCdb.commit(_cdb, w);
         }
     }
@@ -147,10 +142,8 @@ var camera_type_aspec = editor_inspector.UiPropertyAspect.implement(struct {
 
 fn cameraSetingsMenu(world: ecs.World, camera_ent: ecs.EntityId) void {
     var c = world.getMutComponent(public.Camera, camera_ent);
-    var cur_idx: i32 = @intFromEnum(c.?.type);
-    if (_coreui.combo("type", .{ .current_item = &cur_idx, .items_separated_by_zeros = "perspective\x00" ++ "ortho\x00" })) {
-        c.?.type = @enumFromInt(cur_idx);
-    }
+
+    if (_coreui.comboFromEnum("type", &c.?.type)) {}
 
     _ = _coreui.dragF32("fov", .{ .v = &c.?.fov, .min = 1, .max = std.math.floatMax(f32) });
     _ = _coreui.dragF32("near", .{ .v = &c.?.near, .max = std.math.floatMax(f32) });

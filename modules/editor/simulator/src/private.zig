@@ -120,9 +120,9 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         const name = try std.fmt.bufPrintZ(&buf, "Simulator {d}", .{tab_id});
 
         const camera_ent = w.newEntity(null);
-        _ = w.setId(transform.Transform, camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -12 } });
-        _ = w.setId(camera.Camera, camera_ent, &camera.Camera{});
-        _ = w.setId(camera_controller.CameraController, camera_ent, &camera_controller.CameraController{});
+        _ = w.setComponent(transform.Transform, camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -12 } });
+        _ = w.setComponent(camera.Camera, camera_ent, &camera.Camera{});
+        _ = w.setComponent(camera_controller.CameraController, camera_ent, &camera_controller.CameraController{});
 
         const gpu_backend = _kernel.getGpuBackend().?;
         const pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w);
@@ -251,12 +251,12 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
                 // Spawn light
                 const light_ent = tab_o.world.newEntity(null);
-                _ = tab_o.world.setId(transform.Transform, light_ent, &transform.Transform{ .position = .{ .y = 20 } });
-                _ = tab_o.world.setId(light_component.Light, light_ent, &light_component.Light{ .radius = 100, .power = 10000 });
+                _ = tab_o.world.setComponent(transform.Transform, light_ent, &transform.Transform{ .position = .{ .y = 20 } });
+                _ = tab_o.world.setComponent(light_component.Light, light_ent, &light_component.Light{ .radius = 100, .power = 10000 });
 
                 // Set random velocity.
                 for (entities) |ent| {
-                    _ = tab_o.world.setId(physics.Velocity, ent, &physics.Velocity{
+                    _ = tab_o.world.setComponent(physics.Velocity, ent, &physics.Velocity{
                         .y = (rnd.float(f32) * 2 - 1) * 3.0,
                         .x = (rnd.float(f32) * 2 - 1) * 3.0,
                         .z = (rnd.float(f32) * 2 - 1) * 3.0,

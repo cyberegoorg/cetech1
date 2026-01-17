@@ -14,7 +14,7 @@ pub const RenderComponent = struct {
 };
 
 pub const RenderComponentInstance = struct {
-    graph_container: graphvm.GraphInstance = .{},
+    instance: graphvm.GraphInstance = .{},
 };
 
 pub const RenderComponentCdb = cdb.CdbTypeDecl(

@@ -759,6 +759,7 @@ pub const core_modules = [_][]const u8{
     "light_component",
     "light_system",
     "physics",
+    "physics_jolt",
 };
 
 pub const samples_modules = [_][]const u8{

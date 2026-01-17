@@ -52,48 +52,6 @@ var _instance_system: *const instance_system.InstanceSystemApi = undefined;
 const G = struct {};
 var _g: *G = undefined;
 
-const init_render_graph_system_i = ecs.SystemI.implement(
-    .{
-        .name = "renderer.init_render_component",
-        .multi_threaded = true,
-        .phase = ecs.OnLoad,
-        .query = &.{
-            .{ .id = ecs.id(public.RenderComponentInstance), .inout = .Out, .oper = .Not },
-            .{ .id = ecs.id(public.RenderComponent), .inout = .In },
-        },
-    },
-    struct {
-        pub fn update(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
-            _ = dt;
-
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
-
-            const ents = it.entities();
-            const render_component = it.field(public.RenderComponent, 1).?;
-
-            const instances = try alloc.alloc(graphvm.GraphInstance, render_component.len);
-            defer alloc.free(instances);
-
-            // TODO: SHIT
-            if (render_component[0].graph.isEmpty()) return;
-
-            try _graphvm.createInstances(alloc, render_component[0].graph, instances);
-            try _graphvm.buildInstances(alloc, instances);
-
-            for (0..it.count()) |idx| {
-                _ = world.setId(public.RenderComponentInstance, ents[idx], &public.RenderComponentInstance{ .graph_container = instances[idx] });
-                try _graphvm.setInstanceContext(instances[idx], ecs.ECS_WORLD_CONTEXT, world.ptr);
-                try _graphvm.setInstanceContext(instances[idx], ecs.ECS_ENTITY_CONTEXT, @ptrFromInt(ents[idx]));
-            }
-
-            // world.deferSuspend();
-            try _graphvm.executeNode(alloc, instances, graphvm.EVENT_INIT_NODE_TYPE, .{ .use_tasks = false });
-            // world.deferResume();
-        }
-    },
-);
-
 const render_component_c = ecs.ComponentI.implement(
     public.RenderComponent,
     .{
@@ -134,8 +92,8 @@ const rc_initialized_c = ecs.ComponentI.implement(
     struct {
         pub fn onDestroy(components: []public.RenderComponentInstance) !void {
             for (components) |c| {
-                if (c.graph_container.isValid()) {
-                    _graphvm.destroyInstance(c.graph_container);
+                if (c.instance.isValid()) {
+                    _graphvm.destroyInstance(c.instance);
                 }
             }
         }
@@ -145,7 +103,7 @@ const rc_initialized_c = ecs.ComponentI.implement(
                 dst.* = src.*;
 
                 // Prevent double delete
-                src.graph_container = .{};
+                src.instance = .{};
             }
         }
 
@@ -156,6 +114,74 @@ const rc_initialized_c = ecs.ComponentI.implement(
             const components = it.field(public.RenderComponentInstance, 0).?;
 
             try _graphvm.executeNode(alloc, toInstanceSlice(components), graphvm.EVENT_SHUTDOWN_NODE_TYPE, .{ .use_tasks = false });
+        }
+    },
+);
+
+const init_render_graph_system_i = ecs.SystemI.implement(
+    .{
+        .name = "renderer.init_render_component",
+        .multi_threaded = true,
+        .phase = ecs.OnLoad,
+        .query = &.{
+            .{ .id = ecs.id(public.RenderComponentInstance), .inout = .Out, .oper = .Not },
+            .{ .id = ecs.id(public.RenderComponent), .inout = .In },
+        },
+    },
+    struct {
+        pub fn update(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
+            _ = dt;
+
+            const alloc = try _tmpalloc.create();
+            defer _tmpalloc.destroy(alloc);
+
+            const ents = it.entities();
+            const render_component = it.field(public.RenderComponent, 1).?;
+
+            const instances = try alloc.alloc(graphvm.GraphInstance, render_component.len);
+            defer alloc.free(instances);
+
+            // TODO: SHIT
+            if (render_component[0].graph.isEmpty()) return;
+
+            try _graphvm.createInstances(alloc, render_component[0].graph, instances);
+            try _graphvm.buildInstances(alloc, instances);
+
+            for (0..it.count()) |idx| {
+                _ = world.setComponent(public.RenderComponentInstance, ents[idx], &public.RenderComponentInstance{ .instance = instances[idx] });
+                try _graphvm.setInstanceContext(instances[idx], ecs.ECS_WORLD_CONTEXT, world.ptr);
+                try _graphvm.setInstanceContext(instances[idx], ecs.ECS_ENTITY_CONTEXT, @ptrFromInt(ents[idx]));
+            }
+
+            // world.deferSuspend();
+            try _graphvm.executeNode(alloc, instances, graphvm.EVENT_INIT_NODE_TYPE, .{ .use_tasks = false });
+            // world.deferResume();
+        }
+    },
+);
+
+const deleted_observer_i = ecs.ObserverI.implement(
+    .{
+        .name = "render_component.deleted_observer",
+        .query = &.{
+            .{ .id = ecs.id(public.RenderComponent), .inout = .In },
+            .{ .id = ecs.id(public.RenderComponentInstance), .inout = .InOutFilter },
+        },
+        .events = &.{ecs.OnRemove},
+    },
+    struct {
+        pub fn update(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
+            _ = dt;
+
+            // const alloc = try _tmpalloc.create();
+            // defer _tmpalloc.destroy(alloc);
+
+            const ents = it.entities();
+
+            for (0..it.count()) |idx| {
+                // log.debug("delete render component : {d} ", .{idx});
+                world.removeComponent(public.RenderComponentInstance, ents[idx]);
+            }
         }
     },
 );
@@ -640,6 +666,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.implOrRemove(module_name, ecs.ComponentI, &render_component_c, load);
     try apidb.implOrRemove(module_name, ecs.ComponentI, &rc_initialized_c, load);
     try apidb.implOrRemove(module_name, ecs.SystemI, &init_render_graph_system_i, load);
+    try apidb.implOrRemove(module_name, ecs.ObserverI, &deleted_observer_i, load);
 
     try apidb.implOrRemove(module_name, render_viewport.RendereableComponentI, &render_component_renderer_i, load);
 

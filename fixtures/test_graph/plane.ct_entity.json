@@ -198,6 +198,22 @@
           }
         ]
       }
+    },
+    {
+      "__type_name": "ct_physics_shape",
+      "__uuid": "019bcd42-1bd9-75f4-8c65-17c43eb8093e",
+      "size": {
+        "__type_name": "ct_vec_3f",
+        "__uuid": "019bcd42-3152-72c4-90e5-04c66387d66d",
+        "x": 0.5,
+        "y": 0.10000000149011612,
+        "z": 0.5
+      }
+    },
+    {
+      "__type_name": "ct_physics_body",
+      "__uuid": "019bcd42-662b-79ed-8956-7d5035f1a746",
+      "type": "static"
     }
   ]
 }

@@ -748,8 +748,8 @@ const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
         const time_system_io = _shader.getSystemIO(time_system);
 
         const pp_ent = world.newEntity("postprocess");
-        _ = world.setId(transform.Transform, pp_ent, &transform.Transform{});
-        _ = world.setId(BloomComponent, pp_ent, &BloomComponent{});
+        _ = world.setComponent(transform.Transform, pp_ent, &transform.Transform{});
+        _ = world.setComponent(BloomComponent, pp_ent, &BloomComponent{});
 
         inst.* = .{
             .allocator = allocator,
@@ -854,10 +854,10 @@ const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
                 defer _coreui.endMenu();
 
                 if (_coreui.checkbox("enabled", .{ .v = &bloom_component.enabled })) {
-                    _ = inst.world.setId(BloomComponent, inst.postprocess_ent, bloom_component);
+                    _ = inst.world.setComponent(BloomComponent, inst.postprocess_ent, bloom_component);
                 }
                 if (_coreui.dragF32("intensity", .{ .v = &bloom_component.bloom_intensity, .min = 0, .max = std.math.floatMax(f32) })) {
-                    _ = inst.world.setId(BloomComponent, inst.postprocess_ent, bloom_component);
+                    _ = inst.world.setComponent(BloomComponent, inst.postprocess_ent, bloom_component);
                 }
             }
         }
@@ -865,17 +865,10 @@ const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
         //
         // Tonemap
         //
-        const enum_str = "aces\x00uncharted\x00luma_debug\x00";
         if (_coreui.beginMenu(allocator, coreui.Icons.RenderPipeline ++ "  " ++ "Tonemaping", true, null)) {
             defer _coreui.endMenu();
 
-            var cur_idx: i32 = @intCast(@intFromEnum(inst.tonemap_params.type));
-            if (_coreui.combo("", .{
-                .current_item = &cur_idx,
-                .items_separated_by_zeros = enum_str,
-            })) {
-                inst.tonemap_params.type = @enumFromInt(cur_idx);
-            }
+            if (_coreui.comboFromEnum("", &inst.tonemap_params.type)) {}
         }
     }
 

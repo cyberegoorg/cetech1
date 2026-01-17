@@ -54,6 +54,7 @@
 
         // PHYSICS
         .physics = .{ .path = "modules/physics/physics", .lazy = true },
+        .physics_jolt = .{ .path = "modules/physics/physics_jolt", .lazy = true },
 
         // INPUT
         .actions = .{ .path = "modules/input/actions", .lazy = true },

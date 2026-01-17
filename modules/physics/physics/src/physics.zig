@@ -20,3 +20,52 @@ pub const VelocityCdb = cdb.CdbTypeDecl(
     },
     struct {},
 );
+
+pub const PhysicsSystem = struct {
+    _: u8 = 0,
+};
+
+pub const PhysicsSystemCdb = cdb.CdbTypeDecl(
+    "ct_physics_world",
+    enum(u32) {},
+    struct {},
+);
+
+pub const PhysicsShapeType = enum(u8) {
+    box = 0,
+    sphere = 1,
+};
+
+pub const PhysicsShape = struct {
+    type: PhysicsShapeType = .box,
+    size: zm.Vec = .{ 1, 1, 1, 0 },
+};
+
+pub const PhysicsShapeCdb = cdb.CdbTypeDecl(
+    "ct_physics_shape",
+    enum(u32) {
+        type,
+        size,
+    },
+    struct {},
+);
+
+pub const PhysicsBody = struct {
+    type: PhysicsBodyType = .static,
+    mass: f32 = 0,
+};
+
+pub const PhysicsBodyType = enum(u8) {
+    static = 0,
+    dynamic = 1,
+    kinematic = 2,
+};
+
+pub const PhysicsBodyCdb = cdb.CdbTypeDecl(
+    "ct_physics_body",
+    enum(u32) {
+        type,
+        mass,
+    },
+    struct {},
+);

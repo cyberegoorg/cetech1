@@ -100,16 +100,16 @@ pub const TraverseFlags = Self_ | Up | Trav | Cascade | Desc;
 pub const TermRefFlags = TraverseFlags | IsVariable | IsEntity | IsName;
 
 pub const InOutKind = enum(i32) {
-    InOutDefault,
+    InOutDefault = 0,
     InOutNone,
-    EcsInOutFilter,
+    InOutFilter,
     InOut,
     In,
     Out,
 };
 
 pub const OperatorKind = enum(i32) {
-    And,
+    And = 0,
     Or,
     Not,
     Optional,
@@ -136,7 +136,7 @@ pub const QueryTerm = struct {
 
 pub const IterO = opaque {};
 
-// TODO: =(
+// TODO: SHIT =(
 
 pub const GizmoOptions = struct {
     translate_x: bool = false,
@@ -178,7 +178,7 @@ pub const GizmoOptions = struct {
         return !(self.translate_x or self.translate_y or self.translate_z or self.rotate_x or self.rotate_y or self.rotate_z or self.rotate_screen or self.scale_x or self.scale_y or self.scale_z or self.bounds or self.scale_xu or self.scale_yu or self.scale_zu);
     }
 };
-
+///
 pub const ComponentI = struct {
     const Self = @This();
     pub const c_name = "ct_ecs_component_i";
@@ -195,6 +195,7 @@ pub const ComponentI = struct {
     cdb_type_hash: cdb.TypeHash = .{},
 
     with: ?[]const cetech1.StrId32 = null,
+    singleton: bool = false,
 
     onAdd: ?*const fn (iter: *IterO) callconv(.c) void = null,
     onSet: ?*const fn (iter: *IterO) callconv(.c) void = null,
@@ -270,6 +271,7 @@ pub const ComponentI = struct {
             .category = args.category,
             .category_order = args.category_order,
             .with = args.with,
+            .singleton = args.singleton,
 
             .onAdd = if (std.meta.hasFn(Hooks, "onAdd")) struct {
                 fn f(iter: *IterO) callconv(.c) void {
@@ -405,6 +407,29 @@ pub const SystemI = struct {
     }
 };
 
+pub const ObserverI = struct {
+    pub const c_name = "ct_ecs_observer_i";
+    pub const name_hash = cetech1.strId64(@This().c_name);
+
+    name: [:0]const u8 = undefined,
+    query: []const QueryTerm,
+    events: []const cetech1.StrId32,
+
+    update: ?*const fn (world: World, iter: *Iter, dt: f32) anyerror!void = undefined,
+    iterate: ?*const fn (world: World, iter: *Iter, dt: f32) anyerror!void = undefined,
+
+    pub fn implement(args: ObserverI, comptime T: type) ObserverI {
+        return ObserverI{
+            .name = args.name,
+            .query = args.query,
+            .events = args.events,
+
+            .update = if (std.meta.hasFn(T, "update")) T.update else null,
+            .iterate = if (std.meta.hasFn(T, "iterate")) T.iterate else null,
+        };
+    }
+};
+
 pub const OnWorldI = struct {
     pub const c_name = "ct_ecs_on_world_i";
     pub const name_hash = cetech1.strId64(@This().c_name);
@@ -493,8 +518,12 @@ pub const World = struct {
         return self.vtable.destroyEntities(self.ptr, ents);
     }
 
-    pub inline fn setId(self: World, comptime T: type, entity: EntityId, ptr: ?*const T) EntityId {
+    pub inline fn setComponent(self: World, comptime T: type, entity: EntityId, ptr: ?*const T) EntityId {
         return self.vtable.setComponent(self.ptr, entity, id(T), @sizeOf(T), ptr);
+    }
+
+    pub inline fn setComponentRaw(self: World, entity: EntityId, cid: cetech1.StrId32, size: usize, ptr: ?*const anyopaque) EntityId {
+        return self.vtable.setComponent(self.ptr, entity, cid, size, ptr);
     }
 
     pub inline fn getMutComponent(self: World, comptime T: type, entity: EntityId) ?*T {
@@ -512,8 +541,17 @@ pub const World = struct {
         return ptr;
     }
 
-    pub inline fn setIdRaw(self: World, entity: EntityId, cid: cetech1.StrId32, size: usize, ptr: ?*const anyopaque) EntityId {
-        return self.vtable.setComponent(self.ptr, entity, cid, size, ptr);
+    pub inline fn setSingletonComponent(self: World, comptime T: type, ptr: ?*const T) void {
+        self.vtable.setSingletonComponent(self.ptr, id(T), @sizeOf(T), ptr);
+    }
+
+    pub inline fn getSingletonComponent(self: World, comptime T: type) ?*const T {
+        const ptr = self.vtable.getSingletonComponent(self.ptr, id(T));
+        return @ptrCast(@alignCast(ptr));
+    }
+
+    pub inline fn removeComponent(self: World, comptime T: type, entity: EntityId) void {
+        return self.vtable.removeComponent(self.ptr, entity, id(T));
     }
 
     pub inline fn progress(self: World, dt: f32) bool {
@@ -587,6 +625,11 @@ pub const World = struct {
         setComponent: *const fn (world: *anyopaque, entity: EntityId, id: cetech1.StrId32, size: usize, ptr: ?*const anyopaque) EntityId,
         getMutComponent: *const fn (world: *anyopaque, entity: EntityId, id: cetech1.StrId32) ?*anyopaque,
         getComponent: *const fn (world: *anyopaque, entity: EntityId, id: cetech1.StrId32) ?*const anyopaque,
+
+        setSingletonComponent: *const fn (world: *anyopaque, id: cetech1.StrId32, size: usize, ptr: ?*const anyopaque) void,
+        getSingletonComponent: *const fn (world: *anyopaque, id: cetech1.StrId32) ?*const anyopaque,
+
+        removeComponent: *const fn (world: *anyopaque, entity: EntityId, id: cetech1.StrId32) void,
 
         createQuery: *const fn (world: *anyopaque, query: []const QueryTerm) anyerror!Query,
 

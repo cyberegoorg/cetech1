@@ -3,6 +3,12 @@
   "__asset_uuid": "0198d6b0-9111-7a8c-bfdd-2314b0f5b988",
   "__type_name": "ct_entity",
   "__uuid": "0198d6b0-9580-74d8-b06f-e4df9723720a",
+  "components": [
+    {
+      "__type_name": "ct_physics_world",
+      "__uuid": "019bccc2-627f-7b08-b2f8-db6ead8442df"
+    }
+  ],
   "childrens": [
     {
       "__type_name": "ct_entity",
@@ -100,6 +106,19 @@
             "__uuid": "019b992e-4011-728b-b93f-41b2b63066ca",
             "__prototype_uuid": "019b9929-24dc-7b47-a50a-c05aab79a0f8",
             "x": 50,
+            "z": 50
+          }
+        },
+        {
+          "__type_name": "ct_physics_shape",
+          "__uuid": "019bcd49-3a28-758e-88a7-8cb0f7efd64b",
+          "__prototype_uuid": "019bcd42-1bd9-75f4-8c65-17c43eb8093e",
+          "size": {
+            "__type_name": "ct_vec_3f",
+            "__uuid": "019bcd49-4435-7c2c-9eaf-72658b2c8520",
+            "__prototype_uuid": "019bcd42-3152-72c4-90e5-04c66387d66d",
+            "x": 50,
+            "y": 0.10000000149011612,
             "z": 50
           }
         }
@@ -212,6 +231,87 @@
             "__type_name": "ct_rotation",
             "__uuid": "019b992f-b442-7ac3-8150-0e0871f84503",
             "__prototype_uuid": "019b992b-fadf-7a9b-ba93-0bc47822febf"
+          }
+        }
+      ]
+    },
+    {
+      "__type_name": "ct_entity",
+      "__uuid": "019bcc4a-8349-7bef-893b-2dfda68cf4b2",
+      "components": [
+        {
+          "__type_name": "ct_transform",
+          "__uuid": "019bcc4a-95e8-77b8-bb5f-88996c65224c",
+          "position": {
+            "__type_name": "ct_position",
+            "__uuid": "019bcc4a-95e8-7d88-b420-331f034e5d34"
+          },
+          "rotation": {
+            "__type_name": "ct_rotation",
+            "__uuid": "019bcc4a-95e8-791d-921c-35164f7782bc"
+          },
+          "scale": {
+            "__type_name": "ct_scale",
+            "__uuid": "019bcc4a-95e8-7255-af46-385f8896ce83",
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "__type_name": "ct_render_component",
+          "__uuid": "019bcc4a-ad9a-7e86-af88-4498258457c8",
+          "graph": {
+            "__type_name": "ct_graph",
+            "__uuid": "019bcc4a-f3f0-716a-b55c-cd3f43270d71"
+          }
+        },
+        {
+          "__type_name": "ct_graphvm_logic_component",
+          "__uuid": "019bcc71-0814-7a42-a648-61b2451bf9c6",
+          "graph": {
+            "__type_name": "ct_graph",
+            "__uuid": "019bcc73-2c60-72d1-84d1-0d152a9dade7"
+          }
+        }
+      ]
+    },
+    {
+      "__type_name": "ct_entity",
+      "__uuid": "019bcd58-d931-7841-a787-302f5e3442a6",
+      "__prototype_uuid": "019990fe-3ba7-7110-9ce3-eef8568cc994",
+      "components__instantiate": [
+        {
+          "__type_name": "ct_transform",
+          "__uuid": "019bcd58-f9b4-7c10-9040-e101c4a774e0",
+          "__prototype_uuid": "019b9928-95de-7c76-b24b-e6a3ddbbd926",
+          "position": {
+            "__type_name": "ct_position",
+            "__uuid": "019bcd59-07fb-71a5-9139-9eda6c25d7b1",
+            "__prototype_uuid": "019b992b-f8be-7ace-b233-4bffe222f018",
+            "x": 0,
+            "y": 4.946554660797119,
+            "z": 2.165637493133545
+          }
+        }
+      ]
+    },
+    {
+      "__type_name": "ct_entity",
+      "__uuid": "019bd140-9ab4-7f27-98cb-e0af74b56f09",
+      "__prototype_uuid": "01989447-fee6-7e42-bc47-f67421e06157",
+      "components__instantiate": [
+        {
+          "__type_name": "ct_transform",
+          "__uuid": "019bd140-b65c-7d9b-b52a-fb31bb5eb9ee",
+          "__prototype_uuid": "019b9928-7d99-7ea3-ae5a-9c21dabab230",
+          "position": {
+            "__type_name": "ct_position",
+            "__uuid": "019bd141-0287-74b7-8a4a-ed7991a1d60f",
+            "__prototype_uuid": "019b992a-fe4d-771e-9468-c3f332831480",
+            "x": 1.3247158527374268,
+            "y": 4.873224258422852,
+            "z": 0
           }
         }
       ]

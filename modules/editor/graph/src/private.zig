@@ -1344,7 +1344,7 @@ var graph_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 const asset = _assetdb.getAssetForObj(value);
                 //const asset_or_obj = asset orelse value;
 
-                const uuid = _assetdb.getUuid(value).?;
+                const uuid = _assetdb.getUuid(value) orelse continue;
 
                 const name = blk: {
                     const graph_r = _cdb.readObj(value).?;

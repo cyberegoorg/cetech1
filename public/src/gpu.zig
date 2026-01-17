@@ -1664,7 +1664,7 @@ pub const DDEncoder = struct {
 
     //
     pub inline fn setTranslate(dde: DDEncoder, _xyz: [3]f32) void {
-        dde.vtable.SetTranslate(dde.ptr, _xyz[0], _xyz[1], _xyz[2]);
+        dde.vtable.SetTranslate(dde.ptr, _xyz);
     }
 
     //
@@ -1679,12 +1679,12 @@ pub const DDEncoder = struct {
 
     //
     pub inline fn moveTo(dde: DDEncoder, _xyz: [3]f32) void {
-        dde.vtable.MoveTo(dde.ptr, _xyz[0], _xyz[1], _xyz[2]);
+        dde.vtable.MoveTo(dde.ptr, _xyz);
     }
 
     //
     pub inline fn lineTo(dde: DDEncoder, _xyz: [3]f32) void {
-        dde.vtable.LineTo(dde.ptr, _xyz[0], _xyz[1], _xyz[2]);
+        dde.vtable.LineTo(dde.ptr, _xyz);
     }
 
     //

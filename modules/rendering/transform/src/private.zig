@@ -185,7 +185,7 @@ const transform_system_i = ecs.SystemI.implement(
     .{
         .name = "transform.transform",
         .multi_threaded = true,
-        .phase = ecs.OnValidate,
+        .phase = ecs.PostUpdate,
         .query = &.{
             .{ .id = ecs.id(public.WorldTransform), .inout = .Out },
             .{ .id = ecs.id(public.WorldTransform), .inout = .In, .oper = .Optional, .src = .{ .id = ecs.Cascade } },
@@ -299,7 +299,7 @@ const set_position_node_i = graphvm.NodeI.implement(
                 .y = position[1],
                 .z = position[2],
             };
-            _ = world.setId(public.Transform, ent, &t);
+            _ = world.setComponent(public.Transform, ent, &t);
         }
     },
 );

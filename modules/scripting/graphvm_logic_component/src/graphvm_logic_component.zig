@@ -8,7 +8,7 @@ pub const GraphVMLogicComponent = struct {
 };
 
 pub const GraphVMLogicComponentInstance = struct {
-    graph_container: graphvm.GraphInstance = .{},
+    instance: graphvm.GraphInstance = .{},
 };
 
 pub const GraphVMLogicComponentCdb = cdb.CdbTypeDecl(

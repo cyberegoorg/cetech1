@@ -153,8 +153,8 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
             _ = kernel_tick;
             _ = dt;
 
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
+            // const alloc = try _tmpalloc.create();
+            // defer _tmpalloc.destroy(alloc);
             _g.instance_mtx_buffer_offset.store(0, .monotonic);
         }
     },

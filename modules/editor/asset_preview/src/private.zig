@@ -115,9 +115,9 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         const name = try std.fmt.bufPrintZ(&buf, "Asset preview {d}", .{tab_id});
 
         const camera_ent = w.newEntity(null);
-        _ = w.setId(transform.Transform, camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -5 } });
-        _ = w.setId(camera.Camera, camera_ent, &camera.Camera{});
-        _ = w.setId(camera_controller.CameraController, camera_ent, &camera_controller.CameraController{});
+        _ = w.setComponent(transform.Transform, camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -5 } });
+        _ = w.setComponent(camera.Camera, camera_ent, &camera.Camera{});
+        _ = w.setComponent(camera_controller.CameraController, camera_ent, &camera_controller.CameraController{});
 
         const gpu_backend = _kernel.getGpuBackend().?;
         const pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w);
@@ -250,7 +250,7 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 tab_o.root_entity = null;
                 tab_o.world.clear();
 
-                _ = tab_o.world.setId(transform.Transform, tab_o.camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -5 } });
+                _ = tab_o.world.setComponent(transform.Transform, tab_o.camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -5 } });
             }
 
             if (_cdb.getAspect(public.AssetPreviewAspectI, db, asset_obj.type_idx)) |iface| {
@@ -270,7 +270,7 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                         if (light_component_n == 0) {
                             tab_o.light_ent = tab_o.world.newEntity(null);
 
-                            _ = tab_o.world.setId(
+                            _ = tab_o.world.setComponent(
                                 transform.Transform,
                                 tab_o.light_ent.?,
                                 &transform.Transform{
@@ -279,7 +279,7 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                                 },
                             );
 
-                            _ = tab_o.world.setId(
+                            _ = tab_o.world.setComponent(
                                 light_component.Light,
                                 tab_o.light_ent.?,
                                 &light_component.Light{

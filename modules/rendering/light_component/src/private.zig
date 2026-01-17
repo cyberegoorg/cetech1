@@ -280,8 +280,6 @@ const light_c = ecs.ComponentI.implement(
     },
 );
 
-// TODO: generic
-const enum_str = "point\x00spot\x00direction\x00";
 var light_type_aspec = editor_inspector.UiPropertyAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
@@ -293,19 +291,14 @@ var light_type_aspec = editor_inspector.UiPropertyAspect.implement(struct {
         _ = args; // autofix
         const r = public.LightCdb.read(_cdb, obj).?;
         const type_str = public.LightCdb.readStr(_cdb, r, .Type) orelse "point";
-        const type_enum: public.LightType = std.meta.stringToEnum(public.LightType, type_str) orelse .point;
+        var type_enum: public.LightType = std.meta.stringToEnum(public.LightType, type_str) orelse .point;
 
         try _inspector.uiPropInputBegin(obj, prop_idx, true);
         defer _inspector.uiPropInputEnd();
 
-        var cur_idx: i32 = @intCast(@intFromEnum(type_enum));
-        if (_coreui.combo("", .{
-            .current_item = &cur_idx,
-            .items_separated_by_zeros = enum_str,
-        })) {
+        if (_coreui.comboFromEnum("", &type_enum)) {
             const w = public.LightCdb.write(_cdb, obj).?;
-            const enum_v: public.LightType = @enumFromInt(cur_idx);
-            try public.LightCdb.setStr(_cdb, w, .Type, @tagName(enum_v));
+            try public.LightCdb.setStr(_cdb, w, .Type, @tagName(type_enum));
             try public.LightCdb.commit(_cdb, w);
         }
     }
