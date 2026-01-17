@@ -282,6 +282,23 @@
           }
         ]
       }
+    },
+    {
+      "__type_name": "ct_physics_shape",
+      "__uuid": "019bcce7-ff52-7b80-a13b-e1481953ce6d",
+      "type": "Box",
+      "size": {
+        "__type_name": "ct_vec_3f",
+        "__uuid": "019bcce8-0cd0-78e3-baf8-be409f607631",
+        "x": 0.5,
+        "y": 0.5,
+        "z": 0.5
+      }
+    },
+    {
+      "__type_name": "ct_physics_body",
+      "__uuid": "019bccf2-fd68-75d0-ab4b-12e71d2077c3",
+      "type": "Dynamic"
     }
   ]
 }

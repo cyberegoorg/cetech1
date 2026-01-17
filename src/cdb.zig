@@ -1424,7 +1424,7 @@ pub const Db = struct {
     }
 
     pub fn getRelation(self: *Self, top_level_obj: public.ObjId, obj: public.ObjId, prop_idx: u32, in_set_obj: ?public.ObjId) public.ObjRelation {
-        if (!self.isChildOff(top_level_obj, in_set_obj orelse obj)) return .not_owned; // TODO: remove
+        if (!self.isChildOff(top_level_obj, in_set_obj orelse obj)) return .NotOwned; // TODO: remove
 
         const obj_r = self.readObj(obj).?;
         const prototype_obj = self.getPrototype(self.readObj(obj).?);
@@ -1434,7 +1434,7 @@ pub const Db = struct {
         if (has_prototype) {
             if (in_set_obj) |iso| {
                 const in_set_obj_r = self.readObj(iso).?;
-                if (self.isIinisiated(obj_r, prop_idx, in_set_obj_r)) return .inisiated;
+                if (self.isIinisiated(obj_r, prop_idx, in_set_obj_r)) return .Inisiated;
             } else {
                 if (self.isPropertyOverrided(obj_r, prop_idx)) {
                     if (prop_type == .SUBOBJECT) {
@@ -1442,17 +1442,17 @@ pub const Db = struct {
                         const subobj_r = self.readObj(subobj).?;
 
                         if (self.isIinisiated(obj_r, prop_idx, subobj_r)) {
-                            return .inisiated;
+                            return .Inisiated;
                         }
                     } else {
-                        return .overide;
+                        return .Overide;
                     }
                 } else {
-                    return .inheried;
+                    return .Inheried;
                 }
             }
         }
-        return .owned;
+        return .Owned;
     }
 
     pub fn inisitateDeep(self: *Self, allocator: std.mem.Allocator, last_parent: public.ObjId, to_inisiated_obj: public.ObjId) ?public.ObjId {

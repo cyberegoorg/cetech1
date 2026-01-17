@@ -2,8 +2,9 @@ const std = @import("std");
 
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
+const cdb_types = cetech1.cdb_types;
+const math = cetech1.math;
 
-const math = cetech1.math.zmath;
 const gpu = cetech1.gpu;
 
 const render_viewport = @import("render_viewport");
@@ -23,34 +24,34 @@ pub const PinTypes = struct {
 pub const GPUShaderValueCDB = cdb.CdbTypeDecl(
     "ct_gpu_shader",
     enum(u32) {
-        handle = 0,
+        Handle = 0,
     },
     struct {},
 );
 
-pub const Vec2f = cdb.CdbTypeDecl(
+pub const GpuVec2fCdb = cdb.CdbTypeDecl(
     "ct_gpu_vec_2f",
     enum(u32) {
         X = 0,
         Y,
     },
     struct {
-        pub fn toSlice(api: *const cdb.CdbAPI, obj: cdb.ObjId) [2]f32 {
-            const r = api.readObj(obj) orelse return .{ 0.0, 0.0 };
+        pub fn toSlice(api: *const cdb.CdbAPI, obj: cdb.ObjId) math.Vec2f {
+            const r = api.readObj(obj) orelse return .{};
             return .{
-                Vec2f.readValue(f32, api, r, .X),
-                Vec2f.readValue(f32, api, r, .Y),
+                .x = GpuVec2fCdb.readValue(f32, api, r, .X),
+                .y = GpuVec2fCdb.readValue(f32, api, r, .Y),
             };
         }
 
-        pub fn fromSlice(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: [2]f32) void {
-            Vec2f.setValue(f32, api, obj_w, .X, value[0]);
-            Vec2f.setValue(f32, api, obj_w, .Y, value[1]);
+        pub fn fromSlice(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: math.Vec2f) void {
+            GpuVec2fCdb.setValue(f32, api, obj_w, .X, value[0]);
+            GpuVec2fCdb.setValue(f32, api, obj_w, .Y, value[1]);
         }
     },
 );
 
-pub const Vec3f = cdb.CdbTypeDecl(
+pub const GpuVec3fCdb = cdb.CdbTypeDecl(
     "ct_gpu_vec_3f",
     enum(u32) {
         X = 0,
@@ -58,24 +59,24 @@ pub const Vec3f = cdb.CdbTypeDecl(
         Z,
     },
     struct {
-        pub fn toSlice(api: *const cdb.CdbAPI, obj: cdb.ObjId) [3]f32 {
-            const r = api.readObj(obj) orelse return .{ 0.0, 0.0, 0.0 };
+        pub fn toSlice(api: *const cdb.CdbAPI, obj: cdb.ObjId) math.Vec3f {
+            const r = api.readObj(obj) orelse return .{};
             return .{
-                Vec3f.readValue(f32, api, r, .X),
-                Vec3f.readValue(f32, api, r, .Y),
-                Vec3f.readValue(f32, api, r, .Z),
+                .x = cdb_types.Vec3fCdb.readValue(f32, api, r, .X),
+                .y = cdb_types.Vec3fCdb.readValue(f32, api, r, .Y),
+                .z = cdb_types.Vec3fCdb.readValue(f32, api, r, .Z),
             };
         }
 
-        pub fn fromSlice(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: [3]f32) void {
-            Vec3f.setValue(f32, api, obj_w, .X, value[0]);
-            Vec3f.setValue(f32, api, obj_w, .Y, value[1]);
-            Vec3f.setValue(f32, api, obj_w, .Z, value[2]);
+        pub fn fromSlice(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: math.Vec3f) void {
+            cdb_types.Vec3fCdb.setValue(f32, api, obj_w, .X, value.x);
+            cdb_types.Vec3fCdb.setValue(f32, api, obj_w, .Y, value.y);
+            cdb_types.Vec3fCdb.setValue(f32, api, obj_w, .Z, value.z);
         }
     },
 );
 
-pub const Vec4f = cdb.CdbTypeDecl(
+pub const GpuVec4fCdb = cdb.CdbTypeDecl(
     "ct_gpu_vec_4f",
     enum(u32) {
         X = 0,
@@ -84,29 +85,29 @@ pub const Vec4f = cdb.CdbTypeDecl(
         W,
     },
     struct {
-        pub fn toSlice(api: *const cdb.CdbAPI, obj: cdb.ObjId) [4]f32 {
-            const r = api.readObj(obj) orelse return .{ 0.0, 0.0, 0.0, 0.0 };
+        pub fn toSlice(api: *const cdb.CdbAPI, obj: cdb.ObjId) math.Vec4f {
+            const r = api.readObj(obj) orelse return .{};
             return .{
-                Vec4f.readValue(f32, api, r, .X),
-                Vec4f.readValue(f32, api, r, .Y),
-                Vec4f.readValue(f32, api, r, .Z),
-                Vec4f.readValue(f32, api, r, .W),
+                .x = GpuVec4fCdb.readValue(f32, api, r, .X),
+                .y = GpuVec4fCdb.readValue(f32, api, r, .Y),
+                .z = GpuVec4fCdb.readValue(f32, api, r, .Z),
+                .w = GpuVec4fCdb.readValue(f32, api, r, .W),
             };
         }
 
-        pub fn fromSlice(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: [3]f32) void {
-            Vec4f.setValue(f32, api, obj_w, .X, value[0]);
-            Vec4f.setValue(f32, api, obj_w, .Y, value[1]);
-            Vec4f.setValue(f32, api, obj_w, .Z, value[2]);
-            Vec4f.setValue(f32, api, obj_w, .W, value[3]);
+        pub fn fromSlice(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: math.Vec4f) void {
+            GpuVec4fCdb.setValue(f32, api, obj_w, .X, value.x);
+            GpuVec4fCdb.setValue(f32, api, obj_w, .Y, value.y);
+            GpuVec4fCdb.setValue(f32, api, obj_w, .Z, value.z);
+            GpuVec4fCdb.setValue(f32, api, obj_w, .W, value.w);
         }
     },
 );
 
-pub const f32Type = cdb.CdbTypeDecl(
+pub const Gpuf32Cdb = cdb.CdbTypeDecl(
     "ct_gpu_f32",
     enum(u32) {
-        value = 0,
+        Value = 0,
     },
     struct {},
 );
@@ -384,10 +385,10 @@ pub const TranspileStages = struct {
     pub const Fragment = cetech1.strId32("gpu_fragment");
 };
 
-pub const ConstructNodeSettings = cdb.CdbTypeDecl(
+pub const ConstructNodeSettingsCdb = cdb.CdbTypeDecl(
     "ct_gpu_construct_node_settings",
     enum(u32) {
-        result_type,
+        ResultType,
     },
     struct {},
 );
@@ -398,10 +399,10 @@ pub const ConstructNodeResultType = enum {
     vec4,
 };
 
-pub const ConstNodeSettings = cdb.CdbTypeDecl(
+pub const ConstNodeSettingsCdb = cdb.CdbTypeDecl(
     "ct_gpu_const_node_settings",
     enum(u32) {
-        result_type,
+        ResultType,
         value,
     },
     struct {},
@@ -415,11 +416,11 @@ pub const ConstNodeResultType = enum {
     float,
 };
 
-pub const UniformNodeSettings = cdb.CdbTypeDecl(
+pub const UniformNodeSettingsCdb = cdb.CdbTypeDecl(
     "ct_gpu_uniform_node_settings",
     enum(u32) {
-        name,
-        result_type,
+        Name,
+        ResultType,
     },
     struct {},
 );

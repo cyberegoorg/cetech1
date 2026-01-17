@@ -2,9 +2,10 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-const native_logic_component = @import("native_logic_component");
+const native_script_component = @import("native_script_component");
 
 const cdb = cetech1.cdb;
+const ecs = cetech1.ecs;
 
 const module_name = .example_native_script;
 
@@ -26,24 +27,33 @@ var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 const G = struct {};
 var _g: *G = undefined;
 
-const native_script_i = native_logic_component.NativeScriptI.implement(.{
+// Native script instance for one entity.
+const NativeScriptInstance = struct {
+    ent: ecs.EntityId,
+};
+
+const native_script_i = native_script_component.NativeScriptI.implement(.{
     .name = "example_native_script",
     .display_name = "Example native script",
 }, struct {
-    pub fn init(allocator: std.mem.Allocator) !?*anyopaque {
-        _ = allocator;
-        log.debug("INIT", .{});
-        return null;
+    pub fn init(allocator: std.mem.Allocator, entity: ecs.EntityId) !?*anyopaque {
+        log.debug("INIT for entity {d}", .{entity});
+        const inst = try allocator.create(NativeScriptInstance);
+        inst.* = .{ .ent = entity };
+        return inst;
     }
 
     pub fn shutdown(allocator: std.mem.Allocator, inst: ?*anyopaque) !void {
-        _ = allocator;
-        _ = inst;
-        log.debug("SHUTDOWN", .{});
+        const instance: *NativeScriptInstance = @ptrCast(@alignCast(inst));
+
+        log.debug("SHUTDOWN for entity {d}", .{instance.ent});
+
+        allocator.destroy(instance);
     }
+
     pub fn update(inst: ?*anyopaque) !void {
-        _ = inst;
-        log.debug("UPDATE", .{});
+        const instance: *NativeScriptInstance = @ptrCast(@alignCast(inst));
+        log.debug("UPDATE for entity {d}", .{instance.ent});
     }
 });
 
@@ -59,7 +69,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
 
     // impl interface
-    try apidb.implOrRemove(module_name, native_logic_component.NativeScriptI, &native_script_i, load);
+    try apidb.implOrRemove(module_name, native_script_component.NativeScriptI, &native_script_i, load);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});

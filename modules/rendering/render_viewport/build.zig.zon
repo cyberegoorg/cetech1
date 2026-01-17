@@ -8,12 +8,12 @@
     },
     .dependencies = .{
         .cetech1 = .{ .path = "../../../public/" },
-        .transform = .{ .path = "../transform" },
-        .camera = .{ .path = "../camera" },
+        .transform = .{ .path = "../../transform" },
+        .editor = .{ .path = "../../editor/editor" },
+        .camera = .{ .path = "../../camera/camera" },
         .shader_system = .{ .path = "../shader_system" },
         .render_graph = .{ .path = "../render_graph" },
         .render_pipeline = .{ .path = "../render_pipeline" },
-        .vertex_system = .{ .path = "../vertex_system" },
         .visibility_flags = .{ .path = "../visibility_flags" },
     },
 }

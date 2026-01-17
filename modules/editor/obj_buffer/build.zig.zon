@@ -10,5 +10,6 @@
         .cetech1 = .{ .path = "../../../public/" },
         .editor = .{ .path = "../editor" },
         .editor_tree = .{ .path = "../tree" },
+        .editor_tabs = .{ .path = "../tabs" },
     },
 }

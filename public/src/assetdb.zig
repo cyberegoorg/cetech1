@@ -9,7 +9,7 @@ const host = @import("host.zig");
 const log = std.log.scoped(.assetdb);
 
 // Type for root of all assets
-pub const AssetRoot = cdb.CdbTypeDecl(
+pub const AssetRootCdb = cdb.CdbTypeDecl(
     "ct_asset_root",
     enum(u32) {
         Assets = 0,
@@ -18,7 +18,7 @@ pub const AssetRoot = cdb.CdbTypeDecl(
 );
 
 /// CDB type for asset wraper
-pub const Asset = cdb.CdbTypeDecl(
+pub const AssetCdb = cdb.CdbTypeDecl(
     "ct_asset",
     enum(u32) {
         Name = 0,
@@ -31,7 +31,7 @@ pub const Asset = cdb.CdbTypeDecl(
 );
 
 /// CDB type for folder
-pub const Folder = cdb.CdbTypeDecl(
+pub const FolderCdb = cdb.CdbTypeDecl(
     "ct_folder",
     enum(u32) {
         Color,
@@ -40,7 +40,7 @@ pub const Folder = cdb.CdbTypeDecl(
 );
 
 /// CDB type for asset/folder tags
-pub const Tag = cdb.CdbTypeDecl(
+pub const TagCdb = cdb.CdbTypeDecl(
     "ct_tag",
     enum(u32) {
         Name = 0,
@@ -50,7 +50,7 @@ pub const Tag = cdb.CdbTypeDecl(
 );
 
 /// CDB type for tags filter or similiar stuff
-pub const Tags = cdb.CdbTypeDecl(
+pub const TagsCdb = cdb.CdbTypeDecl(
     "ct_tags",
     enum(u32) {
         Tags = 0,
@@ -59,7 +59,7 @@ pub const Tags = cdb.CdbTypeDecl(
 );
 
 /// CDB type for project
-pub const Project = cdb.CdbTypeDecl(
+pub const ProjectCdb = cdb.CdbTypeDecl(
     "ct_project",
     enum(u32) {
         Name = 0,
@@ -271,6 +271,8 @@ pub const AssetDBAPI = struct {
     ) anyerror![:0]const u8,
 
     getAssetRootPath: *const fn () ?[]const u8,
+
+    filerAsset: *const fn (allocator: std.mem.Allocator, filter: [:0]const u8, tags_filter: cdb.ObjId) anyerror!FilteredAssets,
 
     //#region Pointers to implementation.
     createAssetFn: *const fn (asset_name: []const u8, asset_folder: cdb.ObjId, asset_obj: ?cdb.ObjId) ?cdb.ObjId,

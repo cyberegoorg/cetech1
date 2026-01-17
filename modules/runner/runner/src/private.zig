@@ -8,7 +8,6 @@ const ecs = cetech1.ecs;
 
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
-const zm = cetech1.math.zmath;
 
 const transform = @import("transform");
 const camera = @import("camera");
@@ -67,9 +66,9 @@ var runner_kernel_task = cetech1.kernel.KernelTaskI.implement(
             _g.world = w;
 
             // TODO: SHIT
-            _g.camera_ent = w.newEntity(null);
-            _ = w.setId(transform.Transform, _g.camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -10 } });
-            _ = w.setId(camera.Camera, _g.camera_ent, &camera.Camera{});
+            _g.camera_ent = w.newEntity(.{});
+            _ = w.setComponent(transform.LocalTransformComponent, _g.camera_ent, &transform.LocalTransformComponent{ .local = .{ .position = .{ .y = 2, .z = -10 } } });
+            _ = w.setComponent(camera.Camera, _g.camera_ent, &camera.Camera{});
 
             const gpu_backend = _kernel.getGpuBackend().?;
             _g.render_pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w);
@@ -98,7 +97,7 @@ var runner_render_task = cetech1.kernel.KernelTaskUpdateI.implment(
 
             if (_kernel.getMainWindow()) |w| {
                 const fb_size = w.getFramebufferSize();
-                _g.viewport.setSize(.{ @floatFromInt(fb_size[0]), @floatFromInt(fb_size[1]) });
+                _g.viewport.setSize(.{ .x = @floatFromInt(fb_size[0]), .y = @floatFromInt(fb_size[1]) });
                 _g.viewport.requestRender();
             }
         }

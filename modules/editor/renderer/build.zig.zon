@@ -1,5 +1,6 @@
 .{
     .name = .editor_renderer,
+    .fingerprint = 0x95f15589ccb9bfbd,
     .version = "0.1.0",
     .paths = .{
         "build.zig",
@@ -10,6 +11,6 @@
         .editor = .{ .path = "../editor" },
         .editor_inspector = .{ .path = "../inspector" },
         .render_viewport = .{ .path = "../../rendering/render_viewport" },
-        .renderer_nodes = .{ .path = "../../rendering/renderer_nodes" },
+        .renderer_nodes = .{ .path = "../../scripting/renderer_nodes" },
     },
 }

@@ -329,7 +329,7 @@ pub fn dumpApi() void {
     // }
 }
 
-pub fn writeApiGraphD2(out_path: []const u8) !void {
+pub fn writeApiGraphMD(out_path: []const u8) !void {
     var dot_file = try std.fs.cwd().createFile(out_path, .{});
     defer dot_file.close();
 
@@ -340,6 +340,8 @@ pub fn writeApiGraphD2(out_path: []const u8) !void {
     defer writer.flush() catch undefined;
 
     // write header
+    _ = try writer.write("# API graph\n");
+    _ = try writer.write("```d2\n");
     _ = try writer.write("vars: {d2-config: {layout-engine: elk}}\n\n");
 
     for (_module_info_map.values()) |module_info| {
@@ -358,4 +360,5 @@ pub fn writeApiGraphD2(out_path: []const u8) !void {
             }
         }
     }
+    _ = try writer.write("```\n");
 }

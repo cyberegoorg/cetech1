@@ -6,7 +6,7 @@ const cdb = cetech1.cdb;
 const coreui = cetech1.coreui;
 const tempalloc = cetech1.tempalloc;
 const gpu = cetech1.gpu;
-const zm = cetech1.math.zmath;
+
 const ecs = cetech1.ecs;
 const assetdb = cetech1.assetdb;
 const uuid = cetech1.uuid;
@@ -24,6 +24,7 @@ const light_component = @import("light_component");
 const Viewport = render_viewport.Viewport;
 
 const editor = @import("editor");
+const editor_tabs = @import("editor_tabs");
 const Icons = coreui.CoreIcons;
 
 const public = @import("asset_preview.zig");
@@ -61,13 +62,13 @@ var _camera_controller: *const camera_controller.CameraControllerAPI = undefined
 
 // Global state that can surive hot-reload
 const G = struct {
-    test_tab_vt_ptr: *editor.TabTypeI = undefined,
+    test_tab_vt_ptr: *editor_tabs.TabTypeI = undefined,
 };
 var _g: *G = undefined;
 
 // Struct for tab type
 const AssetPreviewTab = struct {
-    tab_i: editor.TabI,
+    tab_i: editor_tabs.TabI,
     viewport: Viewport = undefined,
 
     world: ecs.World,
@@ -83,8 +84,15 @@ const AssetPreviewTab = struct {
     flecs_port: ?u16 = null,
 };
 
+const default_camera_controler = camera_controller.CameraController{
+    .type = .Orbital,
+    .move_speed = 0.5,
+    .position = .{ .y = 2 },
+    .rotation = .{ .x = -std.math.degreesToRadians(25), .y = -std.math.degreesToRadians(180) },
+};
+
 // Fill editor tab interface
-var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
+var asset_preview_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
     .tab_name = TAB_NAME,
     .tab_hash = .fromStr(TAB_NAME),
 
@@ -101,23 +109,22 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Return tab title
-    pub fn title(inst: *editor.TabO) ![:0]const u8 {
+    pub fn title(inst: *editor_tabs.TabO) ![:0]const u8 {
         _ = inst;
         return Icons.FA_MAGNIFYING_GLASS ++ "  " ++ "Asset preview";
     }
 
     // Create new tab instantce
-    pub fn create(tab_id: u32) !?*editor.TabI {
+    pub fn create(tab_id: u32) !?*editor_tabs.TabI {
         const w = try _ecs.createWorld();
         w.setSimulate(false);
 
         var buf: [128]u8 = undefined;
         const name = try std.fmt.bufPrintZ(&buf, "Asset preview {d}", .{tab_id});
 
-        const camera_ent = w.newEntity(null);
-        _ = w.setId(transform.Transform, camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -5 } });
-        _ = w.setId(camera.Camera, camera_ent, &camera.Camera{});
-        _ = w.setId(camera_controller.CameraController, camera_ent, &camera_controller.CameraController{});
+        const camera_ent = w.newEntity(.{});
+        _ = w.setComponent(camera.Camera, camera_ent, &camera.Camera{});
+        _ = w.setComponent(camera_controller.CameraController, camera_ent, &default_camera_controler);
 
         const gpu_backend = _kernel.getGpuBackend().?;
         const pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w);
@@ -141,7 +148,7 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Destroy tab instantce
-    pub fn destroy(tab_inst: *editor.TabI) !void {
+    pub fn destroy(tab_inst: *editor_tabs.TabI) !void {
         const tab_o: *AssetPreviewTab = @ptrCast(@alignCast(tab_inst.inst));
         _render_viewport.destroyViewport(tab_o.viewport);
         tab_o.render_pipeline.deinit();
@@ -150,7 +157,7 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Draw tab content
-    pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
+    pub fn ui(inst: *editor_tabs.TabO, kernel_tick: u64, dt: f32) !void {
         _ = kernel_tick;
         _ = dt;
 
@@ -165,8 +172,8 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         if (selected_obj.isEmpty()) {
             const txt = "Select asset";
             const txt_size = _coreui.calcTextSize(txt, .{});
-            _coreui.setCursorPosX(wsize[0] / 2 - txt_size[0] / 2);
-            _coreui.setCursorPosY(wsize[1] / 2 + txt_size[1]);
+            _coreui.setCursorPosX(wsize.x / 2 - txt_size.x / 2);
+            _coreui.setCursorPosY(wsize.y / 2 + txt_size.y);
             _coreui.text(txt);
             return;
         }
@@ -183,8 +190,8 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                 _coreui.image(
                     texture,
                     .{
-                        .w = size[0],
-                        .h = size[1],
+                        .w = size.x,
+                        .h = size.y,
                     },
                 );
                 const hovered = _coreui.isItemHovered(.{});
@@ -202,15 +209,15 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             } else {
                 const txt = "No preview";
                 const txt_size = _coreui.calcTextSize(txt, .{});
-                _coreui.setCursorPosX(wsize[0] / 2 - txt_size[0] / 2);
-                _coreui.setCursorPosY(wsize[1] / 2 + txt_size[1]);
+                _coreui.setCursorPosX(wsize.x / 2 - txt_size.x / 2);
+                _coreui.setCursorPosY(wsize.y / 2 + txt_size.y);
                 _coreui.text(txt);
             }
         }
     }
 
     // Draw tab menu
-    pub fn menu(inst: *editor.TabO) !void {
+    pub fn menu(inst: *editor_tabs.TabO) !void {
         const tab_o: *AssetPreviewTab = @ptrCast(@alignCast(inst));
 
         const allocator = try _tempalloc.create();
@@ -219,12 +226,12 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         if (_coreui.beginMenu(allocator, cetech1.coreui.Icons.Debug, true, null)) {
             defer _coreui.endMenu();
             tab_o.flecs_port = tab_o.world.uiRemoteDebugMenuItems(allocator, tab_o.flecs_port);
-            _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
+            try _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
         }
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) !void {
+    pub fn objSelected(inst: *editor_tabs.TabO, selection: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) !void {
         _ = sender_tab_hash; // autofix
         var tab_o: *AssetPreviewTab = @ptrCast(@alignCast(inst));
 
@@ -236,7 +243,7 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
 
         const db = _cdb.getDbFromObjid(selected_obj);
 
-        if (selected_obj.type_idx.eql(assetdb.Asset.typeIdx(_cdb, db))) {
+        if (selected_obj.type_idx.eql(assetdb.AssetCdb.typeIdx(_cdb, db))) {
             asset_obj = _assetdb.getObjForAsset(selected_obj).?;
         } else {
             asset_obj = selected_obj;
@@ -248,9 +255,13 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             if (tab_o.root_entity) |ent| {
                 tab_o.world.destroyEntities(&.{ent});
                 tab_o.root_entity = null;
-                tab_o.world.clear();
+                // tab_o.world.clear();
 
-                _ = tab_o.world.setId(transform.Transform, tab_o.camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -5 } });
+                _ = tab_o.world.setComponent(
+                    camera_controller.CameraController,
+                    tab_o.camera_ent,
+                    &default_camera_controler,
+                );
             }
 
             if (_cdb.getAspect(public.AssetPreviewAspectI, db, asset_obj.type_idx)) |iface| {
@@ -262,28 +273,32 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
                     tab_o.root_entity = ent;
 
                     {
-                        var q = try tab_o.world.createQuery(&.{
-                            .{ .id = ecs.id(light_component.Light), .inout = .In },
+                        var q = try tab_o.world.createQuery(.{
+                            .query = &.{
+                                .{ .id = ecs.id(light_component.Light), .inout = .In },
+                            },
                         });
                         defer q.destroy();
                         const light_component_n = q.count().entities;
                         if (light_component_n == 0) {
-                            tab_o.light_ent = tab_o.world.newEntity(null);
+                            tab_o.light_ent = tab_o.world.newEntity(.{});
 
-                            _ = tab_o.world.setId(
-                                transform.Transform,
+                            _ = tab_o.world.setComponent(
+                                transform.LocalTransformComponent,
                                 tab_o.light_ent.?,
-                                &transform.Transform{
-                                    .position = .{ .y = 20 },
-                                    .rotation = .{ .q = zm.quatFromRollPitchYaw(-130, 180, 0) },
+                                &transform.LocalTransformComponent{
+                                    .local = .{
+                                        .position = .{ .y = 20 },
+                                        .rotation = .fromRollPitchYaw(-130, 180, 0),
+                                    },
                                 },
                             );
 
-                            _ = tab_o.world.setId(
+                            _ = tab_o.world.setComponent(
                                 light_component.Light,
                                 tab_o.light_ent.?,
                                 &light_component.Light{
-                                    .type = .direction,
+                                    .type = .Direction,
                                     .radius = 10000,
                                     .power = 1.0,
                                 },
@@ -305,7 +320,7 @@ var asset_preview_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         return true;
     }
 
-    pub fn assetRootOpened(inst: *editor.TabO) !void {
+    pub fn assetRootOpened(inst: *editor_tabs.TabO) !void {
         const tab_o: *AssetPreviewTab = @ptrCast(@alignCast(inst));
         if (tab_o.root_entity) |ent| {
             tab_o.world.destroyEntities(&.{ent});
@@ -346,9 +361,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.test_tab_vt_ptr = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, TAB_NAME, asset_preview_tab);
+    _g.test_tab_vt_ptr = try apidb.setGlobalVarValue(editor_tabs.TabTypeI, module_name, TAB_NAME, asset_preview_tab);
 
-    try apidb.implOrRemove(module_name, editor.TabTypeI, &asset_preview_tab, load);
+    try apidb.implOrRemove(module_name, editor_tabs.TabTypeI, &asset_preview_tab, load);
 
     return true;
 }

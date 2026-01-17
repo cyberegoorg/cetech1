@@ -1,12 +1,13 @@
 const std = @import("std");
 
 const input = @import("input.zig");
+const math = @import("math.zig");
 
 pub const CursorMode = enum(u32) {
-    normal = 0,
-    hidden,
-    disabled,
-    captured,
+    Normal = 0,
+    Hidden,
+    Disabled,
+    Captured,
 };
 
 pub const Window = struct {
@@ -29,7 +30,7 @@ pub const Window = struct {
         return self.vtable.getFramebufferSize(self.ptr);
     }
 
-    pub inline fn getContentScale(self: Window) [2]f32 {
+    pub inline fn getContentScale(self: Window) math.Vec2f {
         return self.vtable.getContentScale(self.ptr);
     }
 
@@ -41,12 +42,14 @@ pub const Window = struct {
         return self.vtable.getOsDisplayHandler(self.ptr);
     }
 
+    pub inline fn getScroll(self: Window) [2]f64 {
+        return self.vtable.getScroll(self.ptr);
+    }
+
     pub inline fn getCursorPos(self: Window) [2]f64 {
         return self.vtable.getCursorPos(self.ptr);
     }
-    pub inline fn getCursorPosDelta(self: Window, last_pos: [2]f64) [2]f64 {
-        return self.vtable.getCursorPosDelta(self.ptr, last_pos);
-    }
+
     pub inline fn setCursorMode(self: Window, mode: CursorMode) void {
         return self.vtable.setCursorMode(self.ptr, mode);
     }
@@ -55,9 +58,10 @@ pub const Window = struct {
         shouldClose: *const fn (window: *anyopaque) bool,
         getInternalHandler: *const fn (window: *anyopaque) *const anyopaque,
         getFramebufferSize: *const fn (window: *anyopaque) [2]i32,
-        getContentScale: *const fn (window: *anyopaque) [2]f32,
+        getContentScale: *const fn (window: *anyopaque) math.Vec2f,
         getOsWindowHandler: *const fn (window: *anyopaque) ?*anyopaque,
         getOsDisplayHandler: *const fn (window: *anyopaque) ?*anyopaque,
+        getScroll: *const fn (window: *anyopaque) [2]f64,
         getCursorPos: *const fn (window: *anyopaque) [2]f64,
         setCursorMode: *const fn (window: *anyopaque, mode: CursorMode) void,
         setShouldClose: *const fn (window: *anyopaque, should_close: bool) void,
@@ -72,6 +76,7 @@ pub const Window = struct {
             if (!std.meta.hasFn(T, "getOsDisplayHandler")) @compileError("implement me");
             if (!std.meta.hasFn(T, "getCursorPos")) @compileError("implement me");
             if (!std.meta.hasFn(T, "setCursorMode")) @compileError("implement me");
+            if (!std.meta.hasFn(T, "getScroll")) @compileError("implement me");
 
             return VTable{
                 .shouldClose = T.shouldClose,
@@ -83,6 +88,7 @@ pub const Window = struct {
                 .getOsDisplayHandler = T.getOsDisplayHandler,
                 .getCursorPos = T.getCursorPos,
                 .setCursorMode = T.setCursorMode,
+                .getScroll = T.getScroll,
             };
         }
     };
@@ -126,15 +132,22 @@ pub const MonitorApi = struct {
     getPrimaryMonitor: *const fn () ?Monitor,
 };
 
+pub const WMType = enum {
+    X11,
+    Wayland,
+    Native,
+};
+
 pub const WindowApi = struct {
     createWindow: *const fn (width: i32, height: i32, title: [:0]const u8, monitor: ?Monitor) anyerror!Window,
     destroyWindow: *const fn (window: Window) void,
+    getWMType: *const fn () WMType,
 };
 
 pub const OpenInType = enum {
-    reveal,
-    open_url,
-    edit,
+    Reveal,
+    OpenURL,
+    Edit,
 };
 
 pub const SystemApi = struct {

@@ -1,6 +1,7 @@
 const std = @import("std");
-const host = @import("host.zig");
 const cetech1 = @import("root.zig");
+const host = @import("host.zig");
+const math = cetech1.math;
 
 const log = std.log.scoped(.gpu);
 
@@ -102,10 +103,10 @@ pub const ViewMode = enum(c_int) {
 };
 
 const ResetFlagsMsaa = enum {
-    x2,
-    x4,
-    x8,
-    x16,
+    X2,
+    X4,
+    X8,
+    X16,
 };
 
 pub const ResetFlags = struct {
@@ -333,15 +334,15 @@ pub const BufferHandle = union(enum) {
 };
 
 pub const BufferComputeFormat = enum {
-    x8x1,
-    x8x2,
-    x8x4,
-    x16x1,
-    x16x2,
-    x16x4,
-    x32x1,
-    x32x2,
-    x32x4,
+    X8x1,
+    X8x2,
+    X8x4,
+    X16x1,
+    X16x2,
+    X16x4,
+    X32x1,
+    X32x2,
+    X32x4,
 };
 
 pub const BufferComputeType = enum {
@@ -366,22 +367,22 @@ pub const BufferFlags = struct {
 };
 
 pub const PrimitiveType = enum {
-    triangles,
-    triangles_strip,
-    lines,
-    lines_strip,
-    points,
+    Triangles,
+    TrianglesStrip,
+    Lines,
+    LinesStrip,
+    Points,
 };
 
 pub const CullMode = enum {
-    none,
-    front,
-    back,
+    None,
+    Front,
+    Back,
 };
 
 pub const FrontFace = enum {
-    cw,
-    ccw,
+    Cw,
+    Ccw,
 };
 
 pub const RasterState = struct {
@@ -390,13 +391,13 @@ pub const RasterState = struct {
 };
 
 pub const DepthComapareOp = enum {
-    never,
-    less,
-    equal,
-    less_equal,
-    greater,
-    not_equal,
-    greater_equal,
+    Never,
+    Less,
+    Equal,
+    LessEqual,
+    Greater,
+    NotEqual,
+    GreaterEqual,
 };
 
 pub const DepthStencilState = struct {
@@ -489,24 +490,24 @@ pub const SamplerCompare = enum {
 };
 
 pub const SamplerMinFilter = enum {
-    point,
-    linear,
+    Point,
+    Linear,
 };
 
 pub const SamplerMaxFilter = enum {
-    point,
-    linear,
+    Point,
+    Linear,
 };
 
 pub const SamplerMipPoint = enum {
-    point,
-    linear,
+    Point,
+    Linear,
 };
 
 pub const SamplerAdressMode = enum {
-    wrap,
-    clamp,
-    border,
+    Wrap,
+    Clamp,
+    Border,
 };
 
 pub const SamplerFlags = struct {
@@ -523,16 +524,16 @@ pub const RenderState = struct {
     depth_stencil_state: DepthStencilState = .{},
     color_state: ColorState = .{},
     blend_state: BlendState = .{},
-    primitive_type: PrimitiveType = .triangles,
+    primitive_type: PrimitiveType = .Triangles,
 };
 
 pub const RenderTargetTextureFlags = enum {
-    no_rt,
-    rt,
-    mssaa_x2,
-    mssaa_x4,
-    mssaa_x8,
-    mssaa_x16,
+    NoRT,
+    RT,
+    MssaaX2,
+    MssaaX4,
+    MssaaX8,
+    MssaaX16,
 };
 
 pub const TextureFormat = enum(c_int) {
@@ -773,7 +774,7 @@ pub const TextureFlags = struct {
     /// Texture will be used for read back from
     read_back: bool = false,
 
-    rt: RenderTargetTextureFlags = .no_rt,
+    rt: RenderTargetTextureFlags = .NoRT,
 
     /// Render target will be used for writing
     rt_write_only: bool = false,
@@ -788,7 +789,7 @@ pub const GpuBackend = struct {
     pub fn getResolution(self: GpuBackend) Resolution {
         return self.api.getResolution(self.inst);
     }
-    pub fn addPaletteColor(self: GpuBackend, color: u32) u8 {
+    pub fn addPaletteColor(self: GpuBackend, color: math.SRGBA) u8 {
         return self.api.addPaletteColor(self.inst, color);
     }
     pub fn endAllUsedEncoders(self: GpuBackend) void {
@@ -1093,7 +1094,7 @@ pub const GpuBackend = struct {
     // pub fn topologyConvert(self: GpuBackend, _conversion: TopologyConvert, _dst: ?*anyopaque, _dstSize: u32, _indices: ?*const anyopaque, _numIndices: u32, _index32: bool) u32 {
     //     return self.api.topologyConvert(self.inst, _conversion, _dst, _dstSize, _indices, _numIndices, _index32);
     // }
-    // pub fn topologySortTriList(self: GpuBackend, _sort: TopologySort, _dst: ?*anyopaque, _dstSize: u32, _dir: [3]f32, _pos: [3]f32, _vertices: ?*const anyopaque, _stride: u32, _indices: ?*const anyopaque, _numIndices: u32, _index32: bool) void {
+    // pub fn topologySortTriList(self: GpuBackend, _sort: TopologySort, _dst: ?*anyopaque, _dstSize: u32, _dir: math.Vec3f, _pos: math.Vec3f, _vertices: ?*const anyopaque, _stride: u32, _indices: ?*const anyopaque, _numIndices: u32, _index32: bool) void {
     //     return self.api.topologySortTriList(self.inst, _sort, _dst, _dstSize, _dir, _pos, _vertices, _stride, _indices, _numIndices, _index32);
     // }
 
@@ -1263,7 +1264,7 @@ pub const GpuBackendApi = struct {
     isNoop: *const fn (self: *anyopaque) bool,
     getWindow: *const fn (self: *anyopaque) ?host.Window,
     getResolution: *const fn (self: *anyopaque) Resolution,
-    addPaletteColor: *const fn (self: *anyopaque, color: u32) u8,
+    addPaletteColor: *const fn (self: *anyopaque, color: math.SRGBA) u8,
     endAllUsedEncoders: *const fn (self: *anyopaque) void,
     compileShader: *const fn (self: *anyopaque, allocator: std.mem.Allocator, varying: []const u8, shader: []const u8, options: ShadercOptions) anyerror![]u8,
     createDefaultShadercOptions: *const fn (self: *anyopaque) ShadercOptions,
@@ -1364,7 +1365,7 @@ pub const GpuBackendApi = struct {
     // vertexConvert: *const fn (self: *anyopaque, _dstLayout: *const VertexLayout, _dstData: ?*anyopaque, _srcLayout: *const VertexLayout, _srcData: ?*const anyopaque, _num: u32) void,
     // weldVertices: *const fn (self: *anyopaque, _output: ?*anyopaque, _layout: *const VertexLayout, _data: ?*const anyopaque, _num: u32, _index32: bool, _epsilon: f32) u32,
     // topologyConvert: *const fn (self: *anyopaque, _conversion: TopologyConvert, _dst: ?*anyopaque, _dstSize: u32, _indices: ?*const anyopaque, _numIndices: u32, _index32: bool) u32,
-    // topologySortTriList: *const fn (self: *anyopaque, _sort: TopologySort, _dst: ?*anyopaque, _dstSize: u32, _dir: [3]f32, _pos: [3]f32, _vertices: ?*const anyopaque, _stride: u32, _indices: ?*const anyopaque, _numIndices: u32, _index32: bool) void,
+    // topologySortTriList: *const fn (self: *anyopaque, _sort: TopologySort, _dst: ?*anyopaque, _dstSize: u32, _dir: math.Vec3f, _pos: math.Vec3f, _vertices: ?*const anyopaque, _stride: u32, _indices: ?*const anyopaque, _numIndices: u32, _index32: bool) void,
 
     // Not nice solution
     getCoreUIImageProgram: *const fn (self: *anyopaque) ProgramHandle,
@@ -1633,7 +1634,7 @@ pub const DDEncoder = struct {
     }
 
     //
-    pub inline fn setColor(dde: DDEncoder, _abgr: u32) void {
+    pub inline fn setColor(dde: DDEncoder, _abgr: math.SRGBA) void {
         dde.vtable.SetColor(dde.ptr, _abgr);
     }
 
@@ -1658,17 +1659,17 @@ pub const DDEncoder = struct {
     }
 
     //
-    pub inline fn setTransform(dde: DDEncoder, _mtx: ?*const anyopaque) void {
+    pub inline fn setTransform(dde: DDEncoder, _mtx: math.Mat44f) void {
         dde.vtable.SetTransform(dde.ptr, _mtx);
     }
 
     //
-    pub inline fn setTranslate(dde: DDEncoder, _xyz: [3]f32) void {
-        dde.vtable.SetTranslate(dde.ptr, _xyz[0], _xyz[1], _xyz[2]);
+    pub inline fn setTranslate(dde: DDEncoder, _xyz: math.Vec3f) void {
+        dde.vtable.SetTranslate(dde.ptr, _xyz);
     }
 
     //
-    pub inline fn pushTransform(dde: DDEncoder, _mtx: *const anyopaque) void {
+    pub inline fn pushTransform(dde: DDEncoder, _mtx: math.Mat44f) void {
         dde.vtable.PushTransform(dde.ptr, _mtx);
     }
 
@@ -1678,13 +1679,13 @@ pub const DDEncoder = struct {
     }
 
     //
-    pub inline fn moveTo(dde: DDEncoder, _xyz: [3]f32) void {
-        dde.vtable.MoveTo(dde.ptr, _xyz[0], _xyz[1], _xyz[2]);
+    pub inline fn moveTo(dde: DDEncoder, _xyz: math.Vec3f) void {
+        dde.vtable.MoveTo(dde.ptr, _xyz);
     }
 
     //
-    pub inline fn lineTo(dde: DDEncoder, _xyz: [3]f32) void {
-        dde.vtable.LineTo(dde.ptr, _xyz[0], _xyz[1], _xyz[2]);
+    pub inline fn lineTo(dde: DDEncoder, _xyz: math.Vec3f) void {
+        dde.vtable.LineTo(dde.ptr, _xyz);
     }
 
     //
@@ -1693,42 +1694,42 @@ pub const DDEncoder = struct {
     }
 
     ///
-    pub inline fn drawAABB(dde: DDEncoder, min: [3]f32, max: [3]f32) void {
+    pub inline fn drawAABB(dde: DDEncoder, min: math.Vec3f, max: math.Vec3f) void {
         dde.vtable.DrawAABB(dde.ptr, min, max);
     }
 
     ///
-    pub inline fn drawCylinder(dde: DDEncoder, pos: [3]f32, _end: [3]f32, radius: f32) void {
+    pub inline fn drawCylinder(dde: DDEncoder, pos: math.Vec3f, _end: math.Vec3f, radius: f32) void {
         dde.vtable.DrawCylinder(dde.ptr, pos, _end, radius);
     }
 
     ///
-    pub inline fn drawCapsule(dde: DDEncoder, pos: [3]f32, _end: [3]f32, radius: f32) void {
+    pub inline fn drawCapsule(dde: DDEncoder, pos: math.Vec3f, _end: math.Vec3f, radius: f32) void {
         dde.vtable.DrawCapsule(dde.ptr, pos, _end, radius);
     }
 
     ///
-    pub inline fn drawDisk(dde: DDEncoder, center: [3]f32, normal: [3]f32, radius: f32) void {
+    pub inline fn drawDisk(dde: DDEncoder, center: math.Vec3f, normal: math.Vec3f, radius: f32) void {
         dde.vtable.DrawDisk(dde.ptr, center, normal, radius);
     }
 
     ///
-    pub inline fn drawObb(dde: DDEncoder, _obb: [3]f32) void {
+    pub inline fn drawObb(dde: DDEncoder, _obb: math.Vec3f) void {
         dde.vtable.DrawObb(dde.ptr, _obb);
     }
 
     ///
-    pub inline fn drawSphere(dde: DDEncoder, center: [3]f32, radius: f32) void {
+    pub inline fn drawSphere(dde: DDEncoder, center: math.Vec3f, radius: f32) void {
         dde.vtable.DrawSphere(dde.ptr, center, radius);
     }
 
     ///
-    pub inline fn drawTriangle(dde: DDEncoder, v0: [3]f32, v1: [3]f32, v2: [3]f32) void {
+    pub inline fn drawTriangle(dde: DDEncoder, v0: math.Vec3f, v1: math.Vec3f, v2: math.Vec3f) void {
         dde.vtable.DrawTriangle(dde.ptr, &v0, &v1, &v2);
     }
 
     ///
-    pub inline fn drawCone(dde: DDEncoder, pos: [3]f32, _end: [3]f32, radius: f32) void {
+    pub inline fn drawCone(dde: DDEncoder, pos: math.Vec3f, _end: math.Vec3f, radius: f32) void {
         dde.vtable.DrawCone(dde.ptr, pos, _end, radius);
     }
 
@@ -1748,57 +1749,57 @@ pub const DDEncoder = struct {
     }
 
     ///
-    pub inline fn drawFrustum(dde: DDEncoder, _viewProj: [16]f32) void {
+    pub inline fn drawFrustum(dde: DDEncoder, _viewProj: math.Mat44f) void {
         dde.vtable.DrawFrustum(dde.ptr, _viewProj);
     }
 
     ///
-    pub inline fn drawArc(dde: DDEncoder, _axis: DDAxis, _xyz: [3]f32, _radius: f32, _degrees: f32) void {
-        dde.vtable.DrawArc(dde.ptr, _axis, _xyz[0], _xyz[1], _xyz[2], _radius, _degrees);
+    pub inline fn drawArc(dde: DDEncoder, _axis: DDAxis, _xyz: math.Vec3f, _radius: f32, _degrees: f32) void {
+        dde.vtable.DrawArc(dde.ptr, _axis, _xyz, _radius, _degrees);
     }
 
     ///
-    pub inline fn drawCircle(dde: DDEncoder, _normal: [3]f32, _center: [3]f32, _radius: f32, _weight: f32) void {
+    pub inline fn drawCircle(dde: DDEncoder, _normal: math.Vec3f, _center: math.Vec3f, _radius: f32, _weight: f32) void {
         dde.vtable.DrawCircle(dde.ptr, _normal, _center, _radius, _weight);
     }
 
     ///
-    pub inline fn drawCircleAxis(dde: DDEncoder, _axis: DDAxis, _xyz: [3]f32, _radius: f32, _weight: f32) void {
+    pub inline fn drawCircleAxis(dde: DDEncoder, _axis: DDAxis, _xyz: math.Vec3f, _radius: f32, _weight: f32) void {
         dde.vtable.DrawCircleAxis(dde.ptr, _axis, _xyz, _radius, _weight);
     }
 
     ///
-    pub inline fn drawQuad(dde: DDEncoder, _normal: [3]f32, _center: [3]f32, _size: f32) void {
+    pub inline fn drawQuad(dde: DDEncoder, _normal: math.Vec3f, _center: math.Vec3f, _size: f32) void {
         dde.vtable.DrawQuad(dde.ptr, _normal, _center, _size);
     }
 
     ///
-    pub inline fn drawQuadSprite(dde: DDEncoder, _handle: DDSpriteHandle, _normal: [3]f32, _center: [3]f32, _size: f32) void {
+    pub inline fn drawQuadSprite(dde: DDEncoder, _handle: DDSpriteHandle, _normal: math.Vec3f, _center: math.Vec3f, _size: f32) void {
         dde.vtable.DrawQuadSprite(dde.ptr, _handle, _normal, _center, _size);
     }
 
     ///
-    pub inline fn drawQuadTexture(dde: DDEncoder, _handle: TextureHandle, _normal: [3]f32, _center: [3]f32, _size: f32) void {
+    pub inline fn drawQuadTexture(dde: DDEncoder, _handle: TextureHandle, _normal: math.Vec3f, _center: math.Vec3f, _size: f32) void {
         dde.vtable.DrawQuadTexture(dde.ptr, _handle, _normal, _center, _size);
     }
 
     ///
-    pub inline fn drawAxis(dde: DDEncoder, _xyz: [3]f32, _len: f32, _highlight: DDAxis, _thickness: f32) void {
+    pub inline fn drawAxis(dde: DDEncoder, _xyz: math.Vec3f, _len: f32, _highlight: DDAxis, _thickness: f32) void {
         dde.vtable.DrawAxis(dde.ptr, _xyz, _len, _highlight, _thickness);
     }
 
     ///
-    pub inline fn drawGrid(dde: DDEncoder, _normal: [3]f32, _center: [3]f32, _size: u32, _step: f32) void {
+    pub inline fn drawGrid(dde: DDEncoder, _normal: math.Vec3f, _center: math.Vec3f, _size: u32, _step: f32) void {
         dde.vtable.DrawGrid(dde.ptr, _normal, _center, _size, _step);
     }
 
     ///
-    pub inline fn drawGridAxis(dde: DDEncoder, _axis: DDAxis, _center: [3]f32, _size: u32, _step: f32) void {
+    pub inline fn drawGridAxis(dde: DDEncoder, _axis: DDAxis, _center: math.Vec3f, _size: u32, _step: f32) void {
         dde.vtable.DrawGridAxis(dde.ptr, _axis, _center, _size, _step);
     }
 
     ///
-    pub inline fn drawOrb(dde: DDEncoder, _xyz: [3]f32, _radius: f32, _highlight: DDAxis) void {
+    pub inline fn drawOrb(dde: DDEncoder, _xyz: math.Vec3f, _radius: f32, _highlight: DDAxis) void {
         dde.vtable.DrawOrb(dde.ptr, _xyz, _radius, _highlight);
     }
 
@@ -1857,40 +1858,40 @@ pub const DDEncoder = struct {
         Pop: *const fn (dde: *anyopaque) void,
         SetDepthTestLess: *const fn (dde: *anyopaque, _depthTestLess: bool) void,
         SetState: *const fn (dde: *anyopaque, _depthTest: bool, _depthWrite: bool, _clockwise: bool) void,
-        SetColor: *const fn (dde: *anyopaque, _abgr: u32) void,
+        SetColor: *const fn (dde: *anyopaque, _abgr: math.SRGBA) void,
         SetLod: *const fn (dde: *anyopaque, _lod: u8) void,
         SetWireframe: *const fn (dde: *anyopaque, _wireframe: bool) void,
         SetStipple: *const fn (dde: *anyopaque, _stipple: bool, _scale: f32, _offset: f32) void,
         SetSpin: *const fn (dde: *anyopaque, _spin: f32) void,
-        SetTransform: *const fn (dde: *anyopaque, _mtx: ?*const anyopaque) void,
-        SetTranslate: *const fn (dde: *anyopaque, _xyz: [3]f32) void,
-        PushTransform: *const fn (dde: *anyopaque, _mtx: *const anyopaque) void,
+        SetTransform: *const fn (dde: *anyopaque, _mtx: math.Mat44f) void,
+        SetTranslate: *const fn (dde: *anyopaque, _xyz: math.Vec3f) void,
+        PushTransform: *const fn (dde: *anyopaque, _mtx: math.Mat44f) void,
         PopTransform: *const fn (dde: *anyopaque) void,
-        MoveTo: *const fn (dde: *anyopaque, _xyz: [3]f32) void,
-        LineTo: *const fn (dde: *anyopaque, _xyz: [3]f32) void,
+        MoveTo: *const fn (dde: *anyopaque, _xyz: math.Vec3f) void,
+        LineTo: *const fn (dde: *anyopaque, _xyz: math.Vec3f) void,
         Close: *const fn (dde: *anyopaque) void,
-        DrawAABB: *const fn (dde: *anyopaque, min: [3]f32, max: [3]f32) void,
-        DrawCylinder: *const fn (dde: *anyopaque, pos: [3]f32, _end: [3]f32, radius: f32) void,
-        DrawCapsule: *const fn (dde: *anyopaque, pos: [3]f32, _end: [3]f32, radius: f32) void,
-        DrawDisk: *const fn (dde: *anyopaque, center: [3]f32, normal: [3]f32, radius: f32) void,
-        DrawObb: *const fn (dde: *anyopaque, _obb: [3]f32) void,
-        DrawSphere: *const fn (dde: *anyopaque, center: [3]f32, radius: f32) void,
-        DrawTriangle: *const fn (dde: *anyopaque, v0: [3]f32, v1: [3]f32, v2: [3]f32) void,
-        DrawCone: *const fn (dde: *anyopaque, pos: [3]f32, _end: [3]f32, radius: f32) void,
+        DrawAABB: *const fn (dde: *anyopaque, min: math.Vec3f, max: math.Vec3f) void,
+        DrawCylinder: *const fn (dde: *anyopaque, pos: math.Vec3f, _end: math.Vec3f, radius: f32) void,
+        DrawCapsule: *const fn (dde: *anyopaque, pos: math.Vec3f, _end: math.Vec3f, radius: f32) void,
+        DrawDisk: *const fn (dde: *anyopaque, center: math.Vec3f, normal: math.Vec3f, radius: f32) void,
+        DrawObb: *const fn (dde: *anyopaque, _obb: math.Vec3f) void,
+        DrawSphere: *const fn (dde: *anyopaque, center: math.Vec3f, radius: f32) void,
+        DrawTriangle: *const fn (dde: *anyopaque, v0: math.Vec3f, v1: math.Vec3f, v2: math.Vec3f) void,
+        DrawCone: *const fn (dde: *anyopaque, pos: math.Vec3f, _end: math.Vec3f, radius: f32) void,
         DrawGeometry: *const fn (dde: *anyopaque, _handle: DDGeometryHandle) void,
         DrawLineList: *const fn (dde: *anyopaque, _numVertices: u32, _vertices: []const DDVertex, _numIndices: u32, _indices: ?[*]const u16) void,
         DrawTriList: *const fn (dde: *anyopaque, _numVertices: u32, _vertices: []const DDVertex, _numIndices: u32, _indices: ?[*]const u16) void,
-        DrawFrustum: *const fn (dde: *anyopaque, _viewProj: [16]f32) void,
-        DrawArc: *const fn (dde: *anyopaque, _axis: DDAxis, _xyz: [3]f32, _radius: f32, _degrees: f32) void,
-        DrawCircle: *const fn (dde: *anyopaque, _normal: [3]f32, _center: [3]f32, _radius: f32, _weight: f32) void,
-        DrawCircleAxis: *const fn (dde: *anyopaque, _axis: DDAxis, _xyz: [3]f32, _radius: f32, _weight: f32) void,
-        DrawQuad: *const fn (dde: *anyopaque, _normal: [3]f32, _center: [3]f32, _size: f32) void,
-        DrawQuadSprite: *const fn (dde: *anyopaque, _handle: DDSpriteHandle, _normal: [3]f32, _center: [3]f32, _size: f32) void,
-        DrawQuadTexture: *const fn (dde: *anyopaque, _handle: TextureHandle, _normal: [3]f32, _center: [3]f32, _size: f32) void,
-        DrawAxis: *const fn (dde: *anyopaque, _xyz: [3]f32, _len: f32, _highlight: DDAxis, _thickness: f32) void,
-        DrawGrid: *const fn (dde: *anyopaque, _normal: [3]f32, _center: [3]f32, _size: u32, _step: f32) void,
-        DrawGridAxis: *const fn (dde: *anyopaque, _axis: DDAxis, _center: [3]f32, _size: u32, _step: f32) void,
-        DrawOrb: *const fn (dde: *anyopaque, _xyz: [3]f32, _radius: f32, _highlight: DDAxis) void,
+        DrawFrustum: *const fn (dde: *anyopaque, _viewProj: math.Mat44f) void,
+        DrawArc: *const fn (dde: *anyopaque, _axis: DDAxis, _xyz: math.Vec3f, _radius: f32, _degrees: f32) void,
+        DrawCircle: *const fn (dde: *anyopaque, _normal: math.Vec3f, _center: math.Vec3f, _radius: f32, _weight: f32) void,
+        DrawCircleAxis: *const fn (dde: *anyopaque, _axis: DDAxis, _xyz: math.Vec3f, _radius: f32, _weight: f32) void,
+        DrawQuad: *const fn (dde: *anyopaque, _normal: math.Vec3f, _center: math.Vec3f, _size: f32) void,
+        DrawQuadSprite: *const fn (dde: *anyopaque, _handle: DDSpriteHandle, _normal: math.Vec3f, _center: math.Vec3f, _size: f32) void,
+        DrawQuadTexture: *const fn (dde: *anyopaque, _handle: TextureHandle, _normal: math.Vec3f, _center: math.Vec3f, _size: f32) void,
+        DrawAxis: *const fn (dde: *anyopaque, _xyz: math.Vec3f, _len: f32, _highlight: DDAxis, _thickness: f32) void,
+        DrawGrid: *const fn (dde: *anyopaque, _normal: math.Vec3f, _center: math.Vec3f, _size: u32, _step: f32) void,
+        DrawGridAxis: *const fn (dde: *anyopaque, _axis: DDAxis, _center: math.Vec3f, _size: u32, _step: f32) void,
+        DrawOrb: *const fn (dde: *anyopaque, _xyz: math.Vec3f, _radius: f32, _highlight: DDAxis) void,
     };
 };
 

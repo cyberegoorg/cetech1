@@ -6,6 +6,7 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
 const ecs = cetech1.ecs;
+const math = cetech1.math;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
@@ -23,8 +24,8 @@ const flow_value_type_i = public.GraphValueTypeI.implement(
     .{
         .name = "Flow",
         .type_hash = public.PinTypes.Flow,
-        .cdb_type_hash = public.flowType.type_hash,
-        .color = .{ 1, 1, 1, 1 },
+        .cdb_type_hash = public.flowTypeCdb.type_hash,
+        .color = .white,
     },
 
     struct {
@@ -49,13 +50,13 @@ const i32_value_type_i = public.GraphValueTypeI.implement(
     .{
         .name = "i32",
         .type_hash = public.PinTypes.I32,
-        .cdb_type_hash = cdb_types.i32Type.type_hash,
-        .color = .{ 0.2, 0.4, 1.0, 1.0 },
+        .cdb_type_hash = cdb_types.i32TypeCdb.type_hash,
+        .color = .{ .r = 0.2, .g = 0.4, .b = 1.0, .a = 1.0 },
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
             _ = allocator; // autofix
-            const v = cdb_types.i32Type.readValue(i32, _cdb, _cdb.readObj(obj).?, .value);
+            const v = cdb_types.i32TypeCdb.readValue(i32, _cdb, _cdb.readObj(obj).?, .Value);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
@@ -75,13 +76,13 @@ const u32_value_type_i = public.GraphValueTypeI.implement(
     .{
         .name = "u32",
         .type_hash = public.PinTypes.U32,
-        .cdb_type_hash = cdb_types.u32Type.type_hash,
-        .color = .{ 0.4, 0.6, 1.0, 1.0 },
+        .cdb_type_hash = cdb_types.u32TypeCdb.type_hash,
+        .color = .{ .r = 0.4, .g = 0.6, .b = 1.0, .a = 1.0 },
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
             _ = allocator; // autofix
-            const v = cdb_types.u32Type.readValue(u32, _cdb, _cdb.readObj(obj).?, .value);
+            const v = cdb_types.u32TypeCdb.readValue(u32, _cdb, _cdb.readObj(obj).?, .Value);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
@@ -101,13 +102,13 @@ const f32_value_type_i = public.GraphValueTypeI.implement(
     .{
         .name = "f32",
         .type_hash = public.PinTypes.F32,
-        .cdb_type_hash = cdb_types.f32Type.type_hash,
-        .color = .{ 0.0, 0.5, 0.0, 1.0 },
+        .cdb_type_hash = cdb_types.f32TypeCdb.type_hash,
+        .color = .{ .g = 0.5, .a = 1.0 },
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
             _ = allocator; // autofix
-            const v = cdb_types.f32Type.readValue(f32, _cdb, _cdb.readObj(obj).?, .value);
+            const v = cdb_types.f32TypeCdb.readValue(f32, _cdb, _cdb.readObj(obj).?, .Value);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
@@ -127,13 +128,13 @@ const i64_value_type_i = public.GraphValueTypeI.implement(
     .{
         .name = "i64",
         .type_hash = public.PinTypes.I64,
-        .cdb_type_hash = cdb_types.i64Type.type_hash,
-        .color = .{ 0.2, 0.4, 1.0, 1.0 },
+        .cdb_type_hash = cdb_types.i64TypeCdb.type_hash,
+        .color = .{ .r = 0.2, .g = 0.4, .b = 1.0, .a = 1.0 },
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
             _ = allocator; // autofix
-            const v = cdb_types.i64Type.readValue(i64, _cdb, _cdb.readObj(obj).?, .value);
+            const v = cdb_types.i64TypeCdb.readValue(i64, _cdb, _cdb.readObj(obj).?, .Value);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
@@ -153,13 +154,13 @@ const u64_value_type_i = public.GraphValueTypeI.implement(
     .{
         .name = "u64",
         .type_hash = public.PinTypes.U64,
-        .cdb_type_hash = cdb_types.u64Type.type_hash,
-        .color = .{ 0.4, 0.6, 1.0, 1.0 },
+        .cdb_type_hash = cdb_types.u64TypeCdb.type_hash,
+        .color = .{ .r = 0.4, .g = 0.6, .b = 1.0, .a = 1.0 },
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
             _ = allocator; // autofix
-            const v = cdb_types.u64Type.readValue(u64, _cdb, _cdb.readObj(obj).?, .value);
+            const v = cdb_types.u64TypeCdb.readValue(u64, _cdb, _cdb.readObj(obj).?, .Value);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
@@ -179,13 +180,13 @@ const f64_value_type_i = public.GraphValueTypeI.implement(
     .{
         .name = "f64",
         .type_hash = public.PinTypes.F64,
-        .cdb_type_hash = cdb_types.f64Type.type_hash,
-        .color = .{ 0.0, 0.5, 0.0, 1.0 },
+        .cdb_type_hash = cdb_types.f64TypeCdb.type_hash,
+        .color = .{ .g = 0.5, .a = 1.0 },
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
             _ = allocator; // autofix
-            const v = cdb_types.f64Type.readValue(f64, _cdb, _cdb.readObj(obj).?, .value);
+            const v = cdb_types.f64TypeCdb.readValue(f64, _cdb, _cdb.readObj(obj).?, .Value);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
@@ -205,13 +206,13 @@ const bool_value_type_i = public.GraphValueTypeI.implement(
     .{
         .name = "bool",
         .type_hash = public.PinTypes.Bool,
-        .cdb_type_hash = cdb_types.BoolType.type_hash,
-        .color = .{ 1.0, 0.4, 0.4, 1.0 },
+        .cdb_type_hash = cdb_types.BoolTypeCdb.type_hash,
+        .color = .{ .r = 1.0, .g = 0.4, .b = 0.4, .a = 1.0 },
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
             _ = allocator; // autofix
-            const v = cdb_types.BoolType.readValue(bool, _cdb, _cdb.readObj(obj).?, .value);
+            const v = cdb_types.BoolTypeCdb.readValue(bool, _cdb, _cdb.readObj(obj).?, .Value);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
@@ -231,12 +232,12 @@ const string_value_type_i = public.GraphValueTypeI.implement(
     .{
         .name = "string",
         .type_hash = public.PinTypes.String,
-        .cdb_type_hash = cdb_types.StringType.type_hash,
+        .cdb_type_hash = cdb_types.StringTypeCdb.type_hash,
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
             _ = allocator; // autofix
-            const v = cdb_types.StringType.readStr(_cdb, _cdb.readObj(obj).?, .value);
+            const v = cdb_types.StringTypeCdb.readStr(_cdb, _cdb.readObj(obj).?, .Value);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
@@ -252,16 +253,16 @@ const string_value_type_i = public.GraphValueTypeI.implement(
 );
 
 const vec2f_value_type_i = public.GraphValueTypeI.implement(
-    [2]f32,
+    math.Vec2f,
     .{
         .name = "vec2f",
         .type_hash = public.PinTypes.VEC2F,
-        .cdb_type_hash = cdb_types.Vec2f.type_hash,
+        .cdb_type_hash = cdb_types.Vec2fCdb.type_hash,
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
             _ = allocator; // autofix
-            const v = cdb_types.Vec2f.f.toSlice(_cdb, obj);
+            const v = cdb_types.Vec2fCdb.f.to(_cdb, obj);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
@@ -270,23 +271,23 @@ const vec2f_value_type_i = public.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            const v = std.mem.bytesToValue([2]f32, value);
+            const v = std.mem.bytesToValue(math.Vec2f, value);
             return std.fmt.allocPrintSentinel(allocator, "{any}", .{v}, 0);
         }
     },
 );
 
 const vec3f_value_type_i = public.GraphValueTypeI.implement(
-    [3]f32,
+    math.Vec3f,
     .{
         .name = "vec3f",
         .type_hash = public.PinTypes.VEC3F,
-        .cdb_type_hash = cdb_types.Vec3f.type_hash,
+        .cdb_type_hash = cdb_types.Vec3fCdb.type_hash,
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
             _ = allocator; // autofix
-            const v = cdb_types.Vec3f.f.toSlice(_cdb, obj);
+            const v = cdb_types.Vec3fCdb.f.to(_cdb, obj);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
@@ -295,23 +296,23 @@ const vec3f_value_type_i = public.GraphValueTypeI.implement(
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
-            const v = std.mem.bytesToValue([3]f32, value);
+            const v = std.mem.bytesToValue(math.Vec3f, value);
             return std.fmt.allocPrintSentinel(allocator, "{any}", .{v}, 0);
         }
     },
 );
 
 const vec4f_value_type_i = public.GraphValueTypeI.implement(
-    [4]f32,
+    math.Vec4f,
     .{
         .name = "vec4f",
         .type_hash = public.PinTypes.VEC4F,
-        .cdb_type_hash = cdb_types.Vec4f.type_hash,
+        .cdb_type_hash = cdb_types.Vec4fCdb.type_hash,
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
             _ = allocator; // autofix
-            const v = cdb_types.Vec4f.f.toSlice(_cdb, obj);
+            const v = cdb_types.Vec4fCdb.f.to(_cdb, obj);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
@@ -327,16 +328,16 @@ const vec4f_value_type_i = public.GraphValueTypeI.implement(
 );
 
 const quatf_value_type_i = public.GraphValueTypeI.implement(
-    [4]f32,
+    math.Quatf,
     .{
         .name = "quatf",
         .type_hash = public.PinTypes.QUATF,
-        .cdb_type_hash = cdb_types.Quatf.type_hash,
+        .cdb_type_hash = cdb_types.QuatfCdb.type_hash,
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
             _ = allocator; // autofix
-            const v = cdb_types.Vec4f.f.toSlice(_cdb, obj);
+            const v = cdb_types.QuatfCdb.f.to(_cdb, obj);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
@@ -351,17 +352,17 @@ const quatf_value_type_i = public.GraphValueTypeI.implement(
     },
 );
 
-const color4f_value_type_i = public.GraphValueTypeI.implement(
+const Color4f_value_type_i = public.GraphValueTypeI.implement(
     [4]f32,
     .{
-        .name = "color4f",
-        .type_hash = public.PinTypes.COLOR4F,
-        .cdb_type_hash = cdb_types.Color4f.type_hash,
+        .name = "Color4f",
+        .type_hash = public.PinTypes.Color4f,
+        .cdb_type_hash = cdb_types.Color4fCdb.type_hash,
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
             _ = allocator; // autofix
-            const v = cdb_types.Color4f.f.toSlice(_cdb, obj);
+            const v = cdb_types.Color4fCdb.f.to(_cdb, obj);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
@@ -381,7 +382,7 @@ const event_node_i = public.NodeI.implement(
         .name = "Event Init",
         .type_name = public.EVENT_INIT_NODE_TYPE_STR,
         .category = "Event",
-        .pivot = .pivot,
+        .pivot = .Pivot,
     },
     null,
     struct {
@@ -427,7 +428,7 @@ const event_shutdown_node_i = public.NodeI.implement(
         .name = "Event Shutdown",
         .type_name = public.EVENT_SHUTDOWN_NODE_TYPE_STR,
         .category = "Event",
-        .pivot = .pivot,
+        .pivot = .Pivot,
     },
     null,
     struct {
@@ -472,7 +473,7 @@ const event_tick_node_i = public.NodeI.implement(
         .name = "Event Tick",
         .type_name = public.EVENT_TICK_NODE_TYPE_STR,
         .category = "Event",
-        .pivot = .pivot,
+        .pivot = .Pivot,
     },
     null,
     struct {
@@ -588,7 +589,7 @@ const const_node_i = public.NodeI.implement(
     .{
         .name = "Const",
         .type_name = "const",
-        .settings_type = public.ConstNodeSettings.type_hash,
+        .settings_type = public.ConstNodeSettingsCdb.type_hash,
     },
     ConstNodeState,
     struct {
@@ -599,13 +600,13 @@ const const_node_i = public.NodeI.implement(
             _ = self; // autofix
 
             const db = _cdb.getDbFromObjid(graph_obj);
-            const node_r = public.GraphType.read(_cdb, node_obj).?;
+            const node_r = public.GraphTypeCdb.read(_cdb, node_obj).?;
 
             var type_hash: cetech1.StrId32 = .{};
-            if (public.NodeType.readSubObj(_cdb, node_r, .settings)) |setting| {
-                const settings_r = public.ConstNodeSettings.read(_cdb, setting).?;
+            if (public.NodeTypeCdb.readSubObj(_cdb, node_r, .settings)) |setting| {
+                const settings_r = public.ConstNodeSettingsCdb.read(_cdb, setting).?;
 
-                if (public.ConstNodeSettings.readSubObj(_cdb, settings_r, .value)) |value_obj| {
+                if (public.ConstNodeSettingsCdb.readSubObj(_cdb, settings_r, .value)) |value_obj| {
                     const value_type = _graphvm.findValueTypeIByCdb(_cdb.getTypeHash(db, value_obj.type_idx).?).?;
                     type_hash = value_type.type_hash;
                 }
@@ -629,11 +630,11 @@ const const_node_i = public.NodeI.implement(
 
             const db = _cdb.getDbFromObjid(node_obj);
 
-            const node_r = public.GraphType.read(_cdb, node_obj).?;
-            if (public.NodeType.readSubObj(_cdb, node_r, .settings)) |setting| {
-                const settings_r = public.ConstNodeSettings.read(_cdb, setting).?;
+            const node_r = public.GraphTypeCdb.read(_cdb, node_obj).?;
+            if (public.NodeTypeCdb.readSubObj(_cdb, node_r, .settings)) |setting| {
+                const settings_r = public.ConstNodeSettingsCdb.read(_cdb, setting).?;
 
-                if (public.ConstNodeSettings.readSubObj(_cdb, settings_r, .value)) |value_obj| {
+                if (public.ConstNodeSettingsCdb.readSubObj(_cdb, settings_r, .value)) |value_obj| {
                     const value_type = _graphvm.findValueTypeIByCdb(_cdb.getTypeHash(db, value_obj.type_idx).?).?;
                     real_state.value_type = value_type;
                     real_state.value_obj = value_obj;
@@ -814,7 +815,7 @@ pub fn addOrRemove(
     try apidb.implOrRemove(module_name, public.GraphValueTypeI, &vec3f_value_type_i, load);
     try apidb.implOrRemove(module_name, public.GraphValueTypeI, &vec4f_value_type_i, load);
     try apidb.implOrRemove(module_name, public.GraphValueTypeI, &quatf_value_type_i, load);
-    try apidb.implOrRemove(module_name, public.GraphValueTypeI, &color4f_value_type_i, load);
+    try apidb.implOrRemove(module_name, public.GraphValueTypeI, &Color4f_value_type_i, load);
 
     try apidb.implOrRemove(module_name, public.NodeI, &event_node_i, load);
     try apidb.implOrRemove(module_name, public.NodeI, &event_tick_node_i, load);
@@ -830,9 +831,9 @@ pub fn createTypes(db: cdb.DbId) !void {
     {
         _ = try _cdb.addType(
             db,
-            public.ConstNodeSettings.name,
+            public.ConstNodeSettingsCdb.name,
             &[_]cdb.PropDef{
-                .{ .prop_idx = public.ConstNodeSettings.propIdx(.value), .name = "value", .type = .SUBOBJECT },
+                .{ .prop_idx = public.ConstNodeSettingsCdb.propIdx(.value), .name = "value", .type = .SUBOBJECT },
             },
         );
     }
@@ -841,7 +842,7 @@ pub fn createTypes(db: cdb.DbId) !void {
     {
         _ = try _cdb.addType(
             db,
-            public.RandomF32NodeSettings.name,
+            public.RandomF32NodeSettingsCdb.name,
             &[_]cdb.PropDef{},
         );
     }
@@ -850,7 +851,7 @@ pub fn createTypes(db: cdb.DbId) !void {
     {
         _ = try _cdb.addType(
             db,
-            public.flowType.name,
+            public.flowTypeCdb.name,
             &[_]cdb.PropDef{},
         );
     }

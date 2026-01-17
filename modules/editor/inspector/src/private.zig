@@ -10,8 +10,10 @@ const assetdb = cetech1.assetdb;
 const coreui = cetech1.coreui;
 const coreui_icons = cetech1.coreui;
 const profiler = cetech1.profiler;
+const math = cetech1.math;
 
 const editor = @import("editor");
+const editor_tabs = @import("editor_tabs");
 
 const Icons = coreui.CoreIcons;
 
@@ -25,11 +27,6 @@ const log = std.log.scoped(module_name);
 const INSPECTOR_TAB_NAME = "ct_editor_inspector_tab";
 const INSPECTOR_TAB_NAME_HASH = .fromStr(INSPECTOR_TAB_NAME);
 
-const COLOR4F_PROPERTY_ASPECT_NAME = "ct_color_4f_properties_aspect";
-const FOLDER_NAME_PROPERTY_ASPECT_NAME = "ct_folder_name_property_aspect";
-const FOLDER_PROPERTY_CONFIG_ASPECT_NAME = "ct_folder_property_config_aspect";
-const ASSET_PROPERTIES_ASPECT_NAME = "ct_asset_properties_aspect";
-
 const PROP_HEADER_BG_COLOR = .{ 0.2, 0.2, 0.2, 0.65 };
 
 var _allocator: Allocator = undefined;
@@ -38,19 +35,27 @@ var _log: *const cetech1.log.LogAPI = undefined;
 var _cdb: *const cdb.CdbAPI = undefined;
 var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
 var _uuid: *const cetech1.uuid.UuidAPI = undefined;
-var _editor: *const editor.EditorAPI = undefined;
 var _assetdb: *const assetdb.AssetDBAPI = undefined;
 var _kernel: *const cetech1.kernel.KernelApi = undefined;
 var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 var _profiler: *const profiler.ProfilerAPI = undefined;
 
+var _editor: *const editor.EditorAPI = undefined;
+var _tabs: *const editor_tabs.TabsAPI = undefined;
+
 // Global state
 const G = struct {
-    tab_vt: *editor.TabTypeI = undefined,
+    tab_vt: *editor_tabs.TabTypeI = undefined,
     asset_prop_aspect: *public.UiPropertiesAspect = undefined,
 
-    color4f_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+    vec3f_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+
     color3f_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+    Color4f_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+
+    position_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+    rotation_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+    scale_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
 
     hide_proto_property_config_aspect: *public.UiPropertiesConfigAspect = undefined,
 };
@@ -100,7 +105,7 @@ fn formatedPropNameToBuff(buf: []u8, prop_name: [:0]const u8) ![]u8 {
 
 fn uiAssetInput(
     allocator: std.mem.Allocator,
-    tab: *editor.TabO,
+    tab: *editor_tabs.TabO,
     obj: cdb.ObjId,
     prop_idx: u32,
     read_only: bool,
@@ -137,7 +142,7 @@ fn uiAssetInput(
     );
 }
 
-fn uiAssetInputProto(allocator: std.mem.Allocator, db: cdb.DbId, tab: *editor.TabO, obj: cdb.ObjId, value_obj: cdb.ObjId, read_only: bool) !void {
+fn uiAssetInputProto(allocator: std.mem.Allocator, db: cdb.DbId, tab: *editor_tabs.TabO, obj: cdb.ObjId, value_obj: cdb.ObjId, read_only: bool) !void {
     return uiAssetInputGeneric(
         allocator,
         db,
@@ -154,7 +159,7 @@ fn uiAssetInputProto(allocator: std.mem.Allocator, db: cdb.DbId, tab: *editor.Ta
 fn uiAssetInputGeneric(
     allocator: std.mem.Allocator,
     db: cdb.DbId,
-    tab: *editor.TabO,
+    tab: *editor_tabs.TabO,
     obj: cdb.ObjId,
     value_obj: cdb.ObjId,
     read_only: bool,
@@ -198,7 +203,7 @@ fn uiAssetInputGeneric(
 
     if (_coreui.beginPopup("ui_asset_context_menu", .{})) {
         defer _coreui.endPopup();
-        if (_editor.selectObjFromMenu(allocator, _assetdb.getObjForAsset(obj) orelse obj, allowed_type)) |selected| {
+        if (_tabs.selectObjFromMenu(allocator, _assetdb.getObjForAsset(obj) orelse obj, allowed_type)) |selected| {
             if (is_proto) {
                 try _cdb.setPrototype(obj, selected);
             } else {
@@ -208,7 +213,7 @@ fn uiAssetInputGeneric(
             }
         }
 
-        if (!_assetdb.isAssetObjTypeOf(obj, assetdb.Folder.typeIdx(_cdb, db))) {
+        if (!_assetdb.isAssetObjTypeOf(obj, assetdb.FolderCdb.typeIdx(_cdb, db))) {
             if (_coreui.menuItem(allocator, coreui.Icons.Clear ++ "  " ++ "Clear" ++ "###Clear", .{ .enabled = !read_only and value_asset != null }, null)) {
                 if (is_proto) {
                     try _cdb.setPrototype(obj, .{});
@@ -244,7 +249,7 @@ fn uiAssetInputGeneric(
         if (_coreui.acceptDragDropPayload("obj", .{ .source_allow_null_id = true })) |payload| {
             var drag_obj: cdb.ObjId = std.mem.bytesToValue(cdb.ObjId, payload.data.?);
             if (drag_obj.type_idx.eql(AssetTypeIdx)) {
-                drag_obj = assetdb.Asset.readSubObj(_cdb, _cdb.readObj(drag_obj).?, .Object).?;
+                drag_obj = assetdb.AssetCdb.readSubObj(_cdb, _cdb.readObj(drag_obj).?, .Object).?;
             }
 
             if (is_proto) {
@@ -319,14 +324,14 @@ fn endSection(open: bool, flat: bool) void {
     }
 }
 
-fn cdbPropertiesView(allocator: std.mem.Allocator, tab: *editor.TabO, top_level_obj: cdb.ObjId, obj: cdb.ObjId, depth: u32, args: public.cdbPropertiesViewArgs) !void {
+fn cdbPropertiesView(allocator: std.mem.Allocator, tab: *editor_tabs.TabO, top_level_obj: cdb.ObjId, obj: cdb.ObjId, depth: u32, args: public.cdbPropertiesViewArgs) !void {
     _coreui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 10 });
     defer _coreui.popStyleVar(.{});
     try cdbPropertiesObj(allocator, tab, top_level_obj, obj, depth, args);
 }
 const REMOVED_COLOR = .{ 0.7, 0.0, 0.0, 1.0 };
 
-fn objContextMenuBtn(allocator: std.mem.Allocator, tab: *editor.TabO, top_level_obj: cdb.ObjId, obj: cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cdb.ObjId) !void {
+fn objContextMenuBtn(allocator: std.mem.Allocator, tab: *editor_tabs.TabO, top_level_obj: cdb.ObjId, obj: cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cdb.ObjId) !void {
     if (_coreui.beginPopup("property_obj_menu", .{})) {
         defer _coreui.endPopup();
         try _editor.showObjContextMenu(allocator, tab, &.{editor.Contexts.open}, .{
@@ -344,7 +349,7 @@ fn objContextMenuBtn(allocator: std.mem.Allocator, tab: *editor.TabO, top_level_
 
 fn cdbPropertiesObj(
     allocator: std.mem.Allocator,
-    tab: *editor.TabO,
+    tab: *editor_tabs.TabO,
     top_level_obj: cdb.ObjId,
     obj: cdb.ObjId,
     depth: u32,
@@ -618,7 +623,7 @@ fn cdbPropertiesObj(
 
                             //const visible_item = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
 
-                            const label = _editor.buffFormatObjLabel(allocator, &buff, subobj, true, false) orelse try std.fmt.bufPrintZ(&buff, "{d}", .{set_idx});
+                            const label = _editor.buffFormatObjLabel(allocator, &buff, subobj, .{ .with_txt = true, .with_id = true, .with_status_icons = true }) orelse try std.fmt.bufPrintZ(&buff, "{d}", .{set_idx});
                             const set_state = _cdb.getRelation(top_level_obj, obj, prop_idx, subobj);
                             const set_color = _editor.getStateColor(set_state);
 
@@ -761,7 +766,7 @@ fn uiPropInput(obj: cdb.ObjId, prop_idx: u32, enabled: bool, args: public.cdbPro
 fn uiPropInputRaw(obj: cdb.ObjId, prop_idx: u32, args: public.cdbPropertiesViewArgs) !void {
     _ = args; // autofix
 
-    const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionAvail()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
+    const visible = _coreui.isRectVisible(.{ .x = _coreui.getContentRegionAvail().x, .y = _coreui.getFontSize() * _coreui.getScaleFactor() });
     if (!visible) {
         _coreui.dummy(.{ .w = -1, .h = _coreui.getFontSize() * _coreui.getScaleFactor() });
         return;
@@ -897,7 +902,7 @@ fn uiPropInputRaw(obj: cdb.ObjId, prop_idx: u32, args: public.cdbPropertiesViewA
     }
 }
 
-fn uiPropLabel(allocator: std.mem.Allocator, name: [:0]const u8, color: ?[4]f32, enabled: bool, args: public.cdbPropertiesViewArgs) bool {
+fn uiPropLabel(allocator: std.mem.Allocator, name: [:0]const u8, color: ?math.Color4f, enabled: bool, args: public.cdbPropertiesViewArgs) bool {
     if (args.filter) |filter| {
         if (_coreui.uiFilterPass(allocator, filter, name, false) == null) return false;
     }
@@ -934,7 +939,7 @@ fn uiPropLabel(allocator: std.mem.Allocator, name: [:0]const u8, color: ?[4]f32,
 var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
-        tab: *editor.TabO,
+        tab: *editor_tabs.TabO,
         top_level_obj: cdb.ObjId,
         obj: cdb.ObjId,
         depth: u32,
@@ -974,27 +979,27 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
 
             // Asset name
             if (!is_project and !_assetdb.isRootFolder(obj) and uiPropLabel(allocator, "Name", null, true, args)) {
-                try uiPropInput(obj, assetdb.Asset.propIdx(.Name), true, args);
+                try uiPropInput(obj, assetdb.AssetCdb.propIdx(.Name), true, args);
             }
 
             // Asset name
             if (!_assetdb.isRootFolder(obj) and uiPropLabel(allocator, "Description", null, true, args)) {
-                try uiPropInput(obj, assetdb.Asset.propIdx(.Description), true, args);
+                try uiPropInput(obj, assetdb.AssetCdb.propIdx(.Description), true, args);
             }
 
             // Folder
             if (!is_project and !_assetdb.isRootFolder(obj) and uiPropLabel(allocator, "Folder", null, true, args)) {
-                try uiAssetInput(allocator, tab, obj, assetdb.Asset.propIdx(.Folder), false, true);
+                try uiAssetInput(allocator, tab, obj, assetdb.AssetCdb.propIdx(.Folder), false, true);
             }
 
             // Tags
             if (!is_project and !_assetdb.isRootFolder(obj)) {
                 // TODO: SHIT HACK
-                const ui_prop_aspect = _cdb.getPropertyAspect(public.UiEmbedPropertyAspect, db, obj.type_idx, assetdb.Asset.propIdx(.Tags));
+                const ui_prop_aspect = _cdb.getPropertyAspect(public.UiEmbedPropertyAspect, db, obj.type_idx, assetdb.AssetCdb.propIdx(.Tags));
                 // If exist aspect and is empty hide property.
                 if (ui_prop_aspect) |aspect| {
                     if (uiPropLabel(allocator, "Tags", null, true, args)) {
-                        try aspect.ui_properties(allocator, obj, assetdb.Asset.propIdx(.Tags), args);
+                        try aspect.ui_properties(allocator, obj, assetdb.AssetCdb.propIdx(.Tags), args);
                     }
                 }
             }
@@ -1002,14 +1007,14 @@ var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
 
         // Asset object
         _coreui.separatorText("Asset object");
-        try cdbPropertiesObj(allocator, tab, top_level_obj, assetdb.Asset.readSubObj(_cdb, obj_r, .Object).?, depth + 1, args);
+        try cdbPropertiesObj(allocator, tab, top_level_obj, assetdb.AssetCdb.readSubObj(_cdb, obj_r, .Object).?, depth + 1, args);
     }
 });
 
 //
 
 // Asset properties aspect
-var color4f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+var Color4f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
@@ -1021,12 +1026,12 @@ var color4f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
         _coreui.pushObjUUID(obj);
         defer _coreui.popId();
 
-        var color = cetech1.cdb_types.Color4f.f.toSlice(_cdb, obj);
+        var color = cetech1.cdb_types.Color4fCdb.f.to(_cdb, obj);
 
         _coreui.setNextItemWidth(-1);
         if (_coreui.colorEdit4("", .{ .col = &color })) {
             const w = _cdb.writeObj(obj).?;
-            cetech1.cdb_types.Color4f.f.fromSlice(_cdb, w, color);
+            cetech1.cdb_types.Color4fCdb.f.from(_cdb, w, color);
             try _cdb.writeCommit(w);
         }
     }
@@ -1044,12 +1049,104 @@ var color3f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
         _coreui.pushObjUUID(obj);
         defer _coreui.popId();
 
-        const color = cetech1.cdb_types.Color3f.f.toSlice(_cdb, obj);
-        var c = [4]f32{ color[0], color[1], color[2], 1.0 };
+        const color = cetech1.cdb_types.Color3fCdb.f.to(_cdb, obj);
+        var c: math.Color4f = .fromColor4f(color, 1.0);
         _coreui.setNextItemWidth(-1);
         if (_coreui.colorEdit4("", .{ .col = &c, .flags = .{ .no_alpha = true } })) {
             const w = _cdb.writeObj(obj).?;
-            cetech1.cdb_types.Color3f.f.fromSlice(_cdb, w, .{ c[0], c[1], c[2] });
+            cetech1.cdb_types.Color3fCdb.f.from(_cdb, w, c.toColor3f());
+            try _cdb.writeCommit(w);
+        }
+    }
+});
+
+var vec3f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+    pub fn ui(
+        allocator: std.mem.Allocator,
+        obj: cdb.ObjId,
+        args: public.cdbPropertiesViewArgs,
+    ) !void {
+        _ = allocator;
+        _ = args;
+
+        _coreui.pushObjUUID(obj);
+        defer _coreui.popId();
+
+        var rotation = cetech1.cdb_types.Vec3fCdb.f.to(_cdb, obj);
+
+        _coreui.setNextItemWidth(-1);
+        if (_coreui.dragVec3f("", .{ .v = &rotation })) {
+            const w = _cdb.writeObj(obj).?;
+            cetech1.cdb_types.Vec3fCdb.f.from(_cdb, w, rotation);
+            try _cdb.writeCommit(w);
+        }
+    }
+});
+
+var position_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+    pub fn ui(
+        allocator: std.mem.Allocator,
+        obj: cdb.ObjId,
+        args: public.cdbPropertiesViewArgs,
+    ) !void {
+        _ = allocator;
+        _ = args;
+
+        _coreui.pushObjUUID(obj);
+        defer _coreui.popId();
+
+        var position = cetech1.cdb_types.Vec3fCdb.f.to(_cdb, obj);
+
+        _coreui.setNextItemWidth(-1);
+        if (_coreui.dragVec3f("", .{ .v = &position })) {
+            const w = _cdb.writeObj(obj).?;
+            cetech1.cdb_types.Vec3fCdb.f.from(_cdb, w, position);
+            try _cdb.writeCommit(w);
+        }
+    }
+});
+
+var rotation_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+    pub fn ui(
+        allocator: std.mem.Allocator,
+        obj: cdb.ObjId,
+        args: public.cdbPropertiesViewArgs,
+    ) !void {
+        _ = allocator;
+        _ = args;
+
+        _coreui.pushObjUUID(obj);
+        defer _coreui.popId();
+
+        var rotation = cetech1.cdb_types.Vec3fCdb.f.to(_cdb, obj);
+
+        _coreui.setNextItemWidth(-1);
+        if (_coreui.dragVec3f("", .{ .v = &rotation })) {
+            const w = _cdb.writeObj(obj).?;
+            cetech1.cdb_types.Vec3fCdb.f.from(_cdb, w, rotation);
+            try _cdb.writeCommit(w);
+        }
+    }
+});
+
+var scale_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+    pub fn ui(
+        allocator: std.mem.Allocator,
+        obj: cdb.ObjId,
+        args: public.cdbPropertiesViewArgs,
+    ) !void {
+        _ = allocator;
+        _ = args;
+
+        _coreui.pushObjUUID(obj);
+        defer _coreui.popId();
+
+        var rotation = cetech1.cdb_types.Vec3fCdb.f.to(_cdb, obj);
+
+        _coreui.setNextItemWidth(-1);
+        if (_coreui.dragVec3f("", .{ .v = &rotation })) {
+            const w = _cdb.writeObj(obj).?;
+            cetech1.cdb_types.Vec3fCdb.f.from(_cdb, w, rotation);
             try _cdb.writeCommit(w);
         }
     }
@@ -1058,7 +1155,7 @@ var color3f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
 //
 
 const PropertyTab = struct {
-    tab_i: editor.TabI,
+    tab_i: editor_tabs.TabI,
 
     selected_obj: coreui.SelectionItem,
     filter_buff: [256:0]u8 = std.mem.zeroes([256:0]u8),
@@ -1066,7 +1163,7 @@ const PropertyTab = struct {
 };
 
 // Fill editor tab interface
-var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
+var inspector_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
     .tab_name = INSPECTOR_TAB_NAME,
     .tab_hash = .fromStr(INSPECTOR_TAB_NAME),
 
@@ -1080,7 +1177,7 @@ var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Return tab title
-    pub fn title(inst: *editor.TabO) ![:0]const u8 {
+    pub fn title(inst: *editor_tabs.TabO) ![:0]const u8 {
         _ = inst;
         return coreui.Icons.Properties ++ "  " ++ "Inspector";
     }
@@ -1094,7 +1191,7 @@ var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Create new FooTab instantce
-    pub fn create(tab_id: u32) !?*editor.TabI {
+    pub fn create(tab_id: u32) !?*editor_tabs.TabI {
         _ = tab_id;
         var tab_inst = try _allocator.create(PropertyTab);
         tab_inst.* = PropertyTab{
@@ -1110,19 +1207,19 @@ var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Destroy FooTab instantce
-    pub fn destroy(tab_inst: *editor.TabI) !void {
+    pub fn destroy(tab_inst: *editor_tabs.TabI) !void {
         const tab_o: *PropertyTab = @ptrCast(@alignCast(tab_inst.inst));
         _allocator.destroy(tab_o);
     }
 
     // Draw tab menu
-    pub fn menu(inst: *editor.TabO) !void {
+    pub fn menu(inst: *editor_tabs.TabO) !void {
         const tab_o: *PropertyTab = @ptrCast(@alignCast(inst));
         _ = tab_o;
     }
 
     // Draw tab content
-    pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
+    pub fn ui(inst: *editor_tabs.TabO, kernel_tick: u64, dt: f32) !void {
         _ = kernel_tick; // autofix
         _ = dt; // autofix
         var tab_o: *PropertyTab = @ptrCast(@alignCast(inst));
@@ -1146,13 +1243,13 @@ var inspector_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor.TabO, obj: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) !void {
+    pub fn objSelected(inst: *editor_tabs.TabO, obj: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) !void {
         _ = sender_tab_hash; // autofix
         var tab_o: *PropertyTab = @ptrCast(@alignCast(inst));
         tab_o.selected_obj = obj[0];
     }
 
-    // pub fn assetRootOpened(inst: *editor.TabO) !void {
+    // pub fn assetRootOpened(inst: *editor_tabs.TabO) !void {
     //     const tab_o: *PropertyTab = @alignCast(@ptrCast(inst));
     //     tab_o.filter = null;
     //     tab_o.selected_obj = coreui.SelectionItem.empty();
@@ -1165,39 +1262,78 @@ var folder_properties_config_aspect = public.UiPropertiesConfigAspect{
 
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.DbId) !void {
-        try assetdb.Folder.addAspect(
+        _ = db;
+    }
+});
+
+// Cdb
+var AssetTypeIdx: cdb.TypeIdx = undefined;
+var ProjectTypeIdx: cdb.TypeIdx = undefined;
+
+const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
+    pub fn postCreateTypes(db: cdb.DbId) !void {
+        AssetTypeIdx = assetdb.AssetCdb.typeIdx(_cdb, db);
+        ProjectTypeIdx = assetdb.ProjectCdb.typeIdx(_cdb, db);
+
+        try assetdb.FolderCdb.addAspect(
             public.UiPropertiesConfigAspect,
             _cdb,
             db,
             _g.hide_proto_property_config_aspect,
         );
 
-        try assetdb.Project.addAspect(
+        try assetdb.ProjectCdb.addAspect(
             public.UiPropertiesConfigAspect,
             _cdb,
             db,
             _g.hide_proto_property_config_aspect,
         );
 
-        try assetdb.Asset.addAspect(
+        try assetdb.AssetCdb.addAspect(
             public.UiPropertiesAspect,
             _cdb,
             db,
             _g.asset_prop_aspect,
         );
 
-        try cetech1.cdb_types.Color4f.addAspect(
+        try cetech1.cdb_types.Color4fCdb.addAspect(
             public.UiEmbedPropertiesAspect,
             _cdb,
             db,
-            _g.color4f_properties_aspec,
+            _g.Color4f_properties_aspec,
         );
 
-        try cetech1.cdb_types.Color3f.addAspect(
+        try cetech1.cdb_types.Color3fCdb.addAspect(
             public.UiEmbedPropertiesAspect,
             _cdb,
             db,
             _g.color3f_properties_aspec,
+        );
+
+        try cetech1.cdb_types.Vec3fCdb.addAspect(
+            public.UiEmbedPropertiesAspect,
+            _cdb,
+            db,
+            _g.vec3f_properties_aspec,
+        );
+
+        try cetech1.cdb_types.PositionCdb.addAspect(
+            public.UiEmbedPropertiesAspect,
+            _cdb,
+            db,
+            _g.position_properties_aspec,
+        );
+        try cetech1.cdb_types.RotationCdb.addAspect(
+            public.UiEmbedPropertiesAspect,
+            _cdb,
+            db,
+            _g.rotation_properties_aspec,
+        );
+        try cetech1.cdb_types.ScaleCdb.addAspect(
+            public.UiEmbedPropertiesAspect,
+            _cdb,
+            db,
+            _g.scale_properties_aspec,
         );
     }
 });
@@ -1219,8 +1355,9 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f").?).?;
 
                     ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###ROOT/###asset1.ct_foo_asset", .{}, null);
-                    ctx.itemAction(_coreui, .Click, "**/###ROOT/###asset2.ct_foo_asset", .{}, null);
+                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(_coreui, .DoubleClick, "**/###asset1.ct_foo_asset", .{}, null);
+                    ctx.itemAction(_coreui, .Click, "**/###asset2.ct_foo_asset", .{}, null);
 
                     ctx.setRef(_coreui, "###ct_editor_inspector_tab_1");
                     ctx.windowFocus(_coreui, "");
@@ -1349,8 +1486,9 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.yield(_coreui, 1);
 
                     ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###ROOT/###asset1_1.ct_foo_asset", .{}, null);
-                    ctx.itemAction(_coreui, .Click, "**/###ROOT/###asset2.ct_foo_asset", .{}, null);
+                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(_coreui, .DoubleClick, "**/###asset1_1.ct_foo_asset", .{}, null);
+                    ctx.itemAction(_coreui, .Click, "**/###asset2.ct_foo_asset", .{}, null);
 
                     ctx.setRef(_coreui, "###ct_editor_inspector_tab_1");
                     ctx.windowFocus(_coreui, "");
@@ -1517,8 +1655,9 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.yield(_coreui, 1);
 
                     ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###ROOT/###asset1_1.ct_foo_asset", .{}, null);
-                    ctx.itemAction(_coreui, .Click, "**/###ROOT/###asset2.ct_foo_asset", .{}, null);
+                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(_coreui, .DoubleClick, "**/###asset1_1.ct_foo_asset", .{}, null);
+                    ctx.itemAction(_coreui, .Click, "**/###asset2.ct_foo_asset", .{}, null);
 
                     ctx.setRef(_coreui, "###ct_editor_inspector_tab_1");
                     ctx.windowFocus(_coreui, "");
@@ -1686,7 +1825,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
                     ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
                     ctx.windowFocus(_coreui, "");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###ROOT/###foo.ct_foo_asset", .{}, null);
+                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(_coreui, .DoubleClick, "**/###foo.ct_foo_asset", .{}, null);
 
                     ctx.menuAction(_coreui, .Click, "###ObjContextMenu/###OpenIn_ct_editor_inspector_tab");
 
@@ -1709,8 +1849,9 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.yield(_coreui, 1);
 
                     ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###ROOT/###asset2.ct_foo_asset", .{}, null);
-                    ctx.itemAction(_coreui, .Click, "**/###ROOT/###asset1.ct_foo_asset", .{}, null);
+                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(_coreui, .DoubleClick, "**/###asset2.ct_foo_asset", .{}, null);
+                    ctx.itemAction(_coreui, .Click, "**/###asset1.ct_foo_asset", .{}, null);
 
                     ctx.setRef(_coreui, "###ct_editor_inspector_tab_1");
                     ctx.windowFocus(_coreui, "");
@@ -1740,7 +1881,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.yield(_coreui, 1);
 
                     ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###ROOT/###asset1_1.ct_foo_asset", .{}, null);
+                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(_coreui, .DoubleClick, "**/###asset1_1.ct_foo_asset", .{}, null);
 
                     ctx.setRef(_coreui, "###ct_editor_inspector_tab_1");
                     ctx.windowFocus(_coreui, "");
@@ -1768,7 +1910,10 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.yield(_coreui, 1);
 
                     ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###ROOT/###foo.ct_foo_asset", .{}, null);
+                    ctx.windowFocus(_coreui, "");
+                    // // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
+
+                    ctx.itemAction(_coreui, .DoubleClick, "**/###foo.ct_foo_asset", .{}, null);
 
                     ctx.setRef(_coreui, "###ct_editor_inspector_tab_1");
                     ctx.windowFocus(_coreui, "");
@@ -1791,8 +1936,9 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.yield(_coreui, 1);
 
                     ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###ROOT/###asset2.ct_foo_asset", .{}, null);
-                    ctx.itemAction(_coreui, .Click, "**/###ROOT/###asset1.ct_foo_asset", .{}, null);
+                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(_coreui, .DoubleClick, "**/###asset2.ct_foo_asset", .{}, null);
+                    ctx.itemAction(_coreui, .Click, "**/###asset1.ct_foo_asset", .{}, null);
 
                     ctx.setRef(_coreui, "###ct_editor_inspector_tab_1");
                     ctx.windowFocus(_coreui, "");
@@ -1820,17 +1966,6 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
     }
 });
 
-// Cdb
-var AssetTypeIdx: cdb.TypeIdx = undefined;
-var ProjectTypeIdx: cdb.TypeIdx = undefined;
-
-const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
-    pub fn postCreateTypes(db: cdb.DbId) !void {
-        AssetTypeIdx = assetdb.Asset.typeIdx(_cdb, db);
-        ProjectTypeIdx = assetdb.Project.typeIdx(_cdb, db);
-    }
-});
-
 // Create types, register api, interfaces etc...
 pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
     _ = reload;
@@ -1846,21 +1981,69 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _tempalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
     _uuid = apidb.getZigApi(module_name, cetech1.uuid.UuidAPI).?;
     _profiler = apidb.getZigApi(module_name, profiler.ProfilerAPI).?;
+    _tabs = apidb.getZigApi(module_name, editor_tabs.TabsAPI).?;
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
-    _g.tab_vt = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, INSPECTOR_TAB_NAME, inspector_tab);
+    _g.tab_vt = try apidb.setGlobalVarValue(editor_tabs.TabTypeI, module_name, INSPECTOR_TAB_NAME, inspector_tab);
 
-    _g.asset_prop_aspect = try apidb.setGlobalVarValue(public.UiPropertiesAspect, module_name, ASSET_PROPERTIES_ASPECT_NAME, asset_properties_aspec);
-    _g.hide_proto_property_config_aspect = try apidb.setGlobalVarValue(public.UiPropertiesConfigAspect, module_name, FOLDER_PROPERTY_CONFIG_ASPECT_NAME, folder_properties_config_aspect);
-    _g.color4f_properties_aspec = try apidb.setGlobalVarValue(public.UiEmbedPropertiesAspect, module_name, COLOR4F_PROPERTY_ASPECT_NAME, color4f_properties_aspec);
-    _g.color3f_properties_aspec = try apidb.setGlobalVarValue(public.UiEmbedPropertiesAspect, module_name, COLOR4F_PROPERTY_ASPECT_NAME, color3f_properties_aspec);
+    // Aspects
+    _g.asset_prop_aspect = try apidb.setGlobalVarValue(
+        public.UiPropertiesAspect,
+        module_name,
+        "ct_asset_properties_aspect",
+        asset_properties_aspec,
+    );
+    _g.hide_proto_property_config_aspect = try apidb.setGlobalVarValue(
+        public.UiPropertiesConfigAspect,
+        module_name,
+        "ct_folder_property_config_aspect",
+        folder_properties_config_aspect,
+    );
+
+    _g.color3f_properties_aspec = try apidb.setGlobalVarValue(
+        public.UiEmbedPropertiesAspect,
+        module_name,
+        "ct_color_3f_properties_aspect",
+        color3f_properties_aspec,
+    );
+    _g.Color4f_properties_aspec = try apidb.setGlobalVarValue(
+        public.UiEmbedPropertiesAspect,
+        module_name,
+        "ct_color_4f_properties_aspect",
+        Color4f_properties_aspec,
+    );
+    _g.position_properties_aspec = try apidb.setGlobalVarValue(
+        public.UiEmbedPropertiesAspect,
+        module_name,
+        "ct_position_properties_aspect",
+        position_properties_aspec,
+    );
+    _g.rotation_properties_aspec = try apidb.setGlobalVarValue(
+        public.UiEmbedPropertiesAspect,
+        module_name,
+        "ct_rotation_properties_aspect",
+        rotation_properties_aspec,
+    );
+    _g.scale_properties_aspec = try apidb.setGlobalVarValue(
+        public.UiEmbedPropertiesAspect,
+        module_name,
+        "ct_scale_properties_aspect",
+        scale_properties_aspec,
+    );
+
+    _g.vec3f_properties_aspec = try apidb.setGlobalVarValue(
+        public.UiEmbedPropertiesAspect,
+        module_name,
+        "ct_vec3f_properties_aspect",
+        vec3f_properties_aspec,
+    );
 
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(module_name, cdb.PostCreateTypesI, &post_create_types_i, load);
     try apidb.implOrRemove(module_name, coreui.RegisterTestsI, &register_tests_i, load);
-    try apidb.implOrRemove(module_name, editor.TabTypeI, &inspector_tab, load);
+    try apidb.implOrRemove(module_name, editor_tabs.TabTypeI, &inspector_tab, load);
 
     try apidb.setOrRemoveZigApi(module_name, public.InspectorAPI, &api, load);
 

@@ -16,5 +16,5 @@ pub fn build(b: *std.Build) !void {
         optimize,
     );
 
-    lib.root_module.addImport("native_logic_component", b.dependency("native_logic_component", .{}).module("native_logic_component"));
+    lib.root_module.addImport("native_script_component", b.dependency("native_script_component", .{}).module("native_script_component"));
 }

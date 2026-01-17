@@ -6,7 +6,8 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 
-const zm = cetech1.math.zmath;
+const zm = math.zmath;
+const math = cetech1.math;
 const gpu = cetech1.gpu;
 const dag = cetech1.dag;
 const coreui = cetech1.coreui;
@@ -18,34 +19,31 @@ const render_graph = @import("render_graph");
 const camera = @import("camera");
 const visibility_flags = @import("visibility_flags");
 
-const FrustumList = cetech1.ArrayList(cetech1.math.FrustumPlanes);
+const FrustumList = cetech1.ArrayList(math.FrustumPlanes);
 const VisibilityBitFieldList = cetech1.ArrayList(public.VisibilityBitField);
 const VisibilityAtomicFieldList = cetech1.ArrayList(std.atomic.Value(u32));
 const EntitiesIdxList = cetech1.ArrayList(usize);
 
-pub const MatList = cetech1.ArrayList(transform.WorldTransform);
+pub const TransformList = cetech1.ArrayList(transform.WorldTransformComponent);
 pub const CullableBufferList = cetech1.ArrayList(*anyopaque);
 pub const CullingSphereVolumeList = cetech1.ArrayList(public.SphereBoudingVolume);
 pub const CullingBoxVolumeList = cetech1.ArrayList(public.BoxBoudingVolume);
-
-pub const MatSliceList = cetech1.ArrayList([]transform.WorldTransform);
-pub const DataSliceList = cetech1.ArrayList([]u8);
 
 // Log for module
 const log = std.log.scoped(.culling);
 
 pub const ViewersList = cetech1.ArrayList(Viewer);
-pub const Viewer = struct {
-    mtx: [16]f32,
-    proj: [16]f32,
-    camera: camera.Camera,
+pub const Viewer = struct { // TODO: use plane
+    // mtx: math.Mat44f,
+    // proj: math.Mat44f,
+    frustum: math.FrustumPlanes,
     visibility_mask: visibility_flags.VisibilityFlags,
 };
 
 pub const CullingRequest = struct {
     allocator: std.mem.Allocator,
 
-    mtx: MatList = .{},
+    mtx: TransformList = .{},
     data: CullableBufferList = .{},
     sphere_volumes: CullingSphereVolumeList = .{},
     box_volumes: CullingBoxVolumeList = .{},
@@ -196,22 +194,22 @@ const CullingSphereTask = struct {
     count: usize,
     visibility_offset: usize,
     volumes: []const public.SphereBoudingVolume,
-    frustums: []const cetech1.math.FrustumPlanes,
     viewers: []const Viewer,
     result: *CullingResult,
-    viewer_idx: usize,
     profiler: *const cetech1.profiler.ProfilerAPI,
 
     pub fn exec(self: *@This()) !void {
         var zone = self.profiler.ZoneN(@src(), "CullingSphereTask");
         defer zone.End();
 
-        for (self.volumes, 0..) |sphere, i| {
-            if (sphere.visibility_mask.intersectWith(self.viewers[self.viewer_idx].visibility_mask).mask == 0) continue;
+        for (self.volumes, 0..) |volume, i| {
+            for (self.viewers, 0..) |viewer, viewer_idx| {
+                if (volume.visibility_mask.intersectWith(viewer.visibility_mask).mask == 0) continue;
 
-            if (sphere.skip_culling or cetech1.math.frustumPlanesVsSphereNaive(self.frustums[self.viewer_idx], sphere.center, sphere.radius)) {
-                self.result.setVisibility(self.visibility_offset + i, self.viewer_idx, true);
-                _ = self.result.visible_cnt.fetchAdd(1, .monotonic);
+                if (volume.skip_culling or viewer.frustum.vsSphereNaive(volume.sphere)) {
+                    self.result.setVisibility(self.visibility_offset + i, viewer_idx, true);
+                    _ = self.result.visible_cnt.fetchAdd(1, .monotonic);
+                }
             }
         }
     }
@@ -222,22 +220,22 @@ const CullingBoxTask = struct {
     count: usize,
     visibility_offset: usize,
     volumes: []const public.BoxBoudingVolume,
-    frustums: []const cetech1.math.FrustumPlanes,
     viewers: []const Viewer,
     result: *CullingResult,
     profiler: *const cetech1.profiler.ProfilerAPI,
-    viewer_idx: usize,
 
     pub fn exec(self: *@This()) !void {
         var zone = self.profiler.ZoneN(@src(), "CullingBoxTask");
         defer zone.End();
 
         for (self.volumes, 0..) |box, i| {
-            if (box.visibility_mask.intersectWith(self.viewers[self.viewer_idx].visibility_mask).mask == 0) continue;
+            for (self.viewers, 0..) |viewer, viewer_idx| {
+                if (box.visibility_mask.intersectWith(viewer.visibility_mask).mask == 0) continue;
 
-            if (box.skip_culling or cetech1.math.frustumPlanesVsOBBNaive(self.frustums[self.viewer_idx], box.t.mtx, box.min, box.max)) {
-                self.result.setVisibility(self.visibility_offset + i, self.viewer_idx, true);
-                _ = self.result.visible_cnt.fetchAdd(1, .monotonic);
+                if (box.skip_culling or viewer.frustum.vsOBBNaive(box.t, box.min, box.max)) {
+                    self.result.setVisibility(self.visibility_offset + i, viewer_idx, true);
+                    _ = self.result.visible_cnt.fetchAdd(1, .monotonic);
+                }
             }
         }
     }
@@ -247,10 +245,10 @@ pub const CullingSystem = struct {
     const Self = @This();
 
     const RequestPool = cetech1.heap.PoolWithLock(CullingRequest);
-    const RequestMap = cetech1.AutoArrayHashMap(cetech1.StrId32, *CullingRequest);
+    const RequestMap = cetech1.AutoArrayHashMap(cetech1.StrId64, *CullingRequest);
 
     const ResultPool = cetech1.heap.PoolWithLock(CullingResult);
-    const ResultMap = cetech1.AutoArrayHashMap(cetech1.StrId32, *CullingResult);
+    const ResultMap = cetech1.AutoArrayHashMap(cetech1.StrId64, *CullingResult);
 
     allocator: std.mem.Allocator,
 
@@ -300,7 +298,7 @@ pub const CullingSystem = struct {
         self.tasks.deinit(self.allocator);
     }
 
-    pub fn getNewRequest(self: *Self, cullable_type: cetech1.StrId32, cullable_count: usize, cullable_size: usize) !*CullingRequest {
+    pub fn getNewRequest(self: *Self, cullable_type: cetech1.StrId64, cullable_count: usize, cullable_size: usize) !*CullingRequest {
         if (self.request_map.get(cullable_type)) |rq| {
             try rq.clear(cullable_count);
 
@@ -322,25 +320,17 @@ pub const CullingSystem = struct {
         return rq;
     }
 
-    pub fn getResult(self: *Self, rq_type: cetech1.StrId32) ?*CullingResult {
+    pub fn getResult(self: *Self, rq_type: cetech1.StrId64) ?*CullingResult {
         return self.result_map.get(rq_type);
     }
 
-    pub fn getRequest(self: *Self, rq_type: cetech1.StrId32) ?*CullingRequest {
+    pub fn getRequest(self: *Self, rq_type: cetech1.StrId64) ?*CullingRequest {
         return self.request_map.get(rq_type);
     }
 
-    pub fn doCullingSpheres(self: *Self, allocator: std.mem.Allocator, viewers: []const Viewer, freze_mtx: ?zm.Mat) !usize {
+    pub fn doCullingSpheres(self: *Self, allocator: std.mem.Allocator, viewers: []const Viewer) !usize {
         var cull_zone = self.profiler.ZoneN(@src(), "Culling system - doCullingSpheres");
         defer cull_zone.End();
-
-        var frustums = try FrustumList.initCapacity(allocator, viewers.len);
-        defer frustums.deinit(allocator);
-
-        for (viewers) |v| {
-            const mtx = zm.mul(zm.matFromArr(if (freze_mtx) |mtx| zm.matToArr(mtx) else v.mtx), zm.matFromArr(v.proj));
-            frustums.appendAssumeCapacity(cetech1.math.buildFrustumPlanes(zm.matToArr(mtx)));
-        }
 
         self.tasks.clearRetainingCapacity();
 
@@ -365,44 +355,38 @@ pub const CullingSystem = struct {
                 const ARGS = struct {
                     rq: *CullingRequest,
                     result: *CullingResult,
-                    frustums: []const cetech1.math.FrustumPlanes,
-                    viewers: []const Viewer,
-                    viewer_idx: usize,
-                };
-                for (0..viewers.len) |viewer_idx| {
-                    if (try cetech1.task.batchWorkloadTask(
-                        .{
-                            .allocator = allocator,
-                            .task_api = self.task,
-                            .profiler_api = self.profiler,
-                            .count = items_count,
-                        },
-                        ARGS{
-                            .rq = request,
-                            .result = result,
-                            .frustums = frustums.items,
-                            .viewers = viewers,
-                            .viewer_idx = viewer_idx,
-                        },
-                        struct {
-                            pub fn createTask(create_args: ARGS, batch_id: usize, args: cetech1.task.BatchWorkloadArgs, count: usize) CullingSphereTask {
-                                const rq = create_args.rq;
 
-                                return CullingSphereTask{
-                                    .count = count,
-                                    .visibility_offset = batch_id * args.batch_size * create_args.frustums.len,
-                                    .frustums = create_args.frustums,
-                                    .viewers = create_args.viewers,
-                                    .result = create_args.result,
-                                    .volumes = rq.sphere_volumes.items[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
-                                    .profiler = args.profiler_api,
-                                    .viewer_idx = create_args.viewer_idx,
-                                };
-                            }
-                        },
-                    )) |t| {
-                        try self.tasks.append(self.allocator, t);
-                    }
+                    viewers: []const Viewer,
+                };
+
+                if (try cetech1.task.batchWorkloadTask(
+                    .{
+                        .allocator = allocator,
+                        .task_api = self.task,
+                        .profiler_api = self.profiler,
+                        .count = items_count,
+                    },
+                    ARGS{
+                        .rq = request,
+                        .result = result,
+                        .viewers = viewers,
+                    },
+                    struct {
+                        pub fn createTask(create_args: ARGS, batch_id: usize, args: cetech1.task.BatchWorkloadArgs, count: usize) CullingSphereTask {
+                            const rq = create_args.rq;
+
+                            return CullingSphereTask{
+                                .count = count,
+                                .visibility_offset = batch_id * args.batch_size * create_args.viewers.len,
+                                .viewers = create_args.viewers,
+                                .result = create_args.result,
+                                .volumes = rq.sphere_volumes.items[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
+                                .profiler = args.profiler_api,
+                            };
+                        }
+                    },
+                )) |t| {
+                    try self.tasks.append(self.allocator, t);
                 }
             }
 
@@ -425,17 +409,9 @@ pub const CullingSystem = struct {
         }
     }
 
-    pub fn doCullingBox(self: *Self, allocator: std.mem.Allocator, viewers: []const Viewer, freze_mtx: ?zm.Mat) !void {
+    pub fn doCullingBox(self: *Self, allocator: std.mem.Allocator, viewers: []const Viewer) !void {
         var cull_zone = self.profiler.ZoneN(@src(), "Culling system - doCullingBox");
         defer cull_zone.End();
-
-        var frustums = try FrustumList.initCapacity(allocator, viewers.len);
-        defer frustums.deinit(allocator);
-
-        for (viewers) |v| {
-            const mtx = zm.mul(zm.matFromArr(if (freze_mtx) |mtx| zm.matToArr(mtx) else v.mtx), zm.matFromArr(v.proj));
-            frustums.appendAssumeCapacity(cetech1.math.buildFrustumPlanes(zm.matToArr(mtx)));
-        }
 
         self.tasks.clearRetainingCapacity();
 
@@ -459,48 +435,40 @@ pub const CullingSystem = struct {
 
                 if (items_count == 0) continue;
 
-                for (0..viewers.len) |viewer_idx| {
-                    const ARGS = struct {
-                        rq: *CullingRequest,
-                        result: *CullingResult,
-                        frustums: []const cetech1.math.FrustumPlanes,
-                        viewers: []const Viewer,
-                        viewer_idx: usize,
-                    };
+                const ARGS = struct {
+                    rq: *CullingRequest,
+                    result: *CullingResult,
+                    viewers: []const Viewer,
+                };
 
-                    if (try cetech1.task.batchWorkloadTask(
-                        .{
-                            .allocator = allocator,
-                            .task_api = self.task,
-                            .profiler_api = self.profiler,
-                            .count = items_count,
-                        },
-                        ARGS{
-                            .rq = value,
-                            .result = result,
-                            .frustums = frustums.items,
-                            .viewers = viewers,
-                            .viewer_idx = viewer_idx,
-                        },
-                        struct {
-                            pub fn createTask(create_args: ARGS, batch_id: usize, args: cetech1.task.BatchWorkloadArgs, count: usize) CullingBoxTask {
-                                const rq = create_args.rq;
+                if (try cetech1.task.batchWorkloadTask(
+                    .{
+                        .allocator = allocator,
+                        .task_api = self.task,
+                        .profiler_api = self.profiler,
+                        .count = items_count,
+                    },
+                    ARGS{
+                        .rq = value,
+                        .result = result,
+                        .viewers = viewers,
+                    },
+                    struct {
+                        pub fn createTask(create_args: ARGS, batch_id: usize, args: cetech1.task.BatchWorkloadArgs, count: usize) CullingBoxTask {
+                            const rq = create_args.rq;
 
-                                return CullingBoxTask{
-                                    .count = count,
-                                    .visibility_offset = batch_id * args.batch_size * create_args.frustums.len,
-                                    .frustums = create_args.frustums,
-                                    .viewers = create_args.viewers,
-                                    .result = create_args.result,
-                                    .volumes = rq.box_volumes.items[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
-                                    .profiler = args.profiler_api,
-                                    .viewer_idx = create_args.viewer_idx,
-                                };
-                            }
-                        },
-                    )) |t| {
-                        try self.tasks.append(self.allocator, t);
-                    }
+                            return CullingBoxTask{
+                                .count = count,
+                                .visibility_offset = batch_id * args.batch_size * create_args.viewers.len,
+                                .viewers = create_args.viewers,
+                                .result = create_args.result,
+                                .volumes = rq.box_volumes.items[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
+                                .profiler = args.profiler_api,
+                            };
+                        }
+                    },
+                )) |t| {
+                    try self.tasks.append(self.allocator, t);
                 }
             }
 
@@ -533,11 +501,11 @@ pub const CullingSystem = struct {
             const result = self.getResult(k) orelse continue; // TODO: warning
 
             for (result.sphere_entites_idx.items) |ent_idx| {
-                const sphere = rq.sphere_volumes.items[ent_idx];
+                const volume = rq.sphere_volumes.items[ent_idx];
 
-                dd.drawCircleAxis(.X, sphere.center, sphere.radius, 0);
-                dd.drawCircleAxis(.Y, sphere.center, sphere.radius, 0);
-                dd.drawCircleAxis(.Z, sphere.center, sphere.radius, 0);
+                dd.drawCircleAxis(.X, volume.sphere.center, volume.sphere.radius, 0);
+                dd.drawCircleAxis(.Y, volume.sphere.center, volume.sphere.radius, 0);
+                dd.drawCircleAxis(.Z, volume.sphere.center, volume.sphere.radius, 0);
 
                 // dd.drawSphere(sphere.center, sphere.radius);
             }
@@ -555,7 +523,7 @@ pub const CullingSystem = struct {
             _ = k;
 
             for (rq.box_volumes.items) |box| {
-                dd.pushTransform(&box.t.mtx);
+                dd.pushTransform(box.t.toMat());
                 defer dd.popTransform();
                 dd.drawAABB(box.min, box.max);
             }

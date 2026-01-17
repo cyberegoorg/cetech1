@@ -21,6 +21,14 @@
 - [Git](https://git-scm.com/downloads)
 - [Git-lfs](https://git-lfs.com)
 
+## Clone
+
+<tabs>
+    <tab title="MacOS/Linux/SteamDeck/Windows">
+        <code-block lang="bash" src="getting-started/clone.sh"></code-block>
+    </tab>
+</tabs>
+
 ## Get ZIG
 
 Get ZIG `0.15.1`.
@@ -33,15 +41,37 @@ Get ZIG `0.15.1`.
             zvm i 0.15.1
         </code-block>
     </tab>
-</tabs>
-
-## Clone
-
-<tabs>
-    <tab title="MacOS/Linux/SteamDeck/Windows">
-        <code-block lang="bash" src="getting-started/clone.sh"></code-block>
+    <tab title="VSCode">
+      Install via VSCode <a href="https://marketplace.visualstudio.com/items?itemName=ziglang.vscode-zig">plugin</a> or use ZVM. 
     </tab>
 </tabs>
+
+## VSCode
+
+> Repository contain recommended extension.
+
+> add `-Dno_zls` to disable zls path change (For example if you are install zls via vscode plugin).
+> {style="note"}
+
+1. Create vscode configs.
+    <code-block lang="bash">
+        # This generate vscode launch.json with predefined cases
+        # create or update settings.json
+        # and set zls path to locally builded
+        zig build gen-ide -Dide=VSCode
+    </code-block>
+2. Install extension `ziglang.vscode-zig` (or install all recommended)
+
+## Idea
+
+Need [zigbrains](https://plugins.jetbrains.com/plugin/22456-zigbrains)
+
+1. Create idea configs.
+    <code-block lang="bash">
+        # This generate basic files in .idea and run configuration predefined cases
+        # and set zls path to locally builded
+        zig build gen-ide -Dide=IDEA
+    </code-block>
 
 ## Build
 
@@ -165,27 +195,3 @@ CETech1 has builtin support for tracy profiler and provide Tracy as submodule, b
         </code-block>
     </tab>
 </tabs>
-
-## VSCode
-
-> Repository contain recommended extension.
-
-1. Create vscode configs.
-    <code-block lang="bash">
-        # This generate vscode launch.json with predefined cases
-        # create or update settings.json
-        # and set zls path to locally builded
-        zig build gen-ide -Dide=vscode
-    </code-block>
-2. Install extension `ziglang.vscode-zig` (or install all recommended)
-
-## Idea
-
-Need [zigbrains](https://plugins.jetbrains.com/plugin/22456-zigbrains)
-
-1. Create idea configs.
-    <code-block lang="bash">
-        # This generate basic files in .idea and run configuration predefined cases
-        # and set zls path to locally builded
-        zig build gen-ide -Dide=idea
-    </code-block>

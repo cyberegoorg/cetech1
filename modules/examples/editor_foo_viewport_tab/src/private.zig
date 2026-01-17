@@ -6,8 +6,6 @@ const cdb = cetech1.cdb;
 const coreui = cetech1.coreui;
 const tempalloc = cetech1.tempalloc;
 const gpu = cetech1.gpu;
-
-const zm = cetech1.math.zmath;
 const ecs = cetech1.ecs;
 const assetdb = cetech1.assetdb;
 const uuid = cetech1.uuid;
@@ -15,15 +13,15 @@ const task = cetech1.task;
 
 const render_viewport = @import("render_viewport");
 const render_pipeline = @import("render_pipeline");
-const Viewport = render_viewport.Viewport;
-
 const editor = @import("editor");
-const Icons = coreui.CoreIcons;
-
+const editor_tabs = @import("editor_tabs");
 const transform = @import("transform");
 const camera = @import("camera");
 const camera_controller = @import("camera_controller");
 const render_graph = @import("render_graph");
+
+const Icons = coreui.CoreIcons;
+const Viewport = render_viewport.Viewport;
 
 const module_name = .editor_foo_viewport_tab;
 
@@ -57,14 +55,14 @@ var _camera_controller: *const camera_controller.CameraControllerAPI = undefined
 
 // Global state that can surive hot-reload
 const G = struct {
-    test_tab_vt_ptr: *editor.TabTypeI = undefined,
+    test_tab_vt_ptr: *editor_tabs.TabTypeI = undefined,
     db: cdb.DbId = undefined, // TODO: SHIT
 };
 var _g: *G = undefined;
 
 // Struct for tab type
 const FooViewportTab = struct {
-    tab_i: editor.TabI,
+    tab_i: editor_tabs.TabI,
     viewport: Viewport = undefined,
     world: ecs.World,
 
@@ -76,7 +74,7 @@ const FooViewportTab = struct {
 };
 
 // Fill editor tab interface
-var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
+var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
     .tab_name = TAB_NAME,
     .tab_hash = .fromStr(TAB_NAME),
     .category = "Examples",
@@ -88,23 +86,21 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Return tab title
-    pub fn title(inst: *editor.TabO) ![:0]const u8 {
+    pub fn title(inst: *editor_tabs.TabO) ![:0]const u8 {
         _ = inst;
         return Icons.FA_ROBOT ++ "  " ++ "Foo viewport";
     }
 
     // Create new tab instantce
-    pub fn create(tab_id: u32) !?*editor.TabI {
+    pub fn create(tab_id: u32) !?*editor_tabs.TabI {
         const w = try _ecs.createWorld();
 
         var buf: [128]u8 = undefined;
         const name = try std.fmt.bufPrintZ(&buf, "Foo viewport {d}", .{tab_id});
 
-        const camera_ent = w.newEntity(null);
-
-        _ = w.setId(transform.Transform, camera_ent, &transform.Transform{ .position = .{ .x = 0, .y = 2, .z = -12 } });
-        _ = w.setId(camera.Camera, camera_ent, &camera.Camera{});
-        _ = w.setId(camera_controller.CameraController, camera_ent, &camera_controller.CameraController{});
+        const camera_ent = w.newEntity(.{});
+        _ = w.setComponent(camera.Camera, camera_ent, &camera.Camera{});
+        _ = w.setComponent(camera_controller.CameraController, camera_ent, &camera_controller.CameraController{ .position = .{ .y = 2, .z = -12 } });
 
         const gpu_backend = _kernel.getGpuBackend().?;
         const pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w);
@@ -127,7 +123,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Destroy tab instantce
-    pub fn destroy(tab_inst: *editor.TabI) !void {
+    pub fn destroy(tab_inst: *editor_tabs.TabI) !void {
         const tab_o: *FooViewportTab = @ptrCast(@alignCast(tab_inst.inst));
         _render_viewport.destroyViewport(tab_o.viewport);
         tab_o.render_pipeline.deinit();
@@ -136,7 +132,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Draw tab content
-    pub fn ui(inst: *editor.TabO, kernel_tick: u64, dt: f32) !void {
+    pub fn ui(inst: *editor_tabs.TabO, kernel_tick: u64, dt: f32) !void {
         _ = kernel_tick;
         _ = dt;
 
@@ -148,8 +144,8 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
             _coreui.image(
                 texture,
                 .{
-                    .w = size[0],
-                    .h = size[1],
+                    .w = size.x,
+                    .h = size.y,
                 },
             );
             const hovered = _coreui.isItemHovered(.{});
@@ -162,7 +158,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
     }
 
     // Draw tab menu
-    pub fn menu(inst: *editor.TabO) !void {
+    pub fn menu(inst: *editor_tabs.TabO) !void {
         const tab_o: *FooViewportTab = @ptrCast(@alignCast(inst));
 
         const allocator = try _tempalloc.create();
@@ -171,7 +167,7 @@ var foo_tab = editor.TabTypeI.implement(editor.TabTypeIArgs{
         if (_coreui.beginMenu(allocator, cetech1.coreui.Icons.Debug, true, null)) {
             defer _coreui.endMenu();
             tab_o.flecs_port = tab_o.world.uiRemoteDebugMenuItems(allocator, tab_o.flecs_port);
-            _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
+            try _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
         }
     }
 });
@@ -210,9 +206,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
-    _g.test_tab_vt_ptr = try apidb.setGlobalVarValue(editor.TabTypeI, module_name, TAB_NAME, foo_tab);
+    _g.test_tab_vt_ptr = try apidb.setGlobalVarValue(editor_tabs.TabTypeI, module_name, TAB_NAME, foo_tab);
 
-    try apidb.implOrRemove(module_name, editor.TabTypeI, &foo_tab, load);
+    try apidb.implOrRemove(module_name, editor_tabs.TabTypeI, &foo_tab, load);
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
 
     return true;

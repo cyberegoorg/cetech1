@@ -30,13 +30,13 @@
 
         // EDITOR
         .editor = .{ .path = "modules/editor/editor", .lazy = true },
-        .editor_asset = .{ .path = "modules/editor/asset", .lazy = true },
+        .editor_tabs = .{ .path = "modules/editor/tabs", .lazy = true },
+        .editor_assetdb = .{ .path = "modules/editor/assetdb", .lazy = true },
         .editor_asset_browser = .{ .path = "modules/editor/asset_browser", .lazy = true },
         .editor_explorer = .{ .path = "modules/editor/explorer", .lazy = true },
         .editor_fixtures = .{ .path = "modules/editor/fixtures", .lazy = true },
         .editor_inspector = .{ .path = "modules/editor/inspector", .lazy = true },
         .editor_obj_buffer = .{ .path = "modules/editor/obj_buffer", .lazy = true },
-        .editor_tags = .{ .path = "modules/editor/tags", .lazy = true },
         .editor_tree = .{ .path = "modules/editor/tree", .lazy = true },
         .editor_log = .{ .path = "modules/editor/log", .lazy = true },
         .editor_graph = .{ .path = "modules/editor/graph", .lazy = true },
@@ -54,32 +54,41 @@
 
         // PHYSICS
         .physics = .{ .path = "modules/physics/physics", .lazy = true },
+        .physics_jolt = .{ .path = "modules/physics/physics_jolt", .lazy = true },
 
         // INPUT
         .actions = .{ .path = "modules/input/actions", .lazy = true },
 
         // SCRIPTING
         .graphvm = .{ .path = "modules/scripting/graphvm", .lazy = true },
-        .graphvm_logic_component = .{ .path = "modules/scripting/graphvm_logic_component", .lazy = true },
-        .native_logic_component = .{ .path = "modules/scripting/native_logic_component", .lazy = true },
+        .graphvm_script_component = .{ .path = "modules/scripting/graphvm_script_component", .lazy = true },
+        .native_script_component = .{ .path = "modules/scripting/native_script_component", .lazy = true },
+        .renderer_nodes = .{ .path = "modules/scripting/renderer_nodes", .lazy = true },
+
+        // TRANSFORM
+        .transform = .{ .path = "modules/transform", .lazy = true },
+
+        // CAMERA
+        .camera = .{ .path = "modules/camera/camera", .lazy = true },
+        .camera_controller = .{ .path = "modules/camera/camera_controller", .lazy = true },
 
         // RENDERING
-        .default_render_pipeline = .{ .path = "modules/rendering/default_render_pipeline", .lazy = true },
         .render_pipeline = .{ .path = "modules/rendering/render_pipeline", .lazy = true },
         .render_viewport = .{ .path = "modules/rendering/render_viewport", .lazy = true },
         .render_graph = .{ .path = "modules/rendering/render_graph", .lazy = true },
         .shader_system = .{ .path = "modules/rendering/shader_system", .lazy = true },
-        .transform = .{ .path = "modules/rendering/transform", .lazy = true },
-        .camera = .{ .path = "modules/rendering/camera", .lazy = true },
-        .camera_controller = .{ .path = "modules/rendering/camera_controller", .lazy = true },
-        .render_component = .{ .path = "modules/rendering/render_component", .lazy = true },
-        .vertex_system = .{ .path = "modules/rendering/vertex_system", .lazy = true },
-        .instance_system = .{ .path = "modules/rendering/instance_system", .lazy = true },
-        .renderer_nodes = .{ .path = "modules/rendering/renderer_nodes", .lazy = true },
         .visibility_flags = .{ .path = "modules/rendering/visibility_flags", .lazy = true },
-        .light_component = .{ .path = "modules/rendering/light_component", .lazy = true },
-        .light_system = .{ .path = "modules/rendering/light_system", .lazy = true },
         .gpu_bgfx = .{ .path = "modules/rendering/gpu_bgfx", .lazy = true },
+
+        // RENDERING PIPELINE
+        .default_render_pipeline = .{ .path = "modules/render_pipeline/default_render_pipeline", .lazy = true },
+        .light_system = .{ .path = "modules/render_pipeline/light_system", .lazy = true },
+        .bloom = .{ .path = "modules/render_pipeline/bloom", .lazy = true },
+        .tonemap = .{ .path = "modules/render_pipeline/tonemap", .lazy = true },
+        .light_component = .{ .path = "modules/render_pipeline/light_component", .lazy = true },
+        .vertex_system = .{ .path = "modules/render_pipeline/vertex_system", .lazy = true },
+        .instance_system = .{ .path = "modules/render_pipeline/instance_system", .lazy = true },
+        .render_component = .{ .path = "modules/render_pipeline/render_component", .lazy = true },
 
         // Examples
         .foo = .{ .path = "modules/examples/foo", .lazy = true },

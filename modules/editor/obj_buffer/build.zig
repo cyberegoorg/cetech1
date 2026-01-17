@@ -16,6 +16,7 @@ pub fn build(b: *std.Build) !void {
 
     lib.root_module.addImport("editor", b.dependency("editor", .{}).module("editor"));
     lib.root_module.addImport("editor_tree", b.dependency("editor_tree", .{}).module("editor_tree"));
+    lib.root_module.addImport("editor_tabs", b.dependency("editor_tabs", .{}).module("editor_tabs"));
 
     _ = b.addModule("editor_obj_buffer", .{
         .root_source_file = b.path("src/editor_obj_buffer.zig"),

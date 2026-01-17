@@ -1,1 +1,1 @@
-zig-out/bin/cetech1_test.exe && zig-out/bin/cetech1_studio.exe --asset-root fixtures/test_asset/
+zig-out/bin/cetech1_test.exe && zig-out/bin/cetech1_studio.exe --asset-root fixtures/test_graph/

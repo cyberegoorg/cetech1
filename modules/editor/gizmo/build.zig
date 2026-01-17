@@ -15,11 +15,13 @@ pub fn build(b: *std.Build) !void {
     );
 
     lib.root_module.addImport("transform", b.dependency("transform", .{}).module("transform"));
+    lib.root_module.addImport("editor", b.dependency("editor", .{}).module("editor"));
 
     _ = b.addModule("editor_gizmo", .{
         .root_source_file = b.path("src/gizmo.zig"),
         .imports = &.{
             .{ .name = "cetech1", .module = cetech1_module },
+            .{ .name = "editor", .module = b.dependency("editor", .{}).module("editor") },
         },
     });
 }

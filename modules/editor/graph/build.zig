@@ -18,7 +18,9 @@ pub fn build(b: *std.Build) !void {
     );
 
     lib.root_module.addImport("editor", editor.module("editor"));
+    lib.root_module.addImport("editor_tabs", b.dependency("editor_tabs", .{}).module("editor_tabs"));
     lib.root_module.addImport("editor_inspector", editor_inspector.module("editor_inspector"));
     lib.root_module.addImport("editor_obj_buffer", b.dependency("editor_obj_buffer", .{}).module("editor_obj_buffer"));
     lib.root_module.addImport("graphvm", b.dependency("graphvm", .{}).module("graphvm"));
+    lib.root_module.addImport("editor_assetdb", b.dependency("editor_assetdb", .{}).module("editor_assetdb"));
 }

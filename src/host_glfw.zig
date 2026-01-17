@@ -11,6 +11,7 @@ const host_private = @import("host.zig");
 const cetech1 = @import("cetech1");
 const host = cetech1.host;
 const input = cetech1.input;
+const math = cetech1.math;
 
 const gamecontrollerdb = @embedFile("gamecontrollerdb");
 
@@ -31,7 +32,8 @@ pub const Window = struct {
     key_mods: input.Mods = .{},
 
     last_cursor_pos: [2]f64 = .{ 0, 0 },
-    content_scale: [2]f32 = .{ 0, 0 },
+    last_scroll: [2]f64 = .{ 0, 0 },
+    content_scale: math.Vec2f = .{},
     fb_size: [2]i32 = .{ 0, 0 },
 
     pub fn init(window: *anyopaque) Window {
@@ -48,6 +50,7 @@ const WindowSet = cetech1.ArraySet(*Window);
 pub const window_api = host.WindowApi{
     .createWindow = createWindow,
     .destroyWindow = destroyWindow,
+    .getWMType = getWMType,
 };
 
 pub const monitor_api = host.MonitorApi{
@@ -62,6 +65,7 @@ var _window_set: WindowSet = undefined;
 var _keyboard_state: [@intFromEnum(input.Key.count)]input.Action = @splat(.release);
 var _gamepad_state: [MAX_GAMEPADS]GamepadState = @splat(.{});
 var _mouse_button_state: [@intFromEnum(input.MouseButton.count)]input.Action = @splat(.release);
+var _scroll_state: [2]f64 = @splat(0);
 
 pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
     _allocator = allocator;
@@ -323,6 +327,8 @@ const gamepad_input_source = input.InputSourceI.implment(
 // Mouse
 //
 const MOUSE_ITEMS = [_]input.InputItem{
+    // BUTTONS
+
     .{ .name = "unknown", .id = @intFromEnum(input.MouseButton.unknown) },
     .{ .name = "left", .id = @intFromEnum(input.MouseButton.left) },
     .{ .name = "right", .id = @intFromEnum(input.MouseButton.right) },
@@ -332,6 +338,9 @@ const MOUSE_ITEMS = [_]input.InputItem{
     .{ .name = "six", .id = @intFromEnum(input.MouseButton.six) },
     .{ .name = "seven", .id = @intFromEnum(input.MouseButton.seven) },
     .{ .name = "eight", .id = @intFromEnum(input.MouseButton.eight) },
+
+    // AXIS
+    .{ .name = "scroll", .id = @intFromEnum(input.MouseAxis.scroll_y) },
 };
 
 const mouse_input_source = input.InputSourceI.implment(
@@ -348,7 +357,20 @@ const mouse_input_source = input.InputSourceI.implment(
 
         pub fn getState(controler_id: input.ControlerId, item_type: input.ItemId) ?input.ItemData {
             std.debug.assert(controler_id == 0);
-            return .{ .action = _mouse_button_state[item_type] };
+
+            // Buttons
+            if (item_type < @intFromEnum(input.MouseButton.count)) {
+                return .{ .action = _mouse_button_state[item_type] };
+            }
+
+            // Axis
+            if (item_type == @intFromEnum(input.MouseAxis.scroll_x)) {
+                return .{ .f = @floatCast(_scroll_state[0]) };
+            } else if (item_type == @intFromEnum(input.MouseAxis.scroll_y)) {
+                return .{ .f = @floatCast(_scroll_state[1]) };
+            }
+
+            return null;
         }
     },
 );
@@ -356,6 +378,17 @@ const mouse_input_source = input.InputSourceI.implment(
 fn cursorPosCallback(window: *zglfw.Window, xpos: f64, ypos: f64) callconv(.c) void {
     var w = findWindowByInternal(window).?;
     w.last_cursor_pos = .{ xpos, ypos };
+}
+
+fn scrollCallback(
+    window: *zglfw.Window,
+    xoffset: f64,
+    yoffset: f64,
+) callconv(.c) void {
+    var w = findWindowByInternal(window).?;
+    w.last_scroll = .{ xoffset, yoffset };
+
+    _scroll_state = .{ _scroll_state[0] + xoffset, _scroll_state[1] + yoffset };
 }
 
 fn mouseButtonCallback(
@@ -408,8 +441,7 @@ pub const window_vt = host.Window.VTable.implement(struct {
         const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
 
         return switch (builtin.target.os.tag) {
-            // TODO: wayland
-            .linux => @ptrFromInt(zglfw.getX11Window(glfw_w)),
+            .linux => if (getWMType() == .Wayland) zglfw.getWaylandWindow(glfw_w) else @ptrFromInt(zglfw.getX11Window(glfw_w)),
             .windows => zglfw.getWin32Window(glfw_w),
             else => |v| if (v.isDarwin())
                 zglfw.getCocoaWindow(glfw_w)
@@ -422,7 +454,7 @@ pub const window_vt = host.Window.VTable.implement(struct {
         _ = window; // autofix
 
         return switch (builtin.target.os.tag) {
-            .linux => zglfw.getX11Display(),
+            .linux => if (getWMType() == .Wayland) zglfw.getWaylandDisplay() else zglfw.getX11Display(),
             else => null,
         };
     }
@@ -444,12 +476,17 @@ pub const window_vt = host.Window.VTable.implement(struct {
         return true_w.last_cursor_pos;
     }
 
+    pub fn getScroll(window: *anyopaque) [2]f64 {
+        const true_w: *Window = @ptrCast(@alignCast(window));
+        return true_w.last_scroll;
+    }
+
     pub fn getFramebufferSize(window: *anyopaque) [2]i32 {
         const true_w: *Window = @ptrCast(@alignCast(window));
         return true_w.fb_size;
     }
 
-    pub fn getContentScale(window: *anyopaque) [2]f32 {
+    pub fn getContentScale(window: *anyopaque) math.Vec2f {
         const true_w: *Window = @ptrCast(@alignCast(window));
         return true_w.content_scale;
     }
@@ -488,6 +525,7 @@ pub fn createWindow(width: i32, height: i32, title: [:0]const u8, monitor: ?host
     // TODO: call prev callbacks
     std.debug.assert(zglfw.setKeyCallback(w, keyCallback) == null);
     std.debug.assert(zglfw.setCursorPosCallback(w, cursorPosCallback) == null);
+    std.debug.assert(zglfw.setScrollCallback(w, scrollCallback) == null);
     std.debug.assert(zglfw.setMouseButtonCallback(w, mouseButtonCallback) == null);
     std.debug.assert(zglfw.setFramebufferSizeCallback(w, framebufferSizeCallback) == null);
     std.debug.assert(zglfw.setWindowContentScaleCallback(w, contentScaleCallback) == null);
@@ -504,6 +542,14 @@ pub fn destroyWindow(window: host.Window) void {
     zglfw.Window.destroy(@ptrCast(true_w.window));
 }
 
+fn getWMType() host.WMType {
+    return switch (zglfw.getPlatform()) {
+        .x11 => .X11,
+        .wayland => .Wayland,
+        else => .Native,
+    };
+}
+
 pub fn findWindowByInternal(window: *anyopaque) ?*Window {
     for (_window_set.unmanaged.keys()) |w| {
         if (w.window == window) return w;
@@ -518,7 +564,7 @@ fn framebufferSizeCallback(window: *zglfw.Window, width: c_int, height: c_int) c
 
 fn contentScaleCallback(window: *zglfw.Window, x: f32, y: f32) callconv(.c) void {
     var w = findWindowByInternal(window).?;
-    w.content_scale = .{ x, y };
+    w.content_scale = .{ .x = x, .y = y };
 }
 
 //
@@ -526,6 +572,9 @@ fn contentScaleCallback(window: *zglfw.Window, x: f32, y: f32) callconv(.c) void
 //
 pub fn update(kernel_tick: u64, timeout: f64) !void {
     _ = kernel_tick;
+
+    //_scroll_state = @splat(0);
+
     zglfw.waitEventsTimeout(timeout);
 
     for (0..MAX_GAMEPADS) |gamepad_idx| {
@@ -568,10 +617,10 @@ fn glfwActionToAction(action: zglfw.Action) input.Action {
 
 fn cursorModeTOGlfw(button: host.CursorMode) zglfw.Cursor.Mode {
     return switch (button) {
-        .normal => .normal,
-        .hidden => .hidden,
-        .disabled => .disabled,
-        .captured => .captured,
+        .Normal => .normal,
+        .Hidden => .hidden,
+        .Disabled => .disabled,
+        .Captured => .captured,
     };
 }
 

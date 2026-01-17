@@ -5,12 +5,13 @@ const cetech1 = @import("cetech1");
 const coreui = cetech1.coreui;
 const cdb = cetech1.cdb;
 const assetdb = cetech1.assetdb;
-const Tag = assetdb.Tag;
 const Icons = cetech1.coreui.Icons;
 const zm = cetech1.math.zm;
 const ecs = cetech1.ecs;
+const math = cetech1.math;
 
 const transform = @import("transform");
+const editor = @import("editor");
 const public = @import("gizmo.zig");
 
 const module_name = .editor_gizmo;
@@ -44,19 +45,19 @@ fn lessThanGizmoPriority(_: void, lhs: cdb.ObjId, rhs: cdb.ObjId) bool {
     const db = _cdb.getDbFromObjid(lhs);
 
     const l_order = blk: {
-        const component = _ecs.findComponentIByCdbHash(_cdb.getTypeHash(db, lhs.type_idx).?) orelse break :blk std.math.inf(f32);
+        const component = _cdb.getAspect(editor.EditorComponentAspect, db, lhs.type_idx) orelse break :blk std.math.inf(f32);
         break :blk component.gizmoPriority;
     };
 
     const r_order = blk: {
-        const component = _ecs.findComponentIByCdbHash(_cdb.getTypeHash(db, rhs.type_idx).?) orelse break :blk std.math.inf(f32);
+        const component = _cdb.getAspect(editor.EditorComponentAspect, db, rhs.type_idx) orelse break :blk std.math.inf(f32);
         break :blk component.gizmoPriority;
     };
 
     return l_order > r_order;
 }
 
-fn ecsGizmoMenu(allocator: std.mem.Allocator, world: ecs.World, entity: ecs.EntityId, entity_obj: cdb.ObjId, component_obj: ?cdb.ObjId, options: *ecs.GizmoOptions) !void {
+fn ecsGizmoMenu(allocator: std.mem.Allocator, world: ecs.World, entity: ecs.EntityId, entity_obj: cdb.ObjId, component_obj: ?cdb.ObjId, options: *editor.GizmoOptions) !void {
     const db = _cdb.getDbFromObjid(entity_obj);
 
     if (!try ecsGizmoSupported(
@@ -66,28 +67,26 @@ fn ecsGizmoMenu(allocator: std.mem.Allocator, world: ecs.World, entity: ecs.Enti
         component_obj,
     )) return;
 
-    var component_gizmo_options: ecs.GizmoOptions = .{};
+    var component_gizmo_options: editor.GizmoOptions = .{};
     if (component_obj) |c_obj| {
-        const component_hash = _cdb.getTypeHash(db, c_obj.type_idx).?;
-        const ci = _ecs.findComponentIByCdbHash(component_hash).?;
-
-        if (ci.gizmoGetOperation) |gizmoGetOperation| {
-            component_gizmo_options = try gizmoGetOperation(world, entity, entity_obj, c_obj);
+        if (_cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
+            if (aspect.gizmoGetOperation) |gizmoGetOperation| {
+                component_gizmo_options = try gizmoGetOperation(world, entity, entity_obj, c_obj);
+            }
         }
     } else {
         const top_level_obj_r = ecs.EntityCdb.read(_cdb, entity_obj).?;
-        if (try ecs.EntityCdb.readSubObjSet(_cdb, top_level_obj_r, .components, allocator)) |components| {
+        if (try ecs.EntityCdb.readSubObjSet(_cdb, top_level_obj_r, .Components, allocator)) |components| {
             defer allocator.free(components);
 
             std.sort.insertion(cdb.ObjId, components, {}, lessThanGizmoPriority);
 
             for (components) |c_obj| {
-                const component_hash = _cdb.getTypeHash(db, c_obj.type_idx).?;
-                const ci = _ecs.findComponentIByCdbHash(component_hash).?;
-
-                if (ci.gizmoGetOperation) |gizmoGetOperation| {
-                    component_gizmo_options = try gizmoGetOperation(world, entity, entity_obj, c_obj);
-                    break;
+                if (_cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
+                    if (aspect.gizmoGetOperation) |gizmoGetOperation| {
+                        component_gizmo_options = try gizmoGetOperation(world, entity, entity_obj, c_obj);
+                        break;
+                    }
                 }
             }
         }
@@ -105,27 +104,27 @@ fn ecsGizmoMenu(allocator: std.mem.Allocator, world: ecs.World, entity: ecs.Enti
         if (_coreui.beginMenu(allocator, Icons.Gizmo, true, null)) {
             defer _coreui.endMenu();
 
-            var local_mode = options.mode == .local;
-            var world_mode = options.mode == .world;
+            var local_mode = options.mode == .Local;
+            var world_mode = options.mode == .World;
 
             if (_coreui.menuItemPtr(allocator, Icons.WorldMode ++ "  " ++ "World", .{ .selected = &world_mode }, null)) {
-                options.mode = if (world_mode) .world else .local;
+                options.mode = if (world_mode) .World else .Local;
             }
             if (_coreui.menuItemPtr(allocator, Icons.LocalMode ++ "  " ++ "Local", .{ .selected = &local_mode }, null)) {
-                options.mode = if (local_mode) .local else .world;
+                options.mode = if (local_mode) .Local else .World;
             }
 
             _coreui.separator();
             _coreui.text(Icons.Snap ++ "  " ++ "Snap");
             _coreui.sameLine(.{});
-            var snap = options.snap[0];
+            var snap = options.snap.x;
             _coreui.setNextItemWidth(4.0 * _coreui.getStyle().font_size_base);
             if (_coreui.dragF32("", .{
                 .v = &snap,
                 .min = 0,
                 .max = 100,
             })) {
-                options.snap = @splat(snap);
+                options.snap = .splat(snap);
             }
         }
     }
@@ -175,34 +174,32 @@ fn ecsGizmoSupported(
     component_obj: ?cdb.ObjId,
 ) !bool {
     var gizmo_component_obj: ?cdb.ObjId = null;
-    var component_i: ?*const ecs.ComponentI = null;
+    var component_i: ?*const editor.EditorComponentAspect = null;
 
     if (component_obj) |c_obj| {
         gizmo_component_obj = c_obj;
 
-        const component_hash = _cdb.getTypeHash(db, c_obj.type_idx).?;
-        const ci = _ecs.findComponentIByCdbHash(component_hash).?;
-
-        if (ci.gizmoGetMatrix) |gizmoGetMatrix| {
-            _ = gizmoGetMatrix;
-            component_i = ci;
+        if (_cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
+            if (aspect.gizmoGetMatrix) |gizmoGetMatrix| {
+                _ = gizmoGetMatrix;
+                component_i = aspect;
+            }
         }
     } else {
-        const top_level_obj_r = ecs.EntityCdb.read(_cdb, entity_obj).?;
-        if (try ecs.EntityCdb.readSubObjSet(_cdb, top_level_obj_r, .components, allocator)) |components| {
+        const top_level_obj_r = ecs.EntityCdb.read(_cdb, entity_obj) orelse return false;
+        if (try ecs.EntityCdb.readSubObjSet(_cdb, top_level_obj_r, .Components, allocator)) |components| {
             defer allocator.free(components);
 
             std.sort.insertion(cdb.ObjId, components, {}, lessThanGizmoPriority);
 
             for (components) |c_obj| {
-                const component_hash = _cdb.getTypeHash(db, c_obj.type_idx).?;
-                const ci = _ecs.findComponentIByCdbHash(component_hash).?;
-
-                if (ci.gizmoGetMatrix) |gizmoGetMatrix| {
-                    _ = gizmoGetMatrix;
-                    component_i = ci;
-                    gizmo_component_obj = c_obj;
-                    break;
+                if (_cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
+                    if (aspect.gizmoGetMatrix) |gizmoGetMatrix| {
+                        _ = gizmoGetMatrix;
+                        component_i = aspect;
+                        gizmo_component_obj = c_obj;
+                        break;
+                    }
                 }
             }
         }
@@ -213,57 +210,55 @@ fn ecsGizmoSupported(
 
 fn ecsGizmo(
     allocator: std.mem.Allocator,
-    options: ecs.GizmoOptions,
+    options: editor.GizmoOptions,
     db: cdb.DbId,
     world: ecs.World,
     entity: ecs.EntityId,
     entity_obj: cdb.ObjId,
     component_obj: ?cdb.ObjId,
-    view: [16]f32,
-    projection: [16]f32,
-    origin: [2]f32,
-    size: [2]f32,
+    view: math.Mat44f,
+    projection: math.Mat44f,
+    origin: math.Vec2f,
+    size: math.Vec2f,
 ) !public.GizmoResult {
     var gizmo_manipulate = false;
     var gizmo_using = false;
 
     var gizmo_component_obj: ?cdb.ObjId = null;
-    var component_i: ?*const ecs.ComponentI = null;
+    var component_i: ?*const editor.EditorComponentAspect = null;
 
     if (component_obj) |c_obj| {
         gizmo_component_obj = c_obj;
 
-        const component_hash = _cdb.getTypeHash(db, c_obj.type_idx).?;
-        const ci = _ecs.findComponentIByCdbHash(component_hash).?;
-
-        if (ci.gizmoGetMatrix) |gizmoGetMatrix| {
-            _ = gizmoGetMatrix;
-            component_i = ci;
+        if (_cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
+            if (aspect.gizmoGetMatrix) |gizmoGetMatrix| {
+                _ = gizmoGetMatrix;
+                component_i = aspect;
+            }
         }
     } else {
         const top_level_obj_r = ecs.EntityCdb.read(_cdb, entity_obj).?;
-        if (try ecs.EntityCdb.readSubObjSet(_cdb, top_level_obj_r, .components, allocator)) |components| {
+        if (try ecs.EntityCdb.readSubObjSet(_cdb, top_level_obj_r, .Components, allocator)) |components| {
             defer allocator.free(components);
 
             std.sort.insertion(cdb.ObjId, components, {}, lessThanGizmoPriority);
 
             for (components) |c_obj| {
-                const component_hash = _cdb.getTypeHash(db, c_obj.type_idx).?;
-                const ci = _ecs.findComponentIByCdbHash(component_hash).?;
-
-                if (ci.gizmoGetMatrix) |gizmoGetMatrix| {
-                    _ = gizmoGetMatrix;
-                    component_i = ci;
-                    gizmo_component_obj = c_obj;
-                    break;
+                if (_cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
+                    if (aspect.gizmoGetMatrix) |gizmoGetMatrix| {
+                        _ = gizmoGetMatrix;
+                        component_i = aspect;
+                        gizmo_component_obj = c_obj;
+                        break;
+                    }
                 }
             }
         }
     }
 
     if (component_i) |ci| {
-        var world_mtx = zm.identity();
-        var local_mtx = zm.identity();
+        var world_mtx = math.Mat44f.identity;
+        var local_mtx = math.Mat44f.identity;
 
         try ci.gizmoGetMatrix.?(
             world,
@@ -274,18 +269,16 @@ fn ecsGizmo(
             &local_mtx,
         );
 
-        var world_mtx_arr = zm.matToArr(world_mtx);
-
         _coreui.gizmoSetAlternativeWindow(_coreui.getCurrentWindow());
         _coreui.gizmoSetDrawList(_coreui.getWindowDrawList());
-        _coreui.gizmoSetRect(origin[0], origin[1], size[0], size[1]);
+        _coreui.gizmoSetRect(origin.x, origin.y, size.x, size.y);
 
-        const gizmo_options = try component_i.?.gizmoGetOperation.?(world, entity, entity_obj, gizmo_component_obj.?);
-        var delta_mtx = zm.matToArr(zm.identity());
+        const gizmo_options = try ci.gizmoGetOperation.?(world, entity, entity_obj, gizmo_component_obj.?);
+        var delta_mtx = math.Mat44f{};
 
         gizmo_manipulate = _coreui.gizmoManipulate(
-            &view,
-            &projection,
+            view,
+            projection,
             .{
                 .translate_x = options.translate_x and gizmo_options.translate_x,
                 .translate_y = options.translate_y and gizmo_options.translate_y,
@@ -303,22 +296,22 @@ fn ecsGizmo(
                 .scale_zu = options.scale_zu and gizmo_options.scale_zu,
             },
             options.mode,
-            &world_mtx_arr,
+            &world_mtx,
             .{
-                .snap = if (options.snap_enabled) &options.snap else null,
+                .snap = if (options.snap_enabled) options.snap else null,
                 .delta_matrix = &delta_mtx,
             },
         );
         gizmo_using = _coreui.gizmoIsOver() or _coreui.gizmoIsUsing();
 
         if (gizmo_manipulate) {
-            if (component_i.?.gizmoSetMatrix) |gizmoSetMatrix| {
+            if (ci.gizmoSetMatrix) |gizmoSetMatrix| {
                 try gizmoSetMatrix(
                     world,
                     entity,
                     entity_obj,
                     gizmo_component_obj.?,
-                    zm.mul(local_mtx, zm.matFromArr(delta_mtx)),
+                    local_mtx.mul(delta_mtx),
                 );
             }
         }

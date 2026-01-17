@@ -1,0 +1,12 @@
+.{
+    .name = .editor_tabs,
+    .fingerprint = 0xf80af0aae88386a6,
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .cetech1 = .{ .path = "../../../public/" },
+    },
+}

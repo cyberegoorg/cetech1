@@ -30,7 +30,7 @@ fn openIn(allocator: std.mem.Allocator, open_type: public.OpenInType, url: []con
         .windows => {
             // use explorer or start
             switch (open_type) {
-                .reveal => {
+                .Reveal => {
                     try args.append(allocator, "explorer");
                 },
                 else => {
@@ -45,8 +45,8 @@ fn openIn(allocator: std.mem.Allocator, open_type: public.OpenInType, url: []con
 
             // Open args
             switch (open_type) {
-                .reveal => try args.append(allocator, "-R"),
-                .edit => try args.append(allocator, "-t"),
+                .Reveal => try args.append(allocator, "-R"),
+                .Edit => try args.append(allocator, "-t"),
                 else => {},
             }
 
@@ -57,7 +57,7 @@ fn openIn(allocator: std.mem.Allocator, open_type: public.OpenInType, url: []con
 
             // xdg args
             switch (open_type) {
-                .reveal => try args.append(allocator, std.fs.path.dirname(url).?),
+                .Reveal => try args.append(allocator, std.fs.path.dirname(url).?),
                 else => try args.append(allocator, url),
             }
         },

@@ -121,9 +121,9 @@ pub const KernelApi = struct {
     getIntArgs: *const fn (arg_name: []const u8) ?u32,
 
     // TODO: !!!GLOBAL SHIT WARNING !!!
+    // Only idiot call this method...
     getDb: *const fn () cdb.DbId,
     getMainWindow: *const fn () ?host.Window,
     getGpuBackend: *const fn () ?gpu.GpuBackend,
-
     //
 };

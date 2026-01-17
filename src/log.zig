@@ -4,6 +4,7 @@ const cetech1 = @import("cetech1");
 const apidb = @import("apidb.zig");
 const profiler = @import("profiler.zig");
 const task = @import("task.zig");
+const math = cetech1.math;
 
 pub const api = cetech1.log.LogAPI{
     .logFn = logFn,
@@ -36,10 +37,10 @@ pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]cons
         defer stderr.flush() catch undefined;
 
         const color: std.io.tty.Color = switch (level) {
-            .info => .reset,
-            .debug => .green,
-            .warn => .yellow,
-            .err => .red,
+            .Info => .reset,
+            .Debug => .green,
+            .Warn => .yellow,
+            .Err => .red,
             else => .reset,
         };
 
@@ -51,12 +52,12 @@ pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, msg: [:0]cons
 
     if (profiler.profiler_enabled) {
         const LOG_FORMAT_TRACY = "{s}: {s}";
-        const color: u32 = switch (level) {
-            .info => 0x00_ff_ff_ff,
-            .debug => 0x00_00_ff_00,
-            .warn => 0x00_ff_ef_00,
-            .err => 0x00_ff_00_00,
-            else => 0x00_ff_00_00,
+        const color: math.SRGBA = switch (level) {
+            .Info => .fromU32(0x00_ff_ff_ff),
+            .Debug => .fromU32(0x00_00_ff_00),
+            .Warn => .fromU32(0x00_ff_ef_00),
+            .Err => .fromU32(0x00_ff_00_00),
+            else => .fromU32(0x00_ff_00_00),
         };
         if (std.fmt.bufPrintZ(&buffer, LOG_FORMAT_TRACY, .{ scope, msg })) |_| {
             profiler.api.msgWithColor(&buffer, color);
@@ -83,7 +84,7 @@ test "log: should log messge" {
     try registerToApi();
 
     const H = struct {
-        var level: cetech1.log.LogAPI.Level = .err;
+        var level: cetech1.log.LogAPI.Level = .Err;
         var scope: []const u8 = undefined;
         var log_msg: []const u8 = undefined;
         pub fn logFn(level_: cetech1.log.LogAPI.Level, scope_: [:0]const u8, log_msg_: [:0]const u8) !void {
@@ -96,18 +97,18 @@ test "log: should log messge" {
     var handler = cetech1.log.LogHandlerI.implement(H);
     try apidb.api.implInterface(.foo, cetech1.log.LogHandlerI, &handler);
 
-    api.logFn(.info, "test", "test msg");
-    try std.testing.expectEqual(cetech1.log.LogAPI.Level.info, H.level);
+    api.logFn(.Info, "test", "test msg");
+    try std.testing.expectEqual(cetech1.log.LogAPI.Level.Info, H.level);
     try std.testing.expectEqualStrings("test", H.scope);
     try std.testing.expectEqualStrings("test msg", H.log_msg);
 
-    api.logFn(.debug, "test_debug", "test debug msg");
-    try std.testing.expectEqual(cetech1.log.LogAPI.Level.debug, H.level);
+    api.logFn(.Debug, "test_debug", "test debug msg");
+    try std.testing.expectEqual(cetech1.log.LogAPI.Level.Debug, H.level);
     try std.testing.expectEqualStrings("test_debug", H.scope);
     try std.testing.expectEqualStrings("test debug msg", H.log_msg);
 
-    api.logFn(.warn, "test_warn", "test warn msg");
-    try std.testing.expectEqual(cetech1.log.LogAPI.Level.warn, H.level);
+    api.logFn(.Warn, "test_warn", "test warn msg");
+    try std.testing.expectEqual(cetech1.log.LogAPI.Level.Warn, H.level);
     try std.testing.expectEqualStrings("test_warn", H.scope);
     try std.testing.expectEqualStrings("test warn msg", H.log_msg);
 }

@@ -9,7 +9,6 @@ const ecs = cetech1.ecs;
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
 const assetdb = cetech1.assetdb;
-const zm = cetech1.math.zmath;
 
 const editor = @import("editor");
 const editor_inspector = @import("editor_inspector");
@@ -52,8 +51,8 @@ const G = struct {
 
     default_flags: public.VisibilityFlags = .initEmpty(),
 
-    component_value_menu_aspect: *editor.UiSetMenusAspect = undefined,
-    tag_prop_aspect: *editor_inspector.UiEmbedPropertyAspect = undefined,
+    visibility_flags_menu_aspect: *editor.UiSetMenusAspect = undefined,
+    visibility_flags_prop_aspect: *editor_inspector.UiEmbedPropertyAspect = undefined,
 
     visibility_flags_properties_aspect: *editor_inspector.UiEmbedPropertiesAspect = undefined,
 };
@@ -156,7 +155,7 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
 );
 
 // Aspects
-const flags_menu_aspect = editor.UiSetMenusAspect.implement(struct {
+const visibility_flags_menu_aspect = editor.UiSetMenusAspect.implement(struct {
     pub fn addMenu(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
@@ -172,12 +171,12 @@ const flags_menu_aspect = editor.UiSetMenusAspect.implement(struct {
         var active_flags_set = cetech1.ArraySet(u32).init();
         defer active_flags_set.deinit(allocator);
 
-        if (try public.VisibilityFlagsCdb.readSubObjSet(_cdb, flags_r, .flags, allocator)) |flags| {
+        if (try public.VisibilityFlagsCdb.readSubObjSet(_cdb, flags_r, .Flags, allocator)) |flags| {
             defer allocator.free(flags);
 
             for (flags) |flag_obj| {
                 const flag_r = public.VisibilityFlagCdb.read(_cdb, flag_obj).?;
-                const uuid = public.VisibilityFlagCdb.readValue(u32, _cdb, flag_r, .uuid);
+                const uuid = public.VisibilityFlagCdb.readValue(u32, _cdb, flag_r, .UUID);
                 _ = try active_flags_set.add(allocator, uuid);
             }
         }
@@ -194,9 +193,9 @@ const flags_menu_aspect = editor.UiSetMenusAspect.implement(struct {
                 const flag_w = public.VisibilityFlagCdb.write(_cdb, flag_obj).?;
                 const flags_w = public.VisibilityFlagsCdb.write(_cdb, obj).?;
 
-                public.VisibilityFlagCdb.setValue(u32, _cdb, flag_w, .uuid, iface.uuid);
+                public.VisibilityFlagCdb.setValue(u32, _cdb, flag_w, .UUID, iface.uuid);
 
-                try public.VisibilityFlagsCdb.addSubObjToSet(_cdb, flags_w, .flags, &.{flag_w});
+                try public.VisibilityFlagsCdb.addSubObjToSet(_cdb, flags_w, .Flags, &.{flag_w});
 
                 try public.VisibilityFlagCdb.commit(_cdb, flag_w);
                 try public.VisibilityFlagsCdb.commit(_cdb, flags_w);
@@ -205,8 +204,7 @@ const flags_menu_aspect = editor.UiSetMenusAspect.implement(struct {
     }
 });
 
-// Tag property  aspect
-var tag_prop_aspect = editor_inspector.UiEmbedPropertyAspect.implement(struct {
+var visibility_flags_prop_aspect = editor_inspector.UiEmbedPropertyAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
@@ -228,16 +226,16 @@ var tag_prop_aspect = editor_inspector.UiEmbedPropertyAspect.implement(struct {
         if (try _cdb.readSubObjSet(obj_r, prop_idx, allocator)) |tags| {
             for (tags) |flag_obj| {
                 const flag_r = public.VisibilityFlagCdb.read(_cdb, flag_obj).?;
-                const uuid = public.VisibilityFlagCdb.readValue(u32, _cdb, flag_r, .uuid);
+                const uuid = public.VisibilityFlagCdb.readValue(u32, _cdb, flag_r, .UUID);
 
                 const iface = _g.uuid_to_iface.get(uuid).?;
 
                 if (true) {
                     const style = _coreui.getStyle();
-                    const pos_a = _coreui.getItemRectMax()[0];
-                    const text_size = _coreui.calcTextSize(iface.name, .{})[0] + 2 * style.frame_padding[0];
+                    const pos_a = _coreui.getItemRectMax().x;
+                    const text_size = _coreui.calcTextSize(iface.name, .{}).x + 2 * style.frame_padding.x;
 
-                    if (pos_a + text_size + style.item_spacing[0] < _coreui.getWindowPos()[0] + _coreui.getContentRegionAvail()[0]) {
+                    if (pos_a + text_size + style.item_spacing.x < _coreui.getWindowPos().x + _coreui.getContentRegionAvail().x) {
                         _coreui.sameLine(.{});
                     }
                 }
@@ -245,7 +243,7 @@ var tag_prop_aspect = editor_inspector.UiEmbedPropertyAspect.implement(struct {
                 if (_coreui.button(iface.name, .{})) {
                     const obj_w = _cdb.writeObj(obj).?;
                     const flag_w = public.VisibilityFlagCdb.write(_cdb, flag_obj).?;
-                    try public.VisibilityFlagsCdb.removeFromSubObjSet(_cdb, obj_w, .flags, flag_w);
+                    try public.VisibilityFlagsCdb.removeFromSubObjSet(_cdb, obj_w, .Flags, flag_w);
                     try _cdb.writeCommit(obj_w);
                 }
             }
@@ -254,12 +252,12 @@ var tag_prop_aspect = editor_inspector.UiEmbedPropertyAspect.implement(struct {
         if (_coreui.beginPopup("ui_visibility_flags_add_popup", .{})) {
             defer _coreui.endPopup();
 
-            try flags_menu_aspect.add_menu(allocator, obj, 0, null);
+            try visibility_flags_menu_aspect.add_menu(allocator, obj, 0, null);
         }
     }
 });
 
-var color4f_properties_aspec = editor_inspector.UiEmbedPropertiesAspect.implement(struct {
+var visibility_flags_properties_aspec = editor_inspector.UiEmbedPropertiesAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
@@ -277,19 +275,19 @@ var color4f_properties_aspec = editor_inspector.UiEmbedPropertiesAspect.implemen
             _coreui.openPopup("ui_visibility_flags_add_popup", .{});
         }
 
-        if (try public.VisibilityFlagsCdb.readSubObjSet(_cdb, obj_r, .flags, allocator)) |tags| {
+        if (try public.VisibilityFlagsCdb.readSubObjSet(_cdb, obj_r, .Flags, allocator)) |tags| {
             for (tags) |flag_obj| {
                 const flag_r = public.VisibilityFlagCdb.read(_cdb, flag_obj).?;
-                const uuid = public.VisibilityFlagCdb.readValue(u32, _cdb, flag_r, .uuid);
+                const uuid = public.VisibilityFlagCdb.readValue(u32, _cdb, flag_r, .UUID);
 
                 const iface = _g.uuid_to_iface.get(uuid).?;
 
                 if (true) {
                     const style = _coreui.getStyle();
-                    const pos_a = _coreui.getItemRectMax()[0];
-                    const text_size = _coreui.calcTextSize(iface.name, .{})[0] + 2 * style.frame_padding[0];
+                    const pos_a = _coreui.getItemRectMax().x;
+                    const text_size = _coreui.calcTextSize(iface.name, .{}).x + 2 * style.frame_padding.x;
 
-                    if (pos_a + text_size + style.item_spacing[0] < _coreui.getWindowPos()[0] + _coreui.getContentRegionAvail()[0]) {
+                    if (pos_a + text_size + style.item_spacing.x < _coreui.getWindowPos().x + _coreui.getContentRegionAvail().x) {
                         _coreui.sameLine(.{});
                     }
                 }
@@ -297,7 +295,7 @@ var color4f_properties_aspec = editor_inspector.UiEmbedPropertiesAspect.implemen
                 if (_coreui.button(iface.name, .{})) {
                     const obj_w = _cdb.writeObj(obj).?;
                     const flag_w = public.VisibilityFlagCdb.write(_cdb, flag_obj).?;
-                    try public.VisibilityFlagsCdb.removeFromSubObjSet(_cdb, obj_w, .flags, flag_w);
+                    try public.VisibilityFlagsCdb.removeFromSubObjSet(_cdb, obj_w, .Flags, flag_w);
                     try _cdb.writeCommit(obj_w);
                 }
             }
@@ -306,7 +304,7 @@ var color4f_properties_aspec = editor_inspector.UiEmbedPropertiesAspect.implemen
         if (_coreui.beginPopup("ui_visibility_flags_add_popup", .{})) {
             defer _coreui.endPopup();
 
-            try flags_menu_aspect.add_menu(allocator, obj, 0, null);
+            try visibility_flags_menu_aspect.add_menu(allocator, obj, 0, null);
         }
     }
 });
@@ -321,7 +319,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
             public.VisibilityFlagCdb.name,
             &[_]cdb.PropDef{
                 .{
-                    .prop_idx = public.VisibilityFlagCdb.propIdx(.uuid),
+                    .prop_idx = public.VisibilityFlagCdb.propIdx(.UUID),
                     .name = "uuid",
                     .type = cdb.PropType.U32,
                 },
@@ -334,7 +332,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
             public.VisibilityFlagsCdb.name,
             &[_]cdb.PropDef{
                 .{
-                    .prop_idx = public.VisibilityFlagsCdb.propIdx(.flags),
+                    .prop_idx = public.VisibilityFlagsCdb.propIdx(.Flags),
                     .name = "flags",
                     .type = cdb.PropType.SUBOBJECT_SET,
                     .type_hash = public.VisibilityFlagCdb.type_hash,
@@ -352,8 +350,8 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
             if (iface.default) {
                 const flag_obj = try public.VisibilityFlagCdb.createObject(_cdb, db);
                 const flag_w = public.VisibilityFlagCdb.write(_cdb, flag_obj).?;
-                public.VisibilityFlagCdb.setValue(u32, _cdb, flag_w, .uuid, iface.uuid);
-                try public.VisibilityFlagsCdb.addSubObjToSet(_cdb, default_flags_w, .flags, &.{flag_w});
+                public.VisibilityFlagCdb.setValue(u32, _cdb, flag_w, .UUID, iface.uuid);
+                try public.VisibilityFlagsCdb.addSubObjToSet(_cdb, default_flags_w, .Flags, &.{flag_w});
                 try public.VisibilityFlagCdb.commit(_cdb, flag_w);
             }
         }
@@ -368,16 +366,16 @@ const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
             editor.UiSetMenusAspect,
             _cdb,
             db,
-            .flags,
-            _g.component_value_menu_aspect,
+            .Flags,
+            _g.visibility_flags_menu_aspect,
         );
 
         try public.VisibilityFlagsCdb.addPropertyAspect(
             editor_inspector.UiEmbedPropertyAspect,
             _cdb,
             db,
-            .flags,
-            _g.tag_prop_aspect,
+            .Flags,
+            _g.visibility_flags_prop_aspect,
         );
 
         try public.VisibilityFlagsCdb.addAspect(
@@ -414,9 +412,9 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
-    _g.component_value_menu_aspect = try apidb.setGlobalVarValue(editor.UiSetMenusAspect, module_name, "ct_visibility_flags_menu_aspect", flags_menu_aspect);
-    _g.tag_prop_aspect = try apidb.setGlobalVarValue(editor_inspector.UiEmbedPropertyAspect, module_name, "ct_visibility_flags_embed_propery_aspect", tag_prop_aspect);
-    _g.visibility_flags_properties_aspect = try apidb.setGlobalVarValue(editor_inspector.UiEmbedPropertiesAspect, module_name, "ct_visibility_flags_embed_properties_aspect", color4f_properties_aspec);
+    _g.visibility_flags_menu_aspect = try apidb.setGlobalVarValue(editor.UiSetMenusAspect, module_name, "ct_visibility_flags_menu_aspect", visibility_flags_menu_aspect);
+    _g.visibility_flags_prop_aspect = try apidb.setGlobalVarValue(editor_inspector.UiEmbedPropertyAspect, module_name, "ct_visibility_flags_embed_propery_aspect", visibility_flags_prop_aspect);
+    _g.visibility_flags_properties_aspect = try apidb.setGlobalVarValue(editor_inspector.UiEmbedPropertiesAspect, module_name, "ct_visibility_flags_embed_properties_aspect", visibility_flags_properties_aspec);
 
     return true;
 }

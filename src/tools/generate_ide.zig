@@ -2,8 +2,8 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 pub const EditorType = enum {
-    vscode,
-    idea,
+    VSCode,
+    IDEA,
 };
 
 const LaunchCmdProgram = union(enum) {
@@ -48,8 +48,8 @@ pub fn genLddbScriptPath(allocator: std.mem.Allocator, base_path: []const u8, is
 
 pub fn generateEditorConfigs(allocator: std.mem.Allocator, editor_type: EditorType, project_dir: std.fs.Dir, args: ParseArgsResult, launch_cmds: []const LaunchCmd) !void {
     switch (editor_type) {
-        .vscode => try generateEditorConfigsVSCode(allocator, project_dir, args, launch_cmds),
-        .idea => try generateEditorConfigsIdea(allocator, project_dir, args, launch_cmds),
+        .VSCode => try generateEditorConfigsVSCode(allocator, project_dir, args, launch_cmds),
+        .IDEA => try generateEditorConfigsIdea(allocator, project_dir, args, launch_cmds),
     }
 }
 
@@ -87,12 +87,13 @@ pub fn createLauchCmdForFixtures(allocator: std.mem.Allocator, dir_path: []const
 }
 
 const ParseArgsResult = struct {
-    gen_type: EditorType = .vscode,
+    gen_type: EditorType = .VSCode,
     project_path: []const u8 = "",
     config: []const u8 = "",
     bin_path: []const u8 = "",
     fixtures_path: ?[]const u8 = null,
     is_project: bool = false,
+    with_zls: bool = true,
 
     fn deinit(self: ParseArgsResult, allocator: std.mem.Allocator) void {
         defer if (self.fixtures_path) |path| allocator.free(path);
@@ -149,6 +150,8 @@ fn parseArgs(allocator: std.mem.Allocator) !ParseArgsResult {
             result.fixtures_path = try allocator.dupe(u8, path);
         } else if (std.mem.eql(u8, arg, "--is-project")) {
             result.is_project = true;
+        } else if (std.mem.eql(u8, arg, "--no-zls")) {
+            result.with_zls = false;
         } else {
             std.log.err("Unrecognized argument: '{s}'", .{arg});
             std.process.exit(1);
@@ -333,7 +336,10 @@ pub fn createOrUpdateSettingsJsonVSCode(allocator: std.mem.Allocator, project_di
     // ZLS
     const zls_path = try genZlsPath(allocator, base_path, args.is_project);
     defer allocator.free(zls_path);
-    try parsed.value.object.put("zig.zls.path", .{ .string = zls_path });
+
+    if (args.with_zls) {
+        try parsed.value.object.put("zig.zls.path", .{ .string = zls_path });
+    }
 
     // LLDB
     const lldb_script_path = try genLddbScriptPath(allocator, base_path, args.is_project);
@@ -453,7 +459,7 @@ pub fn createProjectIdea(allocator: std.mem.Allocator, project_dir: std.fs.Dir, 
     var buffer: [4096]u8 = undefined;
 
     // zigbrains.xml
-    {
+    if (args.with_zls) {
         const zls_path = try genZlsPath(allocator, base_path, args.is_project);
         defer allocator.free(zls_path);
 

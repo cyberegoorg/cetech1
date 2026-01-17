@@ -17,21 +17,21 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             const color_idx = try _cdb.addType(
                 db,
-                public.Color4f.name,
+                public.Color4fCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.Color4f.propIdx(.R), .name = "r", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Color4f.propIdx(.G), .name = "g", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Color4f.propIdx(.B), .name = "b", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Color4f.propIdx(.A), .name = "a", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Color4fCdb.propIdx(.R), .name = "r", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Color4fCdb.propIdx(.G), .name = "g", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Color4fCdb.propIdx(.B), .name = "b", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Color4fCdb.propIdx(.A), .name = "a", .type = cdb.PropType.F32 },
                 },
             );
 
             const default_color = try _cdb.createObject(db, color_idx);
             const default_color_w = _cdb.writeObj(default_color).?;
-            public.Color4f.setValue(f32, _cdb, default_color_w, .R, 1.0);
-            public.Color4f.setValue(f32, _cdb, default_color_w, .G, 1.0);
-            public.Color4f.setValue(f32, _cdb, default_color_w, .B, 1.0);
-            public.Color4f.setValue(f32, _cdb, default_color_w, .A, 1.0);
+            public.Color4fCdb.setValue(f32, _cdb, default_color_w, .R, 1.0);
+            public.Color4fCdb.setValue(f32, _cdb, default_color_w, .G, 1.0);
+            public.Color4fCdb.setValue(f32, _cdb, default_color_w, .B, 1.0);
+            public.Color4fCdb.setValue(f32, _cdb, default_color_w, .A, 1.0);
             try _cdb.writeCommit(default_color_w);
             _cdb.setDefaultObject(default_color);
         }
@@ -40,58 +40,58 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             const color_idx = try _cdb.addType(
                 db,
-                public.Color3f.name,
+                public.Color3fCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.Color3f.propIdx(.R), .name = "r", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Color3f.propIdx(.G), .name = "g", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Color3f.propIdx(.B), .name = "b", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Color3fCdb.propIdx(.R), .name = "r", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Color3fCdb.propIdx(.G), .name = "g", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Color3fCdb.propIdx(.B), .name = "b", .type = cdb.PropType.F32 },
                 },
             );
 
             const default_color = try _cdb.createObject(db, color_idx);
             const default_color_w = _cdb.writeObj(default_color).?;
-            public.Color3f.setValue(f32, _cdb, default_color_w, .R, 1.0);
-            public.Color3f.setValue(f32, _cdb, default_color_w, .G, 1.0);
-            public.Color3f.setValue(f32, _cdb, default_color_w, .B, 1.0);
+            public.Color3fCdb.setValue(f32, _cdb, default_color_w, .R, 1.0);
+            public.Color3fCdb.setValue(f32, _cdb, default_color_w, .G, 1.0);
+            public.Color3fCdb.setValue(f32, _cdb, default_color_w, .B, 1.0);
             try _cdb.writeCommit(default_color_w);
             _cdb.setDefaultObject(default_color);
         }
 
-        // value vec2
+        // Vec2f
         {
             _ = try _cdb.addType(
                 db,
-                public.Vec2f.name,
+                public.Vec2fCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.Vec2f.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Vec2f.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Vec2fCdb.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Vec2fCdb.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
                 },
             );
         }
 
-        // value vec3
+        // Vec3f
         {
             _ = try _cdb.addType(
                 db,
-                public.Vec3f.name,
+                public.Vec3fCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.Vec3f.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Vec3f.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Vec3f.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Vec3fCdb.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Vec3fCdb.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Vec3fCdb.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
                 },
             );
         }
 
-        // value vec4
+        // Vec4f
         {
             _ = try _cdb.addType(
                 db,
-                public.Vec4f.name,
+                public.Vec4fCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.Vec4f.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Vec4f.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Vec4f.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Vec4f.propIdx(.W), .name = "w", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Vec4fCdb.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Vec4fCdb.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Vec4fCdb.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.Vec4fCdb.propIdx(.W), .name = "w", .type = cdb.PropType.F32 },
                 },
             );
         }
@@ -100,21 +100,76 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             const quatf_idx = try _cdb.addType(
                 db,
-                public.Quatf.name,
+                public.QuatfCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.Quatf.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Quatf.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Quatf.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
-                    .{ .prop_idx = public.Quatf.propIdx(.W), .name = "w", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.QuatfCdb.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.QuatfCdb.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.QuatfCdb.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.QuatfCdb.propIdx(.W), .name = "w", .type = cdb.PropType.F32 },
                 },
             );
 
             const default_quat = try _cdb.createObject(db, quatf_idx);
             const default_quat_w = _cdb.writeObj(default_quat).?;
-            public.Quatf.setValue(f32, _cdb, default_quat_w, .X, 0.0);
-            public.Quatf.setValue(f32, _cdb, default_quat_w, .Y, 0.0);
-            public.Quatf.setValue(f32, _cdb, default_quat_w, .Z, 0.0);
-            public.Quatf.setValue(f32, _cdb, default_quat_w, .W, 1.0);
+            public.QuatfCdb.setValue(f32, _cdb, default_quat_w, .X, 0.0);
+            public.QuatfCdb.setValue(f32, _cdb, default_quat_w, .Y, 0.0);
+            public.QuatfCdb.setValue(f32, _cdb, default_quat_w, .Z, 0.0);
+            public.QuatfCdb.setValue(f32, _cdb, default_quat_w, .W, 1.0);
+            try _cdb.writeCommit(default_quat_w);
+            _cdb.setDefaultObject(default_quat);
+        }
+
+        // Position
+        {
+            _ = try _cdb.addType(
+                db,
+                public.PositionCdb.name,
+                &[_]cdb.PropDef{
+                    .{ .prop_idx = public.PositionCdb.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.PositionCdb.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.PositionCdb.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
+                },
+            );
+        }
+
+        // Scale
+        {
+            const scale_idx = try _cdb.addType(
+                db,
+                public.ScaleCdb.name,
+                &[_]cdb.PropDef{
+                    .{ .prop_idx = public.ScaleCdb.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.ScaleCdb.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.ScaleCdb.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
+                },
+            );
+
+            const default_scale = try _cdb.createObject(db, scale_idx);
+            const default_scale_w = _cdb.writeObj(default_scale).?;
+            public.ScaleCdb.setValue(f32, _cdb, default_scale_w, .X, 1.0);
+            public.ScaleCdb.setValue(f32, _cdb, default_scale_w, .Y, 1.0);
+            public.ScaleCdb.setValue(f32, _cdb, default_scale_w, .Z, 1.0);
+            try _cdb.writeCommit(default_scale_w);
+            _cdb.setDefaultObject(default_scale);
+        }
+
+        // Rotation
+        {
+            const rot_idx = try _cdb.addType(
+                db,
+                public.RotationCdb.name,
+                &[_]cdb.PropDef{
+                    .{ .prop_idx = public.RotationCdb.propIdx(.X), .name = "x", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.RotationCdb.propIdx(.Y), .name = "y", .type = cdb.PropType.F32 },
+                    .{ .prop_idx = public.RotationCdb.propIdx(.Z), .name = "z", .type = cdb.PropType.F32 },
+                },
+            );
+
+            const default_quat = try _cdb.createObject(db, rot_idx);
+            const default_quat_w = _cdb.writeObj(default_quat).?;
+            public.RotationCdb.setValue(f32, _cdb, default_quat_w, .X, 0.0);
+            public.RotationCdb.setValue(f32, _cdb, default_quat_w, .Y, 0.0);
+            public.RotationCdb.setValue(f32, _cdb, default_quat_w, .Z, 0.0);
             try _cdb.writeCommit(default_quat_w);
             _cdb.setDefaultObject(default_quat);
         }
@@ -123,9 +178,9 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.i32Type.name,
+                public.i32TypeCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.i32Type.propIdx(.value), .name = "value", .type = .I32 },
+                    .{ .prop_idx = public.i32TypeCdb.propIdx(.Value), .name = "value", .type = .I32 },
                 },
             );
         }
@@ -134,9 +189,9 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.u32Type.name,
+                public.u32TypeCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.u32Type.propIdx(.value), .name = "value", .type = .U32 },
+                    .{ .prop_idx = public.u32TypeCdb.propIdx(.Value), .name = "value", .type = .U32 },
                 },
             );
         }
@@ -145,9 +200,9 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.f32Type.name,
+                public.f32TypeCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.f32Type.propIdx(.value), .name = "value", .type = .F32 },
+                    .{ .prop_idx = public.f32TypeCdb.propIdx(.Value), .name = "value", .type = .F32 },
                 },
             );
         }
@@ -156,9 +211,9 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.i64Type.name,
+                public.i64TypeCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.i64Type.propIdx(.value), .name = "value", .type = .I64 },
+                    .{ .prop_idx = public.i64TypeCdb.propIdx(.Value), .name = "value", .type = .I64 },
                 },
             );
         }
@@ -167,9 +222,9 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.u64Type.name,
+                public.u64TypeCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.u64Type.propIdx(.value), .name = "value", .type = .U64 },
+                    .{ .prop_idx = public.u64TypeCdb.propIdx(.Value), .name = "value", .type = .U64 },
                 },
             );
         }
@@ -178,9 +233,9 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.f64Type.name,
+                public.f64TypeCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.f64Type.propIdx(.value), .name = "value", .type = .F64 },
+                    .{ .prop_idx = public.f64TypeCdb.propIdx(.Value), .name = "value", .type = .F64 },
                 },
             );
         }
@@ -189,9 +244,9 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.BoolType.name,
+                public.BoolTypeCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.BoolType.propIdx(.value), .name = "value", .type = .BOOL },
+                    .{ .prop_idx = public.BoolTypeCdb.propIdx(.Value), .name = "value", .type = .BOOL },
                 },
             );
         }
@@ -200,9 +255,9 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         {
             _ = try _cdb.addType(
                 db,
-                public.StringType.name,
+                public.StringTypeCdb.name,
                 &[_]cdb.PropDef{
-                    .{ .prop_idx = public.StringType.propIdx(.value), .name = "value", .type = .STR },
+                    .{ .prop_idx = public.StringTypeCdb.propIdx(.Value), .name = "value", .type = .STR },
                 },
             );
         }

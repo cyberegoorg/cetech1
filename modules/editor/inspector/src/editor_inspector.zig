@@ -2,12 +2,14 @@ const std = @import("std");
 
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
+const math = cetech1.math;
 
 const coreui = cetech1.coreui;
 
 const log = std.log.scoped(.editor_inspector);
 
 const editor = @import("editor");
+const editor_tabs = @import("editor_tabs");
 
 pub const UiPropertiesConfigAspect = struct {
     pub const c_name = "ct_properties_config_aspect";
@@ -103,7 +105,7 @@ pub const UiPropertiesAspect = struct {
 
     ui_properties: *const fn (
         allocator: std.mem.Allocator,
-        tab: *editor.TabO,
+        tab: *editor_tabs.TabO,
         top_level_obj: cdb.ObjId,
         obj: cdb.ObjId,
         depth: u32,
@@ -120,19 +122,19 @@ pub const UiPropertiesAspect = struct {
 };
 
 pub const InspectorAPI = struct {
-    uiPropLabel: *const fn (allocator: std.mem.Allocator, name: [:0]const u8, color: ?[4]f32, enabled: bool, args: cdbPropertiesViewArgs) bool,
+    uiPropLabel: *const fn (allocator: std.mem.Allocator, name: [:0]const u8, color: ?math.Color4f, enabled: bool, args: cdbPropertiesViewArgs) bool,
     uiPropInput: *const fn (obj: cdb.ObjId, prop_idx: u32, enabled: bool, args: cdbPropertiesViewArgs) anyerror!void,
     uiPropInputRaw: *const fn (obj: cdb.ObjId, prop_idx: u32, args: cdbPropertiesViewArgs) anyerror!void,
     uiPropInputBegin: *const fn (obj: cdb.ObjId, prop_idx: u32, enabled: bool) anyerror!void,
     uiPropInputEnd: *const fn () void,
-    uiAssetInput: *const fn (allocator: std.mem.Allocator, tab: *editor.TabO, obj: cdb.ObjId, prop_idx: u32, read_only: bool, in_table: bool) anyerror!void,
+    uiAssetInput: *const fn (allocator: std.mem.Allocator, tab: *editor_tabs.TabO, obj: cdb.ObjId, prop_idx: u32, read_only: bool, in_table: bool) anyerror!void,
 
     // Property utils
     formatedPropNameToBuff: *const fn (buf: []u8, prop_name: [:0]const u8) anyerror![]u8,
 
     // Property view
-    cdbPropertiesView: *const fn (allocator: std.mem.Allocator, tab: *editor.TabO, top_level_obj: cdb.ObjId, obj: cdb.ObjId, depth: u32, args: cdbPropertiesViewArgs) anyerror!void,
-    cdbPropertiesObj: *const fn (allocator: std.mem.Allocator, tab: *editor.TabO, top_level_obj: cdb.ObjId, obj: cdb.ObjId, depth: u32, args: cdbPropertiesViewArgs) anyerror!void,
+    cdbPropertiesView: *const fn (allocator: std.mem.Allocator, tab: *editor_tabs.TabO, top_level_obj: cdb.ObjId, obj: cdb.ObjId, depth: u32, args: cdbPropertiesViewArgs) anyerror!void,
+    cdbPropertiesObj: *const fn (allocator: std.mem.Allocator, tab: *editor_tabs.TabO, top_level_obj: cdb.ObjId, obj: cdb.ObjId, depth: u32, args: cdbPropertiesViewArgs) anyerror!void,
 
     beginSection: *const fn (label: [:0]const u8, leaf: bool, default_open: bool, flat: bool) bool,
     endSection: *const fn (open: bool, flat: bool) void,

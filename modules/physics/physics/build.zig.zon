@@ -8,6 +8,8 @@
     },
     .dependencies = .{
         .cetech1 = .{ .path = "../../../public/" },
-        .transform = .{ .path = "../../rendering/transform" },
+        .transform = .{ .path = "../../transform" },
+        .editor_inspector = .{ .path = "../../editor/inspector" },
+        .editor = .{ .path = "../../editor/editor" },
     },
 }

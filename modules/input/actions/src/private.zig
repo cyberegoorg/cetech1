@@ -8,6 +8,7 @@ const ecs = cetech1.ecs;
 const input = cetech1.input;
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
+const math = cetech1.math;
 
 const public = @import("actions.zig");
 
@@ -42,6 +43,9 @@ var _gamepad_source: *const input.InputSourceI = undefined;
 
 var _last_pos: [2]f64 = .{ 0.0, 0.0 };
 var _mouse_delta: [2]f64 = .{ 0.0, 0.0 };
+
+var _last_scroll: [2]f64 = .{ 0.0, 0.0 };
+var _scroll_delta: [2]f64 = .{ 0.0, 0.0 };
 
 pub var api = public.ActionsAPI{
     .createActionSet = createActionSet,
@@ -176,31 +180,29 @@ fn isActionDown(action: cetech1.StrId32) bool {
     return false;
 }
 
-fn getActionAxis(action: cetech1.StrId32) [2]f32 {
-    if (_active_set_stack.items.len == 0) return .{ 0, 0 };
+fn getActionAxis(action: cetech1.StrId32) math.Vec2f {
+    if (_active_set_stack.items.len == 0) return .{};
 
     const set = _action_set.getPtr(_active_set_stack.getLast()).?;
-    const a: Action = set.get(action) orelse return .{ 0, 0 };
+    const a: Action = set.get(action) orelse return .{};
 
-    if (a.action.action != .axis) return .{ 0, 0 };
+    if (a.action.action != .axis) return .{};
 
     const w = _kernel.getMainWindow().?; // TODO: param?
 
-    var axis: [2]f32 = .{ 0, 0 };
+    var axis: math.Vec2f = .{};
 
     for (a.mapping.items) |maping| {
         switch (maping) {
             .key => |k| {
                 if (_keyboard_source.getState(0, @intFromEnum(k.k)).?.action != .release) {
-                    axis[0] += k.axis_map.?[0];
-                    axis[1] += k.axis_map.?[1];
+                    axis.increase(k.axis_map.?);
                 }
                 continue;
             },
             .gamepadButton => |gb| {
                 if (_gamepad_source.getState(0, @intFromEnum(gb.b)).?.action == .press) {
-                    axis[0] += gb.axis_map.?[0];
-                    axis[1] += gb.axis_map.?[1];
+                    axis.increase(gb.axis_map.?);
                 }
 
                 continue;
@@ -211,14 +213,14 @@ fn getActionAxis(action: cetech1.StrId32) [2]f32 {
                 if (ga.x) |x| {
                     const axis_x = _gamepad_source.getState(0, @intFromEnum(x)).?.f;
                     if (@abs(axis_x) > FAKE_DEADZONE) {
-                        axis[0] += axis_x * ga.scale_x;
+                        axis.x += axis_x * ga.scale_x;
                     }
                 }
 
                 if (ga.y) |y| {
                     const axis_y = _gamepad_source.getState(0, @intFromEnum(y)).?.f;
                     if (@abs(axis_y) > FAKE_DEADZONE) {
-                        axis[1] += axis_y * -1 * ga.scale_y;
+                        axis.y += axis_y * -1 * ga.scale_y;
                     }
                 }
 
@@ -227,13 +229,18 @@ fn getActionAxis(action: cetech1.StrId32) [2]f32 {
             .mouse => |m| {
                 if (m.delta) {
                     const pos = _mouse_delta;
-                    axis[0] += @floatCast(pos[0]);
-                    axis[1] += @floatCast(pos[1]);
+                    axis.x += @floatCast(pos[0]);
+                    axis.y += @floatCast(pos[1]);
                 } else {
                     const pos = w.getCursorPos();
-                    axis[0] += @floatCast(pos[0]);
-                    axis[1] += @floatCast(pos[1]);
+                    axis.x += @floatCast(pos[0]);
+                    axis.y += @floatCast(pos[1]);
                 }
+            },
+            .scroll => {
+                const scroll = _scroll_delta;
+                axis.x += @floatCast(scroll[0]);
+                axis.y += @floatCast(scroll[1]);
             },
             else => |e| {
                 log.err("Invalid mapping {any}", .{e});
@@ -270,6 +277,18 @@ pub fn checkInputs() void {
     };
 
     _last_pos = mouse_pos;
+
+    const scroll_x = _mouse_source.getState(0, @intFromEnum(input.MouseAxis.scroll_x)).?;
+    const scroll_y = _mouse_source.getState(0, @intFromEnum(input.MouseAxis.scroll_y)).?;
+    _scroll_delta = .{
+        _last_scroll[0] - scroll_x.f,
+        _last_scroll[1] - scroll_y.f,
+    };
+    _last_scroll = .{ @floatCast(scroll_x.f), @floatCast(scroll_y.f) };
+
+    // if (_scroll_delta[0] != 0 or _scroll_delta[1] != 0) {
+    //     log.debug("scroll delta {any}", .{_scroll_delta});
+    // }
 }
 
 // Create types, register api, interfaces etc...
