@@ -1,4 +1,8 @@
 .{
+    .tasks = .{
+        .{ .name = "Build", .type = "shell", .command = "zig", .args = .{"build"} },
+    },
+
     .launchers = .{
         .{ .name = "Unit tests", .program = .{ .path = "zig-out/bin/cetech1_test" }, .args = .{} },
         .{ .name = "No asset root", .args = .{} },

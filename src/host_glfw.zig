@@ -510,7 +510,7 @@ pub fn createWindow(width: i32, height: i32, title: [:0]const u8, monitor: ?host
     var w: *zglfw.Window = undefined;
 
     const m: ?*zglfw.Monitor = if (monitor) |m| @ptrCast(m.ptr) else null;
-    w = try zglfw.Window.create(width, height, title, m);
+    w = try zglfw.Window.create(width, height, title, m, null);
 
     const new_w = try _window_pool.create();
     new_w.* = Window.init(w);

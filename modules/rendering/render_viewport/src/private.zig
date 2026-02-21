@@ -948,7 +948,7 @@ const RenderViewportTask = struct {
             }
 
             self.gpu.endAllUsedEncoders();
-            _ = self.gpu.frame(false);
+            _ = self.gpu.frame(.{});
         }
     }
 };
@@ -983,6 +983,7 @@ fn renderAllViewports(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend,
                 },
                 null,
                 null,
+                0,
             );
             viewport.output = t;
             viewport.size = viewport.new_size;
@@ -1113,7 +1114,7 @@ fn renderAll(gpu_backend: gpu.GpuBackend, kernel_tick: u64, dt: f32, vsync: bool
     {
         var frame_zone_ctx = _profiler.ZoneN(@src(), "frame");
         defer frame_zone_ctx.End();
-        _g.current_frame = gpu_backend.frame(false);
+        _g.current_frame = gpu_backend.frame(.{});
     }
 
     dt_accum += dt;

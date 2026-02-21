@@ -41,7 +41,6 @@ const sync_list = [_]RepositorySyncConfig{
             "libs",
             "shaders",
             "src",
-            "tools",
             ".gitattributes",
             ".gitignore",
             "build.zig",

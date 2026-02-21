@@ -119,6 +119,7 @@ fn renderDrawData(gpu_api: gpu.GpuBackend, view_id: gpu.ViewId) !void {
                         .{},
                         .{ .u = .Border, .v = .Border },
                         null,
+                        0,
                     );
 
                     gpu_api.updateTexture2D(
