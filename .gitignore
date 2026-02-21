@@ -27,6 +27,9 @@
 project.xcworkspace/
 xcuserdata/
 
+# Kevelop
+*.kdev4
+
 kcov-output/
 
 imgui.ini

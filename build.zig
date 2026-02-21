@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 pub const generate_ide = @import("src/tools/generate_ide.zig");
+const zbgfx = @import("zbgfx");
 
 const min_zig_version = std.SemanticVersion.parse("0.15.1") catch @panic("Where is .zigversion?");
 const cetech1_version = std.SemanticVersion.parse(@embedFile(".version")) catch @panic("Where is .version?");
@@ -172,7 +173,7 @@ pub fn createStudioExe(
     return try createKernelExe(
         b,
         base_bin_name ++ "_studio",
-        "studio",
+        "run-studio",
         "Run studio",
         root_source,
         cetech1_kernel,
@@ -246,7 +247,7 @@ pub fn build(b: *std.Build) !void {
         .nfd_portal = b.option(bool, "nfd_portal", "build NFD with xdg-desktop-portal instead of GTK. ( Linux, nice for steamdeck;) )") orelse true,
 
         // ZGUI
-        .with_freetype = b.option(bool, "with_freetype", "build coreui with freetype support") orelse false,
+        .with_freetype = b.option(bool, "with_freetype", "build coreui with freetype support") orelse true,
 
         // BGFX
         .with_shaderc = b.option(bool, "with_shaderc", "build with shaderc support") orelse true,
@@ -343,7 +344,8 @@ pub fn build(b: *std.Build) !void {
     );
 
     // ZBGFX
-    const zbgfx = b.dependency(
+    // TODO: Remove
+    const zbgfx_dep = b.dependency(
         "zbgfx",
         .{
             .target = target,
@@ -520,7 +522,9 @@ pub fn build(b: *std.Build) !void {
     });
 
     if (options.with_shaderc) {
-        b.installArtifact(zbgfx.artifact("shaderc"));
+        const shaderc_install = b.addInstallArtifact(zbgfx_dep.artifact("shaderc"), .{});
+        b.getInstallStep().dependOn(&shaderc_install.step);
+        try zbgfx.build_step.installShaderCPrecompiledDependencies(b, target, &shaderc_install.step, zbgfx_dep);
     }
 
     //

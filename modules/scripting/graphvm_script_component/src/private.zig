@@ -107,8 +107,8 @@ const editor_graphvm_component_aspect = editor.EditorComponentAspect.implement(
             allocator: std.mem.Allocator,
             obj: cdb.ObjId,
         ) ![:0]const u8 {
-            _ = allocator; // autofix
-            _ = obj; // autofix
+            _ = allocator;
+            _ = obj;
             return std.fmt.bufPrintZ(buff, "{s}", .{coreui.CoreIcons.FA_GEARS});
         }
     },

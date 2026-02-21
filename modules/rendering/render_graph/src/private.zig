@@ -611,6 +611,7 @@ const GraphBuilder = struct {
             info.flags,
             info.sampler_flags,
             null,
+            0,
         );
 
         if (!t.isValid()) {

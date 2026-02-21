@@ -9,22 +9,24 @@ When [zig](https://codeberg.org/ziglang/zig) meets [bgfx](https://github.com/bka
 - [x] Zig api.
 - [x] Compile as standard zig library.
 - [x] `shaderc` as build artifact.
-- [x] Shader compile in `build.zig` to `*.bin.h`.
-- [x] Shader compile in `build.zig` and embed as zig module. (this is zig equivalent of `*.bin.h`)
 - [x] Shader compile from runtime via `shaderc` as child process.
 - [x] Binding for [DebugDraw API](https://github.com/bkaradzic/bgfx/tree/master/examples/common/debugdraw)
 - [x] `imgui` render backend. Use build option `imgui_include` to enable. ex. for
   zgui: `.imgui_include = zgui.path("libs").getPath(b),`
+- [ ] Shader compile in `build.zig` and embed as zig module.
 - [ ] Zig based allocator.
 
-> [!IMPORTANT]  
+> [!IMPORTANT]
+>
 > - This is only zig binding. For BGFX stuff goto [bgfx](https://github.com/bkaradzic/bgfx).
 > - Github repository is only mirror. Development continues [here](https://codeberg.org/cyberegoorg/zbgfx)
 
 > [!WARNING]
+>
 > - `shaderc` need some time to compile.
 
 > [!NOTE]
+>
 > - If you build shaders/app and see something like `run shaderc (shader.bin.h) stderr`.
     This is not "true" error (build success), but only in debug build shader print some stuff to stderr and zig
     build catch it.
@@ -42,9 +44,9 @@ Minimal is `0.15.1`. But you know try your version and believe.
 
 ## Bgfx version
 
-- [BX](https://github.com/bkaradzic/bx//compare/ce31b1445475ecd4b090471144c4c30a1cbdd871...master)
-- [BImg](https://github.com/bkaradzic/bimg/compare/bf10ffbb3df1f9f12ad7a9105e5e96e11a9c5a0c...master)
-- [BGFX](https://github.com/bkaradzic/bgfx/compare/56eb016280731451c3b7f18433dc114df035d52a...master)
+- [BX](https://github.com/bkaradzic/bx//compare/fa641d8581f7f6f696a37abe4b80558aca161440...master)
+- [BImg](https://github.com/bkaradzic/bimg/compare/b43fea9eae0e6a98118454a6d17c6cb25f5e6403...master)
+- [BGFX](https://github.com/bkaradzic/bgfx/compare/ccdbacdb74428600e791bc6b1cd0c0c149c3637e...master)
 
 ## Getting started
 

@@ -365,6 +365,16 @@ const DiscardFlags = struct {
     }
 };
 
+const FrameFlags = struct {
+    pub fn toState(self: public.FrameFlags) u8 {
+        var r: u8 = bgfx.FrameFlags_None;
+
+        if (self.DebugCapture) r |= bgfx.FrameFlags_DebugCapture;
+        if (self.Discard) r |= bgfx.FrameFlags_Discard;
+        return r;
+    }
+};
+
 pub const ResetFlags = struct {
     pub fn toState(self: public.ResetFlags) bgfx.ResetFlags {
         var r = bgfx.ResetFlags_None;
@@ -682,9 +692,9 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
         _ = self;
         zbgfx.bgfx.reset(_width, _height, ResetFlags.toState(_flags), @enumFromInt(@intFromEnum(_format)));
     }
-    pub fn frame(self: *anyopaque, _capture: bool) u32 {
+    pub fn frame(self: *anyopaque, flags: public.FrameFlags) u32 {
         _ = self;
-        return zbgfx.bgfx.frame(_capture);
+        return zbgfx.bgfx.frame(FrameFlags.toState(flags));
     }
     pub fn alloc(self: *anyopaque, _size: u32) *const public.Memory {
         _ = self;
@@ -906,7 +916,7 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
             ).idx,
         };
     }
-    pub fn createTexture2D(self: *anyopaque, _width: u16, _height: u16, _hasMips: bool, _numLayers: u16, _format: public.TextureFormat, _flags: public.TextureFlags, _sampler_flags: ?public.SamplerFlags, _mem: ?*const public.Memory) public.TextureHandle {
+    pub fn createTexture2D(self: *anyopaque, _width: u16, _height: u16, _hasMips: bool, _numLayers: u16, _format: public.TextureFormat, _flags: public.TextureFlags, _sampler_flags: ?public.SamplerFlags, _mem: ?*const public.Memory, _external: u64) public.TextureHandle {
         _ = self;
         return .{
             .idx = bgfx.createTexture2D(
@@ -917,10 +927,11 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
                 @enumFromInt(@intFromEnum(_format)),
                 TextureFlags.toState(_flags) | if (_sampler_flags) |f| SamplerFlags.toState(f) else 0,
                 @ptrCast(_mem),
+                _external,
             ).idx,
         };
     }
-    pub fn createTexture3D(self: *anyopaque, _width: u16, _height: u16, _depth: u16, _hasMips: bool, _format: public.TextureFormat, _flags: public.TextureFlags, _sampler_flags: ?public.SamplerFlags, _mem: ?*const public.Memory) public.TextureHandle {
+    pub fn createTexture3D(self: *anyopaque, _width: u16, _height: u16, _depth: u16, _hasMips: bool, _format: public.TextureFormat, _flags: public.TextureFlags, _sampler_flags: ?public.SamplerFlags, _mem: ?*const public.Memory, _external: u64) public.TextureHandle {
         _ = self;
         return .{
             .idx = bgfx.createTexture3D(
@@ -931,10 +942,11 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
                 @enumFromInt(@intFromEnum(_format)),
                 TextureFlags.toState(_flags) | if (_sampler_flags) |f| SamplerFlags.toState(f) else 0,
                 @ptrCast(_mem),
+                _external,
             ).idx,
         };
     }
-    pub fn createTextureCube(self: *anyopaque, _size: u16, _hasMips: bool, _numLayers: u16, _format: public.TextureFormat, _flags: public.TextureFlags, _sampler_flags: ?public.SamplerFlags, _mem: ?*const public.Memory) public.TextureHandle {
+    pub fn createTextureCube(self: *anyopaque, _size: u16, _hasMips: bool, _numLayers: u16, _format: public.TextureFormat, _flags: public.TextureFlags, _sampler_flags: ?public.SamplerFlags, _mem: ?*const public.Memory, _external: u64) public.TextureHandle {
         _ = self;
         return .{
             .idx = bgfx.createTextureCube(
@@ -944,6 +956,7 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
                 @enumFromInt(@intFromEnum(_format)),
                 TextureFlags.toState(_flags) | if (_sampler_flags) |f| SamplerFlags.toState(f) else 0,
                 @ptrCast(_mem),
+                _external,
             ).idx,
         };
     }
@@ -1246,8 +1259,8 @@ fn initBgfx(context: *BgfxBackend, backend: bgfx.RendererType, vsync: bool, head
     log.debug("\t- maxOcclusionQueries: {d}", .{limits.maxOcclusionQueries});
     log.debug("\t- maxEncoders: {d}", .{limits.maxEncoders});
     log.debug("\t- minResourceCbSize: {d}", .{limits.minResourceCbSize});
-    log.debug("\t- transientVbSize: {d}", .{limits.maxTransientVbSize});
-    log.debug("\t- transientIbSize: {d}", .{limits.maxTansientIbSize});
+    log.debug("\t- maxTransientVbSize: {d}", .{limits.maxTransientVbSize});
+    log.debug("\t- maxTransientIbSize: {d}", .{limits.maxTransientIbSize});
 
     context.null_layout = NullVertex.layoutInit();
     context.null_vb = backend_api.createVertexBuffer(

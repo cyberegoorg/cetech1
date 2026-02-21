@@ -11,8 +11,6 @@ void init_vertex_loader(out ct_vertex_loader_ctx ctx, in ct_input input) {
     load_vertex_system_offsets(ctx.offset);
     load_vertex_system_strides(ctx.stride);
     load_vertex_system_buffer_idx(ctx.buffer_idx);
-
-    // ctx.position = input.a_position;
 }
 
 float vertex_system_load_float(in uint channel_idx, in uint offset) {

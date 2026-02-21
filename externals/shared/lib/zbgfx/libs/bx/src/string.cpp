@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2025 Branimir Karadzic. All rights reserved.
+ * Copyright 2010-2026 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bx/blob/master/LICENSE
  */
 
@@ -1280,36 +1280,113 @@ namespace bx
 		return total;
 	}
 
-	static const char s_units[] = { 'B', 'k', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y' };
-
-	template<uint32_t Kilo, char KiloCh0, char KiloCh1, CharFn fn>
-	inline int32_t prettify(char* _out, int32_t _count, uint64_t _value)
+	int32_t formatHumanNumber(char* _out, uint32_t _count, double _value, uint8_t _numFrac, const StringView& _unit, char _prefix)
 	{
-		uint8_t idx = 0;
-		double value = double(_value);
-		while (_value != (_value&0x7ff)
-		&&     idx < BX_COUNTOF(s_units) )
+		char temp[64];
+		int32_t len = snprintf(temp, sizeof(temp), "%.*f", _numFrac, _value);
+		int32_t intPartLen = len;
+
+		if (len >= _numFrac+1
+		&&  '.' == temp[len-_numFrac-1])
 		{
-			_value /= Kilo;
-			value  *= 1.0/double(Kilo);
-			++idx;
+			intPartLen = len-_numFrac-1;
+
+			bool zero = true;
+
+			for (int32_t ii = _numFrac; 0 < ii && zero; --ii)
+			{
+				zero &= temp[len-ii] == '0';
+			}
+
+			if (zero)
+			{
+				temp[len-_numFrac-1] = '\0';
+				len = intPartLen;
+			}
 		}
 
-		return snprintf(_out, _count, "%0.2f %c%c%c", value
-			, fn(s_units[idx])
-			, idx > 0 ? KiloCh0 : '\0'
-			, KiloCh1
-			);
+		const int32_t fracPartLen = len - intPartLen;
+		const int32_t commas      = (intPartLen > 3) ? (intPartLen - 1) / 3 : 0;
+		const int32_t total       = intPartLen + fracPartLen + commas;
+
+		if (_count < uint32_t(total) )
+		{
+			if (0 < _count)
+			{
+				_out[0] = '\0';
+			}
+
+			return 0;
+		}
+
+		char* out = _out + total;
+		if (_unit.isEmpty()
+		&&  ' ' == _prefix)
+		{
+			*out = '\0';
+		}
+		else
+		{
+			snprintf(out, _count - total, " %c%S", _prefix, &_unit);
+		}
+
+		if (0 != fracPartLen)
+		{
+			out -= fracPartLen;
+			memCopy(out, &temp[intPartLen], fracPartLen);
+		}
+
+		int32_t group = 0;
+		for (int32_t ii = intPartLen - 1; ii >= 0; --ii)
+		{
+			*--out = temp[ii];
+
+			if (3 == ++group
+			&&  0  < ii)
+			{
+				*--out = ',';
+				group = 0;
+			}
+		}
+
+		return total;
+	}
+
+	int32_t formatHumanNumber(char* _out, uint32_t _count, double _value, uint8_t _numFrac, double _unitStep, const StringView& _unit, const StringView& _prefix, uint8_t _basePrefix)
+	{
+		uint8_t idx = _basePrefix;
+		double value = double(_value);
+		const double invUnitStep = 1.0/double(_unitStep);
+		const uint8_t numPrefixes = narrowCast<uint8_t>(_prefix.getLength() );
+
+		if (0.0 != _value)
+		{
+			while (value >= _unitStep
+				&& idx < numPrefixes)
+			{
+				value *= invUnitStep;
+				++idx;
+			}
+
+			while (value < 1.0
+				&& idx > 0)
+			{
+				value *= _unitStep;
+				--idx;
+			}
+		}
+
+		return formatHumanNumber(_out, _count, value, _numFrac, 0 == idx ? "" : _unit, _prefix.getPtr()[idx]);
 	}
 
 	int32_t prettify(char* _out, int32_t _count, uint64_t _value, Units::Enum _units)
 	{
 		if (Units::Kilo == _units)
 		{
-			return prettify<1000, 'B', '\0', toNoop>(_out, _count, _value);
+			return formatHumanNumber(_out, _count, double(_value), 0, 1000.0, "B", "BkMGTPEZY");
 		}
 
-		return prettify<1024, 'i', 'B', toUpper>(_out, _count, _value);
+		return formatHumanNumber(_out, _count, double(_value), 0, 1024.0, "iB", "BKMGTPEZY");
 	}
 
 } // namespace bx

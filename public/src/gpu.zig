@@ -66,6 +66,11 @@ pub const RenderFrame = enum(c_int) {
     Count,
 };
 
+pub const FrameFlags = struct {
+    DebugCapture: bool = false,
+    Discard: bool = false,
+};
+
 pub const DebugFlags = struct {
     /// Enable wireframe for all
     Wireframe: bool = false,
@@ -816,8 +821,8 @@ pub const GpuBackend = struct {
     pub fn reset(self: GpuBackend, _width: u32, _height: u32, _flags: ResetFlags, _format: TextureFormat) void {
         return self.api.reset(self.inst, _width, _height, _flags, _format);
     }
-    pub fn frame(self: GpuBackend, _capture: bool) u32 {
-        return self.api.frame(self.inst, _capture);
+    pub fn frame(self: GpuBackend, _flags: FrameFlags) u32 {
+        return self.api.frame(self.inst, _flags);
     }
     pub fn alloc(self: GpuBackend, _size: u32) *const Memory {
         return self.api.alloc(self.inst, _size);
@@ -954,14 +959,14 @@ pub const GpuBackend = struct {
     pub fn createTexture(self: GpuBackend, _mem: ?*const Memory, _flags: TextureFlags, _sampler_flags: ?SamplerFlags, _skip: u8, _info: ?*TextureInfo) TextureHandle {
         return self.api.createTexture(self.inst, _mem, _flags, _sampler_flags, _skip, _info);
     }
-    pub fn createTexture2D(self: GpuBackend, _width: u16, _height: u16, _hasMips: bool, _numLayers: u16, _format: TextureFormat, _flags: TextureFlags, _sampler_flags: ?SamplerFlags, _mem: ?*const Memory) TextureHandle {
-        return self.api.createTexture2D(self.inst, _width, _height, _hasMips, _numLayers, _format, _flags, _sampler_flags, _mem);
+    pub fn createTexture2D(self: GpuBackend, _width: u16, _height: u16, _hasMips: bool, _numLayers: u16, _format: TextureFormat, _flags: TextureFlags, _sampler_flags: ?SamplerFlags, _mem: ?*const Memory, _external: u64) TextureHandle {
+        return self.api.createTexture2D(self.inst, _width, _height, _hasMips, _numLayers, _format, _flags, _sampler_flags, _mem, _external);
     }
     pub fn createTexture3D(self: GpuBackend, _width: u16, _height: u16, _depth: u16, _hasMips: bool, _format: TextureFormat, _flags: TextureFlags, _sampler_flags: ?SamplerFlags, _mem: ?*const Memory) TextureHandle {
         return self.api.createTexture3D(self.inst, _width, _height, _depth, _hasMips, _format, _flags, _sampler_flags, _mem);
     }
-    pub fn createTextureCube(self: GpuBackend, _size: u16, _hasMips: bool, _numLayers: u16, _format: TextureFormat, _flags: TextureFlags, _sampler_flags: ?SamplerFlags, _mem: ?*const Memory) TextureHandle {
-        return self.api.createTextureCube(self.inst, _size, _hasMips, _numLayers, _format, _flags, _sampler_flags, _mem);
+    pub fn createTextureCube(self: GpuBackend, _size: u16, _hasMips: bool, _numLayers: u16, _format: TextureFormat, _flags: TextureFlags, _sampler_flags: ?SamplerFlags, _mem: ?*const Memory, _external: u64) TextureHandle {
+        return self.api.createTextureCube(self.inst, _size, _hasMips, _numLayers, _format, _flags, _sampler_flags, _mem, _external);
     }
     pub fn updateTexture2D(self: GpuBackend, _handle: TextureHandle, _layer: u16, _mip: u8, _x: u16, _y: u16, _width: u16, _height: u16, _mem: ?*const Memory, _pitch: u16) void {
         return self.api.updateTexture2D(self.inst, _handle, _layer, _mip, _x, _y, _width, _height, _mem, _pitch);
@@ -1272,7 +1277,7 @@ pub const GpuBackendApi = struct {
     getNullVb: *const fn (self: *anyopaque) VertexBufferHandle,
     getFloatBufferLayout: *const fn (self: *anyopaque) *const VertexLayout,
     reset: *const fn (self: *anyopaque, _width: u32, _height: u32, _flags: ResetFlags, _format: TextureFormat) void,
-    frame: *const fn (self: *anyopaque, _capture: bool) u32,
+    frame: *const fn (self: *anyopaque, _flags: FrameFlags) u32,
     alloc: *const fn (self: *anyopaque, _size: u32) *const Memory,
     copy: *const fn (self: *anyopaque, _data: ?*const anyopaque, _size: u32) *const Memory,
     makeRef: *const fn (self: *anyopaque, _data: ?*const anyopaque, _size: u32) *const Memory,
@@ -1318,9 +1323,9 @@ pub const GpuBackendApi = struct {
     isFrameBufferValid: *const fn (self: *anyopaque, _num: u8, _attachment: *const Attachment) bool,
     calcTextureSize: *const fn (self: *anyopaque, _info: [*c]TextureInfo, _width: u16, _height: u16, _depth: u16, _cubeMap: bool, _hasMips: bool, _numLayers: u16, _format: TextureFormat) void,
     createTexture: *const fn (self: *anyopaque, _mem: ?*const Memory, _flags: TextureFlags, _sampler_flags: ?SamplerFlags, _skip: u8, _info: ?*TextureInfo) TextureHandle,
-    createTexture2D: *const fn (self: *anyopaque, _width: u16, _height: u16, _hasMips: bool, _numLayers: u16, _format: TextureFormat, _flags: TextureFlags, _sampler_flags: ?SamplerFlags, _mem: ?*const Memory) TextureHandle,
-    createTexture3D: *const fn (self: *anyopaque, _width: u16, _height: u16, _depth: u16, _hasMips: bool, _format: TextureFormat, _flags: TextureFlags, _sampler_flags: ?SamplerFlags, _mem: ?*const Memory) TextureHandle,
-    createTextureCube: *const fn (self: *anyopaque, _size: u16, _hasMips: bool, _numLayers: u16, _format: TextureFormat, _flags: TextureFlags, _sampler_flags: ?SamplerFlags, _mem: ?*const Memory) TextureHandle,
+    createTexture2D: *const fn (self: *anyopaque, _width: u16, _height: u16, _hasMips: bool, _numLayers: u16, _format: TextureFormat, _flags: TextureFlags, _sampler_flags: ?SamplerFlags, _mem: ?*const Memory, _external: u64) TextureHandle,
+    createTexture3D: *const fn (self: *anyopaque, _width: u16, _height: u16, _depth: u16, _hasMips: bool, _format: TextureFormat, _flags: TextureFlags, _sampler_flags: ?SamplerFlags, _mem: ?*const Memory, _external: u64) TextureHandle,
+    createTextureCube: *const fn (self: *anyopaque, _size: u16, _hasMips: bool, _numLayers: u16, _format: TextureFormat, _flags: TextureFlags, _sampler_flags: ?SamplerFlags, _mem: ?*const Memory, _external: u64) TextureHandle,
     updateTexture2D: *const fn (self: *anyopaque, _handle: TextureHandle, _layer: u16, _mip: u8, _x: u16, _y: u16, _width: u16, _height: u16, _mem: ?*const Memory, _pitch: u16) void,
     updateTexture3D: *const fn (self: *anyopaque, _handle: TextureHandle, _mip: u8, _x: u16, _y: u16, _z: u16, _width: u16, _height: u16, _depth: u16, _mem: ?*const Memory) void,
     updateTextureCube: *const fn (self: *anyopaque, _handle: TextureHandle, _layer: u16, _side: CubeMapSide, _mip: u8, _x: u16, _y: u16, _width: u16, _height: u16, _mem: ?*const Memory, _pitch: u16) void,
@@ -2143,4 +2148,5 @@ pub const ShadercOptions = struct {
     defines: ?[]const []const u8 = null,
 
     optimizationLevel: Optimize = .o3,
+    keepcomments: bool = false,
 };

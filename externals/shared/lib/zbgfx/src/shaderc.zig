@@ -28,12 +28,14 @@ pub const ShaderType = enum {
 };
 
 pub const Optimize = enum(u32) {
+    o0 = 0,
     o1 = 1,
     o2 = 2,
     o3 = 3,
 
     pub fn toStr(optimize: Optimize) [:0]const u8 {
         return switch (optimize) {
+            .o0 => "0",
             .o1 => "1",
             .o2 => "2",
             .o3 => "3",
@@ -82,6 +84,17 @@ pub const Profile = enum {
 
     s_4_0,
     s_5_0,
+
+    s_6_0,
+    s_6_1,
+    s_6_2,
+    s_6_3,
+    s_6_4,
+    s_6_5,
+    s_6_6,
+    s_6_7,
+    s_6_8,
+    s_6_9,
 
     metal,
     metal10_10,
@@ -171,14 +184,14 @@ pub fn createDefaultOptionsForRenderer(renderer: bgfx.RendererType) ShadercOptio
         .Direct3D11 => {
             return .{
                 .shaderType = .vertex,
-                .profile = .s_4_0,
+                .profile = .s_5_0,
                 .platform = .windows,
             };
         },
         .Direct3D12 => {
             return .{
                 .shaderType = .vertex,
-                .profile = .s_5_0,
+                .profile = .s_6_0,
                 .platform = .windows,
             };
         },
@@ -186,7 +199,7 @@ pub fn createDefaultOptionsForRenderer(renderer: bgfx.RendererType) ShadercOptio
             return .{
                 .shaderType = .vertex,
                 .profile = .metal,
-                .platform = .ios,
+                .platform = .osx,
             };
         },
         .OpenGLES => {
@@ -228,6 +241,7 @@ pub const ShadercOptions = struct {
     defines: ?[]const []const u8 = null,
 
     optimizationLevel: Optimize = .o3,
+    keepcomments: bool = false,
 };
 
 pub fn shadercFromExePath(allocator: std.mem.Allocator) ![]u8 {
@@ -331,6 +345,10 @@ pub fn shadercProcess(allocator: std.mem.Allocator, executablePath: []const u8, 
 
     if (options.varyingFilePath) |path| {
         try args.appendSlice(allocator, &.{ "--varyingdef", path });
+    }
+
+    if (options.keepcomments) {
+        try args.appendSlice(allocator, &.{"--keepcomments"});
     }
 
     if (options.includeDirs) |includes| {
