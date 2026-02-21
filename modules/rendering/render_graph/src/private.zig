@@ -11,29 +11,27 @@ const gpu = cetech1.gpu;
 const dag = cetech1.dag;
 const coreui = cetech1.coreui;
 
+const metrics = cetech1.metrics;
+const kernel = cetech1.kernel;
 const public = @import("render_graph.zig");
 
 const module_name = .render_graph;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
+const apidb = cetech1.apidb;
 
-var _metrics: *const cetech1.metrics.MetricsAPI = undefined;
-var _task: *const cetech1.task.TaskAPI = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
+const tempalloc = cetech1.tempalloc;
+
+const task = cetech1.task;
+const profiler = cetech1.profiler;
 
 // Global state
 const G = struct {
@@ -220,7 +218,7 @@ const GraphBuilder = struct {
     }
 
     pub fn clear(self: *GraphBuilder) !void {
-        var z = _profiler.ZoneN(@src(), "RenderGraph - Clear");
+        var z = profiler.ZoneN(@src(), "RenderGraph - Clear");
         defer z.End();
 
         for (self.passinfo_pool.allocatedItems()) |*set| {
@@ -349,7 +347,7 @@ const GraphBuilder = struct {
     }
 
     fn compileModule(self: *GraphBuilder, allocator: std.mem.Allocator, module: *Module) !void {
-        var z = _profiler.ZoneN(@src(), "RenderGraph - Compile module");
+        var z = profiler.ZoneN(@src(), "RenderGraph - Compile module");
         defer z.End();
 
         // First fill modules
@@ -369,7 +367,7 @@ const GraphBuilder = struct {
         for (module.passes.items) |*pass_or_module| {
             switch (pass_or_module.*) {
                 .pass => |*pass| {
-                    var zz = _profiler.Zone(@src());
+                    var zz = profiler.Zone(@src());
                     defer zz.End();
                     zz.Name(pass.name);
 
@@ -419,7 +417,7 @@ const GraphBuilder = struct {
     }
 
     pub fn compile(self: *GraphBuilder, allocator: std.mem.Allocator, module: public.Module) !void {
-        var z = _profiler.ZoneN(@src(), "RenderGraph - Compile");
+        var z = profiler.ZoneN(@src(), "RenderGraph - Compile");
         defer z.End();
 
         const real_module: *Module = @ptrCast(@alignCast(module.ptr));
@@ -440,7 +438,7 @@ const GraphBuilder = struct {
     }
 
     pub fn execute(self: *GraphBuilder, allocator: std.mem.Allocator, vp_size: math.Vec2f, viewers: []const public.Viewer, freze_mtx: ?math.Mat44f) !void {
-        var z = _profiler.ZoneN(@src(), "RenderGraph - Execute");
+        var z = profiler.ZoneN(@src(), "RenderGraph - Execute");
         defer z.End();
 
         try self.viewers.appendSlice(self.allocator, viewers);
@@ -454,7 +452,7 @@ const GraphBuilder = struct {
 
         // Prepare passes
         for (self.dag.output.keys()) |pass| {
-            var zz = _profiler.Zone(@src());
+            var zz = profiler.Zone(@src());
             defer zz.End();
 
             zz.Name(pass.name);
@@ -479,6 +477,8 @@ const GraphBuilder = struct {
                 try self.texture_map.put(self.allocator, k, t);
             }
 
+            self.gpu.setViewName(info.viewid, info.name);
+
             if (info.needFb()) {
                 var clear_flags: gpu.ClearFlags = .{};
                 var clear_colors: [8]u8 = @splat(std.math.maxInt(u8));
@@ -491,26 +491,26 @@ const GraphBuilder = struct {
                     // Clear only created
                     if (info.create_texture.get(attachment)) |texture| {
                         if (texture.clear_color) |c| {
-                            clear_flags.Color = true;
+                            clear_flags.color = true;
 
-                            switch (idx) {
-                                0 => clear_flags.DiscardColor0 = true,
-                                1 => clear_flags.DiscardColor1 = true,
-                                2 => clear_flags.DiscardColor2 = true,
-                                3 => clear_flags.DiscardColor3 = true,
-                                4 => clear_flags.DiscardColor4 = true,
-                                5 => clear_flags.DiscardColor5 = true,
-                                6 => clear_flags.DiscardColor6 = true,
-                                7 => clear_flags.DiscardColor7 = true,
-                                else => {},
-                            }
+                            // switch (idx) {
+                            //     0 => clear_flags.DiscardColor0 = true,
+                            //     1 => clear_flags.DiscardColor1 = true,
+                            //     2 => clear_flags.DiscardColor2 = true,
+                            //     3 => clear_flags.DiscardColor3 = true,
+                            //     4 => clear_flags.DiscardColor4 = true,
+                            //     5 => clear_flags.DiscardColor5 = true,
+                            //     6 => clear_flags.DiscardColor6 = true,
+                            //     7 => clear_flags.DiscardColor7 = true,
+                            //     else => {},
+                            // }
 
                             const c_idx = self.gpu.addPaletteColor(c);
                             clear_colors[idx] = c_idx;
                         }
 
                         if (null != texture.clear_depth) {
-                            clear_flags.Depth = true;
+                            clear_flags.depth = true;
                         }
                     }
                 }
@@ -519,7 +519,7 @@ const GraphBuilder = struct {
                 var stencil_clear_value: u8 = 0;
                 if (info.clear_stencil) |clear_value| {
                     stencil_clear_value = clear_value;
-                    clear_flags.Stencil = true;
+                    clear_flags.stencil = true;
                 }
 
                 self.gpu.setViewClearMrt(
@@ -542,7 +542,6 @@ const GraphBuilder = struct {
 
                 info.fb = fb;
 
-                self.gpu.setViewName(info.viewid, info.name);
                 self.gpu.setViewFrameBuffer(info.viewid, fb);
                 self.gpu.setViewRect(
                     info.viewid,
@@ -611,6 +610,7 @@ const GraphBuilder = struct {
             info.flags,
             info.sampler_flags,
             null,
+            0,
         );
 
         if (!t.isValid()) {
@@ -721,8 +721,8 @@ const Module = struct {
 
     pub fn editorMenuUi(self: *Module, allocator: std.mem.Allocator) !void {
         if (self.editor_menu_ui) |editor_menu_ui| {
-            if (_coreui.beginMenu(allocator, editor_menu_ui.name, true, null)) {
-                defer _coreui.endMenu();
+            if (coreui.beginMenu(allocator, editor_menu_ui.name, true, null)) {
+                defer coreui.endMenu();
                 try editor_menu_ui.menui(allocator, editor_menu_ui.data);
             }
         }
@@ -827,7 +827,7 @@ const PosVertex = struct {
     }
 };
 var _vertex_pos_layout: gpu.VertexLayout = undefined;
-fn screenSpaceQuad(gpu_backend: gpu.GpuBackend, e: gpu.GpuEncoder, origin_mottom_left: bool, width: f32, height: f32) void {
+fn screenSpaceQuad(gpu_backend: gpu.GpuBackend, e: gpu.GpuEncoder, width: f32, height: f32) void {
     if (3 == gpu_backend.getAvailTransientVertexBuffer(3, &_vertex_pos_layout)) {
         var vb: gpu.TransientVertexBuffer = undefined;
         gpu_backend.allocTransientVertexBuffer(&vb, 3, &_vertex_pos_layout);
@@ -843,7 +843,7 @@ fn screenSpaceQuad(gpu_backend: gpu.GpuBackend, e: gpu.GpuEncoder, origin_mottom
         var minv: f32 = 0.0;
         var maxv: f32 = 2.0;
 
-        if (origin_mottom_left) {
+        if (gpu_backend.isOriginBottomLeft()) {
             const temp = minv;
             minv = maxv;
             maxv = temp;
@@ -868,7 +868,7 @@ fn screenSpaceQuad(gpu_backend: gpu.GpuBackend, e: gpu.GpuEncoder, origin_mottom
     }
 }
 
-pub const graph_api = public.RenderGraphApi{
+pub const api = public.RenderGraphApi{
     .createBuilder = @ptrCast(&createBuilder),
     .destroyBuilder = @ptrCast(&destroyBuilder),
     .createModule = createModule,
@@ -885,7 +885,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             _g.builder_pool = BuilderPool.init(_allocator);
             _g.module_pool = ModulePool.init(_allocator);
 
-            _vertex_pos_layout = PosVertex.layoutInit(_kernel.getGpuBackend().?);
+            _vertex_pos_layout = PosVertex.layoutInit(kernel.getGpuBackend().?);
         }
 
         pub fn shutdown() !void {
@@ -896,27 +896,27 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
 );
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _apidb = apidb;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
+    public.api = &api;
 
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
+    try cdb.loadAPI(module_name);
 
-    _metrics = apidb.getZigApi(module_name, cetech1.metrics.MetricsAPI).?;
-    _task = apidb.getZigApi(module_name, cetech1.task.TaskAPI).?;
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
-    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
+    try kernel.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+
+    try metrics.loadAPI(module_name);
+    try task.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
 
     // create global variable that can survive reload
-    _g = try _apidb.setGlobalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
     // register apis
-    try apidb.setOrRemoveZigApi(module_name, public.RenderGraphApi, &graph_api, load);
+    try apidb.setOrRemoveZigApi(module_name, public.RenderGraphApi, &api, load);
 
     // impl interface
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
@@ -925,6 +925,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_render_graph(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_render_graph(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

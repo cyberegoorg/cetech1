@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2025 Branimir Karadzic. All rights reserved.
+ * Copyright 2011-2026 Branimir Karadzic. All rights reserved.
  * License: http://www.opensource.org/licenses/BSD-2-Clause
  */
 
@@ -22,6 +22,10 @@ struct Args
 		else if (cmdLine.hasArg("vk") )
 		{
 			m_type = bgfx::RendererType::Vulkan;
+		}
+		else if (cmdLine.hasArg("wgpu") )
+		{
+			m_type = bgfx::RendererType::WebGPU;
 		}
 		else if (cmdLine.hasArg("noop") )
 		{
@@ -47,13 +51,25 @@ struct Args
 		{
 			m_pciId = BGFX_PCI_ID_AMD;
 		}
-		else if (cmdLine.hasArg("nvidia") )
+		else if (cmdLine.hasArg("apple") )
 		{
-			m_pciId = BGFX_PCI_ID_NVIDIA;
+			m_pciId = BGFX_PCI_ID_APPLE;
+		}
+		else if (cmdLine.hasArg("arm") )
+		{
+			m_pciId = BGFX_PCI_ID_ARM;
 		}
 		else if (cmdLine.hasArg("intel") )
 		{
 			m_pciId = BGFX_PCI_ID_INTEL;
+		}
+		else if (cmdLine.hasArg("nvidia") )
+		{
+			m_pciId = BGFX_PCI_ID_NVIDIA;
+		}
+		else if (cmdLine.hasArg("microsoft") )
+		{
+			m_pciId = BGFX_PCI_ID_MICROSOFT;
 		}
 		else if (cmdLine.hasArg("sw") )
 		{

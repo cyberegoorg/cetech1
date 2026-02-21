@@ -3,6 +3,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
+const kernel = cetech1.kernel;
 
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
@@ -32,25 +33,17 @@ const MAX_RESOURCE_VALUE_SIZE = @sizeOf(public.BufferHandle);
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
+const apidb = cetech1.apidb;
 
-var _ecs: *const ecs.EcsAPI = undefined;
-
-var _inspector: *const editor_inspector.InspectorAPI = undefined;
-var _graphvm: *const graphvm.GraphVMApi = undefined;
+const tempalloc = cetech1.tempalloc;
+const profiler = cetech1.profiler;
 
 const ShaderMap = cetech1.AutoArrayHashMap(cetech1.StrId32, public.Shader);
 const ShaderDefMap = cetech1.AutoArrayHashMap(cetech1.StrId32, public.ShaderDefinition);
@@ -334,17 +327,46 @@ const Shader = struct {
 
     pub fn clear(self: *Shader, allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend) void {
         for (self.variants.values()) |*variants| {
+            for (variants.items) |variant| {
+                if (variant.prg) |prg| {
+                    if (1 == _g.program_counter.items[prg.idx].fetchSub(1, .release)) {
+                        _ = _g.program_counter.items[prg.idx].load(.acquire);
+                        _g.gpu.destroyProgram(prg);
+                        _ = _g.program_cache.swapRemove(variant.hash);
+                    }
+                }
+            }
+
             variants.deinit(allocator);
+        }
+
+        if (self.name) |n| {
+            _ = _g.shader_map.swapRemove(n);
+            self.name = null;
         }
 
         self.variants.clearRetainingCapacity();
         self.shader_io.clear(gpu_backend);
-        self.name = null;
     }
 
     pub fn deinit(self: *Shader, allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend) void {
         for (self.variants.values()) |*variants| {
+            for (variants.items) |variant| {
+                if (variant.prg) |prg| {
+                    if (1 == _g.program_counter.items[prg.idx].fetchSub(1, .release)) {
+                        _ = _g.program_counter.items[prg.idx].load(.acquire);
+                        _g.gpu.destroyProgram(prg);
+                        _ = _g.program_cache.swapRemove(variant.hash);
+                    }
+                }
+            }
+
             variants.deinit(allocator);
+        }
+
+        if (self.name) |n| {
+            _ = _g.shader_map.swapRemove(n);
+            self.name = null;
         }
 
         self.variants.deinit(allocator);
@@ -478,9 +500,9 @@ const G = struct {
 
     system_pool: [public.MAX_SYSTEMS]System = undefined,
 
-    make_node_result_type_aspec: *editor_inspector.UiPropertyAspect = undefined,
-    uniform_node_result_type_aspec: *editor_inspector.UiPropertyAspect = undefined,
-    const_node_result_type_aspec: *editor_inspector.UiPropertyAspect = undefined,
+    make_node_result_type_aspec: *editor_inspector.UiInspectorPropertyValueAspect = undefined,
+    uniform_node_result_type_aspec: *editor_inspector.UiInspectorPropertyValueAspect = undefined,
+    const_node_result_type_aspec: *editor_inspector.UiInspectorPropertyValueAspect = undefined,
 
     program_cache: ProgramCache = undefined,
     program_counter: ProgramCounter = undefined,
@@ -587,8 +609,8 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                     const Self = @This();
 
                     pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
-                        _ = node_obj; // autofix
-                        _ = graph_obj; // autofix
+                        _ = node_obj;
+                        _ = graph_obj;
                         const shader_def = _g.shader_def_map.get(self.type_hash).?;
 
                         var in_pins = graphvm.NodePinList{};
@@ -639,10 +661,10 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                     }
 
                     pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-                        _ = self; // autofix
-                        _ = args; // autofix
-                        _ = out_pins; // autofix
-                        _ = in_pins; // autofix
+                        _ = self;
+                        _ = args;
+                        _ = out_pins;
+                        _ = in_pins;
                     }
 
                     pub fn transpile(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, state: []u8, stage: ?cetech1.StrId32, context: ?[]const u8, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
@@ -744,9 +766,9 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                             // Write fce decl
                             try common_w.print(
                                 \\{s}_out {s}({s}) {{
-                                \\  {s}_out output;
+                                \\  {s}_out outputs;
                                 \\  {s}
-                                \\  return output;
+                                \\  return outputs;
                                 \\}}
                                 \\
                             , .{
@@ -778,16 +800,16 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                         allocator: std.mem.Allocator,
                         node_obj: cdb.ObjId,
                     ) ![:0]u8 {
-                        _ = self; // autofix
-                        _ = allocator; // autofix
-                        _ = node_obj; // autofix
+                        _ = self;
+                        _ = allocator;
+                        _ = node_obj;
 
-                        return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_POO});
+                        return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Poo});
                     }
                 },
             );
 
-            try _apidb.implOrRemove(module_name, graphvm.NodeI, iface, true);
+            try apidb.implOrRemove(module_name, graphvm.NodeI, iface, true);
             try _g.function_node_iface_map.put(_allocator, .fromStr(graph_node.name), iface);
 
             // Output node
@@ -808,8 +830,8 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                     const Self = @This();
 
                     pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
-                        _ = node_obj; // autofix
-                        _ = graph_obj; // autofix
+                        _ = node_obj;
+                        _ = graph_obj;
                         const shader_def = _g.shader_def_map.get(self.type_hash).?;
                         var in_pins = graphvm.NodePinList{};
                         if (shader_def.graph_node.?.inputs) |inputs| {
@@ -833,16 +855,16 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                         return .{
                             .in = try in_pins.toOwnedSlice(allocator),
                             .out = try allocator.dupe(graphvm.NodePin, &.{
-                                graphvm.NodePin.init("GPU shader", graphvm.NodePin.pinHash("gpu_shader", true), public.PinTypes.GPU_SHADER, null),
+                                graphvm.NodePin.init("Shader", graphvm.NodePin.pinHash("gpu_shader", true), public.PinTypes.GPU_SHADER, null),
                             }),
                         };
                     }
 
                     pub fn create(self: *const graphvm.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {
-                        _ = self; // autofix
-                        _ = reload; // autofix
-                        _ = allocator; // autofix
-                        _ = node_obj; // autofix
+                        _ = self;
+                        _ = reload;
+                        _ = allocator;
+                        _ = node_obj;
                         const real_state: *public.GpuShaderValue = @ptrCast(@alignCast(state));
                         real_state.* = .{};
 
@@ -858,8 +880,8 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                     }
 
                     pub fn destroy(self: *const graphvm.NodeI, state: *anyopaque, reload: bool) !void {
-                        _ = self; // autofix
-                        _ = reload; // autofix
+                        _ = self;
+                        _ = reload;
                         _ = state;
                         // const real_state: *public.GpuShaderValue = @alignCast(@ptrCast(state));
                         // if (real_state.shader) |sh| {
@@ -870,14 +892,14 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                     }
 
                     pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-                        _ = self; // autofix
-                        _ = in_pins; // autofix
+                        _ = self;
+                        _ = in_pins;
                         const s = args.getState(public.GpuShaderValue).?;
                         try out_pins.writeTyped(public.GpuShaderValue, 0, try gpu_shader_value_type_i.calcValidityHash(&std.mem.toBytes(s)), s.*);
                     }
 
                     pub fn transpile(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, state: []u8, stage: ?cetech1.StrId32, context: ?[]const u8, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-                        _ = out_pins; // autofix
+                        _ = out_pins;
                         const real_state = public.GpuTranspileState.fromBytes(state);
 
                         const shader_def = _g.shader_def_map.get(self.type_hash).?;
@@ -959,7 +981,9 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                                 try vs_common_w.print(
                                     \\
                                     \\void ct_graph_init(out ct_graph graph, in ct_vertex_loader_ctx vertex_ctx) {{
-                                    \\      graph = (ct_graph)0;
+                                    \\#if BGFX_SHADER_LANGUAGE_HLSL
+                                    \\      graph = (ct_graph)(0);
+                                    \\#endif
                                     \\      graph.vertex_ctx = vertex_ctx;
                                     \\}}
                                     \\
@@ -978,7 +1002,9 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                                 try fs_common_w.print(
                                     \\
                                     \\void ct_graph_init(out ct_graph graph) {{
-                                    \\      graph = (ct_graph)0;
+                                    \\#if BGFX_SHADER_LANGUAGE_HLSL
+                                    \\      graph = (ct_graph)(0);
+                                    \\#endif
                                     \\}}
                                     \\
                                 , .{});
@@ -998,7 +1024,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                                     const w = if (stage_id.eql(public.TranspileStages.Fragment)) fs_common_w else vs_common_w;
                                     const is_default = std.mem.eql(u8, ctx, "default");
 
-                                    try w.print("void ct_graph_eval{s}{s}(inout ct_graph graph, in ct_input input){{\n", .{
+                                    try w.print("void ct_graph_eval{s}{s}(inout ct_graph graph, in ct_input inputs){{\n", .{
                                         if (!is_default) "_" else "",
                                         if (!is_default) ctx else "",
                                     });
@@ -1142,15 +1168,15 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                         allocator: std.mem.Allocator,
                         node_obj: cdb.ObjId,
                     ) ![:0]u8 {
-                        _ = self; // autofix
-                        _ = allocator; // autofix
-                        _ = node_obj; // autofix
+                        _ = self;
+                        _ = allocator;
+                        _ = node_obj;
 
-                        return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_POO});
+                        return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Poo});
                     }
 
                     pub fn createTranspileState(self: *const graphvm.NodeI, allocator: std.mem.Allocator) anyerror![]u8 {
-                        _ = self; // autofix
+                        _ = self;
                         const state = try allocator.create(public.GpuTranspileState);
                         state.* = public.GpuTranspileState.init(allocator);
 
@@ -1161,7 +1187,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                     }
 
                     pub fn destroyTranspileState(self: *const graphvm.NodeI, state: []u8) void {
-                        _ = self; // autofix
+                        _ = self;
                         const real_state = public.GpuTranspileState.fromBytes(state);
 
                         if (real_state.shader) |shader| {
@@ -1172,7 +1198,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                     }
                 },
             );
-            try _apidb.implOrRemove(module_name, graphvm.NodeI, iface, true);
+            try apidb.implOrRemove(module_name, graphvm.NodeI, iface, true);
             try _g.function_node_iface_map.put(_allocator, .fromStr(graph_node.name), iface);
 
             if (definition.vertex_block) |vb| {
@@ -1201,8 +1227,8 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
         try _g.shader_def_map.put(_allocator, .fromStr(name), definition);
 
         if (definition.compile) |_| {
-            const allocator = try _tmpalloc.create();
-            defer _tmpalloc.destroy(allocator);
+            const allocator = try tempalloc.create();
+            defer tempalloc.destroy(allocator);
             if (try compileShader(allocator, &.{}, definition, name)) |shader| {
                 try _g.shader_map.put(_allocator, .fromStr(name), shader);
             }
@@ -1279,8 +1305,8 @@ fn createExportedNode(alloc: std.mem.Allocator, graph_node: public.DefGraphNode,
                 const Self = @This();
 
                 pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
-                    _ = node_obj; // autofix
-                    _ = graph_obj; // autofix
+                    _ = node_obj;
+                    _ = graph_obj;
 
                     const exp = _g.exported_map.get(self.type_hash).?;
                     const t = defVariableToType(exp.type);
@@ -1294,17 +1320,16 @@ fn createExportedNode(alloc: std.mem.Allocator, graph_node: public.DefGraphNode,
                 }
 
                 pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-                    _ = args; // autofix
-                    _ = out_pins; // autofix
-                    _ = self; // autofix
-                    _ = in_pins; // autofix
-
+                    _ = args;
+                    _ = out_pins;
+                    _ = self;
+                    _ = in_pins;
                 }
 
                 pub fn transpile(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, state: []u8, stage: ?cetech1.StrId32, context: ?[]const u8, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-                    _ = stage; // autofix
-                    _ = context; // autofix
-                    _ = in_pins; // autofix
+                    _ = stage;
+                    _ = context;
+                    _ = in_pins;
                     const real_state = public.GpuTranspileState.fromBytes(state);
 
                     const exp = _g.exported_map.get(self.type_hash).?;
@@ -1322,16 +1347,16 @@ fn createExportedNode(alloc: std.mem.Allocator, graph_node: public.DefGraphNode,
                     allocator: std.mem.Allocator,
                     node_obj: cdb.ObjId,
                 ) ![:0]u8 {
-                    _ = self; // autofix
-                    _ = allocator; // autofix
-                    _ = node_obj; // autofix
+                    _ = self;
+                    _ = allocator;
+                    _ = node_obj;
 
-                    return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_POO});
+                    return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Poo});
                 }
             },
         );
 
-        try _apidb.implOrRemove(module_name, graphvm.NodeI, iface, true);
+        try apidb.implOrRemove(module_name, graphvm.NodeI, iface, true);
     }
 }
 
@@ -1771,13 +1796,14 @@ fn compileShaderVariant(
     }
 
     try vs_output_struct_w.print("  vec4 position;\n", .{});
-    try vs_fill_ouput_struct_w.print("  gl_Position = output.position;\n", .{});
+    try vs_fill_ouput_struct_w.print("  gl_Position = outputs.position;\n", .{});
 
     try fs_output_struct_w.print("  vec4 color0;\n", .{});
-    try fs_fill_ouput_struct_w.print("  gl_FragData[0] = output.color0;\n", .{});
+    try fs_fill_ouput_struct_w.print("  gl_FragColor = outputs.color0;\n", .{});
 
     var vs_export_semantic_counter: usize = 1;
 
+    var any_export = false;
     for (all_definitions.items) |shader_def| {
         if (shader_def.raster_state) |cs| {
             raster_state = RasterState.merge(raster_state, cs);
@@ -1903,7 +1929,7 @@ fn compileShaderVariant(
                         vertexInputsToVariableName(value),
                     });
 
-                    try vs_fill_input_struct_w.print("  input.{s} = {s};\n", .{ vertexInputsToVariableName(value), vertexInputsToVariableName(value) });
+                    try vs_fill_input_struct_w.print("  inputs.{s} = {s};\n", .{ vertexInputsToVariableName(value), vertexInputsToVariableName(value) });
 
                     try var_def_w.print(
                         "{s} {s}  :   {s};\n",
@@ -1925,6 +1951,8 @@ fn compileShaderVariant(
                 for (exports, 0..) |value, idx| {
                     if (!try vs_export_set.add(allocator, value.name)) continue;
 
+                    any_export = true;
+
                     const sem: VariableSemantic = @enumFromInt(vs_export_semantic_counter);
                     vs_export_semantic_counter += 1;
 
@@ -1938,12 +1966,12 @@ fn compileShaderVariant(
                         value.name,
                     });
 
-                    try fs_fill_input_struct_w.print("input.{s} = v_{s};\n", .{
+                    try fs_fill_input_struct_w.print("inputs.{s} = v_{s};\n", .{
                         value.name,
                         value.name,
                     });
 
-                    try vs_fill_ouput_struct_w.print("  v_{s} = output.{s};\n", .{
+                    try vs_fill_ouput_struct_w.print("  v_{s} = outputs.{s};\n", .{
                         value.name,
                         value.name,
                     });
@@ -1992,6 +2020,13 @@ fn compileShaderVariant(
         }
     }
 
+    if (!any_export) {
+        try fs_input_struct_w.print("  {s} {s};\n", .{
+            "int",
+            "unused",
+        });
+    }
+
     if (variant.raster_state) |cs| {
         raster_state = RasterState.merge(raster_state, cs);
     }
@@ -2009,17 +2044,17 @@ fn compileShaderVariant(
         switch (semantic) {
             .vertex_id => {
                 try vs_input_struct_w.print("  {s} {s};\n", .{
-                    "uint",
+                    "int",
                     "vertex_id",
                 });
-                try vs_fill_input_struct_w.print("  input.{s} = {s};\n", .{ "vertex_id", "gl_VertexID" });
+                try vs_fill_input_struct_w.print("  inputs.{s} = {s};\n", .{ "vertex_id", "gl_VertexID" });
             },
             .instance_id => {
                 try vs_input_struct_w.print("  {s} {s};\n", .{
-                    "uint",
+                    "int",
                     "instance_id",
                 });
-                try vs_fill_input_struct_w.print("  input.{s} = {s};\n", .{ "instance_id", "gl_InstanceID" });
+                try vs_fill_input_struct_w.print("  inputs.{s} = {s};\n", .{ "instance_id", "gl_InstanceID" });
             },
         }
     }
@@ -2028,7 +2063,7 @@ fn compileShaderVariant(
     // Compile vs shader
     //
     var vs_shader_options = _g.gpu.createDefaultShadercOptions();
-    vs_shader_options.shaderType = .vertex;
+    vs_shader_options.shaderType = .Vertex;
     vs_shader_options.defines = if (defines.count() != 0) defines.keys() else null;
 
     const vs_source = try std.fmt.allocPrint(
@@ -2060,8 +2095,8 @@ fn compileShaderVariant(
         \\
         \\void main() {{
         \\  // Input and Outputs
-        \\  ct_input input;
-        \\  ct_output output;
+        \\  ct_input inputs;
+        \\  ct_output outputs;
         \\{[vs_fill_input_struct]s}
         \\
         \\  // Main
@@ -2094,7 +2129,7 @@ fn compileShaderVariant(
     // Compile fs shader
     //
     var fs_shader_options = _g.gpu.createDefaultShadercOptions();
-    fs_shader_options.shaderType = .fragment;
+    fs_shader_options.shaderType = .Fragment;
     fs_shader_options.defines = if (defines.count() != 0) defines.keys() else null;
 
     const fs_source = try std.fmt.allocPrint(
@@ -2125,8 +2160,8 @@ fn compileShaderVariant(
         \\
         \\void main() {{
         \\  // Input and Outputs
-        \\  ct_input input;
-        \\  ct_output output;
+        \\  ct_input inputs;
+        \\  ct_output outputs;
         \\{[fs_fill_input_struct]s}
         \\
         \\  // Main
@@ -2197,51 +2232,46 @@ fn compileShaderVariant(
         }
     }
 
-    // TODO: remove
-    if (!_g.gpu.isNoop()) {
-        const cached_program = try _g.program_cache.getOrPut(_allocator, hash);
-        if (cached_program.found_existing) {
-            shader_variant.prg = cached_program.value_ptr.*;
+    const cached_program = try _g.program_cache.getOrPut(_allocator, hash);
+    if (cached_program.found_existing) {
+        shader_variant.prg = cached_program.value_ptr.*;
 
-            if (shader_variant.prg) |prg| {
-                if (prg.isValid()) {
-                    _ = _g.program_counter.items[prg.idx].fetchAdd(1, .monotonic);
-                }
+        if (shader_variant.prg) |prg| {
+            if (prg.isValid()) {
+                _ = _g.program_counter.items[prg.idx].fetchAdd(1, .monotonic);
             }
-
-            return shader_variant;
         }
 
-        // Compile shader
-        const vs_shader_bin = try _g.gpu.compileShader(allocator, var_def.items, vs_source, vs_shader_options);
-        defer allocator.free(vs_shader_bin);
-
-        const fs_shader_bin = try _g.gpu.compileShader(allocator, var_def.items, fs_source, fs_shader_options);
-        defer allocator.free(fs_shader_bin);
-
-        //
-        // Create bgfx shader and program
-        //
-        const fs_shader = _g.gpu.createShader(_g.gpu.copy(fs_shader_bin.ptr, @intCast(fs_shader_bin.len)));
-        const vs_shader = _g.gpu.createShader(_g.gpu.copy(vs_shader_bin.ptr, @intCast(vs_shader_bin.len)));
-        const programHandle = _g.gpu.createProgram(vs_shader, fs_shader, true);
-
-        if (name) |n| {
-            const vs_name = try std.fmt.allocPrint(allocator, "vs_{s}", .{n});
-            const fs_name = try std.fmt.allocPrint(allocator, "fs_{s}", .{n});
-
-            _g.gpu.setShaderName(vs_shader, vs_name);
-            _g.gpu.setShaderName(fs_shader, fs_name);
-        }
-
-        cached_program.value_ptr.* = programHandle;
-        shader_variant.prg = programHandle;
-
-        log.debug("prg: {d}", .{programHandle.idx});
-        _g.program_counter.items[programHandle.idx] = cetech1.heap.AtomicInt.init(1);
-    } else {
-        shader_variant.prg = .{ .idx = 0 };
+        return shader_variant;
     }
+
+    // Compile shader
+    const vs_shader_bin = try _g.gpu.compileShader(allocator, var_def.items, vs_source, vs_shader_options);
+    defer allocator.free(vs_shader_bin);
+
+    const fs_shader_bin = try _g.gpu.compileShader(allocator, var_def.items, fs_source, fs_shader_options);
+    defer allocator.free(fs_shader_bin);
+
+    //
+    // Create bgfx shader and program
+    //
+    const fs_shader = _g.gpu.createShader(_g.gpu.copy(fs_shader_bin.ptr, @intCast(fs_shader_bin.len)));
+    const vs_shader = _g.gpu.createShader(_g.gpu.copy(vs_shader_bin.ptr, @intCast(vs_shader_bin.len)));
+    const programHandle = _g.gpu.createProgram(vs_shader, fs_shader, true);
+
+    if (name) |n| {
+        const vs_name = try std.fmt.allocPrint(allocator, "vs_{s}", .{n});
+        const fs_name = try std.fmt.allocPrint(allocator, "fs_{s}", .{n});
+
+        _g.gpu.setShaderName(vs_shader, vs_name);
+        _g.gpu.setShaderName(fs_shader, fs_name);
+    }
+
+    cached_program.value_ptr.* = programHandle;
+    shader_variant.prg = programHandle;
+
+    log.debug("Compiled \"{?s}\" - {d}", .{ name, programHandle.idx });
+    _g.program_counter.items[programHandle.idx] = cetech1.heap.AtomicInt.init(1);
 
     return shader_variant;
 }
@@ -2276,23 +2306,7 @@ fn selectShaderVariant(
 
 fn destroyShader(shader: public.Shader) void {
     const inst = _g.shader_pool.get(shader.idx);
-
-    for (inst.variants.values()) |variants| {
-        for (variants.items) |variant| {
-            if (variant.prg) |prg| {
-                if (1 == _g.program_counter.items[prg.idx].fetchSub(1, .release)) {
-                    _ = _g.program_counter.items[prg.idx].load(.acquire);
-                    _g.gpu.destroyProgram(prg);
-                    _ = _g.program_cache.swapRemove(variant.hash);
-                }
-            }
-        }
-    }
-
-    if (inst.name) |n| {
-        _ = _g.shader_map.swapRemove(n);
-    }
-
+    //inst.deinit(_allocator, _g.gpu);
     _g.shader_pool.destroy(inst);
 }
 
@@ -2366,7 +2380,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
     &[_]cetech1.StrId64{},
     struct {
         pub fn init() !void {
-            _g.gpu = _kernel.getGpuBackend().?;
+            _g.gpu = kernel.getGpuBackend().?;
 
             _g.shader_def_map = .{};
             _g.shader_pool = try ShaderPool.init(_allocator, MAX_SHADER_INSTANCE);
@@ -2398,7 +2412,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             // Node fce
             try api.addShaderDefiniton("node_fce1", .{
                 .function =
-                \\output.result = a * b;
+                \\outputs.result = a * b;
                 ,
                 .graph_node = .{
                     .name = "node_fce1",
@@ -2461,19 +2475,19 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
 
         pub fn shutdown() !void {
             for (_g.function_node_iface_map.values()) |iface| {
-                try _apidb.implOrRemove(module_name, graphvm.NodeI, iface, false);
+                try apidb.implOrRemove(module_name, graphvm.NodeI, iface, false);
                 _allocator.destroy(iface);
             }
             _g.function_node_iface_map.deinit(_allocator);
 
             for (_g.output_node_iface_map.values()) |iface| {
-                try _apidb.implOrRemove(module_name, graphvm.NodeI, iface, false);
+                try apidb.implOrRemove(module_name, graphvm.NodeI, iface, false);
                 _allocator.destroy(iface);
             }
             _g.output_node_iface_map.deinit(_allocator);
 
             for (_g.exported_node_iface_map.values()) |iface| {
-                try _apidb.implOrRemove(module_name, graphvm.NodeI, iface, false);
+                try apidb.implOrRemove(module_name, graphvm.NodeI, iface, false);
                 _allocator.destroy(iface);
             }
             _g.exported_node_iface_map.deinit(_allocator);
@@ -2481,7 +2495,6 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             _g.exported_map.deinit(_allocator);
 
             _g.node_str_itern.deinit();
-
             for (_g.system_to_idx.values()) |idx| {
                 var system = _g.system_pool[idx];
                 system.deinit(_allocator, _g.gpu);
@@ -2623,8 +2636,8 @@ const gpu_shader_value_type_i = graphvm.GraphValueTypeI.implement(
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            _ = allocator; // autofix
-            const v = public.GPUShaderValueCDB.readValue(u32, _cdb, _cdb.readObj(obj).?, .Handle);
+            _ = allocator;
+            const v = public.GPUShaderValueCDB.readValue(u32, cdb.readObj(obj).?, .Handle);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
@@ -2648,7 +2661,7 @@ const gpu_vec4_value_type_i = graphvm.GraphValueTypeI.implement(
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            const v = public.GpuVec4fCdb.f.toSlice(_cdb, obj);
+            const v = public.GpuVec4fCdb.f.toSlice(obj);
             const s = try std.fmt.allocPrint(allocator, "vec4({d},{d},{d},{d})", .{ v.x, v.y, v.z, v.w });
             const gv = std.mem.bytesAsValue(public.GpuValue, value);
             gv.str = s;
@@ -2674,7 +2687,7 @@ const gpu_vec2_value_type_i = graphvm.GraphValueTypeI.implement(
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            const v = public.GpuVec2fCdb.f.toSlice(_cdb, obj);
+            const v = public.GpuVec2fCdb.f.toSlice(obj);
             const s = try std.fmt.allocPrint(allocator, "vec2({d},{d})", .{ v.x, v.y });
             const gv = std.mem.bytesAsValue(public.GpuValue, value);
             gv.str = s;
@@ -2700,7 +2713,7 @@ const gpu_vec3_value_type_i = graphvm.GraphValueTypeI.implement(
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            const v = public.GpuVec3fCdb.f.toSlice(_cdb, obj);
+            const v = public.GpuVec3fCdb.f.toSlice(obj);
             const s = try std.fmt.allocPrint(allocator, "vec3({d},{d},{d})", .{ v.x, v.y, v.y });
             const gv = std.mem.bytesAsValue(public.GpuValue, value);
             gv.str = s;
@@ -2726,8 +2739,8 @@ const gpu_float_value_type_i = graphvm.GraphValueTypeI.implement(
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            const r = public.Gpuf32Cdb.read(_cdb, obj).?;
-            const v = public.Gpuf32Cdb.readValue(f32, _cdb, r, .Value);
+            const r = public.Gpuf32Cdb.read(obj).?;
+            const v = public.Gpuf32Cdb.readValue(f32, r, .Value);
             const s = try std.fmt.allocPrint(allocator, "{d}", .{v});
             const gv = std.mem.bytesAsValue(public.GpuValue, value);
             gv.str = s;
@@ -2759,9 +2772,9 @@ const gpu_vertex_color_node_i = graphvm.NodeI.implement(
         const Self = @This();
 
         pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
+            _ = self;
+            _ = node_obj;
+            _ = graph_obj;
 
             return .{
                 .in = try allocator.dupe(graphvm.NodePin, &.{}),
@@ -2772,22 +2785,22 @@ const gpu_vertex_color_node_i = graphvm.NodeI.implement(
         }
 
         pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = self; // autofix
-            _ = args; // autofix
-            _ = out_pins; // autofix
-            _ = in_pins; // autofix
+            _ = self;
+            _ = args;
+            _ = out_pins;
+            _ = in_pins;
         }
 
         pub fn transpile(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, state: []u8, stage: ?cetech1.StrId32, context: ?[]const u8, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = context; // autofix
-            _ = self; // autofix
-            _ = stage; // autofix
-            _ = args; // autofix
-            _ = in_pins; // autofix
+            _ = context;
+            _ = self;
+            _ = stage;
+            _ = args;
+            _ = in_pins;
             const real_state = std.mem.bytesAsValue(public.GpuTranspileState, state);
-            _ = real_state; // autofix
+            _ = real_state;
 
-            const val = public.GpuValue{ .str = "input.color0" };
+            const val = public.GpuValue{ .str = "inputs.color0" };
             try out_pins.writeTyped(public.GpuValue, 0, cetech1.strId64(val.str).id, val);
         }
 
@@ -2797,11 +2810,11 @@ const gpu_vertex_color_node_i = graphvm.NodeI.implement(
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
-            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_POO});
+            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Poo});
         }
     },
 );
@@ -2817,9 +2830,9 @@ const gpu_vertex_position_node_i = graphvm.NodeI.implement(
         const Self = @This();
 
         pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
+            _ = self;
+            _ = node_obj;
+            _ = graph_obj;
             return .{
                 .in = try allocator.dupe(graphvm.NodePin, &.{}),
                 .out = try allocator.dupe(graphvm.NodePin, &.{
@@ -2829,22 +2842,22 @@ const gpu_vertex_position_node_i = graphvm.NodeI.implement(
         }
 
         pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = self; // autofix
-            _ = args; // autofix
-            _ = out_pins; // autofix
-            _ = in_pins; // autofix
+            _ = self;
+            _ = args;
+            _ = out_pins;
+            _ = in_pins;
         }
 
         pub fn transpile(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, state: []u8, stage: ?cetech1.StrId32, context: ?[]const u8, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = context; // autofix
-            _ = self; // autofix
-            _ = stage; // autofix
-            _ = args; // autofix
-            _ = in_pins; // autofix
+            _ = context;
+            _ = self;
+            _ = stage;
+            _ = args;
+            _ = in_pins;
             const real_state = std.mem.bytesAsValue(public.GpuTranspileState, state);
-            _ = real_state; // autofix
+            _ = real_state;
 
-            const val = public.GpuValue{ .str = "load_vertex_position(graph.vertex_ctx, input.vertex_id, 0)" };
+            const val = public.GpuValue{ .str = "load_vertex_position(graph.vertex_ctx, inputs.vertex_id, 0)" };
             try out_pins.writeTyped(public.GpuValue, 0, cetech1.strId64(val.str).id, val);
         }
 
@@ -2854,11 +2867,11 @@ const gpu_vertex_position_node_i = graphvm.NodeI.implement(
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
-            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_POO});
+            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Poo});
         }
     },
 );
@@ -2874,9 +2887,9 @@ const gpu_time_node_i = graphvm.NodeI.implement(
         const Self = @This();
 
         pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
+            _ = self;
+            _ = node_obj;
+            _ = graph_obj;
             return .{
                 .in = try allocator.dupe(graphvm.NodePin, &.{}),
                 .out = try allocator.dupe(graphvm.NodePin, &.{
@@ -2886,20 +2899,20 @@ const gpu_time_node_i = graphvm.NodeI.implement(
         }
 
         pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = self; // autofix
-            _ = args; // autofix
-            _ = out_pins; // autofix
-            _ = in_pins; // autofix
+            _ = self;
+            _ = args;
+            _ = out_pins;
+            _ = in_pins;
         }
 
         pub fn transpile(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, state: []u8, stage: ?cetech1.StrId32, context: ?[]const u8, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = context; // autofix
-            _ = self; // autofix
-            _ = stage; // autofix
-            _ = args; // autofix
-            _ = in_pins; // autofix
+            _ = context;
+            _ = self;
+            _ = stage;
+            _ = args;
+            _ = in_pins;
             const real_state = std.mem.bytesAsValue(public.GpuTranspileState, state);
-            _ = real_state; // autofix
+            _ = real_state;
 
             const val = public.GpuValue{ .str = "load_time().x" };
             try out_pins.writeTyped(public.GpuValue, 0, cetech1.strId64(val.str).id, val);
@@ -2911,11 +2924,11 @@ const gpu_time_node_i = graphvm.NodeI.implement(
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
-            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_POO});
+            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Poo});
         }
     },
 );
@@ -2931,9 +2944,9 @@ const gpu_mul_mvp_node_i = graphvm.NodeI.implement(
         const Self = @This();
 
         pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
+            _ = self;
+            _ = node_obj;
+            _ = graph_obj;
             return .{
                 .in = try allocator.dupe(graphvm.NodePin, &.{
                     graphvm.NodePin.init("Position", graphvm.NodePin.pinHash("position", false), public.PinTypes.GPU_VEC3, null),
@@ -2945,17 +2958,17 @@ const gpu_mul_mvp_node_i = graphvm.NodeI.implement(
         }
 
         pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = self; // autofix
-            _ = args; // autofix
-            _ = out_pins; // autofix
-            _ = in_pins; // autofix
+            _ = self;
+            _ = args;
+            _ = out_pins;
+            _ = in_pins;
         }
 
         pub fn transpile(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, state: []u8, stage: ?cetech1.StrId32, context: ?[]const u8, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = context; // autofix
-            _ = self; // autofix
-            _ = state; // autofix
-            _ = stage; // autofix
+            _ = context;
+            _ = self;
+            _ = state;
+            _ = stage;
             _, const position = in_pins.read(public.GpuValue, 0) orelse .{ 0, public.GpuValue{ .str = "a_position" } };
 
             const val = public.GpuValue{
@@ -2971,11 +2984,11 @@ const gpu_mul_mvp_node_i = graphvm.NodeI.implement(
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
-            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_POO});
+            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Poo});
         }
     },
 );
@@ -2992,19 +3005,18 @@ const gpu_construct_node_i = graphvm.NodeI.implement(
         const Self = @This();
 
         pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
-            _ = self; // autofix
-            _ = graph_obj; // autofix
+            _ = self;
+            _ = graph_obj;
 
-            const node_obj_r = graphvm.NodeTypeCdb.read(_cdb, node_obj).?;
+            const node_obj_r = graphvm.NodeTypeCdb.read(node_obj).?;
 
             var output_type: cetech1.StrId32 = .{};
             var in_pins: []graphvm.NodePin = undefined;
 
-            if (graphvm.NodeTypeCdb.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
-                const settings_r = public.ConstructNodeSettingsCdb.read(_cdb, settings).?;
+            if (graphvm.NodeTypeCdb.readSubObj(node_obj_r, .settings)) |settings| {
+                const settings_r = public.ConstructNodeSettingsCdb.read(settings).?;
 
-                const type_str = public.ConstructNodeSettingsCdb.readStr(_cdb, settings_r, .ResultType) orelse "";
-                const type_enum = std.meta.stringToEnum(public.ConstructNodeResultType, type_str) orelse .vec4;
+                const type_enum = public.ConstructNodeSettingsCdb.readStrEnum(public.ConstructNodeResultType, settings_r, .ResultType, .vec4);
 
                 in_pins = blk: switch (type_enum) {
                     .vec2 => break :blk try allocator.dupe(graphvm.NodePin, &.{
@@ -3044,25 +3056,24 @@ const gpu_construct_node_i = graphvm.NodeI.implement(
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]const u8 {
-            _ = self; // autofix
-            const node_obj_r = graphvm.NodeTypeCdb.read(_cdb, node_obj).?;
-            _ = node_obj_r; // autofix
+            _ = self;
+            const node_obj_r = graphvm.NodeTypeCdb.read(node_obj).?;
+            _ = node_obj_r;
             const header_label = "Make";
 
             return std.fmt.allocPrintSentinel(allocator, header_label, .{}, 0);
         }
 
         pub fn transpile(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, state: []u8, stage: ?cetech1.StrId32, context: ?[]const u8, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = context; // autofix
-            _ = self; // autofix
-            _ = stage; // autofix
+            _ = context;
+            _ = self;
+            _ = stage;
             const real_state = std.mem.bytesAsValue(public.GpuTranspileState, state);
-            _ = real_state; // autofix
+            _ = real_state;
 
-            const settings_r = public.ConstructNodeSettingsCdb.read(_cdb, args.settings.?).?;
+            const settings_r = public.ConstructNodeSettingsCdb.read(args.settings.?).?;
 
-            const type_str = public.ConstructNodeSettingsCdb.readStr(_cdb, settings_r, .ResultType) orelse "";
-            const type_enum = std.meta.stringToEnum(public.ConstructNodeResultType, type_str) orelse .vec4;
+            const type_enum = public.ConstructNodeSettingsCdb.readStrEnum(public.ConstructNodeResultType, settings_r, .ResultType, .vec4);
 
             const str = str_blk: switch (type_enum) {
                 .vec2 => {
@@ -3097,18 +3108,18 @@ const gpu_construct_node_i = graphvm.NodeI.implement(
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
-            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_POO});
+            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Poo});
         }
 
         pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = self; // autofix
-            _ = args; // autofix
-            _ = out_pins; // autofix
-            _ = in_pins; // autofix
+            _ = self;
+            _ = args;
+            _ = out_pins;
+            _ = in_pins;
         }
     },
 );
@@ -3125,23 +3136,23 @@ const gpu_const_node_i = graphvm.NodeI.implement(
         const Self = @This();
 
         pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
-            _ = self; // autofix
-            _ = graph_obj; // autofix
+            _ = self;
+            _ = graph_obj;
 
-            const node_obj_r = graphvm.NodeTypeCdb.read(_cdb, node_obj).?;
+            const node_obj_r = graphvm.NodeTypeCdb.read(node_obj).?;
             var output_type: cetech1.StrId32 = .{};
-            if (graphvm.NodeTypeCdb.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
-                const settings_r = public.ConstructNodeSettingsCdb.read(_cdb, settings).?;
+            if (graphvm.NodeTypeCdb.readSubObj(node_obj_r, .settings)) |settings| {
+                const settings_r = public.ConstructNodeSettingsCdb.read(settings).?;
 
-                const type_str = public.ConstructNodeSettingsCdb.readStr(_cdb, settings_r, .ResultType) orelse "";
-                const type_enum = std.meta.stringToEnum(public.ConstNodeResultType, type_str) orelse .vec4;
+                const type_enum = public.ConstructNodeSettingsCdb.readStrEnum(public.ConstNodeResultType, settings_r, .ResultType, .vec4);
 
                 output_type = switch (type_enum) {
                     .float => public.PinTypes.GPU_FLOAT,
                     .vec2 => public.PinTypes.GPU_VEC2,
                     .vec3 => public.PinTypes.GPU_VEC3,
                     .vec4 => public.PinTypes.GPU_VEC4,
-                    .color => public.PinTypes.GPU_VEC4,
+                    .color4 => public.PinTypes.GPU_VEC4,
+                    .color3 => public.PinTypes.GPU_VEC3,
                 };
             }
 
@@ -3158,35 +3169,33 @@ const gpu_const_node_i = graphvm.NodeI.implement(
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]const u8 {
-            _ = self; // autofix
-            const node_obj_r = graphvm.NodeTypeCdb.read(_cdb, node_obj).?;
-            _ = node_obj_r; // autofix
+            _ = self;
+            const node_obj_r = graphvm.NodeTypeCdb.read(node_obj).?;
+            _ = node_obj_r;
             const header_label = "GPU const";
 
             return std.fmt.allocPrintSentinel(allocator, header_label, .{}, 0);
         }
 
         pub fn transpile(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, state: []u8, stage: ?cetech1.StrId32, context: ?[]const u8, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = context; // autofix
-            _ = in_pins; // autofix
-            _ = self; // autofix
-            _ = stage; // autofix
+            _ = context;
+            _ = in_pins;
+            _ = self;
+            _ = stage;
             const real_state = std.mem.bytesAsValue(public.GpuTranspileState, state);
-            _ = real_state; // autofix
+            _ = real_state;
 
-            const settings_r = public.ConstNodeSettingsCdb.read(_cdb, args.settings.?).?;
+            const settings_r = public.ConstNodeSettingsCdb.read(args.settings.?).?;
 
-            const type_str = public.ConstNodeSettingsCdb.readStr(_cdb, settings_r, .ResultType) orelse "";
-            const type_enum = std.meta.stringToEnum(public.ConstNodeResultType, type_str) orelse .vec4;
-
-            const value = public.ConstNodeSettingsCdb.readSubObj(_cdb, settings_r, .value);
+            const type_enum = public.ConstNodeSettingsCdb.readStrEnum(public.ConstNodeResultType, settings_r, .ResultType, .vec4);
+            const value = public.ConstNodeSettingsCdb.readSubObj(settings_r, .value);
 
             const str = str_blk: switch (type_enum) {
                 .float => {
                     const v: f32 = blk: {
                         if (value) |v| {
-                            const v_r = cdb_types.f32TypeCdb.read(_cdb, v) orelse break :blk 0.0;
-                            break :blk cdb_types.f32TypeCdb.readValue(f32, _cdb, v_r, .Value);
+                            const v_r = cdb_types.F32TypeCdb.read(v) orelse break :blk 0.0;
+                            break :blk cdb_types.F32TypeCdb.readValue(f32, v_r, .Value);
                         }
                         break :blk 0.0;
                     };
@@ -3195,20 +3204,24 @@ const gpu_const_node_i = graphvm.NodeI.implement(
                 },
 
                 .vec2 => {
-                    const v: math.Vec2f = if (value) |v| cdb_types.Vec2fCdb.f.to(_cdb, v) else .{};
+                    const v: math.Vec2f = if (value) |v| cdb_types.Vec2fCdb.f.to(v) else .{};
                     break :str_blk try std.fmt.allocPrint(args.allocator, "vec2({d},{d})", .{ v.x, v.y });
                 },
                 .vec3 => {
-                    const v: math.Vec3f = if (value) |v| cdb_types.Vec3fCdb.f.to(_cdb, v) else .{};
+                    const v: math.Vec3f = if (value) |v| cdb_types.Vec3fCdb.f.to(v) else .{};
                     break :str_blk try std.fmt.allocPrint(args.allocator, "vec3({d},{d},{d})", .{ v.x, v.y, v.z });
                 },
                 .vec4 => {
-                    const v: math.Vec4f = if (value) |v| cdb_types.Vec4fCdb.f.to(_cdb, v) else .{};
+                    const v: math.Vec4f = if (value) |v| cdb_types.Vec4fCdb.f.to(v) else .{};
                     break :str_blk try std.fmt.allocPrint(args.allocator, "vec4({d},{d},{d},{d})", .{ v.x, v.y, v.z, v.w });
                 },
-                .color => {
-                    const v: math.Color4f = if (value) |v| cdb_types.Color4fCdb.f.to(_cdb, v) else .one_alpha;
+                .color4 => {
+                    const v: math.Color4f = if (value) |v| cdb_types.Color4fCdb.f.to(v) else .one_alpha;
                     break :str_blk try std.fmt.allocPrint(args.allocator, "vec4({d},{d},{d},{d})", .{ v.r, v.g, v.b, v.a });
+                },
+                .color3 => {
+                    const v: math.Color3f = if (value) |v| cdb_types.Color3fCdb.f.to(v) else .{};
+                    break :str_blk try std.fmt.allocPrint(args.allocator, "vec3({d},{d},{d})", .{ v.r, v.g, v.b });
                 },
             };
 
@@ -3222,18 +3235,18 @@ const gpu_const_node_i = graphvm.NodeI.implement(
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
-            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_POO});
+            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Poo});
         }
 
         pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = self; // autofix
-            _ = args; // autofix
-            _ = out_pins; // autofix
-            _ = in_pins; // autofix
+            _ = self;
+            _ = args;
+            _ = out_pins;
+            _ = in_pins;
         }
     },
 );
@@ -3255,18 +3268,17 @@ const gpu_uniform_node_i = graphvm.NodeI.implement(
         const Self = @This();
 
         pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
-            _ = self; // autofix
-            _ = graph_obj; // autofix
+            _ = self;
+            _ = graph_obj;
 
-            const node_obj_r = graphvm.NodeTypeCdb.read(_cdb, node_obj).?;
+            const node_obj_r = graphvm.NodeTypeCdb.read(node_obj).?;
             var in_type: cetech1.StrId32 = .{};
             var output_type: cetech1.StrId32 = .{};
 
-            if (graphvm.NodeTypeCdb.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
-                const settings_r = public.UniformNodeSettingsCdb.read(_cdb, settings).?;
+            if (graphvm.NodeTypeCdb.readSubObj(node_obj_r, .settings)) |settings| {
+                const settings_r = public.UniformNodeSettingsCdb.read(settings).?;
 
-                const type_str = public.UniformNodeSettingsCdb.readStr(_cdb, settings_r, .ResultType) orelse "";
-                const type_enum = std.meta.stringToEnum(public.UniformNodeResultType, type_str) orelse .vec4;
+                const type_enum = public.UniformNodeSettingsCdb.readStrEnum(public.UniformNodeResultType, settings_r, .ResultType, .vec4);
 
                 in_type = switch (type_enum) {
                     .vec4 => graphvm.PinTypes.VEC4F,
@@ -3290,16 +3302,15 @@ const gpu_uniform_node_i = graphvm.NodeI.implement(
         }
 
         pub fn getOutputPins(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) ![]const graphvm.NodePin {
-            _ = self; // autofix
-            _ = graph_obj; // autofix
+            _ = self;
+            _ = graph_obj;
 
-            const node_obj_r = graphvm.NodeTypeCdb.read(_cdb, node_obj).?;
+            const node_obj_r = graphvm.NodeTypeCdb.read(node_obj).?;
             var output_type: cetech1.StrId32 = .{};
-            if (graphvm.NodeTypeCdb.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
-                const settings_r = public.UniformNodeSettingsCdb.read(_cdb, settings).?;
+            if (graphvm.NodeTypeCdb.readSubObj(node_obj_r, .settings)) |settings| {
+                const settings_r = public.UniformNodeSettingsCdb.read(settings).?;
 
-                const type_str = public.UniformNodeSettingsCdb.readStr(_cdb, settings_r, .ResultType) orelse "";
-                const type_enum = std.meta.stringToEnum(public.UniformNodeResultType, type_str) orelse .vec4;
+                const type_enum = public.UniformNodeSettingsCdb.readStrEnum(public.UniformNodeResultType, settings_r, .ResultType, .vec4);
 
                 output_type = switch (type_enum) {
                     .vec4 => public.PinTypes.GPU_VEC4,
@@ -3317,39 +3328,39 @@ const gpu_uniform_node_i = graphvm.NodeI.implement(
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]const u8 {
-            _ = self; // autofix
-            const node_obj_r = graphvm.NodeTypeCdb.read(_cdb, node_obj).?;
-            _ = node_obj_r; // autofix
+            _ = self;
+            const node_obj_r = graphvm.NodeTypeCdb.read(node_obj).?;
+            _ = node_obj_r;
             const header_label = "Uniform";
 
             return std.fmt.allocPrintSentinel(allocator, header_label, .{}, 0);
         }
 
         pub fn create(self: *const graphvm.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {
-            _ = self; // autofix
-            _ = transpile_state; // autofix
-            _ = reload; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = transpile_state;
+            _ = reload;
+            _ = allocator;
+            _ = node_obj;
             const real_state: *UniformNodeState = @ptrCast(@alignCast(state));
             real_state.* = .{};
         }
 
         pub fn transpile(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, state: []u8, stage: ?cetech1.StrId32, context: ?[]const u8, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = context; // autofix
-            _ = self; // autofix
-            _ = in_pins; // autofix
-            _ = stage; // autofix
+            _ = context;
+            _ = self;
+            _ = in_pins;
+            _ = stage;
             const real_state = public.GpuTranspileState.fromBytes(state);
 
-            const settings_r = public.UniformNodeSettingsCdb.read(_cdb, args.settings.?).?;
+            const settings_r = public.UniformNodeSettingsCdb.read(args.settings.?).?;
 
-            const name = public.UniformNodeSettingsCdb.readStr(_cdb, settings_r, .Name) orelse "INVALLID";
+            const name = public.UniformNodeSettingsCdb.readStr(settings_r, .Name) orelse "INVALLID";
             const str = try std.fmt.allocPrint(args.allocator, "{s}", .{name});
 
-            const type_str = public.UniformNodeSettingsCdb.readStr(_cdb, settings_r, .ResultType) orelse "";
+            const type_str = public.UniformNodeSettingsCdb.readStr(settings_r, .ResultType) orelse "";
 
-            const type_enum = if (std.mem.eql(u8, type_str, "color")) .vec4 else std.meta.stringToEnum(public.DefMainImportVariableType, type_str) orelse .vec4;
+            const type_enum = if (std.mem.eql(u8, type_str, "color")) .vec4 else public.UniformNodeSettingsCdb.readStrEnum(public.DefMainImportVariableType, settings_r, .ResultType, .vec4);
 
             try real_state.imports.put(real_state.allocator, name, .{ .name = name, .type = type_enum });
 
@@ -3363,21 +3374,21 @@ const gpu_uniform_node_i = graphvm.NodeI.implement(
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
-            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_POO});
+            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Poo});
         }
 
         pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = self; // autofix
-            _ = out_pins; // autofix
+            _ = self;
+            _ = out_pins;
             const cs_state: *public.GpuShaderValue = @ptrCast(@alignCast(args.transpiler_node_state.?));
 
-            const settings_r = public.UniformNodeSettingsCdb.read(_cdb, args.settings.?).?;
+            const settings_r = public.UniformNodeSettingsCdb.read(args.settings.?).?;
 
-            const name = public.UniformNodeSettingsCdb.readStr(_cdb, settings_r, .Name) orelse "INVALLID";
+            const name = public.UniformNodeSettingsCdb.readStr(settings_r, .Name) orelse "INVALLID";
 
             const real_state = args.getState(UniformNodeState).?;
 
@@ -3401,94 +3412,94 @@ const gpu_uniform_node_i = graphvm.NodeI.implement(
     },
 );
 
-const construct_node_result_type_aspec = editor_inspector.UiPropertyAspect.implement(struct {
+const construct_node_result_type_aspec = editor_inspector.UiInspectorPropertyValueAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         prop_idx: u32,
-        args: editor_inspector.cdbPropertiesViewArgs,
+        args: editor_inspector.InspectorViewArgs,
     ) !void {
-        _ = allocator; // autofix
-        _ = args; // autofix
-        const r = public.ConstructNodeSettingsCdb.read(_cdb, obj).?;
-        const type_str = public.ConstructNodeSettingsCdb.readStr(_cdb, r, .ResultType) orelse "";
-        var type_enum = std.meta.stringToEnum(public.ConstructNodeResultType, type_str) orelse .vec4;
+        _ = prop_idx;
+        _ = allocator;
+        _ = args;
+        const r = public.ConstructNodeSettingsCdb.read(obj).?;
 
-        try _inspector.uiPropInputBegin(obj, prop_idx, true);
-        defer _inspector.uiPropInputEnd();
+        var type_enum = public.ConstructNodeSettingsCdb.readStrEnum(public.ConstructNodeResultType, r, .ResultType, .vec4);
 
-        if (_coreui.comboFromEnum("", &type_enum)) {
-            const w = public.ConstructNodeSettingsCdb.write(_cdb, obj).?;
+        coreui.setNextItemWidth(-1.0);
+        if (coreui.comboFromEnum("", &type_enum)) {
+            const w = public.ConstructNodeSettingsCdb.write(obj).?;
             const str = switch (type_enum) {
                 .vec2 => "vec2",
                 .vec3 => "vec3",
                 .vec4 => "vec4",
             };
-            try public.ConstructNodeSettingsCdb.setStr(_cdb, w, .ResultType, str);
-            try public.ConstructNodeSettingsCdb.commit(_cdb, w);
+            try public.ConstructNodeSettingsCdb.setStr(w, .ResultType, str);
+            try public.ConstructNodeSettingsCdb.commit(w);
         }
     }
 });
 
-const const_node_result_type_aspec = editor_inspector.UiPropertyAspect.implement(struct {
+const const_node_result_type_aspec = editor_inspector.UiInspectorPropertyValueAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         prop_idx: u32,
-        args: editor_inspector.cdbPropertiesViewArgs,
+        args: editor_inspector.InspectorViewArgs,
     ) !void {
-        _ = allocator; // autofix
-        _ = args; // autofix
-        const r = public.ConstNodeSettingsCdb.read(_cdb, obj).?;
-        const type_str = public.ConstNodeSettingsCdb.readStr(_cdb, r, .ResultType) orelse "";
-        var type_enum = std.meta.stringToEnum(public.ConstNodeResultType, type_str) orelse .vec4;
+        _ = allocator;
+        _ = args;
+        const r = public.ConstNodeSettingsCdb.read(obj).?;
 
-        try _inspector.uiPropInputBegin(obj, prop_idx, true);
-        defer _inspector.uiPropInputEnd();
+        var type_enum = public.ConstNodeSettingsCdb.readStrEnum(public.ConstNodeResultType, r, .ResultType, .vec4);
 
-        if (_coreui.comboFromEnum("", &type_enum)) {
-            const w = public.ConstNodeSettingsCdb.write(_cdb, obj).?;
+        try editor_inspector.uiPropInputBegin(obj, prop_idx, true);
+        defer editor_inspector.uiPropInputEnd(true);
 
-            const db = _cdb.getDbFromObj(w);
+        coreui.setNextItemWidth(-1.0);
+        if (coreui.comboFromEnum("", &type_enum)) {
+            const w = public.ConstNodeSettingsCdb.write(obj).?;
+
+            const db = cdb.getDbFromObj(w);
             const value_obj = switch (type_enum) {
-                .float => try cdb_types.f32TypeCdb.createObject(_cdb, db),
-                .vec2 => try cdb_types.Vec2fCdb.createObject(_cdb, db),
-                .vec3 => try cdb_types.Vec3fCdb.createObject(_cdb, db),
-                .vec4 => try cdb_types.Vec4fCdb.createObject(_cdb, db),
-                .color => try cdb_types.Color4fCdb.createObject(_cdb, db),
+                .float => try cdb_types.F32TypeCdb.createObject(db),
+                .vec2 => try cdb_types.Vec2fCdb.createObject(db),
+                .vec3 => try cdb_types.Vec3fCdb.createObject(db),
+                .vec4 => try cdb_types.Vec4fCdb.createObject(db),
+                .color4 => try cdb_types.Color4fCdb.createObject(db),
+                .color3 => try cdb_types.Color3fCdb.createObject(db),
             };
 
-            const value_w = _cdb.writeObj(value_obj).?;
-            try public.ConstNodeSettingsCdb.setSubObj(_cdb, w, .value, value_w);
-            try _cdb.writeCommit(value_w);
+            const value_w = cdb.writeObj(value_obj).?;
+            try public.ConstNodeSettingsCdb.setSubObj(w, .value, value_w);
+            try cdb.writeCommit(value_w);
 
-            try public.ConstNodeSettingsCdb.setStr(_cdb, w, .ResultType, @tagName(type_enum));
-            try public.ConstNodeSettingsCdb.commit(_cdb, w);
+            try public.ConstNodeSettingsCdb.setStr(w, .ResultType, @tagName(type_enum));
+            try public.ConstNodeSettingsCdb.commit(w);
         }
     }
 });
 
-const uniform_node_result_type_aspec = editor_inspector.UiPropertyAspect.implement(struct {
+const uniform_node_result_type_aspec = editor_inspector.UiInspectorPropertyValueAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         prop_idx: u32,
-        args: editor_inspector.cdbPropertiesViewArgs,
+        args: editor_inspector.InspectorViewArgs,
     ) !void {
-        _ = allocator; // autofix
-        _ = args; // autofix
-        const r = public.UniformNodeSettingsCdb.read(_cdb, obj).?;
-        const type_str = public.UniformNodeSettingsCdb.readStr(_cdb, r, .ResultType) orelse "";
-        var type_enum = std.meta.stringToEnum(public.UniformNodeResultType, type_str) orelse .vec4;
+        _ = prop_idx;
+        _ = allocator;
+        _ = args;
+        const r = public.UniformNodeSettingsCdb.read(obj).?;
 
-        try _inspector.uiPropInputBegin(obj, prop_idx, true);
-        defer _inspector.uiPropInputEnd();
+        var type_enum = public.UniformNodeSettingsCdb.readStrEnum(public.UniformNodeResultType, r, .ResultType, .vec4);
 
-        if (_coreui.comboFromEnum("", &type_enum)) {
-            const w = public.UniformNodeSettingsCdb.write(_cdb, obj).?;
+        coreui.setNextItemWidth(-1.0);
+        if (coreui.comboFromEnum("", &type_enum)) {
+            const w = public.UniformNodeSettingsCdb.write(obj).?;
             const str = @tagName(type_enum);
-            try public.UniformNodeSettingsCdb.setStr(_cdb, w, .ResultType, str);
-            try public.UniformNodeSettingsCdb.commit(_cdb, w);
+            try public.UniformNodeSettingsCdb.setStr(w, .ResultType, str);
+            try public.UniformNodeSettingsCdb.commit(w);
         }
     }
 });
@@ -3498,7 +3509,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.DbId) !void {
         // GPUShaderCDB
         {
-            const type_idx = try _cdb.addType(
+            const type_idx = try cdb.addType(
                 db,
                 public.GPUShaderValueCDB.name,
                 &[_]cdb.PropDef{
@@ -3509,12 +3520,12 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
                     },
                 },
             );
-            _ = type_idx; // autofix
+            _ = type_idx;
         }
 
         // value f32
         {
-            _ = try _cdb.addType(
+            _ = try cdb.addType(
                 db,
                 public.Gpuf32Cdb.name,
                 &[_]cdb.PropDef{
@@ -3525,7 +3536,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
         // value vec2
         {
-            _ = try _cdb.addType(
+            _ = try cdb.addType(
                 db,
                 public.GpuVec2fCdb.name,
                 &[_]cdb.PropDef{
@@ -3537,7 +3548,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
         // value vec3
         {
-            _ = try _cdb.addType(
+            _ = try cdb.addType(
                 db,
                 public.GpuVec3fCdb.name,
                 &[_]cdb.PropDef{
@@ -3550,7 +3561,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
         // value vec4
         {
-            _ = try _cdb.addType(
+            _ = try cdb.addType(
                 db,
                 public.GpuVec4fCdb.name,
                 &[_]cdb.PropDef{
@@ -3564,7 +3575,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
         // ConstructNodeSettings
         {
-            const type_idx = try _cdb.addType(
+            const type_idx = try cdb.addType(
                 db,
                 public.ConstructNodeSettingsCdb.name,
                 &[_]cdb.PropDef{
@@ -3575,11 +3586,11 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
                     },
                 },
             );
-            _ = type_idx; // autofix
+            _ = type_idx;
 
             try public.ConstructNodeSettingsCdb.addPropertyAspect(
-                editor_inspector.UiPropertyAspect,
-                _cdb,
+                editor_inspector.UiInspectorPropertyValueAspect,
+
                 db,
                 .ResultType,
                 _g.make_node_result_type_aspec,
@@ -3588,7 +3599,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
         // ConstNodeSettings
         {
-            const type_idx = try _cdb.addType(
+            const type_idx = try cdb.addType(
                 db,
                 public.ConstNodeSettingsCdb.name,
                 &[_]cdb.PropDef{
@@ -3604,11 +3615,11 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
                     },
                 },
             );
-            _ = type_idx; // autofix
+            _ = type_idx;
 
             try public.ConstNodeSettingsCdb.addPropertyAspect(
-                editor_inspector.UiPropertyAspect,
-                _cdb,
+                editor_inspector.UiInspectorPropertyValueAspect,
+
                 db,
                 .ResultType,
                 _g.const_node_result_type_aspec,
@@ -3617,7 +3628,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
         // UniformNodeSettings
         {
-            const type_idx = try _cdb.addType(
+            const type_idx = try cdb.addType(
                 db,
                 public.UniformNodeSettingsCdb.name,
                 &[_]cdb.PropDef{
@@ -3633,11 +3644,11 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
                     },
                 },
             );
-            _ = type_idx; // autofix
+            _ = type_idx;
 
             try public.UniformNodeSettingsCdb.addPropertyAspect(
-                editor_inspector.UiPropertyAspect,
-                _cdb,
+                editor_inspector.UiInspectorPropertyValueAspect,
+
                 db,
                 .ResultType,
                 _g.uniform_node_result_type_aspec,
@@ -3647,23 +3658,20 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _apidb = apidb;
+    public.api = &api;
 
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-
-    _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
-    _inspector = apidb.getZigApi(module_name, editor_inspector.InspectorAPI).?;
-    _graphvm = apidb.getZigApi(module_name, graphvm.GraphVMApi).?;
+    try cdb.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
+    try kernel.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+    try ecs.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
+    try editor_inspector.loadAPI(module_name);
+    try graphvm.loadAPI(module_name);
 
     // register api
     try apidb.setOrRemoveZigApi(module_name, public.ShaderSystemAPI, &api, load);
@@ -3690,14 +3698,14 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
-    _g.make_node_result_type_aspec = try apidb.setGlobalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_construct_node_result_type_aspec", construct_node_result_type_aspec);
-    _g.uniform_node_result_type_aspec = try apidb.setGlobalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_uniform_node_result_type_aspec", uniform_node_result_type_aspec);
-    _g.const_node_result_type_aspec = try apidb.setGlobalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_const_node_result_type_aspec", const_node_result_type_aspec);
+    _g.make_node_result_type_aspec = try apidb.setGlobalVarValue(editor_inspector.UiInspectorPropertyValueAspect, module_name, "ct_construct_node_result_type_aspec", construct_node_result_type_aspec);
+    _g.uniform_node_result_type_aspec = try apidb.setGlobalVarValue(editor_inspector.UiInspectorPropertyValueAspect, module_name, "ct_uniform_node_result_type_aspec", uniform_node_result_type_aspec);
+    _g.const_node_result_type_aspec = try apidb.setGlobalVarValue(editor_inspector.UiInspectorPropertyValueAspect, module_name, "ct_const_node_result_type_aspec", const_node_result_type_aspec);
 
     return true;
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_shader_system(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_shader_system(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

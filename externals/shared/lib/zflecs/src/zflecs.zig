@@ -6,8 +6,7 @@ const build_options = @import("build-options");
 pub const flecs_version = std.SemanticVersion{
     .major = 4,
     .minor = 1,
-    .patch = 4,
-    .pre = 42, // TODO: CHANGE VERSION BEFORE PR.
+    .patch = 5,
 };
 
 const flecs_is_sanitize = build_options.debug_mode == .sanitize or

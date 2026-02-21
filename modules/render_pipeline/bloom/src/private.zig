@@ -9,6 +9,7 @@ const ecs = cetech1.ecs;
 const render_viewport = @import("render_viewport");
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
+const apidb = cetech1.apidb;
 
 const math = cetech1.math;
 
@@ -24,25 +25,16 @@ const module_name = .bloom;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _ecs: *const ecs.EcsAPI = undefined;
-var _gpu: *const cetech1.gpu.GpuBackendApi = undefined;
 
-var _render_graph: *const render_graph.RenderGraphApi = undefined;
-var _shader: *const shader_system.ShaderSystemAPI = undefined;
-var _inspector: *const editor_inspector.InspectorAPI = undefined;
+const tempalloc = cetech1.tempalloc;
+const profiler = cetech1.profiler;
 
 // Global state that can surive hot-reload
 const G = struct {};
@@ -64,7 +56,7 @@ const bloom_c = ecs.ComponentI.implement(
     struct {
         pub fn createManager(world: ecs.World) !*anyopaque {
             _ = world;
-            var bloom_module = try _render_graph.createModule();
+            var bloom_module = try render_graph.createModule();
 
             const manager = try _allocator.create(BloomComponentManager);
             manager.* = .{
@@ -81,10 +73,10 @@ const bloom_c = ecs.ComponentI.implement(
                             const mm: *const BloomComponentManager = @ptrCast(@alignCast(data));
 
                             if (mm.component) |bloom_component| {
-                                if (_coreui.checkbox("enabled", .{ .v = &bloom_component.enabled })) {
+                                if (coreui.checkbox("enabled", .{ .v = &bloom_component.enabled })) {
                                     //_ = mm.world.setComponent(BloomComponent, inst.postprocess_ent, bloom_component);
                                 }
-                                if (_coreui.dragF32("intensity", .{ .v = &bloom_component.bloom_intensity, .min = 0, .max = std.math.floatMax(f32) })) {
+                                if (coreui.dragF32("intensity", .{ .v = &bloom_component.bloom_intensity, .min = 0, .max = std.math.floatMax(f32) })) {
                                     //_ = mm.world.setComponent(BloomComponent, inst.postprocess_ent, bloom_component);
                                 }
                             }
@@ -103,8 +95,8 @@ const bloom_c = ecs.ComponentI.implement(
                 &bloom_0_pass_api,
             );
 
-            const downsample_shader = _shader.findShaderByName(.fromStr("downsample")).?;
-            const upsample_shader = _shader.findShaderByName(.fromStr("upsample")).?;
+            const downsample_shader = shader_system.findShaderByName(.fromStr("downsample")).?;
+            const upsample_shader = shader_system.findShaderByName(.fromStr("upsample")).?;
             const step_count = 4;
 
             //
@@ -151,100 +143,103 @@ const bloom_c = ecs.ComponentI.implement(
 
             const m: *BloomComponentManager = @ptrCast(@alignCast(manager));
 
-            _render_graph.destroyModule(m.bloom_module);
+            render_graph.destroyModule(m.bloom_module);
 
             _allocator.destroy(m);
         }
     },
 );
 
-const bloom_shaderable = render_viewport.ShaderableComponentI.implement(public.BloomComponent, struct {
-    pub fn injectGraphModule(allocator: std.mem.Allocator, manager: ?*anyopaque, module: render_graph.Module) !void {
-        _ = allocator;
+const bloom_shaderable = render_viewport.ShaderableComponentI.implement(
+    public.BloomComponent,
+    struct {
+        pub fn injectGraphModule(allocator: std.mem.Allocator, manager: ?*anyopaque, module: render_graph.Module) !void {
+            _ = allocator;
 
-        const m: *BloomComponentManager = @ptrCast(@alignCast(manager));
+            const m: *BloomComponentManager = @ptrCast(@alignCast(manager));
 
-        try module.addToExtensionPoint(render_pipeline.extensions.postprocess, m.bloom_module);
-    }
-
-    pub fn fillBoundingVolumes(
-        allocator: std.mem.Allocator,
-        entites_idx: ?[]const usize,
-        transforms: []const transform.WorldTransformComponent,
-        data: []*anyopaque,
-        volume_type: render_viewport.BoundingVolumeType,
-        volumes: []u8,
-    ) !void {
-        _ = allocator;
-        _ = entites_idx;
-        _ = transforms;
-
-        switch (volume_type) {
-            .sphere => {
-                var sphere_out_volumes = std.mem.bytesAsSlice(render_viewport.SphereBoudingVolume, volumes);
-
-                for (data, 0..) |_, idx| {
-                    var dc_visibility_flags = visibility_flags.VisibilityFlags.initEmpty();
-                    dc_visibility_flags.set(0); // TODO:
-
-                    sphere_out_volumes[idx] = .{
-                        .skip_culling = true,
-                        .visibility_mask = dc_visibility_flags,
-                    };
-                }
-            },
-
-            .box => {
-                var box_out_volumes = std.mem.bytesAsSlice(render_viewport.BoxBoudingVolume, volumes);
-
-                for (data, 0..) |_, idx| {
-                    var dc_visibility_flags = visibility_flags.VisibilityFlags.initEmpty();
-                    dc_visibility_flags.set(0); // TODO:
-
-                    box_out_volumes[idx] = .{
-                        .skip_culling = true,
-                        .visibility_mask = dc_visibility_flags,
-                    };
-                }
-            },
-
-            else => |v| {
-                log.err("Invalid bounding volume {d}", .{v});
-            },
+            try module.addToExtensionPoint(render_pipeline.extensions.postprocess, m.bloom_module);
         }
-    }
 
-    pub fn update(
-        allocator: std.mem.Allocator,
-        gpu_backend: gpu.GpuBackend,
-        builder: render_graph.GraphBuilder,
-        world: ecs.World,
-        viewport: render_viewport.Viewport,
-        pipeline: render_pipeline.RenderPipeline,
-        viewers: []const render_graph.Viewer,
-        system_context: *const shader_system.SystemContext,
-        entites_idx: []const usize,
-        transforms: []transform.WorldTransformComponent,
-        render_components: []*anyopaque,
-        visibility: []const render_viewport.VisibilityBitField,
-    ) !void {
-        // _ = world;
-        _ = viewport;
-        _ = builder;
-        _ = viewers;
-        _ = transforms;
-        _ = gpu_backend;
-        _ = allocator;
-        _ = pipeline;
-        _ = visibility;
-        _ = system_context;
-        _ = entites_idx;
+        pub fn fillBoundingVolumes(
+            allocator: std.mem.Allocator,
+            entites_idx: ?[]const usize,
+            transforms: []const transform.WorldTransformComponent,
+            data: []*anyopaque,
+            volume_type: render_viewport.BoundingVolumeType,
+            volumes: []u8,
+        ) !void {
+            _ = allocator;
+            _ = entites_idx;
+            _ = transforms;
 
-        var manager = world.getComponentManager(public.BloomComponent, BloomComponentManager).?;
-        const bloom_component: *public.BloomComponent = @ptrCast(@alignCast(render_components[0]));
-        manager.component = bloom_component;
-    }
-});
+            switch (volume_type) {
+                .sphere => {
+                    var sphere_out_volumes = std.mem.bytesAsSlice(render_viewport.SphereBoudingVolume, volumes);
+
+                    for (data, 0..) |_, idx| {
+                        var dc_visibility_flags = visibility_flags.VisibilityFlags.initEmpty();
+                        dc_visibility_flags.set(0); // TODO:
+
+                        sphere_out_volumes[idx] = .{
+                            .skip_culling = true,
+                            .visibility_mask = dc_visibility_flags,
+                        };
+                    }
+                },
+
+                .box => {
+                    var box_out_volumes = std.mem.bytesAsSlice(render_viewport.BoxBoudingVolume, volumes);
+
+                    for (data, 0..) |_, idx| {
+                        var dc_visibility_flags = visibility_flags.VisibilityFlags.initEmpty();
+                        dc_visibility_flags.set(0); // TODO:
+
+                        box_out_volumes[idx] = .{
+                            .skip_culling = true,
+                            .visibility_mask = dc_visibility_flags,
+                        };
+                    }
+                },
+
+                else => |v| {
+                    log.err("Invalid bounding volume {d}", .{v});
+                },
+            }
+        }
+
+        pub fn update(
+            allocator: std.mem.Allocator,
+            gpu_backend: gpu.GpuBackend,
+            builder: render_graph.GraphBuilder,
+            world: ecs.World,
+            viewport: render_viewport.Viewport,
+            pipeline: render_pipeline.RenderPipeline,
+            viewers: []const render_graph.Viewer,
+            system_context: *const shader_system.SystemContext,
+            entites_idx: []const usize,
+            transforms: []transform.WorldTransformComponent,
+            render_components: []*anyopaque,
+            visibility: []const render_viewport.VisibilityBitField,
+        ) !void {
+            // _ = world;
+            _ = viewport;
+            _ = builder;
+            _ = viewers;
+            _ = transforms;
+            _ = gpu_backend;
+            _ = allocator;
+            _ = pipeline;
+            _ = visibility;
+            _ = system_context;
+            _ = entites_idx;
+
+            var manager = world.getComponentManager(public.BloomComponent, BloomComponentManager).?;
+            const bloom_component: *public.BloomComponent = @ptrCast(@alignCast(render_components[0]));
+            manager.component = bloom_component;
+        }
+    },
+);
 
 const BloomPass0Params = struct {
     manager: *BloomComponentManager,
@@ -269,14 +264,6 @@ const bloom_0_pass_api = render_graph.PassApi.implement(struct {
                     .blit_dst = true,
                     .rt = .RT,
                 },
-
-                .sampler_flags = .{
-                    .u = .Clamp,
-                    .v = .Clamp,
-                },
-
-                .clear_depth = 1.0,
-                .clear_color = .{},
             },
         );
         try builder.readTexture(pass, "hdr");
@@ -338,8 +325,8 @@ const bloom_downsample_pass_api = render_graph.PassApi.implement(struct {
                 .flags = .{
                     .rt = .RT,
                 },
-                .clear_depth = 1.0,
-                .clear_color = .{},
+                // .clear_depth = 1.0,
+                // .clear_color = .{},
                 .ratio = 1.0 / std.math.pow(f32, 2, @floatFromInt(params.step_id + 1)),
             },
         );
@@ -357,8 +344,8 @@ const bloom_downsample_pass_api = render_graph.PassApi.implement(struct {
         if (gpu_backend.getEncoder()) |e| {
             defer gpu_backend.endEncoder(e);
 
-            var shader_constext = try _shader.createSystemContext();
-            defer _shader.destroySystemContext(shader_constext);
+            var shader_constext = try shader_system.createSystemContext();
+            defer shader_system.destroySystemContext(shader_constext);
 
             // TODO:
             //e.setVertexCount(3);
@@ -367,23 +354,23 @@ const bloom_downsample_pass_api = render_graph.PassApi.implement(struct {
 
             const shader = params.shader;
 
-            const shader_io = _shader.getShaderIO(shader);
+            const shader_io = shader_system.getShaderIO(shader);
 
-            const rb = (try _shader.createResourceBuffer(shader_io)).?;
-            defer _shader.destroyResourceBuffer(shader_io, rb);
+            const rb = (try shader_system.createResourceBuffer(shader_io)).?;
+            defer shader_system.destroyResourceBuffer(shader_io, rb);
 
-            try _shader.updateResources(
+            try shader_system.updateResources(
                 shader_io,
                 rb,
                 &.{.{ .name = .fromStr("tex"), .value = .{ .texture = hdr_texture } }},
             );
 
-            _shader.bindResource(shader_io, rb, e);
+            shader_system.bindResource(shader_io, rb, e);
 
-            var allocator = try _tmpalloc.create();
-            defer _tmpalloc.destroy(allocator);
+            var allocator = try tempalloc.create();
+            defer tempalloc.destroy(allocator);
 
-            const variants = try _shader.selectShaderVariant(
+            const variants = try shader_system.selectShaderVariant(
                 allocator,
                 shader,
                 &.{.fromStr("viewport")},
@@ -395,7 +382,7 @@ const bloom_downsample_pass_api = render_graph.PassApi.implement(struct {
             const projMtx = math.Mat44f.orthographicOffCenterRh(0, 1, 1, 0, 0, 100, gpu_backend.isHomogenousDepth()).toArray();
             gpu_backend.setViewTransform(viewid, null, &projMtx);
 
-            _render_graph.screenSpaceQuad(gpu_backend, e, false, 1, 1);
+            render_graph.screenSpaceQuad(gpu_backend, e, 1, 1);
 
             e.setState(variant.state, variant.rgba);
             e.submit(viewid, variant.prg.?, 0, .all);
@@ -436,8 +423,8 @@ const bloom_upsample_pass_api = render_graph.PassApi.implement(struct {
         if (gpu_backend.getEncoder()) |e| {
             defer gpu_backend.endEncoder(e);
 
-            var shader_constext = try _shader.createSystemContext();
-            defer _shader.destroySystemContext(shader_constext);
+            var shader_constext = try shader_system.createSystemContext();
+            defer shader_system.destroySystemContext(shader_constext);
 
             // TODO: WHYYYY NOOOOTTTTT WOOOORRRRKKKKIIIINNNGGG
             //e.setVertexCount(3);
@@ -446,21 +433,21 @@ const bloom_upsample_pass_api = render_graph.PassApi.implement(struct {
 
             const shader = params.shader;
 
-            const shader_io = _shader.getShaderIO(shader);
+            const shader_io = shader_system.getShaderIO(shader);
 
-            const rb = (try _shader.createResourceBuffer(shader_io)).?;
-            defer _shader.destroyResourceBuffer(shader_io, rb);
+            const rb = (try shader_system.createResourceBuffer(shader_io)).?;
+            defer shader_system.destroyResourceBuffer(shader_io, rb);
 
-            try _shader.updateResources(
+            try shader_system.updateResources(
                 shader_io,
                 rb,
                 &.{.{ .name = .fromStr("tex"), .value = .{ .texture = hdr_texture } }},
             );
-            _shader.bindResource(shader_io, rb, e);
+            shader_system.bindResource(shader_io, rb, e);
 
-            const ub = (try _shader.createUniformBuffer(shader_io)).?;
-            defer _shader.destroyUniformBuffer(shader_io, ub);
-            try _shader.updateUniforms(shader_io, ub, &.{
+            const ub = (try shader_system.createUniformBuffer(shader_io)).?;
+            defer shader_system.destroyUniformBuffer(shader_io, ub);
+            try shader_system.updateUniforms(shader_io, ub, &.{
                 .{
                     .name = .fromStr("intensity"),
                     .value = std.mem.asBytes(&[4]f32{
@@ -471,12 +458,12 @@ const bloom_upsample_pass_api = render_graph.PassApi.implement(struct {
                     }),
                 },
             });
-            _shader.bindConstant(shader_io, ub, e);
+            shader_system.bindConstant(shader_io, ub, e);
 
-            var allocator = try _tmpalloc.create();
-            defer _tmpalloc.destroy(allocator);
+            var allocator = try tempalloc.create();
+            defer tempalloc.destroy(allocator);
 
-            const variants = try _shader.selectShaderVariant(
+            const variants = try shader_system.selectShaderVariant(
                 allocator,
                 shader,
                 &.{.fromStr("viewport")},
@@ -496,7 +483,7 @@ const bloom_upsample_pass_api = render_graph.PassApi.implement(struct {
             ).toArray();
             gpu_backend.setViewTransform(viewid, null, &projMtx);
 
-            _render_graph.screenSpaceQuad(gpu_backend, e, false, 1, 1);
+            render_graph.screenSpaceQuad(gpu_backend, e, 1, 1);
 
             e.setState(variant.state, variant.rgba);
             e.submit(viewid, variant.prg.?, 0, .all);
@@ -511,7 +498,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
         pub fn init() !void {
 
             // "downsample"
-            try _shader.addShaderDefiniton("downsample", .{
+            try shader_system.addShaderDefiniton("downsample", .{
                 .color_state = .rgba,
 
                 .samplers = &.{
@@ -538,11 +525,8 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                         .position,
                     },
                     .import_semantic = &.{.vertex_id},
-                    .exports = &.{
-                        .{ .name = "color0", .type = .vec4 },
-                    },
                     .code =
-                    \\  output.position = mul(u_modelViewProj, vec4(a_position, 1.0));
+                    \\  outputs.position = mul(u_modelViewProj, vec4(a_position, 1.0));
                     ,
                 },
                 .fragment_block = .{
@@ -571,7 +555,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                     \\  sum += (1.0/32.0) * texture2D(get_tex_sampler(), uv + vec2(+oneepixel.x, -oneepixel.y) );
                     \\  sum += (1.0/32.0) * texture2D(get_tex_sampler(), uv + vec2(-oneepixel.x, -oneepixel.y) );
                     \\
-                    \\  output.color0.xyzw = sum;
+                    \\  outputs.color0.xyzw = sum;
                     ,
                 },
 
@@ -597,7 +581,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             });
 
             // "upsample"
-            try _shader.addShaderDefiniton("upsample", .{
+            try shader_system.addShaderDefiniton("upsample", .{
                 .color_state = .rgba,
                 .blend_state = .{
                     .source_color_factor = .One,
@@ -632,11 +616,8 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                         .position,
                     },
                     .import_semantic = &.{.vertex_id},
-                    .exports = &.{
-                        .{ .name = "color0", .type = .vec4 },
-                    },
                     .code =
-                    \\  output.position = mul(u_modelViewProj, vec4(a_position, 1.0));
+                    \\  outputs.position = mul(u_modelViewProj, vec4(a_position, 1.0));
                     ,
                 },
                 .fragment_block = .{
@@ -658,7 +639,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                     \\
                     \\  sum += (4.0 / 16.0) * texture2D(get_tex_sampler(), uv);
                     \\
-                    \\  output.color0.xyzw = load_intensity().x * sum;
+                    \\  outputs.color0.xyzw = load_intensity().x * sum;
                     \\
                     ,
                 },
@@ -697,22 +678,20 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _gpu = apidb.getZigApi(module_name, cetech1.gpu.GpuBackendApi).?;
-    _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
 
-    _render_graph = apidb.getZigApi(module_name, render_graph.RenderGraphApi).?;
-    _shader = apidb.getZigApi(module_name, shader_system.ShaderSystemAPI).?;
-    _inspector = apidb.getZigApi(module_name, editor_inspector.InspectorAPI).?;
+    try cdb.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+    try ecs.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
+
+    try render_graph.loadAPI(module_name);
+    try shader_system.loadAPI(module_name);
+    try editor_inspector.loadAPI(module_name);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
@@ -729,6 +708,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_bloom(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_bloom(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

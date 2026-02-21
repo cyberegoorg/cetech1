@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 pub const generate_ide = @import("src/tools/generate_ide.zig");
+const zbgfx = @import("zbgfx");
 
 const min_zig_version = std.SemanticVersion.parse("0.15.1") catch @panic("Where is .zigversion?");
 const cetech1_version = std.SemanticVersion.parse(@embedFile(".version")) catch @panic("Where is .version?");
@@ -131,6 +132,8 @@ pub fn createKernelExe(
     ignored_modules: ?[]const []const u8,
     ignored_modules_prefix: ?[]const []const u8,
 ) !*std.Build.Step.Compile {
+    const use_lld = !target.result.os.tag.isDarwin();
+
     const exe = b.addExecutable(.{
         .name = bin_name,
         .version = versionn,
@@ -140,6 +143,7 @@ pub fn createKernelExe(
             .optimize = optimize,
         }),
         .use_llvm = true,
+        .use_lld = use_lld,
     });
     exe.root_module.link_libc = true;
     exe.root_module.addImport("kernel", cetech1_kernel);
@@ -172,7 +176,7 @@ pub fn createStudioExe(
     return try createKernelExe(
         b,
         base_bin_name ++ "_studio",
-        "studio",
+        "run-studio",
         "Run studio",
         root_source,
         cetech1_kernel,
@@ -246,7 +250,7 @@ pub fn build(b: *std.Build) !void {
         .nfd_portal = b.option(bool, "nfd_portal", "build NFD with xdg-desktop-portal instead of GTK. ( Linux, nice for steamdeck;) )") orelse true,
 
         // ZGUI
-        .with_freetype = b.option(bool, "with_freetype", "build coreui with freetype support") orelse false,
+        .with_freetype = b.option(bool, "with_freetype", "build coreui with freetype support") orelse true,
 
         // BGFX
         .with_shaderc = b.option(bool, "with_shaderc", "build with shaderc support") orelse true,
@@ -263,6 +267,8 @@ pub fn build(b: *std.Build) !void {
         options_step.addOption(field.type, field.name, @field(options, field.name));
     }
     const options_module = options_step.createModule();
+
+    const use_lld = !target.result.os.tag.isDarwin();
 
     //
     // Extrnals
@@ -343,7 +349,8 @@ pub fn build(b: *std.Build) !void {
     );
 
     // ZBGFX
-    const zbgfx = b.dependency(
+    // TODO: Remove
+    const zbgfx_dep = b.dependency(
         "zbgfx",
         .{
             .target = target,
@@ -357,7 +364,7 @@ pub fn build(b: *std.Build) !void {
 
     // const copy_tool = b.addExecutable(.{
     //     .name = "copy",
-    //     .root_source_file = .{ .path = "tools/copy.zig" },
+    //     .root_source_file = .{ .path = "src/tools/copy.zig" },
     //     .target = target,
     // });
 
@@ -384,7 +391,6 @@ pub fn build(b: *std.Build) !void {
             .target = b.graph.host,
         }),
     });
-    b.installArtifact(generate_ide_tool);
 
     // Modules
     const ModulesSet = std.StringArrayHashMapUnmanaged(void);
@@ -418,6 +424,7 @@ pub fn build(b: *std.Build) !void {
     // TODO: Problem with debugdraw in dll on windows.
     if (target.result.os.tag == .windows) {
         try static_modules.put(b.allocator, "gpu_bgfx", {});
+        try static_modules.put(b.allocator, "physics_jolt", {});
     }
 
     // Dynamic modules.
@@ -475,7 +482,6 @@ pub fn build(b: *std.Build) !void {
     const gen_ide_step = b.step("gen-ide", "init/update IDE configs");
     {
         const ide = b.option(generate_ide.EditorType, "ide", "IDE for gen-ide command") orelse .VSCode;
-        const no_zls = b.option(bool, "no_zls", "Dont write zls path with gen-ide command") orelse false;
 
         const gen_ide = b.addRunArtifact(generate_ide_tool);
 
@@ -492,10 +498,6 @@ pub fn build(b: *std.Build) !void {
 
         gen_ide.addArg("--config");
         gen_ide.addDirectoryArg(b.path(".ide.zon"));
-
-        if (no_zls) {
-            gen_ide.addArg("--no-zls");
-        }
 
         gen_ide_step.dependOn(&gen_ide.step);
     }
@@ -520,7 +522,8 @@ pub fn build(b: *std.Build) !void {
     });
 
     if (options.with_shaderc) {
-        b.installArtifact(zbgfx.artifact("shaderc"));
+        const shaderc_install = try zbgfx.build_step.installShaderc(b, zbgfx_dep);
+        b.getInstallStep().dependOn(shaderc_install);
     }
 
     //
@@ -571,12 +574,12 @@ pub fn build(b: *std.Build) !void {
             .module = b.createModule(.{ .root_source_file = b.path("externals/shared/lib/SDL_GameControllerDB/gamecontrollerdb.txt") }),
         },
         .{
-            .name = "fa-solid-900",
-            .module = b.createModule(.{ .root_source_file = b.path("externals/shared/fonts/fa-solid-900.ttf") }),
+            .name = "font-main",
+            .module = b.createModule(.{ .root_source_file = b.path("externals/shared/fonts/roboto/Roboto-Medium.ttf") }),
         },
         .{
-            .name = "Roboto-Medium",
-            .module = b.createModule(.{ .root_source_file = b.path("externals/shared/fonts/Roboto-Medium.ttf") }),
+            .name = "font-icons",
+            .module = b.createModule(.{ .root_source_file = b.path("externals/shared/fonts/lucide/lucide.ttf") }),
         },
     };
 
@@ -588,7 +591,7 @@ pub fn build(b: *std.Build) !void {
         .name = "cetech1_kernel",
         .version = cetech1_version,
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/private.zig"),
+            .root_source_file = b.path("src/kernel/private.zig"),
             .target = target,
             .optimize = optimize,
         }),
@@ -607,7 +610,7 @@ pub fn build(b: *std.Build) !void {
     }
 
     const kernel_module = b.addModule("kernel", .{
-        .root_source_file = b.path("src/private.zig"),
+        .root_source_file = b.path("src/kernel/private.zig"),
         .imports = &imports,
     });
 
@@ -617,7 +620,7 @@ pub fn build(b: *std.Build) !void {
     const editor_exe = try createStudioExe(
         b,
         "cetech1",
-        b.path("src/main.zig"),
+        b.path("src/kernel/main.zig"),
         kernel_module,
         kernel_lib,
         cetech1_version,
@@ -633,7 +636,7 @@ pub fn build(b: *std.Build) !void {
     const runner_exe = try createRunnerExe(
         b,
         "cetech1",
-        b.path("src/main.zig"),
+        b.path("src/kernel/main.zig"),
         kernel_module,
         kernel_lib,
         cetech1_version,
@@ -649,12 +652,13 @@ pub fn build(b: *std.Build) !void {
     const tests = b.addTest(.{
         .name = "cetech1_test",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/tests.zig"),
+            .root_source_file = b.path("src/kernel/tests.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &imports,
         }),
         .use_llvm = true,
+        .use_lld = use_lld,
     });
     useSystemSDK(b, target, tests);
     b.installArtifact(tests);

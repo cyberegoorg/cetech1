@@ -85,7 +85,7 @@
             "settings": {
               "__type_name": "ct_gpu_const_node_settings",
               "__uuid": "01990062-681e-7dab-acdd-709fbeefb47c",
-              "result_type": "color",
+              "result_type": "color4",
               "value": {
                 "__type_name": "ct_color_4f",
                 "__uuid": "01990062-7284-7f78-a056-911ae627c6c0",

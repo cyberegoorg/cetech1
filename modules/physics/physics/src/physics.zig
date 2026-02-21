@@ -6,7 +6,7 @@ const math = cetech1.math;
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 
-pub const Velocity = struct {
+pub const Velocity = extern struct {
     x: f32,
     y: f32,
     z: f32,
@@ -22,7 +22,7 @@ pub const VelocityCdb = cdb.CdbTypeDecl(
     struct {},
 );
 
-pub const PhysicsSystem = struct {
+pub const PhysicsSystem = extern struct {
     gravity: math.Vec3f = .{},
 };
 
@@ -39,7 +39,7 @@ pub const PhysicsShapeType = enum(u8) {
     Sphere = 1,
 };
 
-pub const PhysicsShape = struct {
+pub const PhysicsShape = extern struct {
     type: PhysicsShapeType = .Box,
     size: math.Vec3f = .{ .x = 1, .y = 1, .z = 1 },
 };
@@ -53,7 +53,7 @@ pub const PhysicsShapeCdb = cdb.CdbTypeDecl(
     struct {},
 );
 
-pub const PhysicsBody = struct {
+pub const PhysicsBody = extern struct {
     type: PhysicsBodyType = .Static,
     mass: f32 = 0,
 };

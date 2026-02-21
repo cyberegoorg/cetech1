@@ -2,18 +2,17 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-
 const cdb = cetech1.cdb;
 const math = cetech1.math;
 const ecs = cetech1.ecs;
-
+const gpu_dd = cetech1.gpu_dd;
 const gpu = cetech1.gpu;
 const dag = cetech1.dag;
 const coreui = cetech1.coreui;
+const metrics = cetech1.metrics;
 
-const public = @import("render_viewport.zig");
+const kernel = cetech1.kernel;
 const culling = @import("culling.zig");
-
 const transform = @import("transform");
 const camera = @import("camera");
 const shader_system = @import("shader_system");
@@ -22,37 +21,23 @@ const render_pipeline = @import("render_pipeline");
 const visibility_flags = @import("visibility_flags");
 const editor = @import("editor");
 
+const public = @import("render_viewport.zig");
+
 const module_name = .render_viewport;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-
-var _ecs: *const ecs.EcsAPI = undefined;
-
-var _gpu: *const gpu.GpuApi = undefined;
-
-var _dd: *const gpu.GpuDDApi = undefined;
-var _metrics: *const cetech1.metrics.MetricsAPI = undefined;
-var _task: *const cetech1.task.TaskAPI = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
-
-var _shader: *const shader_system.ShaderSystemAPI = undefined;
-var _render_graph: *const render_graph.RenderGraphApi = undefined;
-var _visibility_flags: *const visibility_flags.VisibilityFlagsApi = undefined;
-var _camera: *const camera.CameraAPI = undefined;
+const apidb = cetech1.apidb;
+const tempalloc = cetech1.tempalloc;
+const task = cetech1.task;
+const profiler = cetech1.profiler;
 
 // Global state
 const G = struct {
@@ -130,25 +115,25 @@ const Viewport = struct {
             .world = world,
             .renderMe = false,
             .render_pipeline = pipeline,
-            .renderables_culling = culling.CullingSystem.init(_allocator, _profiler, _task),
-            .shaderables_culling = culling.CullingSystem.init(_allocator, _profiler, _task),
-            .graph_builder = try _render_graph.createBuilder(_allocator, gpu_backend),
+            .renderables_culling = culling.CullingSystem.init(_allocator),
+            .shaderables_culling = culling.CullingSystem.init(_allocator),
+            .graph_builder = try render_graph.createBuilder(_allocator, gpu_backend),
 
-            .all_renderables_counter = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/all_renerables", .{dupe_name})),
-            .all_shaderables_counter = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/all_shaderables", .{dupe_name})),
-            .renderable_sphere_passed = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/renderable_sphere_passed", .{dupe_name})),
-            .rendered_counter = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/rendered", .{dupe_name})),
+            .all_renderables_counter = try metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/all_renerables", .{dupe_name})),
+            .all_shaderables_counter = try metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/all_shaderables", .{dupe_name})),
+            .renderable_sphere_passed = try metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/renderable_sphere_passed", .{dupe_name})),
+            .rendered_counter = try metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/rendered", .{dupe_name})),
 
-            .culling_collect_duration = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/culling_collect_duration", .{dupe_name})),
-            .renderable_culling_duration = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/renderable_culling_duration", .{dupe_name})),
-            .render_duration = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/render_duration", .{dupe_name})),
+            .culling_collect_duration = try metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/culling_collect_duration", .{dupe_name})),
+            .renderable_culling_duration = try metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/renderable_culling_duration", .{dupe_name})),
+            .render_duration = try metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/render_duration", .{dupe_name})),
 
-            .shaderable_culling_duration = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/shaderable_culling_duration", .{dupe_name})),
-            .shaderable_update_duration = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/shaderable_update_duration", .{dupe_name})),
+            .shaderable_culling_duration = try metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/shaderable_culling_duration", .{dupe_name})),
+            .shaderable_update_duration = try metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/shaderable_update_duration", .{dupe_name})),
 
-            .complete_render_duration = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/complete_render_duration", .{dupe_name})),
+            .complete_render_duration = try metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/complete_render_duration", .{dupe_name})),
 
-            .viewports_count = try _metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/viewports_count", .{dupe_name})),
+            .viewports_count = try metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/viewports_count", .{dupe_name})),
 
             .enabled_dd_set = EnabledDebugDrawSet.init(),
             .gpu = gpu_backend,
@@ -167,7 +152,7 @@ const Viewport = struct {
         // Shaderables queries
         //
         {
-            const impls = try _apidb.getImpl(_allocator, public.ShaderableComponentI);
+            const impls = try apidb.getImpl(_allocator, public.ShaderableComponentI);
             defer _allocator.free(impls);
             for (impls) |shaderable| {
                 const q = try world.?.createQuery(.{
@@ -175,8 +160,8 @@ const Viewport = struct {
                         .{ .id = ecs.id(transform.WorldTransformComponent), .inout = .In },
                         .{ .id = shaderable.component_id, .inout = .In },
                     },
-                    .orderByComponent = if (shaderable.orderByCallback != null) shaderable.component_id else null,
-                    .orderByCallback = shaderable.orderByCallback,
+                    .order_by_component = if (shaderable.orderByCallback != null) shaderable.component_id else null,
+                    .order_by_callback = shaderable.orderByCallback,
                 });
 
                 try self.query_map.put(_allocator, shaderable.component_id, q);
@@ -186,7 +171,7 @@ const Viewport = struct {
         // Renderables queries
         //
         {
-            const impls = try _apidb.getImpl(_allocator, public.RendereableComponentI);
+            const impls = try apidb.getImpl(_allocator, public.RendereableComponentI);
             defer _allocator.free(impls);
             for (impls) |renderables| {
                 const q = try world.?.createQuery(.{
@@ -194,8 +179,8 @@ const Viewport = struct {
                         .{ .id = ecs.id(transform.WorldTransformComponent), .inout = .In },
                         .{ .id = renderables.component_id, .inout = .In },
                     },
-                    .orderByComponent = if (renderables.orderByCallback != null) renderables.component_id else null,
-                    .orderByCallback = renderables.orderByCallback,
+                    .order_by_component = if (renderables.orderByCallback != null) renderables.component_id else null,
+                    .order_by_callback = renderables.orderByCallback,
                 });
 
                 try self.query_map.put(_allocator, renderables.component_id, q);
@@ -222,7 +207,7 @@ const Viewport = struct {
 
         _allocator.free(self.name);
 
-        _render_graph.destroyBuilder(self.graph_builder);
+        render_graph.destroyBuilder(self.graph_builder);
     }
 };
 
@@ -237,8 +222,8 @@ var kernel_render_task = cetech1.kernel.KernelTaskUpdateI.implment(
     1,
     struct {
         pub fn update(kernel_tick: u64, dt: f32) !void {
-            if (_kernel.getGpuBackend()) |ctx| {
-                try renderAll(ctx, kernel_tick, dt, !_kernel.isHeadlessMode());
+            if (kernel.getGpuBackend()) |ctx| {
+                try renderAll(ctx, kernel_tick, dt, !kernel.isHeadlessMode());
             }
         }
     },
@@ -254,10 +239,10 @@ fn createViewport(name: [:0]const u8, gpu_backend: gpu.GpuBackend, pipeline: ren
     const new_viewport = try _g.viewport_pool.create();
     new_viewport.* = try .init(name, gpu_backend, pipeline, world, output_to_backbuffer);
 
-    const allocator = try _tmpalloc.create();
-    defer _tmpalloc.destroy(allocator);
+    const allocator = try tempalloc.create();
+    defer tempalloc.destroy(allocator);
 
-    const impls = try _apidb.getImpl(allocator, public.ShaderableComponentI);
+    const impls = try apidb.getImpl(allocator, public.ShaderableComponentI);
     defer allocator.free(impls);
     for (impls) |iface| {
         if (iface.injectGraphModule) |injectGraphModule| {
@@ -286,19 +271,19 @@ fn uiDebugMenuItems(allocator: std.mem.Allocator, viewport: public.Viewport) !vo
     //
     // Components
     //
-    if (_coreui.beginMenu(allocator, coreui.Icons.Component ++ "  " ++ "Components", true, null)) {
-        defer _coreui.endMenu();
+    if (coreui.beginMenu(allocator, coreui.Icons.Component ++ "  " ++ "Components", true, null)) {
+        defer coreui.endMenu();
 
-        const impls = _apidb.getImpl(allocator, ecs.ComponentI) catch undefined;
+        const impls = apidb.getImpl(allocator, ecs.ComponentI) catch undefined;
         defer allocator.free(impls);
 
-        const db = _kernel.getDb();
+        const db = kernel.getDb();
 
         for (impls) |iface| {
-            const aspect = if (!iface.cdb_type_hash.isEmpty()) _cdb.getAspect(
+            const aspect = if (!iface.cdb_type_hash.isEmpty()) cdb.getAspect(
                 editor.EditorComponentAspect,
                 db,
-                _cdb.getTypeIdx(db, iface.cdb_type_hash).?,
+                cdb.getTypeIdx(db, iface.cdb_type_hash).?,
             ) else null;
 
             if (iface.debugdraw) |_| {
@@ -311,7 +296,7 @@ fn uiDebugMenuItems(allocator: std.mem.Allocator, viewport: public.Viewport) !vo
                 };
 
                 var dd_enabled = true_viewport.enabled_dd_set.contains(iface.id);
-                if (_coreui.menuItemPtr(
+                if (coreui.menuItemPtr(
                     allocator,
                     std.fmt.allocPrintSentinel(allocator, "{s} {s}", .{ icon, iface.display_name }, 0) catch undefined,
                     .{ .selected = &dd_enabled },
@@ -330,13 +315,13 @@ fn uiDebugMenuItems(allocator: std.mem.Allocator, viewport: public.Viewport) !vo
     //
     // Culling
     //
-    _coreui.separatorText(coreui.Icons.Culling ++ " " ++ "Culling");
+    coreui.separatorText(coreui.Icons.Culling ++ " " ++ "Culling");
     {
-        // if (_coreui.beginMenu(allocator, coreui.Icons.Debug ++ "  " ++ "Culling", true, null)) {
-        //     defer _coreui.endMenu();
+        // if (coreui.beginMenu(allocator, coreui.Icons.Debug ++ "  " ++ "Culling", true, null)) {
+        //     defer coreui.endMenu();
 
         var freeze_camera = true_viewport.main_camera_entity_freze_mtx != null;
-        if (_coreui.menuItemPtr(
+        if (coreui.menuItemPtr(
             allocator,
             coreui.Icons.FreezeCamera ++ "  " ++ "Freeze camera",
             .{ .selected = &freeze_camera },
@@ -346,7 +331,7 @@ fn uiDebugMenuItems(allocator: std.mem.Allocator, viewport: public.Viewport) !vo
         }
 
         var draw_culling_sphere_debug = true_viewport.renderables_culling.draw_culling_sphere_debug;
-        if (_coreui.menuItemPtr(
+        if (coreui.menuItemPtr(
             allocator,
             coreui.Icons.BoundingSphere ++ "  " ++ "Draw sphere",
             .{ .selected = &draw_culling_sphere_debug },
@@ -356,7 +341,7 @@ fn uiDebugMenuItems(allocator: std.mem.Allocator, viewport: public.Viewport) !vo
         }
 
         var draw_culling_box_debug = true_viewport.renderables_culling.draw_culling_box_debug;
-        if (_coreui.menuItemPtr(
+        if (coreui.menuItemPtr(
             allocator,
             coreui.Icons.BoundingBox ++ "  " ++ "Draw box",
             .{ .selected = &draw_culling_box_debug },
@@ -369,7 +354,7 @@ fn uiDebugMenuItems(allocator: std.mem.Allocator, viewport: public.Viewport) !vo
     //
     // Render pipeline
     //
-    _coreui.separatorText(coreui.Icons.RenderPipeline ++ "  " ++ "Render pipeline");
+    coreui.separatorText(coreui.Icons.RenderPipeline ++ "  " ++ "Render pipeline");
     {
         try true_viewport.render_pipeline.uiDebugMenuItems(allocator);
     }
@@ -437,7 +422,7 @@ pub const viewport_vt = public.Viewport.VTable.implement(struct {
             if (true_viewport.main_camera_entity) |camera_ent| {
                 const world_transform = true_viewport.world.?.getComponent(transform.WorldTransformComponent, camera_ent).?;
                 const ccamera = true_viewport.world.?.getComponent(camera.Camera, camera_ent).?;
-                const proj = _camera.projectionMatrixFromCamera(
+                const proj = camera.projectionMatrixFromCamera(
                     ccamera.*,
                     true_viewport.size.x,
                     true_viewport.size.y,
@@ -460,13 +445,13 @@ const RenderViewportTask = struct {
         const complete_counter = cetech1.metrics.MetricScopedDuration.begin(self.viewport.complete_render_duration);
         defer complete_counter.end();
 
-        var zone = _profiler.ZoneN(@src(), "RenderViewport");
+        var zone = profiler.ZoneN(@src(), "RenderViewport");
         defer zone.End();
 
         self.viewport.frame_id %= 1;
 
-        const allocator = try _tmpalloc.create();
-        defer _tmpalloc.destroy(allocator);
+        const allocator = try tempalloc.create();
+        defer tempalloc.destroy(allocator);
 
         const render_module = self.viewport.render_pipeline.getMainModule();
         if (@intFromPtr(render_module.ptr) == 0) return;
@@ -479,8 +464,8 @@ const RenderViewportTask = struct {
         const fb_size = viewport.size;
 
         if (viewport.world) |world| {
-            var system_context = try _shader.createSystemContext();
-            defer _shader.destroySystemContext(system_context);
+            var system_context = try shader_system.createSystemContext();
+            defer shader_system.destroySystemContext(system_context);
 
             var culling_viewers = culling.ViewersList{};
             defer culling_viewers.deinit(allocator);
@@ -502,7 +487,7 @@ const RenderViewportTask = struct {
                     const cameras = it.field(camera.Camera, 1).?;
 
                     for (0..camera_transforms.len) |idx| {
-                        const pmtx = _camera.projectionMatrixFromCamera(
+                        const pmtx = camera.projectionMatrixFromCamera(
                             cameras[idx],
                             fb_size.x,
                             fb_size.y,
@@ -511,16 +496,16 @@ const RenderViewportTask = struct {
 
                         const cv = culling.Viewer{
                             .frustum = .fromMat44(camera_transforms[idx].world.inverse().toMat().mul(pmtx)),
-                            .visibility_mask = _visibility_flags.fromName(.fromStr("viewport")).?,
+                            .visibility_mask = visibility_flags.fromName(.fromStr("viewport")).?,
                         };
 
                         if (self.viewport.main_camera_entity != null and self.viewport.main_camera_entity.? == entities[idx]) {
                             try culling_viewers.insert(allocator, 0, cv);
 
                             // To struct
-                            const system = _shader.findSystemByName(.fromStr("viewer_system")).?;
-                            const system_io = _shader.getSystemIO(system);
-                            const system_uniform = (try _shader.createUniformBuffer(system_io)).?;
+                            const system = shader_system.findSystemByName(.fromStr("viewer_system")).?;
+                            const system_io = shader_system.getSystemIO(system);
+                            const system_uniform = (try shader_system.createUniformBuffer(system_io)).?;
 
                             const pos = [4]f32{
                                 camera_transforms[idx].world.position.x,
@@ -530,7 +515,7 @@ const RenderViewportTask = struct {
                             };
                             // log.debug("{any}", .{pos});
 
-                            try _shader.updateUniforms(
+                            try shader_system.updateUniforms(
                                 system_io,
                                 system_uniform,
                                 &.{.{ .name = .fromStr("camera_pos"), .value = std.mem.asBytes(&pos) }},
@@ -542,7 +527,7 @@ const RenderViewportTask = struct {
                                 .proj = pmtx,
                                 .viewid = null,
                                 .viewer_system = system,
-                                .visibility_mask = _visibility_flags.fromName(.fromStr("viewport")).?,
+                                .visibility_mask = visibility_flags.fromName(.fromStr("viewport")).?,
                                 .viewer_system_uniforms = system_uniform,
                             };
                             try viewers.insert(allocator, 0, v);
@@ -566,15 +551,15 @@ const RenderViewportTask = struct {
             defer shaderables.deinit(allocator);
             // Inject main render graph module for shaderables and prepare culling
             {
-                var z = _profiler.ZoneN(@src(), "Render viewport - Shedarables prepare");
+                var z = profiler.ZoneN(@src(), "Render viewport - Shedarables prepare");
                 defer z.End();
 
-                const impls = try _apidb.getImpl(allocator, public.ShaderableComponentI);
+                const impls = try apidb.getImpl(allocator, public.ShaderableComponentI);
                 defer allocator.free(impls);
                 for (impls) |shaderable| {
                     try shaderables.put(allocator, shaderable.component_id, shaderable);
 
-                    const ci = _ecs.findComponentIById(shaderable.component_id).?;
+                    const ci = ecs.findComponentIById(shaderable.component_id).?;
 
                     var q = viewport.query_map.get(shaderable.component_id).?;
                     const c = q.count();
@@ -602,7 +587,7 @@ const RenderViewportTask = struct {
                     }
 
                     {
-                        var zzz = _profiler.ZoneN(@src(), "Render viewport -  Shedarables init callback");
+                        var zzz = profiler.ZoneN(@src(), "Render viewport -  Shedarables init callback");
                         defer zzz.End();
                         if (shaderable.init) |init| {
                             try init(allocator, rq.data.items);
@@ -610,7 +595,7 @@ const RenderViewportTask = struct {
                     }
 
                     {
-                        var zzz = _profiler.ZoneN(@src(), "Render viewport -  Shedarables fill sphere bounding box");
+                        var zzz = profiler.ZoneN(@src(), "Render viewport -  Shedarables fill sphere bounding box");
                         defer zzz.End();
 
                         try shaderable.fillBoundingVolumes(
@@ -629,7 +614,7 @@ const RenderViewportTask = struct {
 
             // Culling shaderables
             {
-                var z = _profiler.ZoneN(@src(), "Render viewport - Shaderables culling phase");
+                var z = profiler.ZoneN(@src(), "Render viewport - Shaderables culling phase");
                 defer z.End();
 
                 const counter = cetech1.metrics.MetricScopedDuration.begin(viewport.shaderable_culling_duration);
@@ -670,14 +655,14 @@ const RenderViewportTask = struct {
 
             // Update shaderable
             {
-                var z = _profiler.ZoneN(@src(), "Render viewport - Shaderable update phase");
+                var z = profiler.ZoneN(@src(), "Render viewport - Shaderable update phase");
                 defer z.End();
 
                 const counter = cetech1.metrics.MetricScopedDuration.begin(viewport.shaderable_update_duration);
                 defer counter.end();
 
                 for (shaderables.keys(), shaderables.values()) |renderable_id, shaderable| {
-                    var zz = _profiler.ZoneN(@src(), "Render viewport - Shaderable update callback");
+                    var zz = profiler.ZoneN(@src(), "Render viewport - Shaderable update callback");
                     defer zz.End();
 
                     const result = viewport.shaderables_culling.getResult(renderable_id) orelse continue; // TOOD: warning
@@ -706,7 +691,7 @@ const RenderViewportTask = struct {
 
             // Build and execute graph
             {
-                var z = _profiler.ZoneN(@src(), "Render viewport - Build and execute render graph");
+                var z = profiler.ZoneN(@src(), "Render viewport - Build and execute render graph");
                 defer z.End();
 
                 try graph_builder.importTexture(public.ColorResource, viewport.output);
@@ -737,23 +722,23 @@ const RenderViewportTask = struct {
             defer renderables.deinit(allocator);
 
             {
-                var zz = _profiler.ZoneN(@src(), "Render viewport - Culling renderables");
+                var zz = profiler.ZoneN(@src(), "Render viewport - Culling renderables");
                 defer zz.End();
 
                 // Collect renderables to culling
                 {
-                    var z = _profiler.ZoneN(@src(), "Render viewport - Culling init phase");
+                    var z = profiler.ZoneN(@src(), "Render viewport - Culling init phase");
                     defer z.End();
 
                     const counter = cetech1.metrics.MetricScopedDuration.begin(viewport.culling_collect_duration);
                     defer counter.end();
 
-                    const impls = try _apidb.getImpl(allocator, public.RendereableComponentI);
+                    const impls = try apidb.getImpl(allocator, public.RendereableComponentI);
                     defer allocator.free(impls);
                     for (impls) |renderable| {
                         try renderables.put(allocator, renderable.component_id, renderable);
 
-                        const ci = _ecs.findComponentIById(renderable.component_id).?;
+                        const ci = ecs.findComponentIById(renderable.component_id).?;
 
                         var q = viewport.query_map.get(renderable.component_id).?;
                         const c = q.count();
@@ -788,7 +773,7 @@ const RenderViewportTask = struct {
                         }
 
                         {
-                            var zzz = _profiler.ZoneN(@src(), "Render viewport - Fill sphere culling callback");
+                            var zzz = profiler.ZoneN(@src(), "Render viewport - Fill sphere culling callback");
                             defer zzz.End();
 
                             try renderable.fillBoundingVolumes(
@@ -805,7 +790,7 @@ const RenderViewportTask = struct {
 
                 // Culling renderables
                 {
-                    var z = _profiler.ZoneN(@src(), "Render viewport - Culling phase");
+                    var z = profiler.ZoneN(@src(), "Render viewport - Culling phase");
                     defer z.End();
 
                     const counter = cetech1.metrics.MetricScopedDuration.begin(viewport.renderable_culling_duration);
@@ -848,14 +833,14 @@ const RenderViewportTask = struct {
 
             // Render renderables
             {
-                var z = _profiler.ZoneN(@src(), "Render viewport - Render phase");
+                var z = profiler.ZoneN(@src(), "Render viewport - Render phase");
                 defer z.End();
 
                 const counter = cetech1.metrics.MetricScopedDuration.begin(viewport.render_duration);
                 defer counter.end();
 
                 for (renderables.keys(), renderables.values()) |renderable_id, renderable| {
-                    var zz = _profiler.ZoneN(@src(), "Render viewport - Render callback");
+                    var zz = profiler.ZoneN(@src(), "Render viewport - Render callback");
                     defer zz.End();
 
                     const result = viewport.renderables_culling.getResult(renderable_id) orelse continue; // TODO: warning
@@ -883,14 +868,14 @@ const RenderViewportTask = struct {
 
             // Debugdraw components
             {
-                var z = _profiler.ZoneN(@src(), "Render viewport - Debugdraw pass");
+                var z = profiler.ZoneN(@src(), "Render viewport - Debugdraw pass");
                 defer z.End();
 
                 if (self.gpu.getEncoder()) |e| {
                     defer self.gpu.endEncoder(e);
 
-                    const dd = _dd.encoderCreate();
-                    defer _dd.encoderDestroy(dd);
+                    const dd = gpu_dd.encoderCreate();
+                    defer gpu_dd.encoderDestroy(dd);
 
                     dd.begin(graph_builder.getLayer("debugdraw"), true, e);
                     defer dd.end();
@@ -905,7 +890,7 @@ const RenderViewportTask = struct {
                         try self.viewport.renderables_culling.debugdrawBoundingBoxes(dd);
                     }
 
-                    const impls = try _apidb.getImpl(allocator, ecs.ComponentI);
+                    const impls = try apidb.getImpl(allocator, ecs.ComponentI);
                     defer allocator.free(impls);
                     for (impls) |iface| {
                         if (iface.debugdraw) |debugdraw| {
@@ -943,18 +928,18 @@ const RenderViewportTask = struct {
             }
 
             for (all_viewers) |*value| {
-                const io = _shader.getSystemIO(value.viewer_system);
-                _shader.destroyUniformBuffer(io, value.viewer_system_uniforms);
+                const io = shader_system.getSystemIO(value.viewer_system);
+                shader_system.destroyUniformBuffer(io, value.viewer_system_uniforms);
             }
 
             self.gpu.endAllUsedEncoders();
-            _ = self.gpu.frame(false);
+            _ = self.gpu.frame(.{});
         }
     }
 };
 
 fn renderAllViewports(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, time_s: f32) !void {
-    var zone_ctx = _profiler.ZoneN(@src(), "RenderAllViewports");
+    var zone_ctx = profiler.ZoneN(@src(), "RenderAllViewports");
     defer zone_ctx.End();
 
     var tasks = cetech1.task.TaskIdList{};
@@ -983,6 +968,7 @@ fn renderAllViewports(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend,
                 },
                 null,
                 null,
+                0,
             );
             viewport.output = t;
             viewport.size = viewport.new_size;
@@ -992,13 +978,13 @@ fn renderAllViewports(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend,
         if (true) {
             try t.exec();
         } else {
-            const task_id = try _task.schedule(cetech1.task.TaskID.none, t, .{});
+            const task_id = try task.schedule(cetech1.task.TaskID.none, t, .{});
             try tasks.append(allocator, task_id);
         }
     }
 
     if (tasks.items.len != 0) {
-        _task.waitMany(tasks.items);
+        task.waitMany(tasks.items);
     }
 }
 
@@ -1006,13 +992,13 @@ var old_fb_size = [2]i32{ -1, -1 };
 var old_flags = gpu.ResetFlags{};
 var dt_accum: f32 = 0;
 fn renderAll(gpu_backend: gpu.GpuBackend, kernel_tick: u64, dt: f32, vsync: bool) !void {
-    var zone_ctx = _profiler.ZoneN(@src(), "Render");
+    var zone_ctx = profiler.ZoneN(@src(), "Render");
     defer zone_ctx.End();
 
     // _ = kernel_tick;
 
-    const allocator = try _tmpalloc.create();
-    defer _tmpalloc.destroy(allocator);
+    const allocator = try tempalloc.create();
+    defer tempalloc.destroy(allocator);
 
     //
     // Render main viewport
@@ -1024,7 +1010,7 @@ fn renderAll(gpu_backend: gpu.GpuBackend, kernel_tick: u64, dt: f32, vsync: bool
     }
 
     var flags = gpu.ResetFlags{};
-    flags.Vsync = vsync;
+    flags.vsync = vsync;
 
     if (!std.meta.eql(old_flags, flags) or old_fb_size[0] != size[0] or old_fb_size[1] != size[1]) {
         gpu_backend.reset(
@@ -1056,26 +1042,26 @@ fn renderAll(gpu_backend: gpu.GpuBackend, kernel_tick: u64, dt: f32, vsync: bool
             if (!viewport.output_to_backbuffer) continue;
 
             gpu_backend.resetView(present_viewid);
-            gpu_backend.setViewClear(present_viewid, .{ .Color = true }, 0, 1.0, 0);
+            gpu_backend.setViewClear(present_viewid, .{ .color = true }, 0, 1.0, 0);
             gpu_backend.setViewRectRatio(present_viewid, 0, 0, .Equal);
 
-            const tobb_shader = _shader.findShaderByName(.fromStr("tobb")).?;
-            const shader_io = _shader.getShaderIO(tobb_shader);
+            const tobb_shader = shader_system.findShaderByName(.fromStr("tobb")).?;
+            const shader_io = shader_system.getShaderIO(tobb_shader);
 
-            var shader_constext = try _shader.createSystemContext();
-            defer _shader.destroySystemContext(shader_constext);
+            var shader_constext = try shader_system.createSystemContext();
+            defer shader_system.destroySystemContext(shader_constext);
 
-            const rb = (try _shader.createResourceBuffer(shader_io)).?;
-            defer _shader.destroyResourceBuffer(shader_io, rb);
+            const rb = (try shader_system.createResourceBuffer(shader_io)).?;
+            defer shader_system.destroyResourceBuffer(shader_io, rb);
 
-            try _shader.updateResources(
+            try shader_system.updateResources(
                 shader_io,
                 rb,
                 &.{.{ .name = .fromStr("tex"), .value = .{ .texture = viewport.output } }},
             );
-            _shader.bindResource(shader_io, rb, encoder);
+            shader_system.bindResource(shader_io, rb, encoder);
 
-            const variants = try _shader.selectShaderVariant(
+            const variants = try shader_system.selectShaderVariant(
                 allocator,
                 tobb_shader,
                 &.{.fromStr("viewport")},
@@ -1095,7 +1081,7 @@ fn renderAll(gpu_backend: gpu.GpuBackend, kernel_tick: u64, dt: f32, vsync: bool
             ).toArray();
             gpu_backend.setViewTransform(present_viewid, null, &projMtx);
 
-            _render_graph.screenSpaceQuad(gpu_backend, encoder, false, 1, 1);
+            render_graph.screenSpaceQuad(gpu_backend, encoder, 1, 1);
 
             encoder.setState(variant.state, variant.rgba);
             encoder.submit(present_viewid, variant.prg.?, 0, .all);
@@ -1105,15 +1091,15 @@ fn renderAll(gpu_backend: gpu.GpuBackend, kernel_tick: u64, dt: f32, vsync: bool
 
     // TODO: remove or move
     gpu_backend.resetView(coreui_viewid);
-    try _coreui.draw(allocator, gpu_backend, coreui_viewid, kernel_tick, dt);
+    try coreui.draw(allocator, gpu_backend, coreui_viewid, kernel_tick, dt);
     //
 
     gpu_backend.endAllUsedEncoders();
 
     {
-        var frame_zone_ctx = _profiler.ZoneN(@src(), "frame");
+        var frame_zone_ctx = profiler.ZoneN(@src(), "frame");
         defer frame_zone_ctx.End();
-        _g.current_frame = gpu_backend.frame(false);
+        _g.current_frame = gpu_backend.frame(.{});
     }
 
     dt_accum += dt;
@@ -1130,7 +1116,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             _g.viewport_set = .{};
             _g.viewport_pool = ViewportPool.init(_allocator);
 
-            try _shader.addShaderDefiniton("tobb", .{
+            try shader_system.addShaderDefiniton("tobb", .{
                 .color_state = .rgba,
 
                 .samplers = &.{
@@ -1156,13 +1142,13 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                     .imports = &.{ .position, .texcoord0 },
                     .import_semantic = &.{.vertex_id},
                     .code =
-                    \\  output.position = mul(u_modelViewProj, vec4(a_position, 1.0));
+                    \\  outputs.position = mul(u_modelViewProj, vec4(a_position, 1.0));
                     ,
                 },
                 .fragment_block = .{
                     .code =
                     \\  vec2 uv = gl_FragCoord.xy * u_viewTexel.xy;
-                    \\  output.color0.xyzw = texture2D(get_tex_sampler(), uv).rgba;
+                    \\  outputs.color0.xyzw = texture2D(get_tex_sampler(), uv).rgba;
                     ,
                 },
 
@@ -1199,34 +1185,29 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
 const renderer_ecs_category_i = ecs.ComponentCategoryI.implement(.{ .name = "Renderer", .order = 20 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _apidb = apidb;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
+    public.api = &api;
 
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
+    try cdb.loadAPI(module_name);
+    try kernel.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+    try ecs.loadAPI(module_name);
+    try gpu_dd.loadAPI(module_name);
+    try metrics.loadAPI(module_name);
+    try task.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
 
-    _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-
-    _gpu = apidb.getZigApi(module_name, gpu.GpuApi).?;
-
-    _dd = apidb.getZigApi(module_name, gpu.GpuDDApi).?;
-    _metrics = apidb.getZigApi(module_name, cetech1.metrics.MetricsAPI).?;
-    _task = apidb.getZigApi(module_name, cetech1.task.TaskAPI).?;
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
-    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
-
-    _shader = apidb.getZigApi(module_name, shader_system.ShaderSystemAPI).?;
-    _render_graph = apidb.getZigApi(module_name, render_graph.RenderGraphApi).?;
-    _visibility_flags = apidb.getZigApi(module_name, visibility_flags.VisibilityFlagsApi).?;
-    _camera = apidb.getZigApi(module_name, camera.CameraAPI).?;
+    try shader_system.loadAPI(module_name);
+    try render_graph.loadAPI(module_name);
+    try visibility_flags.loadAPI(module_name);
+    try camera.loadAPI(module_name);
 
     // create global variable that can survive reload
-    _g = try _apidb.setGlobalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
     // register apis
     try apidb.setOrRemoveZigApi(module_name, public.RenderViewportApi, &api, load);
@@ -1242,6 +1223,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_render_viewport(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_render_viewport(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

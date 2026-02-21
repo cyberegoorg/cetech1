@@ -2,14 +2,13 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
 const ecs = cetech1.ecs;
 const math = cetech1.math;
-
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
+const apidb = cetech1.apidb;
 
 const public = @import("transform.zig");
 
@@ -20,21 +19,16 @@ const module_name = .transform;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _graphvm: *const graphvm.GraphVMApi = undefined;
 
-var _ecs: *const ecs.EcsAPI = undefined;
+const tempalloc = cetech1.tempalloc;
+const profiler = cetech1.profiler;
 
 // Global state that can surive hot-reload
 const G = struct {
@@ -58,8 +52,8 @@ const editor_component_aspect = editor.EditorComponentAspect.implement(
             allocator: std.mem.Allocator,
             obj: cdb.ObjId,
         ) ![:0]const u8 {
-            _ = allocator; // autofix
-            _ = obj; // autofix
+            _ = allocator;
+            _ = obj;
             return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Position});
         }
 
@@ -116,36 +110,36 @@ const editor_component_aspect = editor.EditorComponentAspect.implement(
             _ = entity;
             _ = entity_obj;
 
-            const comp_r = public.LocalTransformComponentCdb.read(_cdb, component_obj).?;
-            const pos_obj = public.LocalTransformComponentCdb.readSubObj(_cdb, comp_r, .Position).?;
-            const rot_obj = public.LocalTransformComponentCdb.readSubObj(_cdb, comp_r, .Rotation).?;
-            const scl_obj = public.LocalTransformComponentCdb.readSubObj(_cdb, comp_r, .Scale).?;
+            const comp_r = public.LocalTransformComponentCdb.read(component_obj).?;
+            const pos_obj = public.LocalTransformComponentCdb.readSubObj(comp_r, .Position).?;
+            const rot_obj = public.LocalTransformComponentCdb.readSubObj(comp_r, .Rotation).?;
+            const scl_obj = public.LocalTransformComponentCdb.readSubObj(comp_r, .Scale).?;
 
             {
                 const translate = mat.getTranslation();
-                const w = cdb_types.PositionCdb.write(_cdb, pos_obj).?;
-                cdb_types.PositionCdb.setValue(f32, _cdb, w, .X, translate.x);
-                cdb_types.PositionCdb.setValue(f32, _cdb, w, .Y, translate.y);
-                cdb_types.PositionCdb.setValue(f32, _cdb, w, .Z, translate.z);
-                try cdb_types.PositionCdb.commit(_cdb, w);
+                const w = cdb_types.PositionCdb.write(pos_obj).?;
+                cdb_types.PositionCdb.setValue(f32, w, .X, translate.x);
+                cdb_types.PositionCdb.setValue(f32, w, .Y, translate.y);
+                cdb_types.PositionCdb.setValue(f32, w, .Z, translate.z);
+                try cdb_types.PositionCdb.commit(w);
             }
 
             {
                 const r = mat.getRotation().toRollPitchYaw();
-                const w = cdb_types.RotationCdb.write(_cdb, rot_obj).?;
-                cdb_types.RotationCdb.setValue(f32, _cdb, w, .X, std.math.radiansToDegrees(r.x));
-                cdb_types.RotationCdb.setValue(f32, _cdb, w, .Y, std.math.radiansToDegrees(r.y));
-                cdb_types.RotationCdb.setValue(f32, _cdb, w, .Z, std.math.radiansToDegrees(r.z));
-                try cdb_types.RotationCdb.commit(_cdb, w);
+                const w = cdb_types.RotationCdb.write(rot_obj).?;
+                cdb_types.RotationCdb.setValue(f32, w, .X, std.math.radiansToDegrees(r.x));
+                cdb_types.RotationCdb.setValue(f32, w, .Y, std.math.radiansToDegrees(r.y));
+                cdb_types.RotationCdb.setValue(f32, w, .Z, std.math.radiansToDegrees(r.z));
+                try cdb_types.RotationCdb.commit(w);
             }
 
             {
                 const sc = mat.getScale();
-                const w = cdb_types.ScaleCdb.write(_cdb, scl_obj).?;
-                cdb_types.ScaleCdb.setValue(f32, _cdb, w, .X, sc.x);
-                cdb_types.ScaleCdb.setValue(f32, _cdb, w, .Y, sc.y);
-                cdb_types.ScaleCdb.setValue(f32, _cdb, w, .Z, sc.z);
-                try cdb_types.ScaleCdb.commit(_cdb, w);
+                const w = cdb_types.ScaleCdb.write(scl_obj).?;
+                cdb_types.ScaleCdb.setValue(f32, w, .X, sc.x);
+                cdb_types.ScaleCdb.setValue(f32, w, .Y, sc.y);
+                cdb_types.ScaleCdb.setValue(f32, w, .Z, sc.z);
+                try cdb_types.ScaleCdb.commit(w);
             }
         }
     },
@@ -167,34 +161,34 @@ const local_transform_c = ecs.ComponentI.implement(
             obj: cdb.ObjId,
             data: []u8,
         ) anyerror!void {
-            _ = allocator; // autofix
+            _ = allocator;
 
-            const t = _cdb.readObj(obj) orelse return;
+            const t = cdb.readObj(obj) orelse return;
 
             const transform = std.mem.bytesAsValue(public.LocalTransformComponent, data);
 
-            const pos_obj = public.LocalTransformComponentCdb.readSubObj(_cdb, t, .Position).?;
-            const pos_r = cdb_types.PositionCdb.read(_cdb, pos_obj).?;
+            const pos_obj = public.LocalTransformComponentCdb.readSubObj(t, .Position).?;
+            const pos_r = cdb_types.PositionCdb.read(pos_obj).?;
             transform.local.position = .{
-                .x = cdb_types.PositionCdb.readValue(f32, _cdb, pos_r, .X),
-                .y = cdb_types.PositionCdb.readValue(f32, _cdb, pos_r, .Y),
-                .z = cdb_types.PositionCdb.readValue(f32, _cdb, pos_r, .Z),
+                .x = cdb_types.PositionCdb.readValue(f32, pos_r, .X),
+                .y = cdb_types.PositionCdb.readValue(f32, pos_r, .Y),
+                .z = cdb_types.PositionCdb.readValue(f32, pos_r, .Z),
             };
 
-            const rot_obj = public.LocalTransformComponentCdb.readSubObj(_cdb, t, .Rotation).?;
-            const rot_r = cdb_types.PositionCdb.read(_cdb, rot_obj).?;
+            const rot_obj = public.LocalTransformComponentCdb.readSubObj(t, .Rotation).?;
+            const rot_r = cdb_types.PositionCdb.read(rot_obj).?;
             transform.local.rotation = .fromRollPitchYaw(
-                std.math.degreesToRadians(cdb_types.RotationCdb.readValue(f32, _cdb, rot_r, .X)),
-                std.math.degreesToRadians(cdb_types.RotationCdb.readValue(f32, _cdb, rot_r, .Y)),
-                std.math.degreesToRadians(cdb_types.RotationCdb.readValue(f32, _cdb, rot_r, .Z)),
+                std.math.degreesToRadians(cdb_types.RotationCdb.readValue(f32, rot_r, .X)),
+                std.math.degreesToRadians(cdb_types.RotationCdb.readValue(f32, rot_r, .Y)),
+                std.math.degreesToRadians(cdb_types.RotationCdb.readValue(f32, rot_r, .Z)),
             );
 
-            const scale_obj = public.LocalTransformComponentCdb.readSubObj(_cdb, t, .Scale).?;
-            const scale_r = cdb_types.ScaleCdb.read(_cdb, scale_obj).?;
+            const scale_obj = public.LocalTransformComponentCdb.readSubObj(t, .Scale).?;
+            const scale_r = cdb_types.ScaleCdb.read(scale_obj).?;
             transform.local.scale = .{
-                .x = cdb_types.ScaleCdb.readValue(f32, _cdb, scale_r, .X),
-                .y = cdb_types.ScaleCdb.readValue(f32, _cdb, scale_r, .Y),
-                .z = cdb_types.ScaleCdb.readValue(f32, _cdb, scale_r, .Z),
+                .x = cdb_types.ScaleCdb.readValue(f32, scale_r, .X),
+                .y = cdb_types.ScaleCdb.readValue(f32, scale_r, .Y),
+                .z = cdb_types.ScaleCdb.readValue(f32, scale_r, .Z),
             };
         }
     },
@@ -282,7 +276,7 @@ const transform_system_i = ecs.SystemI.implement(
             _ = dt;
 
             // while (it.next()) {
-            var zone_iner_ctx = _profiler.ZoneN(@src(), "Transform iner");
+            var zone_iner_ctx = profiler.ZoneN(@src(), "Transform iner");
             defer zone_iner_ctx.End();
 
             const world_transforms = it.field(public.WorldTransformComponent, 0).?;
@@ -332,8 +326,8 @@ const set_position_node_i = graphvm.NodeI.implement(
     null,
     struct {
         pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
+            _ = node_obj;
+            _ = graph_obj;
             _ = self;
             return .{
                 .in = try allocator.dupe(graphvm.NodePin, &.{
@@ -346,14 +340,14 @@ const set_position_node_i = graphvm.NodeI.implement(
         }
 
         pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = out_pins; // autofix
+            _ = out_pins;
             _ = self;
 
             _, const ent = in_pins.read(ecs.EntityId, 1) orelse return;
             _, const position = in_pins.read(math.Vec3f, 2) orelse return;
 
-            const w = _graphvm.getContext(anyopaque, args.instance, ecs.ECS_WORLD_CONTEXT) orelse return;
-            const world = _ecs.toWorld(w);
+            const w = graphvm.getContext(anyopaque, args.instance, ecs.ECS_WORLD_CONTEXT) orelse return;
+            const world = ecs.toWorld(w);
 
             var t = world.getMutComponent(public.LocalTransformComponent, ent).?;
             t.local.position = position;
@@ -374,8 +368,8 @@ const get_position_node_i = graphvm.NodeI.implement(
     null,
     struct {
         pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
+            _ = node_obj;
+            _ = graph_obj;
             _ = self;
             return .{
                 .in = try allocator.dupe(graphvm.NodePin, &.{
@@ -392,8 +386,8 @@ const get_position_node_i = graphvm.NodeI.implement(
 
             _, const ent = in_pins.read(ecs.EntityId, 0) orelse return;
 
-            const w = _graphvm.getContext(anyopaque, args.instance, ecs.ECS_WORLD_CONTEXT) orelse return;
-            const world = _ecs.toWorld(w);
+            const w = graphvm.getContext(anyopaque, args.instance, ecs.ECS_WORLD_CONTEXT) orelse return;
+            const world = ecs.toWorld(w);
 
             const t = world.getComponent(public.WorldTransformComponent, ent) orelse return;
 
@@ -417,8 +411,8 @@ const vec3_to_color = graphvm.NodeI.implement(
     null,
     struct {
         pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
+            _ = node_obj;
+            _ = graph_obj;
             _ = self;
             return .{
                 .in = try allocator.dupe(graphvm.NodePin, &.{
@@ -484,7 +478,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
         // Transform
         {
-            const idx = try _cdb.addType(
+            const idx = try cdb.addType(
                 db,
                 public.LocalTransformComponentCdb.name,
                 &[_]cdb.PropDef{
@@ -511,7 +505,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
             try public.LocalTransformComponentCdb.addAspect(
                 editor.EditorComponentAspect,
-                _cdb,
+
                 db,
                 _g.editor_component_aspect,
             );
@@ -519,45 +513,44 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
             //
             // Default
             //
-            const default_quat = try _cdb.createObject(db, idx);
-            const default_quat_w = _cdb.writeObj(default_quat).?;
+            const default_quat = try cdb.createObject(db, idx);
+            const default_quat_w = cdb.writeObj(default_quat).?;
 
-            const default_pos = try cdb_types.PositionCdb.createObject(_cdb, db);
-            const default_pos_w = cdb_types.PositionCdb.write(_cdb, default_pos).?;
-            try public.LocalTransformComponentCdb.setSubObj(_cdb, default_quat_w, .Position, default_pos_w);
+            const default_pos = try cdb_types.PositionCdb.createObject(db);
+            const default_pos_w = cdb_types.PositionCdb.write(default_pos).?;
+            try public.LocalTransformComponentCdb.setSubObj(default_quat_w, .Position, default_pos_w);
 
-            const default_rot = try cdb_types.RotationCdb.createObject(_cdb, db);
-            const default_rot_w = cdb_types.RotationCdb.write(_cdb, default_rot).?;
-            try public.LocalTransformComponentCdb.setSubObj(_cdb, default_quat_w, .Rotation, default_rot_w);
+            const default_rot = try cdb_types.RotationCdb.createObject(db);
+            const default_rot_w = cdb_types.RotationCdb.write(default_rot).?;
+            try public.LocalTransformComponentCdb.setSubObj(default_quat_w, .Rotation, default_rot_w);
 
-            const default_scale = try cdb_types.ScaleCdb.createObject(_cdb, db);
-            const default_scale_w = cdb_types.ScaleCdb.write(_cdb, default_scale).?;
-            try public.LocalTransformComponentCdb.setSubObj(_cdb, default_quat_w, .Scale, default_scale_w);
+            const default_scale = try cdb_types.ScaleCdb.createObject(db);
+            const default_scale_w = cdb_types.ScaleCdb.write(default_scale).?;
+            try public.LocalTransformComponentCdb.setSubObj(default_quat_w, .Scale, default_scale_w);
 
-            try _cdb.writeCommit(default_pos_w);
-            try _cdb.writeCommit(default_rot_w);
-            try _cdb.writeCommit(default_scale_w);
+            try cdb.writeCommit(default_pos_w);
+            try cdb.writeCommit(default_rot_w);
+            try cdb.writeCommit(default_scale_w);
 
-            try _cdb.writeCommit(default_quat_w);
-            _cdb.setDefaultObject(default_quat);
+            try cdb.writeCommit(default_quat_w);
+            cdb.setDefaultObject(default_quat);
         }
     }
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
+
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
+    public.api = &api;
 
-    _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
-    _graphvm = apidb.getZigApi(module_name, graphvm.GraphVMApi).?;
+    try cdb.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+    try ecs.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
+    try graphvm.loadAPI(module_name);
 
     // impl api
     try apidb.setOrRemoveZigApi(module_name, public.TransformApi, &api, load);
@@ -585,6 +578,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_transform(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_transform(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

@@ -18,6 +18,7 @@ pub fn build(b: *std.Build) !void {
     lib.root_module.addImport("editor_inspector", b.dependency("editor_inspector", .{}).module("editor_inspector"));
     lib.root_module.addImport("transform", b.dependency("transform", .{}).module("transform"));
     lib.root_module.addImport("editor", b.dependency("editor", .{}).module("editor"));
+    lib.root_module.addImport("editor_tabs", b.dependency("editor_tabs", .{}).module("editor_tabs"));
 
     _ = b.addModule(
         "light_component",

@@ -1,10 +1,11 @@
 const std = @import("std");
-const cetech1 = @import("cetech1");
 
+const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const coreui = cetech1.coreui;
 const math = cetech1.math;
 const ecs = cetech1.ecs;
+const apidb = cetech1.apidb;
 
 const editor_tabs = @import("editor_tabs");
 
@@ -30,7 +31,6 @@ pub const UiSetMenusAspect = struct {
     ) anyerror!void = undefined,
 
     pub fn implement(comptime T: type) UiSetMenusAspect {
-        if (!std.meta.hasFn(T, "addMenu")) @compileError("implement me");
         return UiSetMenusAspect{
             .add_menu = &T.addMenu,
         };
@@ -44,7 +44,6 @@ pub const UiSetSortPropertyAspect = struct {
     sort: *const fn (allocator: std.mem.Allocator, objs: []cdb.ObjId) anyerror!void = undefined,
 
     pub fn implement(comptime T: type) UiSetSortPropertyAspect {
-        if (!std.meta.hasFn(T, "sort")) @compileError("implement me");
         return UiSetSortPropertyAspect{
             .sort = &T.sort,
         };
@@ -106,8 +105,6 @@ pub const UiDropObj = struct {
     ) anyerror!void,
 
     pub fn implement(comptime T: type) UiDropObj {
-        if (!std.meta.hasFn(T, "uiDropObj")) @compileError("implement me");
-
         return UiDropObj{
             .ui_drop_obj = T.uiDropObj,
         };
@@ -122,7 +119,7 @@ pub const ObjContextMenuI = struct {
         allocator: std.mem.Allocator,
         tab: *editor_tabs.TabO,
         context: cetech1.StrId64,
-        obj: []const coreui.SelectionItem,
+        obj: []const coreui.SelectedObj,
         filter: ?[:0]const u8,
     ) anyerror!bool,
 
@@ -130,14 +127,11 @@ pub const ObjContextMenuI = struct {
         allocator: std.mem.Allocator,
         tab: *editor_tabs.TabO,
         context: cetech1.StrId64,
-        obj: []const coreui.SelectionItem,
+        obj: []const coreui.SelectedObj,
         filter: ?[:0]const u8,
     ) anyerror!void,
 
     pub fn implement(comptime T: type) ObjContextMenuI {
-        if (!std.meta.hasFn(T, "isValid")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "menu")) @compileError("implement me");
-
         return ObjContextMenuI{
             .is_valid = T.isValid,
             .menu = T.menu,
@@ -254,22 +248,44 @@ pub const FormatObjLabelConfig = struct {
     with_status_icons: bool = false,
 };
 
+pub fn showObjContextMenu(allocator: std.mem.Allocator, tab: *editor_tabs.TabO, contexts: []const cetech1.StrId64, obj: coreui.SelectedObj) anyerror!void {
+    return api.showObjContextMenu(allocator, tab, contexts, obj);
+}
+pub fn formatObjLabel(allocator: std.mem.Allocator, obj: cdb.ObjId, in_set_idx: ?usize, cfg: FormatObjLabelConfig) anyerror![:0]u8 {
+    return api.formatObjLabel(allocator, obj, in_set_idx, cfg);
+}
+pub fn getStateColor(state: cdb.ObjRelation) math.Color4f {
+    return api.getStateColor(state);
+}
+pub fn getObjColor(obj: cdb.ObjId, in_set_obj: ?cdb.ObjId) ?math.Color4f {
+    return api.getObjColor(obj, in_set_obj);
+}
+pub fn getAssetColor(obj: cdb.ObjId) math.Color4f {
+    return api.getAssetColor(obj);
+}
+pub fn isColorsEnabled() bool {
+    return api.isColorsEnabled();
+}
+pub fn uiAssetDragDropSource(allocator: std.mem.Allocator, obj: cdb.ObjId) anyerror!void {
+    return api.uiAssetDragDropSource(allocator, obj);
+}
+pub fn uiAssetDragDropTarget(allocator: std.mem.Allocator, tab: *editor_tabs.TabO, obj: cdb.ObjId, prop_idx: ?u32) anyerror!void {
+    return api.uiAssetDragDropTarget(allocator, tab, obj, prop_idx);
+}
+
 pub const EditorAPI = struct {
-    showObjContextMenu: *const fn (
-        allocator: std.mem.Allocator,
-        tab: *editor_tabs.TabO,
-        contexts: []const cetech1.StrId64,
-        obj: coreui.SelectionItem,
-    ) anyerror!void,
-
-    buffFormatObjLabel: *const fn (allocator: std.mem.Allocator, buff: [:0]u8, obj: cdb.ObjId, cfg: FormatObjLabelConfig) ?[:0]u8,
-
+    showObjContextMenu: *const fn (allocator: std.mem.Allocator, tab: *editor_tabs.TabO, contexts: []const cetech1.StrId64, obj: coreui.SelectedObj) anyerror!void,
+    formatObjLabel: *const fn (allocator: std.mem.Allocator, obj: cdb.ObjId, in_set_idx: ?usize, cfg: FormatObjLabelConfig) anyerror![:0]u8,
     getStateColor: *const fn (state: cdb.ObjRelation) math.Color4f,
     getObjColor: *const fn (obj: cdb.ObjId, in_set_obj: ?cdb.ObjId) ?math.Color4f,
     getAssetColor: *const fn (obj: cdb.ObjId) math.Color4f,
-
     isColorsEnabled: *const fn () bool,
-
     uiAssetDragDropSource: *const fn (allocator: std.mem.Allocator, obj: cdb.ObjId) anyerror!void,
     uiAssetDragDropTarget: *const fn (allocator: std.mem.Allocator, tab: *editor_tabs.TabO, obj: cdb.ObjId, prop_idx: ?u32) anyerror!void,
 };
+
+pub var api: *const EditorAPI = undefined;
+
+pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+    api = apidb.getZigApi(module, EditorAPI).?;
+}

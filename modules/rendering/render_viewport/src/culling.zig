@@ -2,22 +2,22 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
-
-const zm = math.zmath;
 const math = cetech1.math;
 const gpu = cetech1.gpu;
 const dag = cetech1.dag;
 const coreui = cetech1.coreui;
-
-const public = @import("render_viewport.zig");
+const gpu_dd = cetech1.gpu_dd;
+const profiler = cetech1.profiler;
+const task = cetech1.task;
 
 const transform = @import("transform");
 const render_graph = @import("render_graph");
 const camera = @import("camera");
 const visibility_flags = @import("visibility_flags");
+
+const public = @import("render_viewport.zig");
 
 const FrustumList = cetech1.ArrayList(math.FrustumPlanes);
 const VisibilityBitFieldList = cetech1.ArrayList(public.VisibilityBitField);
@@ -196,10 +196,9 @@ const CullingSphereTask = struct {
     volumes: []const public.SphereBoudingVolume,
     viewers: []const Viewer,
     result: *CullingResult,
-    profiler: *const cetech1.profiler.ProfilerAPI,
 
     pub fn exec(self: *@This()) !void {
-        var zone = self.profiler.ZoneN(@src(), "CullingSphereTask");
+        var zone = profiler.ZoneN(@src(), "CullingSphereTask");
         defer zone.End();
 
         for (self.volumes, 0..) |volume, i| {
@@ -222,10 +221,9 @@ const CullingBoxTask = struct {
     volumes: []const public.BoxBoudingVolume,
     viewers: []const Viewer,
     result: *CullingResult,
-    profiler: *const cetech1.profiler.ProfilerAPI,
 
     pub fn exec(self: *@This()) !void {
-        var zone = self.profiler.ZoneN(@src(), "CullingBoxTask");
+        var zone = profiler.ZoneN(@src(), "CullingBoxTask");
         defer zone.End();
 
         for (self.volumes, 0..) |box, i| {
@@ -263,20 +261,13 @@ pub const CullingSystem = struct {
     draw_culling_sphere_debug: bool = false,
     draw_culling_box_debug: bool = false,
 
-    profiler: *const cetech1.profiler.ProfilerAPI,
-    task: *const cetech1.task.TaskAPI,
-
     pub fn init(
         allocator: std.mem.Allocator,
-        profiler: *const cetech1.profiler.ProfilerAPI,
-        task: *const cetech1.task.TaskAPI,
     ) Self {
         return .{
             .allocator = allocator,
             .crq_pool = RequestPool.init(allocator),
             .cr_pool = ResultPool.init(allocator),
-            .profiler = profiler,
-            .task = task,
         };
     }
 
@@ -329,7 +320,7 @@ pub const CullingSystem = struct {
     }
 
     pub fn doCullingSpheres(self: *Self, allocator: std.mem.Allocator, viewers: []const Viewer) !usize {
-        var cull_zone = self.profiler.ZoneN(@src(), "Culling system - doCullingSpheres");
+        var cull_zone = profiler.ZoneN(@src(), "Culling system - doCullingSpheres");
         defer cull_zone.End();
 
         self.tasks.clearRetainingCapacity();
@@ -338,7 +329,7 @@ pub const CullingSystem = struct {
         // Sphere phase
         //
         {
-            var zone = self.profiler.ZoneN(@src(), "Culling system - Sphere culling");
+            var zone = profiler.ZoneN(@src(), "Culling system - Sphere culling");
             defer zone.End();
 
             for (self.request_map.keys(), self.request_map.values()) |k, request| {
@@ -362,8 +353,6 @@ pub const CullingSystem = struct {
                 if (try cetech1.task.batchWorkloadTask(
                     .{
                         .allocator = allocator,
-                        .task_api = self.task,
-                        .profiler_api = self.profiler,
                         .count = items_count,
                     },
                     ARGS{
@@ -381,7 +370,6 @@ pub const CullingSystem = struct {
                                 .viewers = create_args.viewers,
                                 .result = create_args.result,
                                 .volumes = rq.sphere_volumes.items[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
-                                .profiler = args.profiler_api,
                             };
                         }
                     },
@@ -391,13 +379,13 @@ pub const CullingSystem = struct {
             }
 
             if (self.tasks.items.len != 0) {
-                self.task.waitMany(self.tasks.items);
+                task.waitMany(self.tasks.items);
             }
         }
 
         // Filter sphere results
         {
-            var zone = self.profiler.ZoneN(@src(), "Culling system - Filter sphere culling results");
+            var zone = profiler.ZoneN(@src(), "Culling system - Filter sphere culling results");
             defer zone.End();
 
             var cnt: usize = 0;
@@ -410,7 +398,7 @@ pub const CullingSystem = struct {
     }
 
     pub fn doCullingBox(self: *Self, allocator: std.mem.Allocator, viewers: []const Viewer) !void {
-        var cull_zone = self.profiler.ZoneN(@src(), "Culling system - doCullingBox");
+        var cull_zone = profiler.ZoneN(@src(), "Culling system - doCullingBox");
         defer cull_zone.End();
 
         self.tasks.clearRetainingCapacity();
@@ -419,7 +407,7 @@ pub const CullingSystem = struct {
         // Box phase
         //
         {
-            var zone = self.profiler.ZoneN(@src(), "Culling system - Box culling");
+            var zone = profiler.ZoneN(@src(), "Culling system - Box culling");
             defer zone.End();
 
             for (self.request_map.keys(), self.request_map.values()) |k, value| {
@@ -444,8 +432,6 @@ pub const CullingSystem = struct {
                 if (try cetech1.task.batchWorkloadTask(
                     .{
                         .allocator = allocator,
-                        .task_api = self.task,
-                        .profiler_api = self.profiler,
                         .count = items_count,
                     },
                     ARGS{
@@ -463,7 +449,6 @@ pub const CullingSystem = struct {
                                 .viewers = create_args.viewers,
                                 .result = create_args.result,
                                 .volumes = rq.box_volumes.items[batch_id * args.batch_size .. (batch_id * args.batch_size) + count],
-                                .profiler = args.profiler_api,
                             };
                         }
                     },
@@ -473,13 +458,13 @@ pub const CullingSystem = struct {
             }
 
             if (self.tasks.items.len != 0) {
-                self.task.waitMany(self.tasks.items);
+                task.waitMany(self.tasks.items);
             }
         }
 
         // Filter box results
         {
-            var zone = self.profiler.ZoneN(@src(), "Culling system - Filter box culling results");
+            var zone = profiler.ZoneN(@src(), "Culling system - Filter box culling results");
             defer zone.End();
 
             var cnt: usize = 0;
@@ -490,8 +475,8 @@ pub const CullingSystem = struct {
         }
     }
 
-    pub fn debugdrawBoundingSpheres(self: *Self, dd: gpu.DDEncoder) !void {
-        var zone = self.profiler.ZoneN(@src(), "Culling system - Debug draw");
+    pub fn debugdrawBoundingSpheres(self: *Self, dd: gpu_dd.Encoder) !void {
+        var zone = profiler.ZoneN(@src(), "Culling system - Debug draw");
         defer zone.End();
 
         dd.setWireframe(true);
@@ -512,8 +497,8 @@ pub const CullingSystem = struct {
         }
     }
 
-    pub fn debugdrawBoundingBoxes(self: *Self, dd: gpu.DDEncoder) !void {
-        var zone = self.profiler.ZoneN(@src(), "Culling system - Debug draw");
+    pub fn debugdrawBoundingBoxes(self: *Self, dd: gpu_dd.Encoder) !void {
+        var zone = profiler.ZoneN(@src(), "Culling system - Debug draw");
         defer zone.End();
 
         dd.setWireframe(true);

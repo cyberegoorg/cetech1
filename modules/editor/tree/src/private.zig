@@ -6,8 +6,8 @@ const public = @import("editor_tree.zig");
 const cetech1 = @import("cetech1");
 const coreui = cetech1.coreui;
 const math = cetech1.math;
-
 const cdb = cetech1.cdb;
+const assetdb = cetech1.assetdb;
 
 const editor = @import("editor");
 const editor_inspector = @import("editor_inspector");
@@ -18,7 +18,7 @@ const Icons = coreui.CoreIcons;
 const module_name = .editor_tree;
 
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 const log = std.log.scoped(module_name);
 
@@ -28,21 +28,17 @@ const INSIATED_COLOR: math.Color4f = .{ .r = 1.0, .g = 0.6, .a = 1.0 };
 const REMOVED_COLOR: math.Color4f = .{ .r = 0.7, .a = 1.0 };
 
 var _allocator: Allocator = undefined;
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
-var _editor: *const editor.EditorAPI = undefined;
-var _assetdb: *const cetech1.assetdb.AssetDBAPI = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
+const apidb = cetech1.apidb;
+
+const tempalloc = cetech1.tempalloc;
+const profiler = cetech1.profiler;
 
 // Global state
 const G = struct {};
 var _g: *G = undefined;
 
-var api = public.TreeAPI{
+const api = public.TreeAPI{
+    .cdbObjTree = cdbObjTree,
     .cdbTreeView = cdbTreeView,
     .cdbTreeNode = cdbTreeNode,
     .cdbObjTreeNode = cdbObjTreeNode,
@@ -58,7 +54,7 @@ fn cdbTreeNode(
     args: public.CdbTreeViewArgs,
 ) bool {
     _ = args;
-    return _coreui.treeNodeFlags(label, .{
+    return coreui.treeNodeFlags(label, .{
         .open_on_arrow = true,
         .open_on_double_click = false,
         .default_open = default_open,
@@ -74,19 +70,25 @@ fn cdbObjTreeNode(
     tab: *editor_tabs.TabO,
     contexts: []const cetech1.StrId64,
     selection: *coreui.Selection,
-    obj: coreui.SelectionItem,
+    obj: coreui.SelectedObj,
     default_open: bool,
     no_push: bool,
     leaf: bool,
     args: public.CdbTreeViewArgs,
 ) bool {
     // _ = args;
-    var buff: [128:0]u8 = undefined;
-    const asset_label = _editor.buffFormatObjLabel(allocator, &buff, obj.obj, .{ .with_txt = true, .with_icon = true, .with_id = true, .with_status_icons = args.show_status_icons }) orelse "Not implemented";
-    const asset_color = _editor.getAssetColor(obj.obj);
-    _coreui.pushStyleColor4f(.{ .idx = .text, .c = asset_color });
+    const asset_label = editor.formatObjLabel(allocator, obj.obj, null, .{
+        .with_txt = true,
+        .with_icon = true,
+        .with_id = true,
+        .with_status_icons = args.show_status_icons,
+    }) catch undefined;
+    defer allocator.free(asset_label);
 
-    const open = _coreui.treeNodeFlags(asset_label, .{
+    const asset_color = editor.getAssetColor(obj.obj);
+    coreui.pushStyleColor4f(.{ .idx = .text, .c = asset_color });
+
+    const open = coreui.treeNodeFlags(asset_label, .{
         .open_on_arrow = true,
         .open_on_double_click = false,
         .default_open = default_open,
@@ -95,32 +97,33 @@ fn cdbObjTreeNode(
         .leaf = leaf,
         .draw_lines_full = true,
     });
-    _coreui.popStyleColor(.{});
+    coreui.popStyleColor(.{});
 
-    const db = _cdb.getDbFromObjid(obj.obj);
-    if (_cdb.getAspect(editor.UiVisualAspect, db, obj.obj.type_idx)) |aspect| {
+    const db = cdb.getDbFromObjid(obj.obj);
+    if (cdb.getAspect(editor.UiVisualAspect, db, obj.obj.type_idx)) |aspect| {
         if (aspect.ui_tooltip) |tooltip| {
-            if (_coreui.isItemHovered(.{})) {
-                _coreui.beginTooltip();
-                defer _coreui.endTooltip();
-                tooltip(allocator, obj.obj) catch undefined;
+            if (coreui.isItemHovered(.{})) {
+                if (coreui.beginTooltip()) {
+                    defer coreui.endTooltip();
+                    tooltip(allocator, obj.obj) catch undefined;
+                }
             }
         }
     }
 
-    if (_coreui.beginPopupContextItem()) {
-        defer _coreui.endPopup();
-        _editor.showObjContextMenu(allocator, tab, contexts, selection.first()) catch undefined;
+    if (coreui.beginPopupContextItem()) {
+        defer coreui.endPopup();
+        editor.showObjContextMenu(allocator, tab, contexts, selection.first()) catch undefined;
     }
 
-    _editor.uiAssetDragDropSource(allocator, obj.obj) catch undefined;
-    _editor.uiAssetDragDropTarget(allocator, tab, obj.obj, null) catch undefined;
+    editor.uiAssetDragDropSource(allocator, obj.obj) catch undefined;
+    editor.uiAssetDragDropTarget(allocator, tab, obj.obj, null) catch undefined;
 
     return open;
 }
 
 fn cdbTreePop() void {
-    return _coreui.treePop();
+    return coreui.treePop();
 }
 fn formatedPropNameToBuff(buf: []u8, prop_name: [:0]const u8) ![]u8 {
     var split = std.mem.splitAny(u8, prop_name, "_");
@@ -148,7 +151,7 @@ fn formatedPropNameToBuff(buf: []u8, prop_name: [:0]const u8) ![]u8 {
 }
 
 fn isLeaf(db: cdb.DbId, obj: cdb.ObjId) bool {
-    if (_cdb.getTypePropDef(db, obj.type_idx)) |prop_defs| {
+    if (cdb.getTypePropDef(db, obj.type_idx)) |prop_defs| {
         for (prop_defs) |prop| {
             switch (prop.type) {
                 .SUBOBJECT_SET => {
@@ -185,18 +188,36 @@ fn cdbTreeView(
     allocator: std.mem.Allocator,
     tab: *editor_tabs.TabO,
     context: []const cetech1.StrId64,
-    obj: coreui.SelectionItem,
+    obj: coreui.SelectedObj,
     selection: *coreui.Selection,
     depth: u32,
     args: public.CdbTreeViewArgs,
 ) !bool {
-    var zone_ctx = _profiler.ZoneN(@src(), "cdbTreeView");
+    if (args.filter) |filter| {
+        _ = filter;
+    } else {
+        return cdbObjTree(allocator, tab, context, obj, selection, depth, args);
+    }
+
+    return false;
+}
+
+fn cdbObjTree(
+    allocator: std.mem.Allocator,
+    tab: *editor_tabs.TabO,
+    context: []const cetech1.StrId64,
+    obj: coreui.SelectedObj,
+    selection: *coreui.Selection,
+    depth: u32,
+    args: public.CdbTreeViewArgs,
+) !bool {
+    var zone_ctx = profiler.ZoneN(@src(), "cdbTreeView");
     defer zone_ctx.End();
 
-    const db = _cdb.getDbFromObjid(obj.obj);
+    const db = cdb.getDbFromObjid(obj.obj);
 
     // if exist aspect use it
-    const ui_aspect = _cdb.getAspect(public.UiTreeAspect, db, obj.obj.type_idx);
+    const ui_aspect = cdb.getAspect(public.UiTreeAspect, db, obj.obj.type_idx);
 
     var result = false;
 
@@ -212,7 +233,7 @@ fn cdbTreeView(
         return result;
     }
 
-    const obj_r = _cdb.readObj(obj.obj) orelse return false;
+    const obj_r = cdb.readObj(obj.obj) orelse return false;
 
     var root_open = true;
     if (args.show_root) {
@@ -227,8 +248,8 @@ fn cdbTreeView(
             false,
             args,
         );
-        if (_coreui.isItemActivated()) {
-            try _coreui.handleSelection(allocator, selection, obj, args.multiselect);
+        if (coreui.isItemActivated()) {
+            try coreui.handleSelection(allocator, selection, obj, args.multiselect);
             result = true;
         }
     }
@@ -244,49 +265,37 @@ fn cdbTreeView(
     if (!args.expand_object) return result;
 
     // Do generic tree walk
-    const prop_defs = _cdb.getTypePropDef(db, obj.obj.type_idx).?;
+    const prop_defs = cdb.getTypePropDef(db, obj.obj.type_idx).?;
 
     var buff: [128:0]u8 = undefined;
     var prop_name_buff: [128:0]u8 = undefined;
 
     for (prop_defs, 0..) |prop_def, idx| {
-        const visible = _coreui.isRectVisible(.{ .x = _coreui.getContentRegionAvail().x, .y = _coreui.getFontSize() * _coreui.getScaleFactor() });
+        const visible = coreui.isRectVisible(.{ .x = coreui.getContentRegionAvail().x, .y = coreui.getFontSize() });
 
         const prop_idx: u32 = @truncate(idx);
         const prop_name = if (visible) try formatedPropNameToBuff(&prop_name_buff, prop_def.name) else "";
 
-        // _coreui.pushPropName(db, obj, prop_idx);
-        // defer _coreui.popId();
-
         switch (prop_def.type) {
-            //.SUBOBJECT, .REFERENCE => {
             .SUBOBJECT => {
-                var zz = _profiler.ZoneN(@src(), "cdbTreeView - subobject");
+                var zz = profiler.ZoneN(@src(), "cdbTreeView - subobject");
                 defer zz.End();
 
                 var subobj: cdb.ObjId = undefined;
 
-                // if (prop_def.type == .REFERENCE) {
-                //     subobj = db.readRef(db.readObj(obj).?, prop_idx) orelse continue;
-                // } else {
-                subobj = _cdb.readSubObj(_cdb.readObj(obj.obj).?, prop_idx) orelse continue;
-                // }
-
-                // if (_cdb.getAspect(editor_inspector.UiEmbedPropertiesAspect, db, subobj.type_idx) != null) {
-                //     continue;
-                // }
+                subobj = cdb.readSubObj(cdb.readObj(obj.obj).?, prop_idx) orelse continue;
 
                 const label = try std.fmt.bufPrintZ(
                     &buff,
-                    "{s}{s}###{s}",
-                    .{ prop_name, if (prop_def.type == .REFERENCE) "  " ++ Icons.FA_LINK else "", prop_def.name },
+                    "{s}###{s}",
+                    .{ prop_name, prop_def.name },
                 );
 
-                const set_state = if (visible) _cdb.getRelation(obj.top_level_obj, obj.obj, prop_idx, null) else .NotOwned;
-                const set_color = _editor.getStateColor(set_state);
+                const set_state = if (visible) cdb.getRelation(obj.top_level_obj, obj.obj, prop_idx, null) else .NotOwned;
+                const set_color = editor.getStateColor(set_state);
 
-                const o = coreui.SelectionItem{ .top_level_obj = obj.top_level_obj, .obj = subobj, .prop_idx = prop_idx, .parent_obj = obj.obj };
-                _coreui.pushStyleColor4f(.{ .idx = .text, .c = set_color });
+                const o = coreui.SelectedObj{ .top_level_obj = obj.top_level_obj, .obj = subobj, .prop_idx = prop_idx, .parent_obj = obj.obj };
+                coreui.pushStyleColor4f(.{ .idx = .text, .c = set_color });
                 const open = api.cdbTreeNode(
                     label,
                     depth < args.max_autopen_depth,
@@ -295,67 +304,58 @@ fn cdbTreeView(
                     isLeaf(db, subobj),
                     args,
                 );
-                _coreui.popStyleColor(.{});
+                coreui.popStyleColor(.{});
 
-                if (_coreui.beginPopupContextItem()) {
-                    defer _coreui.endPopup();
-                    try _editor.showObjContextMenu(allocator, tab, &.{editor.Contexts.create}, o);
+                if (coreui.beginPopupContextItem()) {
+                    defer coreui.endPopup();
+                    try editor.showObjContextMenu(allocator, tab, &.{editor.Contexts.create}, o);
                 }
 
-                if (_coreui.isItemActivated()) {
-                    try _coreui.handleSelection(allocator, selection, o, args.multiselect);
+                if (coreui.isItemActivated()) {
+                    try coreui.handleSelection(allocator, selection, o, args.multiselect);
                     result = true;
                 }
 
                 if (open) {
                     defer api.cdbTreePop();
-                    const r = try cdbTreeView(
-                        allocator,
-                        tab,
-                        context,
-                        .{ .top_level_obj = obj.top_level_obj, .obj = subobj, .prop_idx = prop_idx, .parent_obj = obj.obj },
-                        selection,
-                        depth + 1,
-                        args,
-                    );
+                    const r = try cdbObjTree(allocator, tab, context, o, selection, depth + 1, args);
                     if (r) result = r;
                 }
             },
-            //.SUBOBJECT_SET, .REFERENCE_SET => {
             .SUBOBJECT_SET => {
-                var zz = _profiler.ZoneN(@src(), "cdbTreeView - subobject set");
+                var zz = profiler.ZoneN(@src(), "cdbTreeView - subobject set");
                 defer zz.End();
 
                 const prop_label = try std.fmt.bufPrintZ(
                     &buff,
-                    "{s}  {s} {s}###{s}",
-                    .{ prop_name, Icons.FA_LIST, if (prop_def.type == .REFERENCE_SET) "  " ++ Icons.FA_LINK else "", prop_def.name },
+                    "{s}  {s}###{s}",
+                    .{ prop_name, coreui.Icons.List, prop_def.name },
                 );
 
-                const prop_state = if (visible) _cdb.getRelation(obj.top_level_obj, obj.obj, prop_idx, null) else .NotOwned;
-                const prop_color = _editor.getStateColor(prop_state);
+                const prop_state = if (visible) cdb.getRelation(obj.top_level_obj, obj.obj, prop_idx, null) else .NotOwned;
+                const prop_color = editor.getStateColor(prop_state);
 
-                _coreui.pushStyleColor4f(.{
+                coreui.pushStyleColor4f(.{
                     .idx = .text,
                     .c = prop_color,
                 });
 
-                const o = coreui.SelectionItem{ .top_level_obj = obj.top_level_obj, .obj = obj.obj, .prop_idx = prop_idx };
+                const o = coreui.SelectedObj{ .top_level_obj = obj.top_level_obj, .obj = obj.obj, .prop_idx = prop_idx };
 
-                const flaten_child = _cdb.getPropertyAspect(public.UiTreeFlatenPropertyAspect, db, obj.obj.type_idx, prop_idx) != null;
+                const flaten_child = cdb.getPropertyAspect(public.UiTreeFlatenPropertyAspect, db, obj.obj.type_idx, prop_idx) != null;
 
                 const open = if (!flaten_child) api.cdbTreeNode(prop_label, depth < args.max_autopen_depth, false, selection.isSelected(o), false, args) else true;
-                _coreui.popStyleColor(.{});
+                coreui.popStyleColor(.{});
 
                 if (!flaten_child) {
-                    if (_coreui.isItemActivated()) {
-                        try _coreui.handleSelection(allocator, selection, o, args.multiselect);
+                    if (coreui.isItemActivated()) {
+                        try coreui.handleSelection(allocator, selection, o, args.multiselect);
                         result = true;
                     }
 
-                    if (_coreui.beginPopupContextItem()) {
-                        defer _coreui.endPopup();
-                        try _editor.showObjContextMenu(allocator, tab, &.{editor.Contexts.create}, o);
+                    if (coreui.beginPopupContextItem()) {
+                        defer coreui.endPopup();
+                        try editor.showObjContextMenu(allocator, tab, &.{editor.Contexts.create}, o);
                     }
                 }
 
@@ -364,63 +364,53 @@ fn cdbTreeView(
 
                     // added
                     var set: ?[]cdb.ObjId = undefined;
-                    if (prop_def.type == .REFERENCE_SET) {
-                        set = _cdb.readRefSet(obj_r, prop_idx, allocator);
-                    } else {
-                        set = try _cdb.readSubObjSet(obj_r, prop_idx, allocator);
-                    }
+                    set = try cdb.readSubObjSet(obj_r, prop_idx, allocator);
 
                     var inisiated_prototypes = std.AutoHashMap(cdb.ObjId, void).init(allocator);
                     defer inisiated_prototypes.deinit();
 
                     if (!flaten_child) {
-                        try _editor.uiAssetDragDropTarget(allocator, tab, obj.obj, prop_idx);
-                        // if (_cdb.getPropertyAspect(editor.UiDropObj, db, obj.obj.type_idx, prop_idx)) |aspect| {
-                        //     if (_coreui.beginDragDropTarget()) {
-                        //         defer _coreui.endDragDropTarget();
-                        //         if (_coreui.acceptDragDropPayload("obj", .{ .source_allow_null_id = true })) |payload| {
-                        //             const drag_obj: cdb.ObjId = std.mem.bytesToValue(cdb.ObjId, payload.data.?);
-
-                        //             if (!drag_obj.eql(obj.obj)) {
-                        //                 try aspect.ui_drop_obj(allocator, tab, obj.obj, prop_idx, drag_obj);
-                        //             }
-                        //         }
-                        //     }
-                        //}
+                        try editor.uiAssetDragDropTarget(allocator, tab, obj.obj, prop_idx);
                     }
 
                     if (set) |s| {
                         defer allocator.free(set.?);
 
-                        const ui_sort_aspect = _cdb.getPropertyAspect(editor.UiSetSortPropertyAspect, db, obj.obj.type_idx, prop_idx);
+                        const ui_sort_aspect = cdb.getPropertyAspect(editor.UiSetSortPropertyAspect, db, obj.obj.type_idx, prop_idx);
                         if (ui_sort_aspect) |aspect| {
-                            var zzz = _profiler.ZoneN(@src(), "cdbTreeView - subobject set sort");
+                            var zzz = profiler.ZoneN(@src(), "cdbTreeView - subobject set sort");
                             defer zzz.End();
                             try aspect.sort(allocator, s);
                         }
 
                         for (s, 0..) |subobj, set_idx| {
-                            var zzz = _profiler.ZoneN(@src(), "cdbTreeView - subobject set item");
+                            var zzz = profiler.ZoneN(@src(), "cdbTreeView - subobject set item");
                             defer zzz.End();
 
-                            const label = _editor.buffFormatObjLabel(allocator, &buff, subobj, .{ .with_txt = true, .with_icon = true, .with_id = true, .uuid_id = true, .with_status_icons = args.show_status_icons }) orelse
-                                try std.fmt.bufPrintZ(&buff, "{d}", .{set_idx});
+                            const label = try editor.formatObjLabel(allocator, subobj, set_idx, .{
+                                .with_txt = true,
+                                .with_icon = true,
+                                .with_id = true,
+                                .uuid_id = true,
+                                .with_status_icons = args.show_status_icons,
+                            });
+                            defer allocator.free(label);
 
-                            const is_inisiated = _cdb.isIinisiated(obj_r, prop_idx, _cdb.readObj(subobj).?);
+                            const is_inisiated = cdb.isIinisiated(obj_r, prop_idx, cdb.readObj(subobj).?);
                             if (is_inisiated) {
-                                try inisiated_prototypes.put(_cdb.getPrototype(_cdb.readObj(subobj).?), {});
+                                try inisiated_prototypes.put(cdb.getPrototype(cdb.readObj(subobj).?), {});
                             }
 
-                            const visible_item = _coreui.isRectVisible(.{
-                                .x = _coreui.getContentRegionAvail().x,
-                                .y = _coreui.getFontSize() * _coreui.getScaleFactor(),
+                            const visible_item = coreui.isRectVisible(.{
+                                .x = coreui.getContentRegionAvail().x,
+                                .y = coreui.getFontSize(),
                             });
 
-                            const set_state = if (visible_item) _cdb.getRelation(obj.top_level_obj, obj.obj, prop_idx, subobj) else .NotOwned;
-                            const set_color = _editor.getStateColor(set_state);
+                            const set_state = if (visible_item) cdb.getRelation(obj.top_level_obj, obj.obj, prop_idx, subobj) else .NotOwned;
+                            const set_color = editor.getStateColor(set_state);
 
-                            _coreui.pushStyleColor4f(.{ .idx = .text, .c = set_color });
-                            const oo = coreui.SelectionItem{
+                            coreui.pushStyleColor4f(.{ .idx = .text, .c = set_color });
+                            const oo = coreui.SelectedObj{
                                 .top_level_obj = obj.top_level_obj,
                                 .obj = subobj,
                                 .in_set_obj = subobj,
@@ -435,20 +425,20 @@ fn cdbTreeView(
                                 isLeaf(db, subobj),
                                 args,
                             );
-                            _coreui.popStyleColor(.{});
+                            coreui.popStyleColor(.{});
 
-                            if (_coreui.isItemActivated()) {
-                                try _coreui.handleSelection(allocator, selection, oo, args.multiselect);
+                            if (coreui.isItemActivated()) {
+                                try coreui.handleSelection(allocator, selection, oo, args.multiselect);
                                 result = true;
                             }
 
-                            if (_coreui.beginPopupContextItem()) {
-                                defer _coreui.endPopup();
-                                try _editor.showObjContextMenu(allocator, tab, &.{editor.Contexts.create}, oo);
+                            if (coreui.beginPopupContextItem()) {
+                                defer coreui.endPopup();
+                                try editor.showObjContextMenu(allocator, tab, &.{editor.Contexts.create}, oo);
                             }
 
                             if (open_inset) {
-                                const r = try cdbTreeView(allocator, tab, context, oo, selection, depth + 1, args);
+                                const r = try cdbObjTree(allocator, tab, context, oo, selection, depth + 1, args);
                                 if (r) result = r;
                                 api.cdbTreePop();
                             }
@@ -457,47 +447,43 @@ fn cdbTreeView(
 
                     // removed
                     var removed_set: ?[]const cdb.ObjId = undefined;
-                    if (prop_def.type == .REFERENCE_SET) {
-                        removed_set = _cdb.readRefSetRemoved(_cdb.readObj(obj.obj).?, prop_idx);
-                    } else {
-                        removed_set = _cdb.readSubObjSetRemoved(_cdb.readObj(obj.obj).?, prop_idx);
-                    }
+                    removed_set = cdb.readSubObjSetRemoved(cdb.readObj(obj.obj).?, prop_idx);
 
                     if (removed_set) |s| {
                         for (s, 0..) |subobj, set_idx| {
                             _ = set_idx;
-                            // _coreui.pushIntId(@truncate(set_idx));
-                            // defer _coreui.popId();
                             if (inisiated_prototypes.contains(subobj)) continue;
 
                             var label: ?[:0]u8 = null;
-                            if (_assetdb.getUuid(subobj)) |uuid| {
+                            if (assetdb.getUuid(subobj)) |uuid| {
                                 label = try std.fmt.bufPrintZ(&buff, coreui.Icons.Deleted ++ "  " ++ "{f}###{f}", .{ uuid, uuid });
                             } else {
                                 label = try std.fmt.bufPrintZ(&buff, coreui.Icons.Deleted ++ "  " ++ "{d}:{d}###{d}{d}", .{ subobj.id, subobj.type_idx.idx, subobj.id, subobj.type_idx.idx });
                             }
 
-                            if (_editor.isColorsEnabled()) _coreui.pushStyleColor4f(.{ .idx = .text, .c = REMOVED_COLOR });
-                            const open_inset = _coreui.treeNodeFlags(
+                            const oo = coreui.SelectedObj{ .top_level_obj = obj.top_level_obj, .obj = subobj };
+
+                            if (editor.isColorsEnabled()) coreui.pushStyleColor4f(.{ .idx = .text, .c = REMOVED_COLOR });
+                            const open_inset = coreui.treeNodeFlags(
                                 label.?,
                                 .{
                                     .leaf = true,
-                                    .selected = selection.isSelected(.{ .top_level_obj = obj.top_level_obj, .obj = subobj }),
+                                    .selected = selection.isSelected(oo),
                                 },
                             );
-                            if (_editor.isColorsEnabled()) _coreui.popStyleColor(.{});
+                            if (editor.isColorsEnabled()) coreui.popStyleColor(.{});
 
                             if (open_inset) {
-                                defer _coreui.treePop();
+                                defer coreui.treePop();
 
-                                if (_coreui.isItemActivated()) {
-                                    try _coreui.handleSelection(allocator, selection, .{ .top_level_obj = obj.top_level_obj, .obj = subobj }, args.multiselect);
+                                if (coreui.isItemActivated()) {
+                                    try coreui.handleSelection(allocator, selection, oo, args.multiselect);
                                 }
 
-                                if (_coreui.beginPopupContextItem()) {
-                                    defer _coreui.endPopup();
-                                    if (_coreui.menuItem(allocator, coreui.Icons.Revive ++ "  " ++ "Restore deleted", .{}, null)) {
-                                        _cdb.restoreDeletedInSet(obj_r, prop_idx, _cdb.readObj(subobj).?);
+                                if (coreui.beginPopupContextItem()) {
+                                    defer coreui.endPopup();
+                                    if (coreui.menuItem(allocator, coreui.Icons.Revive ++ "  " ++ "Restore deleted", .{}, null)) {
+                                        cdb.restoreDeletedInSet(obj_r, prop_idx, cdb.readObj(subobj).?);
                                     }
                                 }
                             }
@@ -517,24 +503,23 @@ var ProjectTypeIdx: cdb.TypeIdx = undefined;
 
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db_: cdb.DbId) !void {
-        ProjectTypeIdx = cetech1.assetdb.ProjectCdb.typeIdx(_cdb, db_);
+        ProjectTypeIdx = cetech1.assetdb.ProjectCdb.typeIdx(db_);
     }
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _apidb = apidb;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
-    _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
-    _assetdb = apidb.getZigApi(module_name, cetech1.assetdb.AssetDBAPI).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tempalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
+    public.api = &api;
+
+    try cdb.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
+    try editor.loadAPI(module_name);
+    try assetdb.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
@@ -546,8 +531,8 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_tree(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_editor_tree(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }
 
 // Assert C api == C api in zig.

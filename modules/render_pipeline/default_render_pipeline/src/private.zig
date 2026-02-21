@@ -12,7 +12,6 @@ const light_system = @import("light_system");
 const render_graph = @import("render_graph");
 const render_pipeline = @import("render_pipeline");
 const shader_system = @import("shader_system");
-
 const transform = @import("transform");
 const bloom = @import("bloom");
 const tonemap = @import("tonemap");
@@ -21,26 +20,16 @@ const module_name = .default_render_pipeline;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
+const apidb = cetech1.apidb;
 
-var _ecs: *const ecs.EcsAPI = undefined;
-
-var _dd: *const gpu.GpuDDApi = undefined;
-var _render_graph: *const render_graph.RenderGraphApi = undefined;
-var _shader: *const shader_system.ShaderSystemAPI = undefined;
-var _light_system: *const light_system.LightSystemApi = undefined;
+const tempalloc = cetech1.tempalloc;
 
 // Global state that can surive hot-reload
 const G = struct {
@@ -104,9 +93,10 @@ const material_pass = render_graph.PassApi.implement(struct {
                     .u = .Clamp,
                     .v = .Clamp,
                 },
-                .clear_color = .fromU32(0x336680),
+                .clear_color = .fromU32(0x000000FF),
             },
         );
+
         try builder.readTexture(pass, "depth");
 
         try builder.setAttachment(pass, 0, "hdr");
@@ -155,7 +145,7 @@ pub fn fillMainModule(pipeline: *DefaultPipelineInst, module: render_graph.Modul
 
     // Geometry passes
     {
-        const render_module = try _render_graph.createModule();
+        const render_module = try render_graph.createModule();
         try render_module.addPass(.{ .name = "depth_pass", .api = &depth_pass });
         try render_module.addPass(.{ .name = "material_pass", .api = &material_pass });
         try module.addToExtensionPoint(render_pipeline.extensions.render, render_module);
@@ -173,8 +163,8 @@ const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
     pub fn create(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, world: ecs.World) !*anyopaque {
         const inst = try allocator.create(DefaultPipelineInst);
 
-        const time_system = _shader.findSystemByName(.fromStr("time_system")).?;
-        const time_system_io = _shader.getSystemIO(time_system);
+        const time_system = shader_system.findSystemByName(.fromStr("time_system")).?;
+        const time_system_io = shader_system.getSystemIO(time_system);
 
         const pp_ent = world.newEntity(.{ .name = "postprocess" });
         _ = world.setComponent(transform.LocalTransformComponent, pp_ent, &transform.LocalTransformComponent{}); // TODO: because of shaderable needs transform component in query
@@ -185,10 +175,10 @@ const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
             .allocator = allocator,
             .world = world,
             .time_system = time_system,
-            .time_system_uniforms = (try _shader.createUniformBuffer(time_system_io)).?,
+            .time_system_uniforms = (try shader_system.createUniformBuffer(time_system_io)).?,
 
-            .light_system = try _light_system.createLightSystem(gpu_backend),
-            .main_module = try _render_graph.createModule(),
+            .light_system = try light_system.createLightSystem(gpu_backend),
+            .main_module = try render_graph.createModule(),
 
             .postprocess_ent = pp_ent,
             .gpu = gpu_backend,
@@ -204,13 +194,13 @@ const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
 
         inst.world.destroyEntities(&.{inst.postprocess_ent});
 
-        const time_system_io = _shader.getSystemIO(inst.time_system);
-        _shader.destroyUniformBuffer(time_system_io, inst.time_system_uniforms);
+        const time_system_io = shader_system.getSystemIO(inst.time_system);
+        shader_system.destroyUniformBuffer(time_system_io, inst.time_system_uniforms);
 
-        _light_system.destroyLightSystem(inst.light_system, inst.gpu);
+        light_system.destroyLightSystem(inst.light_system, inst.gpu);
 
-        _render_graph.destroyModule(inst.render_module);
-        _render_graph.destroyModule(inst.main_module);
+        render_graph.destroyModule(inst.render_module);
+        render_graph.destroyModule(inst.main_module);
 
         inst.allocator.destroy(inst);
     }
@@ -225,9 +215,9 @@ const render_pipeline_i = render_pipeline.RenderPipelineI.implement(struct {
 
         // Time system
         try context.addSystem(inst.time_system, inst.time_system_uniforms, null);
-        const system_io = _shader.getSystemIO(inst.time_system);
+        const system_io = shader_system.getSystemIO(inst.time_system);
 
-        try _shader.updateUniforms(
+        try shader_system.updateUniforms(
             system_io,
             inst.time_system_uniforms,
             &.{.{ .name = .fromStr("time"), .value = std.mem.asBytes(&[4]f32{ now_s, 0, 0, 0 }) }},
@@ -266,7 +256,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
         pub fn init() !void {
 
             // Time system
-            try _shader.addSystemDefiniton("time_system", .{
+            try shader_system.addSystemDefiniton("time_system", .{
                 .imports = &.{
                     .{ .name = "time", .type = .vec4 },
                 },
@@ -275,7 +265,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             //
             // Lit shader node
             //
-            try _shader.addShaderDefiniton("node_pbr_lit", .{
+            try shader_system.addShaderDefiniton("node_pbr_lit", .{
                 .color_state = .rgb,
                 .raster_state = .{
                     .cullmode = .Back,
@@ -318,24 +308,24 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                     .code =
                     \\  ct_graph graph;
                     \\  ct_graph_init(graph, vertex_ctx);
-                    \\  ct_graph_eval(graph, input);
+                    \\  ct_graph_eval(graph, inputs);
                     \\  
-                    \\  mat4 model = load_model_transform(input, input.instance_id);
+                    \\  mat4 model = load_model_transform(inputs, inputs.instance_id);
                     \\
                     \\  #if CT_PIN_CONNECTED(position)
-                    \\      //output.position = graph.position;
-                    \\      output.position = mul(model, load_vertex_position(vertex_ctx, input.vertex_id, 0));
+                    \\      //outputs.position = graph.position;
+                    \\      outputs.position = mul(model, load_vertex_position(vertex_ctx, inputs.vertex_id, 0));
                     \\  #else
-                    \\      output.position = mul(model, load_vertex_position(vertex_ctx, input.vertex_id, 0));
+                    \\      outputs.position = mul(model, load_vertex_position(vertex_ctx, inputs.vertex_id, 0));
                     \\  #endif
                     \\
-                    \\  output.world_position = output.position;
+                    \\  outputs.world_position = outputs.position.xyz;
                     \\
                     \\  const mat3 normal_matrix = cofactor(model);
-                    \\  output.normal = normalize(load_vertex_normal0(vertex_ctx, input.vertex_id, 0) * normal_matrix);
+                    \\  outputs.normal = normalize(mul(load_vertex_normal0(vertex_ctx, inputs.vertex_id, 0), normal_matrix));
                     \\
-                    \\  output.position = mul(u_viewProj, output.position);
-                    \\  output.color0 = load_vertex_color0(vertex_ctx, input.vertex_id, 0);
+                    \\  outputs.position = mul(u_viewProj, outputs.position);
+                    \\  outputs.color0 = load_vertex_color0(vertex_ctx, inputs.vertex_id, 0);
                     ,
                 },
                 .fragment_block = .{
@@ -343,11 +333,11 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                     \\  ct_graph graph;
                     \\  ct_graph_init(graph);
                     \\
-                    \\  ct_graph_eval(graph, input);
+                    \\  ct_graph_eval(graph, inputs);
                     \\
-                    \\  const vec3 wp = input.world_position;
-                    \\  const vec3 V = normalize(load_camera_pos() - wp);
-                    \\  const vec3 N = input.normal;
+                    \\  const vec3 wp = inputs.world_position;
+                    \\  const vec3 V = normalize(load_camera_pos().xyz - wp);
+                    \\  const vec3 N = inputs.normal;
                     \\
                     \\  ct_pbr_material mat;
                     \\  #if CT_PIN_CONNECTED(albedo)
@@ -377,7 +367,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                     \\  #endif
                     \\  const vec3 out_rad = pbr_calc_out_radiance(V, N, wp, mat);
                     \\
-                    \\  output.color0 = vec4(out_rad, 1.0);
+                    \\  outputs.color0 = vec4(out_rad, 1.0);
                     \\
                     ,
                 },
@@ -421,7 +411,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             //
             // Unlit shader node
             //
-            try _shader.addShaderDefiniton("node_unlit", .{
+            try shader_system.addShaderDefiniton("node_unlit", .{
                 .color_state = .rgb,
                 .raster_state = .{
                     .cullmode = .Back,
@@ -461,24 +451,24 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                     .code =
                     \\  ct_graph graph;
                     \\  ct_graph_init(graph, vertex_ctx);
-                    \\  ct_graph_eval(graph, input);
+                    \\  ct_graph_eval(graph, inputs);
                     \\  
-                    \\  mat4 model = load_model_transform(input, input.instance_id);
+                    \\  mat4 model = load_model_transform(inputs, inputs.instance_id);
                     \\
                     \\  #if CT_PIN_CONNECTED(position)
-                    \\      //output.position = graph.position;
-                    \\      output.position = mul(model, load_vertex_position(vertex_ctx, input.vertex_id, 0));
+                    \\      //outputs.position = graph.position;
+                    \\      outputs.position = mul(model, load_vertex_position(vertex_ctx, inputs.vertex_id, 0));
                     \\  #else
-                    \\      output.position = mul(model, load_vertex_position(vertex_ctx, input.vertex_id, 0));
+                    \\      outputs.position = mul(model, load_vertex_position(vertex_ctx, inputs.vertex_id, 0));
                     \\  #endif
                     \\
-                    \\  output.world_position = output.position;
+                    \\  outputs.world_position = outputs.position.xyz;
                     \\
                     \\  const mat3 normal_matrix = cofactor(model);
-                    \\  output.normal = normalize(load_vertex_normal0(vertex_ctx, input.vertex_id, 0) * normal_matrix);
+                    \\  outputs.normal = normalize(mul(load_vertex_normal0(vertex_ctx, inputs.vertex_id, 0), normal_matrix));
                     \\
-                    \\  output.position = mul(u_viewProj, output.position);
-                    \\  output.color0 = load_vertex_color0(vertex_ctx, input.vertex_id, 0);
+                    \\  outputs.position = mul(u_viewProj, outputs.position);
+                    \\  outputs.color0 = load_vertex_color0(vertex_ctx, inputs.vertex_id, 0);
                     ,
                 },
                 .fragment_block = .{
@@ -486,7 +476,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                     \\  ct_graph graph;
                     \\  ct_graph_init(graph);
                     \\
-                    \\  ct_graph_eval(graph, input);
+                    \\  ct_graph_eval(graph, inputs);
                     \\  
                     \\  vec4 color = vec4_splat(0);
                     \\  #if CT_PIN_CONNECTED(color)
@@ -498,7 +488,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                     \\      emissive = graph.emissive;
                     \\  #endif
                     \\  
-                    \\  output.color0 = color + vec4(emissive, 1);
+                    \\  outputs.color0 = color + vec4(emissive, 1);
                     \\
                     ,
                 },
@@ -544,24 +534,18 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
 );
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
     // basic
     _allocator = allocator;
-    _apidb = apidb;
-    _log = log_api;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
 
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
-
-    _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-
-    _dd = apidb.getZigApi(module_name, gpu.GpuDDApi).?;
-    _render_graph = apidb.getZigApi(module_name, render_graph.RenderGraphApi).?;
-    _shader = apidb.getZigApi(module_name, shader_system.ShaderSystemAPI).?;
-    _light_system = apidb.getZigApi(module_name, light_system.LightSystemApi).?;
+    try cdb.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
+    try ecs.loadAPI(module_name);
+    try render_graph.loadAPI(module_name);
+    try shader_system.loadAPI(module_name);
+    try light_system.loadAPI(module_name);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
@@ -576,6 +560,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_default_render_pipeline(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_default_render_pipeline(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

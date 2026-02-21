@@ -28,15 +28,18 @@ jobs:
     timeout-minutes: 1
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
       - name: Install Zig
         uses: mlugg/setup-zig@v2
+        with:
+          cache-size-limit: 4096
 
       - name: Lint
         run: zig fmt --check . --exclude externals/
   build:
     needs: ["validation"]
-    timeout-minutes: 10
+    timeout-minutes: 13
     strategy:
       fail-fast: false
       matrix:
@@ -52,7 +55,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - if: runner.os == 'Linux'
         name: Prepare linux
@@ -68,6 +71,8 @@ jobs:
 
       - name: Install Zig
         uses: mlugg/setup-zig@v2
+        with:
+          cache-size-limit: 4096
 
       - name: Init repo
         shell: bash
@@ -75,10 +80,10 @@ jobs:
 
       - name: Build
         shell: bash
-        run: zig build -Doptimize=Debug -Dwith_shaderc=false
+        run: zig build -Doptimize=Debug
 
       - name: Upload build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{matrix.os}}-bin
           path: zig-out/
@@ -106,10 +111,9 @@ jobs:
         shell: bash
         run: zig-out/bin/cetech1_test
 
-      # FIXME: Windows
-      - if: runner.os != 'Windows'
-        name: Test UI headless
+      - name: Test UI headless
         run: zig-out/bin/cetech1_studio --headless --test-ui --test-ui-junit ./result.xml
+
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4
         if: success() || failure() # always run even if the previous step fails

@@ -4,8 +4,8 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const gpu = cetech1.gpu;
 const ecs = cetech1.ecs;
-
 const math = cetech1.math;
+const apidb = cetech1.apidb;
 
 const camera = @import("camera");
 const shader_system = @import("shader_system");
@@ -32,9 +32,6 @@ pub const PassApi = struct {
     execute: *const fn (pass: *const Pass, builder: GraphBuilder, gpu_backend: gpu.GpuBackend, vp_size: math.Vec2f, viewid: gpu.ViewId) anyerror!void,
 
     pub fn implement(comptime T: type) PassApi {
-        if (!std.meta.hasFn(T, "setup")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "execute")) @compileError("implement me");
-
         const p = PassApi{
             .setup = &T.setup,
             .execute = &T.execute,
@@ -63,8 +60,6 @@ pub const EditorMenuUII = struct {
         data: *anyopaque,
         comptime T: type,
     ) EditorMenuUII {
-        if (!std.meta.hasFn(T, "menui")) @compileError("implement me");
-
         return EditorMenuUII{
             .name = name,
             .data = data,
@@ -116,12 +111,6 @@ pub const Module = struct {
         editorMenuUi: *const fn (self: *anyopaque, allocator: std.mem.Allocator) anyerror!void,
 
         pub fn implement(comptime T: type) VTable {
-            if (!std.meta.hasFn(T, "addPass")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "addModule")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "addExtensionPoint")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "setEditorMenuUi")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "editorMenuUi")) @compileError("implement me");
-
             return VTable{
                 .addPass = &T.addPass,
                 .addModule = &T.addModule,
@@ -269,12 +258,32 @@ pub const GraphBuilder = struct {
     };
 };
 
+pub fn createModule() anyerror!Module {
+    return api.createModule();
+}
+pub fn destroyModule(module: Module) void {
+    return api.destroyModule(module);
+}
+pub fn createBuilder(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend) anyerror!GraphBuilder {
+    return api.createBuilder(allocator, gpu_backend);
+}
+pub fn destroyBuilder(builder: GraphBuilder) void {
+    return api.destroyBuilder(builder);
+}
+pub fn screenSpaceQuad(gpu_backend: gpu.GpuBackend, e: gpu.GpuEncoder, width: f32, height: f32) void {
+    return api.screenSpaceQuad(gpu_backend, e, width, height);
+}
+
 pub const RenderGraphApi = struct {
     createModule: *const fn () anyerror!Module,
     destroyModule: *const fn (module: Module) void,
-
     createBuilder: *const fn (allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend) anyerror!GraphBuilder,
     destroyBuilder: *const fn (builder: GraphBuilder) void,
-
-    screenSpaceQuad: *const fn (gpu_backend: gpu.GpuBackend, e: gpu.GpuEncoder, origin_mottom_left: bool, width: f32, height: f32) void,
+    screenSpaceQuad: *const fn (gpu_backend: gpu.GpuBackend, e: gpu.GpuEncoder, width: f32, height: f32) void,
 };
+
+pub var api: *const RenderGraphApi = undefined;
+
+pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+    api = apidb.getZigApi(module, RenderGraphApi).?;
+}

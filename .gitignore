@@ -27,15 +27,19 @@
 project.xcworkspace/
 xcuserdata/
 
+# Kevelop
+*.kdev4
+
 kcov-output/
 
-imgui.ini
+/imgui.ini
 
 _static.zig
 
 # VSCode
 .vscode/launch.json
 .vscode/settings.json
+.vscode/tasks.json
 
 # Idea
 .idea/

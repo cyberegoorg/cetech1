@@ -11,8 +11,8 @@ pub fn build(b: *std.Build) !void {
         "zbgfx",
         .{
             .target = target,
-            .optimize = .ReleaseFast, // TODO:
-            //.optimize = .Debug, // TODO:
+            // .optimize = .ReleaseFast, // TODO:
+            .optimize = .Debug, // TODO:
         },
     );
 

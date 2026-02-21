@@ -3,6 +3,7 @@ const cetech1 = @import("cetech1");
 
 const cdb = cetech1.cdb;
 const coreui = cetech1.coreui;
+const apidb = cetech1.apidb;
 
 const log = std.log.scoped(.editor_tabs);
 
@@ -12,7 +13,7 @@ pub const TabI = struct {
     vt: *TabTypeI,
     inst: *TabO,
     tabid: u32 = 0,
-    pinned_obj: coreui.SelectionItem = coreui.SelectionItem.empty(),
+    pinned_obj: coreui.SelectedObj = coreui.SelectedObj.empty(),
 };
 
 pub const TabTypeIArgs = struct {
@@ -41,14 +42,14 @@ pub const TabTypeI = struct {
 
     menu_name: *const fn () anyerror![:0]const u8 = undefined,
     title: *const fn (*TabO) anyerror![:0]const u8 = undefined,
-    can_open: ?*const fn (std.mem.Allocator, []const coreui.SelectionItem) anyerror!bool = null,
+    can_open: ?*const fn (std.mem.Allocator, []const coreui.SelectedObj) anyerror!bool = null,
 
     create: *const fn (tab_id: u32) anyerror!?*TabI = undefined,
     destroy: *const fn (*TabI) anyerror!void = undefined,
 
     menu: ?*const fn (*TabO) anyerror!void = null,
     ui: *const fn (*TabO, kernel_tick: u64, dt: f32) anyerror!void = undefined,
-    obj_selected: ?*const fn (*TabO, []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) anyerror!void = null,
+    obj_selected: ?*const fn (*TabO, []const coreui.SelectedObj, sender_tab_hash: ?cetech1.StrId32) anyerror!void = null,
     focused: ?*const fn (*TabO) anyerror!void = null,
     asset_root_opened: ?*const fn (*TabO) anyerror!void = null,
 
@@ -57,15 +58,10 @@ pub const TabTypeI = struct {
         *TabO,
         ignored_obj: cdb.ObjId,
         allowed_type: cdb.TypeIdx,
+        enabled: bool,
     ) anyerror!cdb.ObjId = null,
 
     pub fn implement(args: TabTypeIArgs, comptime T: type) TabTypeI {
-        if (!std.meta.hasFn(T, "menuName")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "title")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "create")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "destroy")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "ui")) @compileError("implement me");
-
         return TabTypeI{
             .tab_name = args.tab_name,
             .tab_hash = args.tab_hash,
@@ -93,16 +89,36 @@ pub const TabTypeI = struct {
     }
 };
 
+pub fn propagateSelection(tab: *TabO, obj: []const coreui.SelectedObj) void {
+    return api.propagateSelection(tab, obj);
+}
+pub fn openTabWithPinnedObj(tab_type_hash: cetech1.StrId32, obj: coreui.SelectedObj) void {
+    return api.openTabWithPinnedObj(tab_type_hash, obj);
+}
+pub fn getAllTabsByType(allocator: std.mem.Allocator, tab_type_hash: cetech1.StrId32) anyerror![]*TabI {
+    return api.getAllTabsByType(allocator, tab_type_hash);
+}
+pub fn doTabMainMenu(allocator: std.mem.Allocator) anyerror!void {
+    return api.doTabMainMenu(allocator);
+}
+pub fn doTabs(allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) anyerror!void {
+    return api.doTabs(allocator, kernel_tick, dt);
+}
+pub fn selectObjFromMenu(allocator: std.mem.Allocator, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx, enabled: bool) ?cdb.ObjId {
+    return api.selectObjFromMenu(allocator, ignored_obj, allowed_type, enabled);
+}
+
 pub const TabsAPI = struct {
-    // Selection
-    propagateSelection: *const fn (tab: *TabO, obj: []const coreui.SelectionItem) void,
-
-    // Tabs
-    openTabWithPinnedObj: *const fn (tab_type_hash: cetech1.StrId32, obj: coreui.SelectionItem) void,
+    propagateSelection: *const fn (tab: *TabO, obj: []const coreui.SelectedObj) void,
+    openTabWithPinnedObj: *const fn (tab_type_hash: cetech1.StrId32, obj: coreui.SelectedObj) void,
     getAllTabsByType: *const fn (allocator: std.mem.Allocator, tab_type_hash: cetech1.StrId32) anyerror![]*TabI,
-
     doTabMainMenu: *const fn (allocator: std.mem.Allocator) anyerror!void,
     doTabs: *const fn (allocator: std.mem.Allocator, kernel_tick: u64, dt: f32) anyerror!void,
-
-    selectObjFromMenu: *const fn (allocator: std.mem.Allocator, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx) ?cdb.ObjId,
+    selectObjFromMenu: *const fn (allocator: std.mem.Allocator, ignored_obj: cdb.ObjId, allowed_type: cdb.TypeIdx, enabled: bool) ?cdb.ObjId,
 };
+
+pub var api: *const TabsAPI = undefined;
+
+pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+    api = apidb.getZigApi(module, TabsAPI).?;
+}

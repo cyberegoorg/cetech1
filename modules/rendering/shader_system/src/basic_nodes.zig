@@ -6,7 +6,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
     //
     try api.addShaderDefiniton("gpu_add", .{
         .function =
-        \\  output.result = a + b;
+        \\  outputs.result = a + b;
         ,
         .graph_node = .{
             .name = "gpu_add",
@@ -28,7 +28,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
     //
     try api.addShaderDefiniton("gpu_sub", .{
         .function =
-        \\  output.result = a - b;
+        \\  outputs.result = a - b;
         ,
         .graph_node = .{
             .name = "gpu_sub",
@@ -50,7 +50,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
     //
     try api.addShaderDefiniton("gpu_mul", .{
         .function =
-        \\  output.result = a * b;
+        \\  outputs.result = a * b;
         ,
         .graph_node = .{
             .name = "gpu_mul",
@@ -72,7 +72,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
     //
     try api.addShaderDefiniton("gpu_mul_add", .{
         .function =
-        \\  output.result = a * b + c;
+        \\  outputs.result = a * b + c;
         ,
         .graph_node = .{
             .name = "gpu_mul_add",
@@ -95,7 +95,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
     //
     try api.addShaderDefiniton("gpu_div", .{
         .function =
-        \\  output.result = a / b;
+        \\  outputs.result = a / b;
         ,
         .graph_node = .{
             .name = "gpu_div",
@@ -117,7 +117,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
     //
     try api.addShaderDefiniton("gpu_abs", .{
         .function =
-        \\  output.result = abs(a);
+        \\  outputs.result = abs(a);
         ,
         .graph_node = .{
             .name = "gpu_abs",
@@ -138,7 +138,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
     //
     try api.addShaderDefiniton("gpu_to_rad", .{
         .function =
-        \\  output.result = radians(a);
+        \\  outputs.result = radians(a);
         ,
         .graph_node = .{
             .name = "gpu_to_rad",
@@ -159,7 +159,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
     //
     try api.addShaderDefiniton("gpu_to_deg", .{
         .function =
-        \\  output.result = degrees(a);
+        \\  outputs.result = degrees(a);
         ,
         .graph_node = .{
             .name = "gpu_to_deg",
@@ -180,7 +180,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
     //
     try api.addShaderDefiniton("gpu_sin", .{
         .function =
-        \\  output.result = sin(a);
+        \\  outputs.result = sin(a);
         ,
         .graph_node = .{
             .name = "gpu_sin",
@@ -201,7 +201,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
     //
     try api.addShaderDefiniton("gpu_cos", .{
         .function =
-        \\  output.result = cos(a);
+        \\  outputs.result = cos(a);
         ,
         .graph_node = .{
             .name = "gpu_cos",
@@ -222,7 +222,7 @@ pub fn init(api: *const shader_system.ShaderSystemAPI) !void {
     //
     try api.addShaderDefiniton("gpu_mix", .{
         .function =
-        \\  output.result = mix(a, b, t);
+        \\  outputs.result = mix(a, b, t);
         ,
         .graph_node = .{
             .name = "gpu_mix",

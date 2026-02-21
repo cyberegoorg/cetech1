@@ -8,6 +8,7 @@ const modules = @import("modules.zig");
 const gpu = @import("gpu.zig");
 const host = @import("host.zig");
 
+const apidb = cetech1.apidb;
 const log = std.log.scoped(.kernel);
 
 pub const OnLoad = cetech1.strId64("OnLoad");
@@ -35,9 +36,6 @@ pub const KernelTaskI = struct {
         depends: []const cetech1.StrId64,
         comptime T: type,
     ) KernelTaskI {
-        if (!std.meta.hasFn(T, "init")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "shutdown")) @compileError("implement me");
-
         return KernelTaskI{
             .name = name,
             .depends = depends,
@@ -66,8 +64,6 @@ pub const KernelTaskUpdateI = struct {
         affinity: ?u32,
         comptime T: type,
     ) KernelTaskUpdateI {
-        if (!std.meta.hasFn(T, "update")) @compileError("implement me");
-
         return KernelTaskUpdateI{
             .phase = phase,
             .name = name,
@@ -92,10 +88,6 @@ pub const KernelTestingI = struct {
     getResult: *const fn () TestResult,
 
     pub inline fn implment(comptime T: type) KernelTestingI {
-        if (!std.meta.hasFn(T, "isRunning")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "printResult")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "getResult")) @compileError("implement me");
-
         return KernelTestingI{
             .isRunning = T.isRunning,
             .printResult = T.printResult,
@@ -103,6 +95,52 @@ pub const KernelTestingI = struct {
         };
     }
 };
+
+pub fn quit() void {
+    return api.quit();
+}
+pub fn setCanQuit(can_quit: *const fn () bool) void {
+    return api.setCanQuit(can_quit);
+}
+pub fn getKernelTickRate() u32 {
+    return api.getKernelTickRate();
+}
+pub fn setKernelTickRate(rate: u32) void {
+    return api.setKernelTickRate(rate);
+}
+pub fn openAssetRoot(asset_root: ?[]const u8) void {
+    return api.openAssetRoot(asset_root);
+}
+pub fn restart() void {
+    return api.restart();
+}
+pub fn isHeadlessMode() bool {
+    return api.isHeadlessMode();
+}
+pub fn isTestigMode() bool {
+    return api.isTestigMode();
+}
+pub fn getExternalsCredit() [:0]const u8 {
+    return api.getExternalsCredit();
+}
+pub fn getAuthors() [:0]const u8 {
+    return api.getAuthors();
+}
+pub fn getStrArgs(arg_name: []const u8) ?[]const u8 {
+    return api.getStrArgs(arg_name);
+}
+pub fn getIntArgs(arg_name: []const u8) ?u32 {
+    return api.getIntArgs(arg_name);
+}
+pub fn getDb() cdb.DbId {
+    return api.getDb();
+}
+pub fn getMainWindow() ?host.Window {
+    return api.getMainWindow();
+}
+pub fn getGpuBackend() ?gpu.GpuBackend {
+    return api.getGpuBackend();
+}
 
 pub const KernelApi = struct {
     quit: *const fn () void,
@@ -113,17 +151,20 @@ pub const KernelApi = struct {
     restart: *const fn () void,
     isHeadlessMode: *const fn () bool,
     isTestigMode: *const fn () bool,
-
     getExternalsCredit: *const fn () [:0]const u8,
     getAuthors: *const fn () [:0]const u8,
-
     getStrArgs: *const fn (arg_name: []const u8) ?[]const u8,
     getIntArgs: *const fn (arg_name: []const u8) ?u32,
-
-    // TODO: !!!GLOBAL SHIT WARNING !!!
+    // TODO : !!!GLOBAL SHIT WARNING !!!
     // Only idiot call this method...
     getDb: *const fn () cdb.DbId,
     getMainWindow: *const fn () ?host.Window,
     getGpuBackend: *const fn () ?gpu.GpuBackend,
     //
 };
+
+pub var api: *const KernelApi = undefined;
+
+pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+    api = apidb.getZigApi(module, KernelApi).?;
+}

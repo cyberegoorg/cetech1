@@ -38,8 +38,8 @@
       "__type_name": "ct_graph_node",
       "__uuid": "018f6362-2438-771f-8389-57d6ca15dcb6",
       "node_type": "culling_volume",
-      "pos_x": 2636,
-      "pos_y": 262
+      "pos_x": 2783,
+      "pos_y": 718
     },
     {
       "__type_name": "ct_graph_node",
@@ -238,7 +238,7 @@
       "settings": {
         "__type_name": "ct_gpu_const_node_settings",
         "__uuid": "0193079b-4b9e-76f0-a7b7-9ae558930517",
-        "result_type": "color",
+        "result_type": "color4",
         "value": {
           "__type_name": "ct_color_4f",
           "__uuid": "0193079b-544f-7272-88e5-55b02c0f40e5",
@@ -317,7 +317,7 @@
       "settings": {
         "__type_name": "ct_gpu_const_node_settings",
         "__uuid": "0193079a-2aee-7af7-aa3b-028c03a21253",
-        "result_type": "color",
+        "result_type": "color4",
         "value": {
           "__type_name": "ct_color_4f",
           "__uuid": "0193079a-3871-7699-b37d-cf6acdf5ac36",
@@ -420,7 +420,8 @@
         "__type_name": "ct_color_4f",
         "__uuid": "018f7d11-4e68-7868-a152-f62ab3d8d60d",
         "r": 1,
-        "g": 0.7843137383460999
+        "g": 0.7843137383460999,
+        "a": 1
       },
       "pos_x": 288,
       "pos_y": -48,

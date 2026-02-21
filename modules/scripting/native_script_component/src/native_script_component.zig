@@ -28,11 +28,11 @@ pub const NativeScriptI = struct {
     }
 };
 
-pub const NativeScriptComponent = struct {
-    native_script: ?cetech1.StrId32 = null,
+pub const NativeScriptComponent = extern struct {
+    native_script: cetech1.StrId32 = .{},
 };
 
-pub const NativeScriptComponentInstance = struct {
+pub const NativeScriptComponentInstance = extern struct {
     inst: ?*anyopaque = null,
     iface: *const NativeScriptI,
 };

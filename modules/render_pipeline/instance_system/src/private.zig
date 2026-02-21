@@ -2,14 +2,12 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
-
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
 const math = cetech1.math;
-
+const kernel = cetech1.kernel;
 const shader_system = @import("shader_system");
 const transform = @import("transform");
 
@@ -19,21 +17,18 @@ const module_name = .instance_system;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _task: *const cetech1.task.TaskAPI = undefined;
 
-var _dd: *const gpu.GpuDDApi = undefined;
+const tempalloc = cetech1.tempalloc;
+const profiler = cetech1.profiler;
+const task = cetech1.task;
+const apidb = cetech1.apidb;
 var _shader_system: *const shader_system.ShaderSystemAPI = undefined;
 
 const MAX_INSTNACE_MTX = 100_000; // TODO
@@ -110,7 +105,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
     &[_]cetech1.StrId64{.fromStr("ShaderSystem")},
     struct {
         pub fn init() !void {
-            _g.gpu = _kernel.getGpuBackend().?;
+            _g.gpu = kernel.getGpuBackend().?;
 
             _g.instance_mtx_buffer = _g.gpu.createDynamicVertexBuffer(
                 MAX_INSTNACE_MTX * 16,
@@ -153,26 +148,27 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
             _ = kernel_tick;
             _ = dt;
 
-            // const alloc = try _tmpalloc.create();
-            // defer _tmpalloc.destroy(alloc);
+            // const alloc = try tempalloc.create();
+            // defer tempalloc.destroy(alloc);
             _g.instance_mtx_buffer_offset.store(0, .monotonic);
         }
     },
 );
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
+
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
-    _task = apidb.getZigApi(module_name, cetech1.task.TaskAPI).?;
+    public.api = &api;
 
-    _dd = apidb.getZigApi(module_name, gpu.GpuDDApi).?;
+    try cdb.loadAPI(module_name);
+    try kernel.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
+    try task.loadAPI(module_name);
+
     _shader_system = apidb.getZigApi(module_name, shader_system.ShaderSystemAPI).?;
 
     try apidb.setOrRemoveZigApi(module_name, public.InstanceSystemApi, &api, load);
@@ -188,6 +184,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_instance_system(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_instance_system(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

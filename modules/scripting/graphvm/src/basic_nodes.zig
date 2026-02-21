@@ -1,41 +1,38 @@
 const std = @import("std");
 
-const public = @import("graphvm.zig");
+const graphvm = @import("graphvm.zig");
 const cetech1 = @import("cetech1");
 
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
 const ecs = cetech1.ecs;
 const math = cetech1.math;
+const apidb = cetech1.apidb;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(.graphvm);
 
-var _cdb: *const cdb.CdbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _graphvm: *const public.GraphVMApi = undefined;
-
-const flow_value_type_i = public.GraphValueTypeI.implement(
+const flow_value_type_i = graphvm.GraphValueTypeI.implement(
     bool,
     .{
         .name = "Flow",
-        .type_hash = public.PinTypes.Flow,
-        .cdb_type_hash = public.flowTypeCdb.type_hash,
+        .type_hash = graphvm.PinTypes.Flow,
+        .cdb_type_hash = graphvm.flowTypeCdb.type_hash,
         .color = .white,
     },
 
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            _ = allocator; // autofix
-            _ = value; // autofix
-            _ = obj; // autofix
+            _ = allocator;
+            _ = value;
+            _ = obj;
         }
 
-        pub fn calcValidityHash(value: []const u8) !public.ValidityHash {
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
             const v = std.mem.bytesAsValue(bool, value);
             return @intFromBool(v.*);
         }
@@ -45,22 +42,22 @@ const flow_value_type_i = public.GraphValueTypeI.implement(
     },
 );
 
-const i32_value_type_i = public.GraphValueTypeI.implement(
+const i32_value_type_i = graphvm.GraphValueTypeI.implement(
     i32,
     .{
         .name = "i32",
-        .type_hash = public.PinTypes.I32,
-        .cdb_type_hash = cdb_types.i32TypeCdb.type_hash,
+        .type_hash = graphvm.PinTypes.I32,
+        .cdb_type_hash = cdb_types.I32TypeCdb.type_hash,
         .color = .{ .r = 0.2, .g = 0.4, .b = 1.0, .a = 1.0 },
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            _ = allocator; // autofix
-            const v = cdb_types.i32TypeCdb.readValue(i32, _cdb, _cdb.readObj(obj).?, .Value);
+            _ = allocator;
+            const v = cdb_types.I32TypeCdb.readValue(i32, cdb.readObj(obj).?, .Value);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
-        pub fn calcValidityHash(value: []const u8) !public.ValidityHash {
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
             const v = std.mem.bytesAsValue(i32, value);
             return @intCast(v.*);
         }
@@ -71,22 +68,22 @@ const i32_value_type_i = public.GraphValueTypeI.implement(
     },
 );
 
-const u32_value_type_i = public.GraphValueTypeI.implement(
+const u32_value_type_i = graphvm.GraphValueTypeI.implement(
     u32,
     .{
         .name = "u32",
-        .type_hash = public.PinTypes.U32,
-        .cdb_type_hash = cdb_types.u32TypeCdb.type_hash,
+        .type_hash = graphvm.PinTypes.U32,
+        .cdb_type_hash = cdb_types.U32TypeCdb.type_hash,
         .color = .{ .r = 0.4, .g = 0.6, .b = 1.0, .a = 1.0 },
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            _ = allocator; // autofix
-            const v = cdb_types.u32TypeCdb.readValue(u32, _cdb, _cdb.readObj(obj).?, .Value);
+            _ = allocator;
+            const v = cdb_types.U32TypeCdb.readValue(u32, cdb.readObj(obj).?, .Value);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
-        pub fn calcValidityHash(value: []const u8) !public.ValidityHash {
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
             const v = std.mem.bytesAsValue(u32, value);
             return @intCast(v.*);
         }
@@ -97,24 +94,24 @@ const u32_value_type_i = public.GraphValueTypeI.implement(
     },
 );
 
-const f32_value_type_i = public.GraphValueTypeI.implement(
+const f32_value_type_i = graphvm.GraphValueTypeI.implement(
     f32,
     .{
         .name = "f32",
-        .type_hash = public.PinTypes.F32,
-        .cdb_type_hash = cdb_types.f32TypeCdb.type_hash,
+        .type_hash = graphvm.PinTypes.F32,
+        .cdb_type_hash = cdb_types.F32TypeCdb.type_hash,
         .color = .{ .g = 0.5, .a = 1.0 },
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            _ = allocator; // autofix
-            const v = cdb_types.f32TypeCdb.readValue(f32, _cdb, _cdb.readObj(obj).?, .Value);
+            _ = allocator;
+            const v = cdb_types.F32TypeCdb.readValue(f32, cdb.readObj(obj).?, .Value);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
-        pub fn calcValidityHash(value: []const u8) !public.ValidityHash {
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
             const v = std.mem.bytesAsValue(f32, value);
-            return std.mem.bytesToValue(public.ValidityHash, v);
+            return std.mem.bytesToValue(graphvm.ValidityHash, v);
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
@@ -123,22 +120,22 @@ const f32_value_type_i = public.GraphValueTypeI.implement(
     },
 );
 
-const i64_value_type_i = public.GraphValueTypeI.implement(
+const i64_value_type_i = graphvm.GraphValueTypeI.implement(
     i64,
     .{
         .name = "i64",
-        .type_hash = public.PinTypes.I64,
-        .cdb_type_hash = cdb_types.i64TypeCdb.type_hash,
+        .type_hash = graphvm.PinTypes.I64,
+        .cdb_type_hash = cdb_types.I64TypeCdb.type_hash,
         .color = .{ .r = 0.2, .g = 0.4, .b = 1.0, .a = 1.0 },
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            _ = allocator; // autofix
-            const v = cdb_types.i64TypeCdb.readValue(i64, _cdb, _cdb.readObj(obj).?, .Value);
+            _ = allocator;
+            const v = cdb_types.I64TypeCdb.readValue(i64, cdb.readObj(obj).?, .Value);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
-        pub fn calcValidityHash(value: []const u8) !public.ValidityHash {
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
             const v = std.mem.bytesAsValue(i64, value);
             return @intCast(v.*);
         }
@@ -149,22 +146,22 @@ const i64_value_type_i = public.GraphValueTypeI.implement(
     },
 );
 
-const u64_value_type_i = public.GraphValueTypeI.implement(
+const u64_value_type_i = graphvm.GraphValueTypeI.implement(
     u64,
     .{
         .name = "u64",
-        .type_hash = public.PinTypes.U64,
-        .cdb_type_hash = cdb_types.u64TypeCdb.type_hash,
+        .type_hash = graphvm.PinTypes.U64,
+        .cdb_type_hash = cdb_types.U64TypeCdb.type_hash,
         .color = .{ .r = 0.4, .g = 0.6, .b = 1.0, .a = 1.0 },
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            _ = allocator; // autofix
-            const v = cdb_types.u64TypeCdb.readValue(u64, _cdb, _cdb.readObj(obj).?, .Value);
+            _ = allocator;
+            const v = cdb_types.U64TypeCdb.readValue(u64, cdb.readObj(obj).?, .Value);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
-        pub fn calcValidityHash(value: []const u8) !public.ValidityHash {
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
             const v = std.mem.bytesAsValue(u64, value);
             return @intCast(v.*);
         }
@@ -175,24 +172,24 @@ const u64_value_type_i = public.GraphValueTypeI.implement(
     },
 );
 
-const f64_value_type_i = public.GraphValueTypeI.implement(
+const f64_value_type_i = graphvm.GraphValueTypeI.implement(
     f64,
     .{
         .name = "f64",
-        .type_hash = public.PinTypes.F64,
-        .cdb_type_hash = cdb_types.f64TypeCdb.type_hash,
+        .type_hash = graphvm.PinTypes.F64,
+        .cdb_type_hash = cdb_types.F64TypeCdb.type_hash,
         .color = .{ .g = 0.5, .a = 1.0 },
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            _ = allocator; // autofix
-            const v = cdb_types.f64TypeCdb.readValue(f64, _cdb, _cdb.readObj(obj).?, .Value);
+            _ = allocator;
+            const v = cdb_types.F64TypeCdb.readValue(f64, cdb.readObj(obj).?, .Value);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
-        pub fn calcValidityHash(value: []const u8) !public.ValidityHash {
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
             const v = std.mem.bytesAsValue(f64, value);
-            return std.mem.bytesToValue(public.ValidityHash, v);
+            return std.mem.bytesToValue(graphvm.ValidityHash, v);
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
@@ -201,24 +198,24 @@ const f64_value_type_i = public.GraphValueTypeI.implement(
     },
 );
 
-const bool_value_type_i = public.GraphValueTypeI.implement(
+const bool_value_type_i = graphvm.GraphValueTypeI.implement(
     bool,
     .{
         .name = "bool",
-        .type_hash = public.PinTypes.Bool,
+        .type_hash = graphvm.PinTypes.Bool,
         .cdb_type_hash = cdb_types.BoolTypeCdb.type_hash,
         .color = .{ .r = 1.0, .g = 0.4, .b = 0.4, .a = 1.0 },
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            _ = allocator; // autofix
-            const v = cdb_types.BoolTypeCdb.readValue(bool, _cdb, _cdb.readObj(obj).?, .Value);
+            _ = allocator;
+            const v = cdb_types.BoolTypeCdb.readValue(bool, cdb.readObj(obj).?, .Value);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
-        pub fn calcValidityHash(value: []const u8) !public.ValidityHash {
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
             const v = std.mem.bytesAsValue(bool, value);
-            return std.mem.bytesToValue(public.ValidityHash, v);
+            return std.mem.bytesToValue(graphvm.ValidityHash, v);
         }
 
         pub fn valueToString(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
@@ -227,21 +224,21 @@ const bool_value_type_i = public.GraphValueTypeI.implement(
     },
 );
 
-const string_value_type_i = public.GraphValueTypeI.implement(
+const string_value_type_i = graphvm.GraphValueTypeI.implement(
     [:0]u8,
     .{
         .name = "string",
-        .type_hash = public.PinTypes.String,
+        .type_hash = graphvm.PinTypes.String,
         .cdb_type_hash = cdb_types.StringTypeCdb.type_hash,
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            _ = allocator; // autofix
-            const v = cdb_types.StringTypeCdb.readStr(_cdb, _cdb.readObj(obj).?, .Value);
+            _ = allocator;
+            const v = cdb_types.StringTypeCdb.readStr(cdb.readObj(obj).?, .Value);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
-        pub fn calcValidityHash(value: []const u8) !public.ValidityHash {
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
             const v = std.mem.bytesAsValue([:0]u8, value);
             return cetech1.strId64(v.*).id;
         }
@@ -252,21 +249,21 @@ const string_value_type_i = public.GraphValueTypeI.implement(
     },
 );
 
-const vec2f_value_type_i = public.GraphValueTypeI.implement(
+const vec2f_value_type_i = graphvm.GraphValueTypeI.implement(
     math.Vec2f,
     .{
         .name = "vec2f",
-        .type_hash = public.PinTypes.VEC2F,
+        .type_hash = graphvm.PinTypes.VEC2F,
         .cdb_type_hash = cdb_types.Vec2fCdb.type_hash,
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            _ = allocator; // autofix
-            const v = cdb_types.Vec2fCdb.f.to(_cdb, obj);
+            _ = allocator;
+            const v = cdb_types.Vec2fCdb.f.to(obj);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
-        pub fn calcValidityHash(value: []const u8) !public.ValidityHash {
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
             return std.hash.Murmur2_64.hash(value);
         }
 
@@ -277,21 +274,21 @@ const vec2f_value_type_i = public.GraphValueTypeI.implement(
     },
 );
 
-const vec3f_value_type_i = public.GraphValueTypeI.implement(
+const vec3f_value_type_i = graphvm.GraphValueTypeI.implement(
     math.Vec3f,
     .{
         .name = "vec3f",
-        .type_hash = public.PinTypes.VEC3F,
+        .type_hash = graphvm.PinTypes.VEC3F,
         .cdb_type_hash = cdb_types.Vec3fCdb.type_hash,
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            _ = allocator; // autofix
-            const v = cdb_types.Vec3fCdb.f.to(_cdb, obj);
+            _ = allocator;
+            const v = cdb_types.Vec3fCdb.f.to(obj);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
-        pub fn calcValidityHash(value: []const u8) !public.ValidityHash {
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
             return std.hash.Murmur2_64.hash(value);
         }
 
@@ -302,21 +299,21 @@ const vec3f_value_type_i = public.GraphValueTypeI.implement(
     },
 );
 
-const vec4f_value_type_i = public.GraphValueTypeI.implement(
+const vec4f_value_type_i = graphvm.GraphValueTypeI.implement(
     math.Vec4f,
     .{
         .name = "vec4f",
-        .type_hash = public.PinTypes.VEC4F,
+        .type_hash = graphvm.PinTypes.VEC4F,
         .cdb_type_hash = cdb_types.Vec4fCdb.type_hash,
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            _ = allocator; // autofix
-            const v = cdb_types.Vec4fCdb.f.to(_cdb, obj);
+            _ = allocator;
+            const v = cdb_types.Vec4fCdb.f.to(obj);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
-        pub fn calcValidityHash(value: []const u8) !public.ValidityHash {
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
             return std.hash.Murmur2_64.hash(value);
         }
 
@@ -327,21 +324,21 @@ const vec4f_value_type_i = public.GraphValueTypeI.implement(
     },
 );
 
-const quatf_value_type_i = public.GraphValueTypeI.implement(
+const quatf_value_type_i = graphvm.GraphValueTypeI.implement(
     math.Quatf,
     .{
         .name = "quatf",
-        .type_hash = public.PinTypes.QUATF,
+        .type_hash = graphvm.PinTypes.QUATF,
         .cdb_type_hash = cdb_types.QuatfCdb.type_hash,
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            _ = allocator; // autofix
-            const v = cdb_types.QuatfCdb.f.to(_cdb, obj);
+            _ = allocator;
+            const v = cdb_types.QuatfCdb.f.to(obj);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
-        pub fn calcValidityHash(value: []const u8) !public.ValidityHash {
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
             return std.hash.Murmur2_64.hash(value);
         }
 
@@ -352,21 +349,21 @@ const quatf_value_type_i = public.GraphValueTypeI.implement(
     },
 );
 
-const Color4f_value_type_i = public.GraphValueTypeI.implement(
+const Color4f_value_type_i = graphvm.GraphValueTypeI.implement(
     [4]f32,
     .{
         .name = "Color4f",
-        .type_hash = public.PinTypes.Color4f,
+        .type_hash = graphvm.PinTypes.Color4f,
         .cdb_type_hash = cdb_types.Color4fCdb.type_hash,
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            _ = allocator; // autofix
-            const v = cdb_types.Color4fCdb.f.to(_cdb, obj);
+            _ = allocator;
+            const v = cdb_types.Color4fCdb.f.to(obj);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
-        pub fn calcValidityHash(value: []const u8) !public.ValidityHash {
+        pub fn calcValidityHash(value: []const u8) !graphvm.ValidityHash {
             return std.hash.Murmur2_64.hash(value);
         }
 
@@ -377,10 +374,10 @@ const Color4f_value_type_i = public.GraphValueTypeI.implement(
     },
 );
 
-const event_node_i = public.NodeI.implement(
+const event_node_i = graphvm.NodeI.implement(
     .{
         .name = "Event Init",
-        .type_name = public.EVENT_INIT_NODE_TYPE_STR,
+        .type_name = graphvm.EVENT_INIT_NODE_TYPE_STR,
         .category = "Event",
         .pivot = .Pivot,
     },
@@ -388,45 +385,45 @@ const event_node_i = public.NodeI.implement(
     struct {
         const Self = @This();
 
-        pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
+        pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
+            _ = self;
+            _ = node_obj;
+            _ = graph_obj;
 
             return .{
-                .in = try allocator.dupe(public.NodePin, &.{}),
-                .out = try allocator.dupe(public.NodePin, &.{
-                    public.NodePin.init("Flow", public.NodePin.pinHash("flow", true), public.PinTypes.Flow, null),
+                .in = try allocator.dupe(graphvm.NodePin, &.{}),
+                .out = try allocator.dupe(graphvm.NodePin, &.{
+                    graphvm.NodePin.init("Flow", graphvm.NodePin.pinHash("flow", true), graphvm.PinTypes.Flow, null),
                 }),
             };
         }
 
-        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
-            _ = self; // autofix
+        pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
+            _ = self;
             _ = args;
             _ = in_pins;
             try out_pins.writeTyped(bool, 0, 0, true);
         }
 
         pub fn icon(
-            self: *const public.NodeI,
+            self: *const graphvm.NodeI,
             buff: [:0]u8,
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
-            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_PLAY});
+            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Play});
         }
     },
 );
 
-const event_shutdown_node_i = public.NodeI.implement(
+const event_shutdown_node_i = graphvm.NodeI.implement(
     .{
         .name = "Event Shutdown",
-        .type_name = public.EVENT_SHUTDOWN_NODE_TYPE_STR,
+        .type_name = graphvm.EVENT_SHUTDOWN_NODE_TYPE_STR,
         .category = "Event",
         .pivot = .Pivot,
     },
@@ -434,44 +431,44 @@ const event_shutdown_node_i = public.NodeI.implement(
     struct {
         const Self = @This();
 
-        pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
+        pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
+            _ = self;
+            _ = node_obj;
+            _ = graph_obj;
             return .{
-                .in = try allocator.dupe(public.NodePin, &.{}),
-                .out = try allocator.dupe(public.NodePin, &.{
-                    public.NodePin.init("Flow", public.NodePin.pinHash("flow", true), public.PinTypes.Flow, null),
+                .in = try allocator.dupe(graphvm.NodePin, &.{}),
+                .out = try allocator.dupe(graphvm.NodePin, &.{
+                    graphvm.NodePin.init("Flow", graphvm.NodePin.pinHash("flow", true), graphvm.PinTypes.Flow, null),
                 }),
             };
         }
 
-        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
-            _ = self; // autofix
+        pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
+            _ = self;
             _ = args;
             _ = in_pins;
             try out_pins.writeTyped(bool, 0, 0, true);
         }
 
         pub fn icon(
-            self: *const public.NodeI,
+            self: *const graphvm.NodeI,
             buff: [:0]u8,
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
-            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_STOP});
+            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Stop});
         }
     },
 );
 
-const event_tick_node_i = public.NodeI.implement(
+const event_tick_node_i = graphvm.NodeI.implement(
     .{
         .name = "Event Tick",
-        .type_name = public.EVENT_TICK_NODE_TYPE_STR,
+        .type_name = graphvm.EVENT_TICK_NODE_TYPE_STR,
         .category = "Event",
         .pivot = .Pivot,
     },
@@ -479,45 +476,45 @@ const event_tick_node_i = public.NodeI.implement(
     struct {
         const Self = @This();
 
-        pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
+        pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
+            _ = self;
+            _ = node_obj;
+            _ = graph_obj;
             return .{
-                .in = try allocator.dupe(public.NodePin, &.{}),
-                .out = try allocator.dupe(public.NodePin, &.{
-                    public.NodePin.init("Flow", public.NodePin.pinHash("flow", true), public.PinTypes.Flow, null),
+                .in = try allocator.dupe(graphvm.NodePin, &.{}),
+                .out = try allocator.dupe(graphvm.NodePin, &.{
+                    graphvm.NodePin.init("Flow", graphvm.NodePin.pinHash("flow", true), graphvm.PinTypes.Flow, null),
                 }),
             };
         }
 
-        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
-            _ = self; // autofix
+        pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
+            _ = self;
             _ = args;
             _ = in_pins;
             try out_pins.writeTyped(bool, 0, 0, true);
         }
 
         pub fn icon(
-            self: *const public.NodeI,
+            self: *const graphvm.NodeI,
             buff: [:0]u8,
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
-            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_STOPWATCH});
+            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Timer});
         }
     },
 );
 
 const PrintNodeState = struct {
-    input_validity: public.ValidityHash = 0,
+    input_validity: graphvm.ValidityHash = 0,
 };
 
-const print_node_i = public.NodeI.implement(
+const print_node_i = graphvm.NodeI.implement(
     .{
         .name = "Print",
         .type_name = "print",
@@ -525,36 +522,36 @@ const print_node_i = public.NodeI.implement(
     },
     PrintNodeState,
     struct {
-        pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
+        pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
+            _ = self;
+            _ = node_obj;
+            _ = graph_obj;
             return .{
-                .in = try allocator.dupe(public.NodePin, &.{
-                    public.NodePin.init("Flow", public.NodePin.pinHash("flow", false), public.PinTypes.Flow, null),
-                    public.NodePin.init("Value", public.NodePin.pinHash("value", false), public.PinTypes.GENERIC, null),
+                .in = try allocator.dupe(graphvm.NodePin, &.{
+                    graphvm.NodePin.init("Flow", graphvm.NodePin.pinHash("flow", false), graphvm.PinTypes.Flow, null),
+                    graphvm.NodePin.init("Value", graphvm.NodePin.pinHash("value", false), graphvm.PinTypes.GENERIC, null),
                 }),
-                .out = try allocator.dupe(public.NodePin, &.{}),
+                .out = try allocator.dupe(graphvm.NodePin, &.{}),
             };
         }
 
-        pub fn create(self: *const public.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {
-            _ = self; // autofix
-            _ = transpile_state; // autofix
-            _ = reload; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+        pub fn create(self: *const graphvm.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {
+            _ = self;
+            _ = transpile_state;
+            _ = reload;
+            _ = allocator;
+            _ = node_obj;
             const real_state: *PrintNodeState = @ptrCast(@alignCast(state));
             real_state.* = .{};
         }
 
-        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
-            _ = self; // autofix
-            _ = args; // autofix
+        pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
+            _ = self;
+            _ = args;
             _ = out_pins;
 
             const value_pin_type = in_pins.getPinType(1) orelse return;
-            const iface = _graphvm.findValueTypeI(value_pin_type).?;
+            const iface = graphvm.findValueTypeI(value_pin_type).?;
 
             var buffer: [256]u8 = undefined;
             var fba = std.heap.FixedBufferAllocator.init(&buffer);
@@ -565,85 +562,85 @@ const print_node_i = public.NodeI.implement(
         }
 
         pub fn icon(
-            self: *const public.NodeI,
+            self: *const graphvm.NodeI,
             buff: [:0]u8,
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
-            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_PRINT});
+            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Print});
         }
     },
 );
 
 const ConstNodeState = struct {
     version: cdb.ObjVersion = 0,
-    value_type: *const public.GraphValueTypeI = undefined,
+    value_type: *const graphvm.GraphValueTypeI = undefined,
     value_obj: cdb.ObjId = .{},
 };
 
-const const_node_i = public.NodeI.implement(
+const const_node_i = graphvm.NodeI.implement(
     .{
         .name = "Const",
         .type_name = "const",
-        .settings_type = public.ConstNodeSettingsCdb.type_hash,
+        .settings_type = graphvm.ConstNodeSettingsCdb.type_hash,
     },
     ConstNodeState,
     struct {
         const Self = @This();
-        const out = public.NodePin.pinHash("value", true);
+        const out = graphvm.NodePin.pinHash("value", true);
 
-        pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
-            _ = self; // autofix
+        pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
+            _ = self;
 
-            const db = _cdb.getDbFromObjid(graph_obj);
-            const node_r = public.GraphTypeCdb.read(_cdb, node_obj).?;
+            const db = cdb.getDbFromObjid(graph_obj);
+            const node_r = graphvm.GraphTypeCdb.read(node_obj).?;
 
             var type_hash: cetech1.StrId32 = .{};
-            if (public.NodeTypeCdb.readSubObj(_cdb, node_r, .settings)) |setting| {
-                const settings_r = public.ConstNodeSettingsCdb.read(_cdb, setting).?;
+            if (graphvm.NodeTypeCdb.readSubObj(node_r, .settings)) |setting| {
+                const settings_r = graphvm.ConstNodeSettingsCdb.read(setting).?;
 
-                if (public.ConstNodeSettingsCdb.readSubObj(_cdb, settings_r, .value)) |value_obj| {
-                    const value_type = _graphvm.findValueTypeIByCdb(_cdb.getTypeHash(db, value_obj.type_idx).?).?;
+                if (graphvm.ConstNodeSettingsCdb.readSubObj(settings_r, .value)) |value_obj| {
+                    const value_type = graphvm.findValueTypeIByCdb(cdb.getTypeHash(db, value_obj.type_idx).?).?;
                     type_hash = value_type.type_hash;
                 }
             }
 
             return .{
-                .in = try allocator.dupe(public.NodePin, &.{}),
-                .out = try allocator.dupe(public.NodePin, &.{
-                    public.NodePin.init("Value", public.NodePin.pinHash("value", true), type_hash, null),
+                .in = try allocator.dupe(graphvm.NodePin, &.{}),
+                .out = try allocator.dupe(graphvm.NodePin, &.{
+                    graphvm.NodePin.init("Value", graphvm.NodePin.pinHash("value", true), type_hash, null),
                 }),
             };
         }
 
-        pub fn create(self: *const public.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {
-            _ = self; // autofix
-            _ = transpile_state; // autofix
-            _ = reload; // autofix
-            _ = allocator; // autofix
+        pub fn create(self: *const graphvm.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {
+            _ = self;
+            _ = transpile_state;
+            _ = reload;
+            _ = allocator;
             const real_state: *ConstNodeState = @ptrCast(@alignCast(state));
             real_state.* = .{};
 
-            const db = _cdb.getDbFromObjid(node_obj);
+            const db = cdb.getDbFromObjid(node_obj);
 
-            const node_r = public.GraphTypeCdb.read(_cdb, node_obj).?;
-            if (public.NodeTypeCdb.readSubObj(_cdb, node_r, .settings)) |setting| {
-                const settings_r = public.ConstNodeSettingsCdb.read(_cdb, setting).?;
+            const node_r = graphvm.GraphTypeCdb.read(node_obj).?;
+            if (graphvm.NodeTypeCdb.readSubObj(node_r, .settings)) |setting| {
+                const settings_r = graphvm.ConstNodeSettingsCdb.read(setting).?;
 
-                if (public.ConstNodeSettingsCdb.readSubObj(_cdb, settings_r, .value)) |value_obj| {
-                    const value_type = _graphvm.findValueTypeIByCdb(_cdb.getTypeHash(db, value_obj.type_idx).?).?;
+                if (graphvm.ConstNodeSettingsCdb.readSubObj(settings_r, .value)) |value_obj| {
+                    const value_type = graphvm.findValueTypeIByCdb(cdb.getTypeHash(db, value_obj.type_idx).?).?;
                     real_state.value_type = value_type;
                     real_state.value_obj = value_obj;
                 }
             }
         }
 
-        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
-            _ = self; // autofix
+        pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
+            _ = self;
             _ = in_pins;
             const real_state: *ConstNodeState = @ptrCast(@alignCast(args.state));
 
@@ -655,14 +652,14 @@ const const_node_i = public.NodeI.implement(
         }
 
         pub fn icon(
-            self: *const public.NodeI,
+            self: *const graphvm.NodeI,
             buff: [:0]u8,
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
             return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Const});
         }
@@ -673,7 +670,7 @@ const RandomF32NodeState = struct {
     prg: ?std.Random.DefaultPrng = null,
     random: std.Random = undefined,
 };
-const random_f32_node_i = public.NodeI.implement(
+const random_f32_node_i = graphvm.NodeI.implement(
     .{
         .name = "Random f32",
         .type_name = "random_f32",
@@ -682,37 +679,37 @@ const random_f32_node_i = public.NodeI.implement(
     RandomF32NodeState,
     struct {
         const Self = @This();
-        const out = public.NodePin.pinHash("value", true);
+        const out = graphvm.NodePin.pinHash("value", true);
 
-        pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
+        pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
+            _ = self;
+            _ = node_obj;
+            _ = graph_obj;
             return .{
-                .in = try allocator.dupe(public.NodePin, &.{
-                    public.NodePin.init("Min", public.NodePin.pinHash("min", false), public.PinTypes.F32, null),
-                    public.NodePin.init("Max", public.NodePin.pinHash("max", false), public.PinTypes.F32, null),
-                    public.NodePin.init("Seed", public.NodePin.pinHash("seed", false), public.PinTypes.U64, null),
+                .in = try allocator.dupe(graphvm.NodePin, &.{
+                    graphvm.NodePin.init("Min", graphvm.NodePin.pinHash("min", false), graphvm.PinTypes.F32, null),
+                    graphvm.NodePin.init("Max", graphvm.NodePin.pinHash("max", false), graphvm.PinTypes.F32, null),
+                    graphvm.NodePin.init("Seed", graphvm.NodePin.pinHash("seed", false), graphvm.PinTypes.U64, null),
                 }),
-                .out = try allocator.dupe(public.NodePin, &.{
-                    public.NodePin.init("Value", public.NodePin.pinHash("value", true), public.PinTypes.F32, null),
+                .out = try allocator.dupe(graphvm.NodePin, &.{
+                    graphvm.NodePin.init("Value", graphvm.NodePin.pinHash("value", true), graphvm.PinTypes.F32, null),
                 }),
             };
         }
 
-        pub fn create(self: *const public.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {
-            _ = self; // autofix
-            _ = transpile_state; // autofix
-            _ = node_obj; // autofix
-            _ = reload; // autofix
-            _ = allocator; // autofix
+        pub fn create(self: *const graphvm.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {
+            _ = self;
+            _ = transpile_state;
+            _ = node_obj;
+            _ = reload;
+            _ = allocator;
 
             const real_state: *RandomF32NodeState = @ptrCast(@alignCast(state));
             real_state.* = .{};
         }
 
-        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
-            _ = self; // autofix
+        pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
+            _ = self;
             const real_state: *RandomF32NodeState = @ptrCast(@alignCast(args.state));
 
             _, const min = in_pins.read(f32, 0) orelse .{ 0, 0 };
@@ -731,21 +728,21 @@ const random_f32_node_i = public.NodeI.implement(
         }
 
         pub fn icon(
-            self: *const public.NodeI,
+            self: *const graphvm.NodeI,
             buff: [:0]u8,
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
             return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Random});
         }
     },
 );
 
-const get_entity_node_i = public.NodeI.implement(
+const get_entity_node_i = graphvm.NodeI.implement(
     .{
         .name = "Get entity",
         .type_name = "get_entity",
@@ -753,23 +750,23 @@ const get_entity_node_i = public.NodeI.implement(
     },
     null,
     struct {
-        pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
-            _ = self; // autofix
+        pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
+            _ = node_obj;
+            _ = graph_obj;
+            _ = self;
 
             return .{
-                .in = try allocator.dupe(public.NodePin, &.{}),
-                .out = try allocator.dupe(public.NodePin, &.{
-                    public.NodePin.init("Entity", public.NodePin.pinHash("entity", true), public.PinTypes.Entity, null),
+                .in = try allocator.dupe(graphvm.NodePin, &.{}),
+                .out = try allocator.dupe(graphvm.NodePin, &.{
+                    graphvm.NodePin.init("Entity", graphvm.NodePin.pinHash("entity", true), graphvm.PinTypes.Entity, null),
                 }),
             };
         }
 
-        pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
-            _ = in_pins; // autofix
-            _ = self; // autofix
-            if (_graphvm.getContext(anyopaque, args.instance, ecs.ECS_ENTITY_CONTEXT)) |ent| {
+        pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
+            _ = in_pins;
+            _ = self;
+            if (graphvm.getContext(anyopaque, args.instance, ecs.ECS_ENTITY_CONTEXT)) |ent| {
                 const ent_id = @intFromPtr(ent);
                 try out_pins.writeTyped(ecs.EntityId, 0, ent_id, ent_id);
             }
@@ -781,9 +778,9 @@ const get_entity_node_i = public.NodeI.implement(
         //     db: cdb.DbId,
         //     node_obj: cdb.ObjId,
         // ) ![:0]u8 {
-        //     _ = allocator; // autofix
-        //     _ = db; // autofix
-        //     _ = node_obj; // autofix
+        //     _ = allocator;
+        //     _ = db;
+        //     _ = node_obj;
 
         //     return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_STOP});
         // }
@@ -792,66 +789,58 @@ const get_entity_node_i = public.NodeI.implement(
 
 pub fn addOrRemove(
     comptime module_name: @Type(.enum_literal),
-    apidb: *const cetech1.apidb.ApiDbAPI,
-    cdbapi: *const cdb.CdbAPI,
-    logapi: *const cetech1.log.LogAPI,
-    graphvmapi: *const public.GraphVMApi,
     load: bool,
 ) !void {
-    _log = logapi;
-    _graphvm = graphvmapi;
-    _cdb = cdbapi;
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &flow_value_type_i, load);
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &bool_value_type_i, load);
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &string_value_type_i, load);
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &i32_value_type_i, load);
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &u32_value_type_i, load);
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &i64_value_type_i, load);
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &u64_value_type_i, load);
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &f32_value_type_i, load);
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &f64_value_type_i, load);
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &vec2f_value_type_i, load);
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &vec3f_value_type_i, load);
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &vec4f_value_type_i, load);
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &quatf_value_type_i, load);
+    try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &Color4f_value_type_i, load);
 
-    try apidb.implOrRemove(module_name, public.GraphValueTypeI, &flow_value_type_i, load);
-    try apidb.implOrRemove(module_name, public.GraphValueTypeI, &bool_value_type_i, load);
-    try apidb.implOrRemove(module_name, public.GraphValueTypeI, &string_value_type_i, load);
-    try apidb.implOrRemove(module_name, public.GraphValueTypeI, &i32_value_type_i, load);
-    try apidb.implOrRemove(module_name, public.GraphValueTypeI, &u32_value_type_i, load);
-    try apidb.implOrRemove(module_name, public.GraphValueTypeI, &i64_value_type_i, load);
-    try apidb.implOrRemove(module_name, public.GraphValueTypeI, &u64_value_type_i, load);
-    try apidb.implOrRemove(module_name, public.GraphValueTypeI, &f32_value_type_i, load);
-    try apidb.implOrRemove(module_name, public.GraphValueTypeI, &f64_value_type_i, load);
-    try apidb.implOrRemove(module_name, public.GraphValueTypeI, &vec2f_value_type_i, load);
-    try apidb.implOrRemove(module_name, public.GraphValueTypeI, &vec3f_value_type_i, load);
-    try apidb.implOrRemove(module_name, public.GraphValueTypeI, &vec4f_value_type_i, load);
-    try apidb.implOrRemove(module_name, public.GraphValueTypeI, &quatf_value_type_i, load);
-    try apidb.implOrRemove(module_name, public.GraphValueTypeI, &Color4f_value_type_i, load);
-
-    try apidb.implOrRemove(module_name, public.NodeI, &event_node_i, load);
-    try apidb.implOrRemove(module_name, public.NodeI, &event_tick_node_i, load);
-    try apidb.implOrRemove(module_name, public.NodeI, &event_shutdown_node_i, load);
-    try apidb.implOrRemove(module_name, public.NodeI, &print_node_i, load);
-    try apidb.implOrRemove(module_name, public.NodeI, &const_node_i, load);
-    try apidb.implOrRemove(module_name, public.NodeI, &random_f32_node_i, load);
-    try apidb.implOrRemove(module_name, public.NodeI, &get_entity_node_i, load);
+    try apidb.implOrRemove(module_name, graphvm.NodeI, &event_node_i, load);
+    try apidb.implOrRemove(module_name, graphvm.NodeI, &event_tick_node_i, load);
+    try apidb.implOrRemove(module_name, graphvm.NodeI, &event_shutdown_node_i, load);
+    try apidb.implOrRemove(module_name, graphvm.NodeI, &print_node_i, load);
+    try apidb.implOrRemove(module_name, graphvm.NodeI, &const_node_i, load);
+    try apidb.implOrRemove(module_name, graphvm.NodeI, &random_f32_node_i, load);
+    try apidb.implOrRemove(module_name, graphvm.NodeI, &get_entity_node_i, load);
 }
 
 pub fn createTypes(db: cdb.DbId) !void {
     // ConstNodeSettings
     {
-        _ = try _cdb.addType(
+        _ = try cdb.addType(
             db,
-            public.ConstNodeSettingsCdb.name,
+            graphvm.ConstNodeSettingsCdb.name,
             &[_]cdb.PropDef{
-                .{ .prop_idx = public.ConstNodeSettingsCdb.propIdx(.value), .name = "value", .type = .SUBOBJECT },
+                .{ .prop_idx = graphvm.ConstNodeSettingsCdb.propIdx(.value), .name = "value", .type = .SUBOBJECT },
             },
         );
     }
 
     // RandomF32NodeSettings
     {
-        _ = try _cdb.addType(
+        _ = try cdb.addType(
             db,
-            public.RandomF32NodeSettingsCdb.name,
+            graphvm.RandomF32NodeSettingsCdb.name,
             &[_]cdb.PropDef{},
         );
     }
 
     // flowType
     {
-        _ = try _cdb.addType(
+        _ = try cdb.addType(
             db,
-            public.flowTypeCdb.name,
+            graphvm.flowTypeCdb.name,
             &[_]cdb.PropDef{},
         );
     }

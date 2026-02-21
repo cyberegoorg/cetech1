@@ -6,7 +6,7 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 const math = cetech1.math;
-
+const gpu_dd = cetech1.gpu_dd;
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
 
@@ -20,28 +20,21 @@ const module_name = .camera;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _gpu: *const cetech1.gpu.GpuBackendApi = undefined;
 
-var _inspector: *const editor_inspector.InspectorAPI = undefined;
-
-var _ecs: *const ecs.EcsAPI = undefined;
+const tempalloc = cetech1.tempalloc;
+const profiler = cetech1.profiler;
+const apidb = cetech1.apidb;
 
 // Global state that can surive hot-reload
 const G = struct {
-    camera_type_properties_aspec: *editor_inspector.UiPropertyAspect = undefined,
+    camera_type_properties_aspec: *editor_inspector.UiInspectorPropertyValueAspect = undefined,
     editor_component_aspect: *editor.EditorComponentAspect = undefined,
 };
 var _g: *G = undefined;
@@ -59,22 +52,21 @@ const camera_c = ecs.ComponentI.implement(
             obj: cdb.ObjId,
             data: []u8,
         ) anyerror!void {
-            _ = allocator; // autofix
+            _ = allocator;
 
-            const r = _cdb.readObj(obj) orelse return;
+            const r = cdb.readObj(obj) orelse return;
 
             const position = std.mem.bytesAsValue(public.Camera, data);
-            const type_str = public.CameraCdb.readStr(_cdb, r, .Type) orelse "";
 
             position.* = public.Camera{
-                .type = std.meta.stringToEnum(public.CameraType, type_str) orelse .Perspective,
-                .fov = public.CameraCdb.readValue(f32, _cdb, r, .Fov),
-                .near = public.CameraCdb.readValue(f32, _cdb, r, .Near),
-                .far = public.CameraCdb.readValue(f32, _cdb, r, .Far),
+                .type = public.CameraCdb.readStrEnum(public.CameraType, r, .Type, .Perspective),
+                .fov = public.CameraCdb.readValue(f32, r, .Fov),
+                .near = public.CameraCdb.readValue(f32, r, .Near),
+                .far = public.CameraCdb.readValue(f32, r, .Far),
             };
         }
 
-        pub fn debugdraw(gpu_backend: gpu.GpuBackend, dd: gpu.DDEncoder, world: ecs.World, entites: []const ecs.EntityId, data: []const u8, size: math.Vec2f) !void {
+        pub fn debugdraw(gpu_backend: gpu.GpuBackend, dd: gpu_dd.Encoder, world: ecs.World, entites: []const ecs.EntityId, data: []const u8, size: math.Vec2f) !void {
             var cameras: []const public.Camera = undefined;
             cameras.ptr = @ptrCast(@alignCast(data.ptr));
             cameras.len = data.len / @sizeOf(public.Camera);
@@ -103,33 +95,32 @@ const editor_component_aspect = editor.EditorComponentAspect.implement(
             allocator: std.mem.Allocator,
             obj: cdb.ObjId,
         ) ![:0]const u8 {
-            _ = allocator; // autofix
-            _ = obj; // autofix
+            _ = allocator;
+            _ = obj;
             return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Camera});
         }
     },
 );
 
-var camera_type_aspec = editor_inspector.UiPropertyAspect.implement(struct {
+var camera_type_aspec = editor_inspector.UiInspectorPropertyValueAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         prop_idx: u32,
-        args: editor_inspector.cdbPropertiesViewArgs,
+        args: editor_inspector.InspectorViewArgs,
     ) !void {
-        _ = allocator; // autofix
-        _ = args; // autofix
-        const r = public.CameraCdb.read(_cdb, obj).?;
-        const type_str = public.CameraCdb.readStr(_cdb, r, .Type) orelse "";
-        var type_enum: public.CameraType = std.meta.stringToEnum(public.CameraType, type_str) orelse .Perspective;
+        _ = prop_idx;
+        _ = allocator;
+        _ = args;
+        const r = public.CameraCdb.read(obj).?;
 
-        try _inspector.uiPropInputBegin(obj, prop_idx, true);
-        defer _inspector.uiPropInputEnd();
+        var type_enum = public.CameraCdb.readStrEnum(public.CameraType, r, .Type, .Perspective);
 
-        if (_coreui.comboFromEnum("", &type_enum)) {
-            const w = public.CameraCdb.write(_cdb, obj).?;
-            try public.CameraCdb.setStr(_cdb, w, .Type, @tagName(type_enum));
-            try public.CameraCdb.commit(_cdb, w);
+        coreui.setNextItemWidth(-1.0);
+        if (coreui.comboFromEnum("", &type_enum)) {
+            const w = public.CameraCdb.write(obj).?;
+            try public.CameraCdb.setStr(w, .Type, @tagName(type_enum));
+            try public.CameraCdb.commit(w);
         }
     }
 });
@@ -137,11 +128,11 @@ var camera_type_aspec = editor_inspector.UiPropertyAspect.implement(struct {
 fn cameraSetingsMenu(world: ecs.World, camera_ent: ecs.EntityId) void {
     var c = world.getMutComponent(public.Camera, camera_ent);
 
-    if (_coreui.comboFromEnum("type", &c.?.type)) {}
+    if (coreui.comboFromEnum("type", &c.?.type)) {}
 
-    _ = _coreui.dragF32("fov", .{ .v = &c.?.fov, .min = 1, .max = std.math.floatMax(f32) });
-    _ = _coreui.dragF32("near", .{ .v = &c.?.near, .max = std.math.floatMax(f32) });
-    _ = _coreui.dragF32("far", .{ .v = &c.?.far, .max = std.math.floatMax(f32) });
+    _ = coreui.dragF32("fov", .{ .v = &c.?.fov, .min = 1, .max = std.math.floatMax(f32) });
+    _ = coreui.dragF32("near", .{ .v = &c.?.near, .max = std.math.floatMax(f32) });
+    _ = coreui.dragF32("far", .{ .v = &c.?.far, .max = std.math.floatMax(f32) });
 }
 
 fn selectMainCameraMenu(allocator: std.mem.Allocator, world: ecs.World, camera_ent: ecs.EntityId, current_main_camera: ?ecs.EntityId) !?ecs.EntityId {
@@ -163,7 +154,7 @@ fn selectMainCameraMenu(allocator: std.mem.Allocator, world: ecs.World, camera_e
             const label = if (ent == camera_ent) try std.fmt.allocPrintSentinel(allocator, "{s}", .{"Editor camera"}, 0) else try std.fmt.allocPrintSentinel(allocator, "{d}", .{entities[idx]}, 0);
             defer allocator.free(label);
 
-            if (_coreui.menuItem(_allocator, label, .{ .selected = is_main_camera }, null)) {
+            if (coreui.menuItem(_allocator, label, .{ .selected = is_main_camera }, null)) {
                 if (!is_main_camera) return ent;
             }
         }
@@ -173,18 +164,18 @@ fn selectMainCameraMenu(allocator: std.mem.Allocator, world: ecs.World, camera_e
 }
 
 fn cameraMenu(allocator: std.mem.Allocator, world: ecs.World, camera_ent: ecs.EntityId, current_main_camera: ?ecs.EntityId) !?ecs.EntityId {
-    if (_coreui.beginMenu(allocator, cetech1.coreui.Icons.Camera, true, null)) {
-        defer _coreui.endMenu();
+    if (coreui.beginMenu(allocator, cetech1.coreui.Icons.Camera, true, null)) {
+        defer coreui.endMenu();
 
-        if (_coreui.beginMenu(allocator, "Active camera", true, null)) {
-            defer _coreui.endMenu();
+        if (coreui.beginMenu(allocator, "Active camera", true, null)) {
+            defer coreui.endMenu();
             if (try selectMainCameraMenu(allocator, world, camera_ent, current_main_camera)) |c| {
                 return c;
             }
         }
 
-        if (_coreui.beginMenu(allocator, "Editor camera", true, null)) {
-            defer _coreui.endMenu();
+        if (coreui.beginMenu(allocator, "Editor camera", true, null)) {
+            defer coreui.endMenu();
             cameraSetingsMenu(world, camera_ent);
         }
     }
@@ -213,7 +204,6 @@ fn projectionMatrixFromCamera(camera: public.Camera, w: f32, h: f32, homogenous_
 
 const api = public.CameraAPI{
     .projectionMatrixFromCamera = projectionMatrixFromCamera,
-
     .cameraSetingsMenu = cameraSetingsMenu,
     .selectMainCameraMenu = selectMainCameraMenu,
     .cameraMenu = cameraMenu,
@@ -224,7 +214,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.DbId) !void {
         // Camera
         {
-            const scale_idx = try _cdb.addType(
+            const scale_idx = try cdb.addType(
                 db,
                 public.CameraCdb.name,
                 &[_]cdb.PropDef{
@@ -237,25 +227,25 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
             try public.CameraCdb.addAspect(
                 editor.EditorComponentAspect,
-                _cdb,
+
                 db,
                 _g.editor_component_aspect,
             );
 
             const camera = public.Camera{};
 
-            const default_camera = try _cdb.createObject(db, scale_idx);
-            const default_camera_w = _cdb.writeObj(default_camera).?;
-            try public.CameraCdb.setStr(_cdb, default_camera_w, .Type, "perspective");
-            public.CameraCdb.setValue(f32, _cdb, default_camera_w, .Fov, camera.fov);
-            public.CameraCdb.setValue(f32, _cdb, default_camera_w, .Near, camera.near);
-            public.CameraCdb.setValue(f32, _cdb, default_camera_w, .Far, camera.far);
-            try _cdb.writeCommit(default_camera_w);
-            _cdb.setDefaultObject(default_camera);
+            const default_camera = try cdb.createObject(db, scale_idx);
+            const default_camera_w = cdb.writeObj(default_camera).?;
+            try public.CameraCdb.setStr(default_camera_w, .Type, "perspective");
+            public.CameraCdb.setValue(f32, default_camera_w, .Fov, camera.fov);
+            public.CameraCdb.setValue(f32, default_camera_w, .Near, camera.near);
+            public.CameraCdb.setValue(f32, default_camera_w, .Far, camera.far);
+            try cdb.writeCommit(default_camera_w);
+            cdb.setDefaultObject(default_camera);
 
             try public.CameraCdb.addPropertyAspect(
-                editor_inspector.UiPropertyAspect,
-                _cdb,
+                editor_inspector.UiInspectorPropertyValueAspect,
+
                 db,
                 .Type,
                 _g.camera_type_properties_aspec,
@@ -265,20 +255,18 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _gpu = apidb.getZigApi(module_name, cetech1.gpu.GpuBackendApi).?;
 
-    _inspector = apidb.getZigApi(module_name, editor_inspector.InspectorAPI).?;
-    _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
+    try cdb.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+
+    try editor_inspector.loadAPI(module_name);
+    try ecs.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
 
     // impl api
     try apidb.setOrRemoveZigApi(module_name, public.CameraAPI, &api, load);
@@ -290,13 +278,13 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
-    _g.camera_type_properties_aspec = try apidb.setGlobalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_camera_type_embed_prop_aspect", camera_type_aspec);
+    _g.camera_type_properties_aspec = try apidb.setGlobalVarValue(editor_inspector.UiInspectorPropertyValueAspect, module_name, "ct_camera_type_embed_prop_aspect", camera_type_aspec);
     _g.editor_component_aspect = try apidb.setGlobalVarValue(editor.EditorComponentAspect, module_name, "ct_editor_component_aspect", editor_component_aspect);
 
     return true;
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_camera(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_camera(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

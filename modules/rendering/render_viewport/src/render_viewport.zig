@@ -5,6 +5,7 @@ const cdb = cetech1.cdb;
 const gpu = cetech1.gpu;
 const ecs = cetech1.ecs;
 const math = cetech1.math;
+const apidb = cetech1.apidb;
 
 const transform = @import("transform");
 const camera = @import("camera");
@@ -75,8 +76,6 @@ pub const RendereableComponentI = struct {
     orderByCallback: ?*const fn (e1: ecs.EntityId, c1: *const anyopaque, e2: ecs.EntityId, c2: *const anyopaque) callconv(.c) i32 = null, // TODO: how without callconv?
 
     pub fn implement(comptime CompType: type, comptime T: type) RendereableComponentI {
-        if (!std.meta.hasFn(T, "render")) @compileError("implement me");
-
         return RendereableComponentI{
             .component_id = ecs.id(CompType),
             .render = T.render,
@@ -124,8 +123,6 @@ pub const ShaderableComponentI = struct {
     orderByCallback: ?*const fn (e1: ecs.EntityId, c1: *const anyopaque, e2: ecs.EntityId, c2: *const anyopaque) callconv(.c) i32 = null, // TODO: how without callconv?
 
     pub fn implement(comptime CompType: type, comptime T: type) ShaderableComponentI {
-        if (!std.meta.hasFn(T, "update")) @compileError("implement me");
-
         return ShaderableComponentI{
             .component_id = ecs.id(CompType),
             .init = if (std.meta.hasFn(T, "init")) T.init else null,
@@ -198,11 +195,6 @@ pub const Viewport = struct {
         setSelectedEntity: *const fn (viewport: *anyopaque, entity: ?ecs.EntityId) void,
 
         pub fn implement(comptime T: type) VTable {
-            if (!std.meta.hasFn(T, "setSize")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "getTexture")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "getSize")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "requestRender")) @compileError("implement me");
-
             return VTable{
                 .setSize = &T.setSize,
                 .getTexture = &T.getTexture,
@@ -222,15 +214,24 @@ pub const Viewport = struct {
 
 pub const ColorResource = "viewport_color";
 
-pub const RenderViewportApi = struct {
-    createViewport: *const fn (
-        name: [:0]const u8,
-        gpu_backend: gpu.GpuBackend,
-        pipeline: render_pipeline.RenderPipeline,
-        world: ?ecs.World,
-        output_to_backbuffer: bool,
-    ) anyerror!Viewport,
-    destroyViewport: *const fn (viewport: Viewport) void,
+pub fn createViewport(name: [:0]const u8, gpu_backend: gpu.GpuBackend, pipeline: render_pipeline.RenderPipeline, world: ?ecs.World, output_to_backbuffer: bool) anyerror!Viewport {
+    return api.createViewport(name, gpu_backend, pipeline, world, output_to_backbuffer);
+}
+pub fn destroyViewport(viewport: Viewport) void {
+    return api.destroyViewport(viewport);
+}
+pub fn uiDebugMenuItems(allocator: std.mem.Allocator, viewport: Viewport) anyerror!void {
+    return api.uiDebugMenuItems(allocator, viewport);
+}
 
+pub const RenderViewportApi = struct {
+    createViewport: *const fn (name: [:0]const u8, gpu_backend: gpu.GpuBackend, pipeline: render_pipeline.RenderPipeline, world: ?ecs.World, output_to_backbuffer: bool) anyerror!Viewport,
+    destroyViewport: *const fn (viewport: Viewport) void,
     uiDebugMenuItems: *const fn (allocator: std.mem.Allocator, viewport: Viewport) anyerror!void,
 };
+
+pub var api: *const RenderViewportApi = undefined;
+
+pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+    api = apidb.getZigApi(module, RenderViewportApi).?;
+}

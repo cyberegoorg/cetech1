@@ -2,45 +2,40 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 const math = cetech1.math;
-
+const gpu_dd = cetech1.gpu_dd;
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
+const apidb = cetech1.apidb;
 
-const public = @import("light_component.zig");
 const editor_inspector = @import("editor_inspector");
 const editor = @import("editor");
+const editor_tabs = @import("editor_tabs");
 const transform = @import("transform");
+
+const public = @import("light_component.zig");
 
 const module_name = .light_component;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _gpu: *const cetech1.gpu.GpuBackendApi = undefined;
 
-var _inspector: *const editor_inspector.InspectorAPI = undefined;
-
-var _ecs: *const ecs.EcsAPI = undefined;
+const tempalloc = cetech1.tempalloc;
+const profiler = cetech1.profiler;
 
 // Global state that can surive hot-reload
 const G = struct {
-    light_type_properties_aspec: *editor_inspector.UiPropertyAspect = undefined,
+    light_type_properties_aspec: *editor_inspector.UiInspectorPropertyValueAspect = undefined,
+    light_obj_aspec: *editor_inspector.UiInspectorObjAspect = undefined,
     light_editor_component_aspect: *editor.EditorComponentAspect = undefined,
 };
 var _g: *G = undefined;
@@ -51,7 +46,7 @@ const light_c = ecs.ComponentI.implement(
         .display_name = "Light",
         .cdb_type_hash = public.LightCdb.type_hash,
         .category = "Renderer",
-        .on_instantiate = .inherit,
+        .on_instantiate = .Inherit,
     },
     struct {
         pub fn fromCdb(
@@ -59,22 +54,21 @@ const light_c = ecs.ComponentI.implement(
             obj: cdb.ObjId,
             data: []u8,
         ) anyerror!void {
-            _ = allocator; // autofix
+            _ = allocator;
 
-            const r = _cdb.readObj(obj) orelse return;
+            const r = cdb.readObj(obj) orelse return;
 
             const light = std.mem.bytesAsValue(public.Light, data);
-            const type_str = public.LightCdb.readStr(_cdb, r, .Type) orelse "";
-            const color_obj = public.LightCdb.readSubObj(_cdb, r, .Color);
-            const radius = public.LightCdb.readValue(f32, _cdb, r, .Radius);
-            const power = public.LightCdb.readValue(f32, _cdb, r, .Power);
+            const color_obj = public.LightCdb.readSubObj(r, .Color);
+            const radius = public.LightCdb.readValue(f32, r, .Radius);
+            const power = public.LightCdb.readValue(f32, r, .Power);
 
-            const angle_inner = public.LightCdb.readValue(f32, _cdb, r, .AngleInner);
-            const angle_outer = public.LightCdb.readValue(f32, _cdb, r, .AngleOuter);
+            const angle_inner = public.LightCdb.readValue(f32, r, .AngleInner);
+            const angle_outer = public.LightCdb.readValue(f32, r, .AngleOuter);
 
-            const color: math.Color3f = if (color_obj) |c| cetech1.cdb_types.Color3fCdb.f.to(_cdb, c) else .white;
+            const color: math.Color3f = if (color_obj) |c| cetech1.cdb_types.Color3fCdb.f.to(c) else .white;
             light.* = public.Light{
-                .type = std.meta.stringToEnum(public.LightType, type_str) orelse .Point,
+                .type = public.LightCdb.readStrEnum(public.LightType, r, .Type, .Point),
                 .color = color,
                 .radius = radius,
                 .power = power,
@@ -85,7 +79,7 @@ const light_c = ecs.ComponentI.implement(
             // log.debug("LIGHT: {any}", .{light.*});
         }
 
-        pub fn debugdraw(gpu_backend: gpu.GpuBackend, dd: gpu.DDEncoder, world: ecs.World, entites: []const ecs.EntityId, data: []const u8, size: math.Vec2f) !void {
+        pub fn debugdraw(gpu_backend: gpu.GpuBackend, dd: gpu_dd.Encoder, world: ecs.World, entites: []const ecs.EntityId, data: []const u8, size: math.Vec2f) !void {
             _ = size;
             _ = gpu_backend;
 
@@ -141,43 +135,78 @@ const editor_light_component_aspect = editor.EditorComponentAspect.implement(
             allocator: std.mem.Allocator,
             obj: cdb.ObjId,
         ) ![:0]const u8 {
-            _ = allocator; // autofix
-            _ = obj; // autofix
+            _ = allocator;
+            _ = obj;
             return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Light});
         }
     },
 );
 
-var light_type_aspec = editor_inspector.UiPropertyAspect.implement(struct {
+var light_type_aspec = editor_inspector.UiInspectorPropertyValueAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         prop_idx: u32,
-        args: editor_inspector.cdbPropertiesViewArgs,
+        args: editor_inspector.InspectorViewArgs,
     ) !void {
-        _ = allocator; // autofix
-        _ = args; // autofix
-        const r = public.LightCdb.read(_cdb, obj).?;
-        const type_str = public.LightCdb.readStr(_cdb, r, .Type) orelse "";
-        var type_enum: public.LightType = std.meta.stringToEnum(public.LightType, type_str) orelse .Point;
+        _ = prop_idx;
+        _ = allocator;
+        _ = args;
+        const r = public.LightCdb.read(obj).?;
 
-        try _inspector.uiPropInputBegin(obj, prop_idx, true);
-        defer _inspector.uiPropInputEnd();
+        var type_enum = public.LightCdb.readStrEnum(public.LightType, r, .Type, .Point);
 
-        if (_coreui.comboFromEnum("", &type_enum)) {
-            const w = public.LightCdb.write(_cdb, obj).?;
-            try public.LightCdb.setStr(_cdb, w, .Type, @tagName(type_enum));
-            try public.LightCdb.commit(_cdb, w);
+        coreui.setNextItemWidth(-1.0);
+        if (coreui.comboFromEnum("", &type_enum)) {
+            const w = public.LightCdb.write(obj).?;
+            try public.LightCdb.setStr(w, .Type, @tagName(type_enum));
+            try public.LightCdb.commit(w);
         }
     }
 });
 
+var light_obj_aspec = editor_inspector.UiInspectorObjAspect.implement(struct {
+    pub fn ui(
+        allocator: std.mem.Allocator,
+        tab: *editor_tabs.TabO,
+        top_level_obj: cdb.ObjId,
+        obj: cdb.ObjId,
+        depth: u32,
+        args: editor_inspector.InspectorViewArgs,
+    ) !void {
+        _ = depth; // autofix
+
+        const r = public.LightCdb.read(obj).?;
+
+        const type_enum = public.LightCdb.readStrEnum(public.LightType, r, .Type, .Point);
+
+        if (editor_inspector.beginPropTable("Inspector")) {
+            defer editor_inspector.endPropTabel();
+
+            try editor_inspector.uiProperty(allocator, tab, top_level_obj, obj, public.LightCdb.propIdx(.Type), null, args);
+            try editor_inspector.uiProperty(allocator, tab, top_level_obj, obj, public.LightCdb.propIdx(.Power), null, args);
+            try editor_inspector.uiProperty(allocator, tab, top_level_obj, obj, public.LightCdb.propIdx(.Color), null, args);
+
+            switch (type_enum) {
+                .Point => {
+                    try editor_inspector.uiProperty(allocator, tab, top_level_obj, obj, public.LightCdb.propIdx(.Radius), null, args);
+                },
+                .Spot => {
+                    try editor_inspector.uiProperty(allocator, tab, top_level_obj, obj, public.LightCdb.propIdx(.Radius), "Lenght", args);
+                    try editor_inspector.uiProperty(allocator, tab, top_level_obj, obj, public.LightCdb.propIdx(.AngleInner), null, args);
+                    try editor_inspector.uiProperty(allocator, tab, top_level_obj, obj, public.LightCdb.propIdx(.AngleOuter), null, args);
+                },
+                .Direction => {},
+            }
+        }
+    }
+});
 // CDB
 var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.DbId) !void {
         // Light
         {
-            const light_typeidx = try _cdb.addType(
+            const light_typeidx = try cdb.addType(
                 db,
                 public.LightCdb.name,
                 &[_]cdb.PropDef{
@@ -192,57 +221,58 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
             try public.LightCdb.addAspect(
                 editor.EditorComponentAspect,
-                _cdb,
+
                 db,
                 _g.light_editor_component_aspect,
             );
 
             const light = public.Light{};
 
-            const default_light = try _cdb.createObject(db, light_typeidx);
-            const default_light_w = _cdb.writeObj(default_light).?;
+            const default_light = try cdb.createObject(db, light_typeidx);
+            const default_light_w = cdb.writeObj(default_light).?;
 
-            const default_color = try cetech1.cdb_types.Color3fCdb.createObject(_cdb, db);
-            const default_color_w = _cdb.writeObj(default_color).?;
+            const default_color = try cetech1.cdb_types.Color3fCdb.createObject(db);
+            const default_color_w = cdb.writeObj(default_color).?;
 
-            try public.LightCdb.setStr(_cdb, default_light_w, .Type, "point");
-            public.LightCdb.setValue(f32, _cdb, default_light_w, .Radius, light.radius);
-            try public.LightCdb.setSubObj(_cdb, default_light_w, .Color, default_color_w);
+            try public.LightCdb.setStr(default_light_w, .Type, "point");
+            public.LightCdb.setValue(f32, default_light_w, .Radius, light.radius);
+            try public.LightCdb.setSubObj(default_light_w, .Color, default_color_w);
 
-            try _cdb.writeCommit(default_color_w);
-            try _cdb.writeCommit(default_light_w);
-            _cdb.setDefaultObject(default_light);
+            try cdb.writeCommit(default_color_w);
+            try cdb.writeCommit(default_light_w);
+            cdb.setDefaultObject(default_light);
 
             try public.LightCdb.addPropertyAspect(
-                editor_inspector.UiPropertyAspect,
-                _cdb,
+                editor_inspector.UiInspectorPropertyValueAspect,
+
                 db,
                 .Type,
                 _g.light_type_properties_aspec,
+            );
+
+            try public.LightCdb.addAspect(
+                editor_inspector.UiInspectorObjAspect,
+
+                db,
+                _g.light_obj_aspec,
             );
         }
     }
 });
 
-const api = public.LightAPI{};
-
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
+
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _gpu = apidb.getZigApi(module_name, cetech1.gpu.GpuBackendApi).?;
 
-    _inspector = apidb.getZigApi(module_name, editor_inspector.InspectorAPI).?;
-    _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
-
-    try apidb.setOrRemoveZigApi(module_name, public.LightAPI, &api, load);
+    try cdb.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+    try editor_inspector.loadAPI(module_name);
+    try ecs.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
 
     // impl interface
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
@@ -251,13 +281,14 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
-    _g.light_type_properties_aspec = try apidb.setGlobalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_light_component_type_embed_prop_aspect", light_type_aspec);
+    _g.light_type_properties_aspec = try apidb.setGlobalVarValue(editor_inspector.UiInspectorPropertyValueAspect, module_name, "ct_light_component_type_embed_prop_aspect", light_type_aspec);
+    _g.light_obj_aspec = try apidb.setGlobalVarValue(editor_inspector.UiInspectorObjAspect, module_name, "ct_light_component_obj_aspect", light_obj_aspec);
     _g.light_editor_component_aspect = try apidb.setGlobalVarValue(editor.EditorComponentAspect, module_name, "ct_light_editor_component_aspect", editor_light_component_aspect);
 
     return true;
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_light_component(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_light_component(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

@@ -5,11 +5,11 @@ const cetech1 = @import("cetech1");
 
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
-
 const gpu = cetech1.gpu;
+const gpu_dd = cetech1.gpu_dd;
 const coreui = cetech1.coreui;
-
 const math = cetech1.math;
+const apidb = cetech1.apidb;
 
 const transform = @import("transform");
 const zphy = @import("zphysics");
@@ -19,24 +19,16 @@ const module_name = .physics_jolt;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _gpu: *const cetech1.gpu.GpuBackendApi = undefined;
-var _dd: *const cetech1.gpu.GpuDDApi = undefined;
-var _transform: *const transform.TransformApi = undefined;
 
-var _ecs: *const ecs.EcsAPI = undefined;
+const tempalloc = cetech1.tempalloc;
+const profiler = cetech1.profiler;
 
 // Global state that can surive hot-reload
 const G = struct {};
@@ -63,7 +55,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
     },
 );
 
-const PhysicsSystemJolt = struct {
+const PhysicsSystemJolt = extern struct {
     system: ?*zphy.PhysicsSystem,
     bpli: *BroadPhaseLayerInterface,
     obplf: *ObjectVsBroadPhaseLayerFilter,
@@ -99,7 +91,7 @@ const physics_system_jolt_c = ecs.ComponentI.implement(
             }
         }
 
-        pub fn debugdraw(gpu_backend: gpu.GpuBackend, dd: gpu.DDEncoder, world: ecs.World, entites: []const ecs.EntityId, data: []const u8, size: math.Vec2f) !void {
+        pub fn debugdraw(gpu_backend: gpu.GpuBackend, dd: gpu_dd.Encoder, world: ecs.World, entites: []const ecs.EntityId, data: []const u8, size: math.Vec2f) !void {
             _ = size;
             _ = gpu_backend;
             _ = entites;
@@ -131,7 +123,7 @@ const physics_system_jolt_c = ecs.ComponentI.implement(
     },
 );
 
-const PhysicsShapeJolt = struct {
+const PhysicsShapeJolt = extern struct {
     shape: ?*zphy.Shape = undefined,
 };
 
@@ -160,7 +152,7 @@ const physics_shape_jolt_c = ecs.ComponentI.implement(
     },
 );
 
-const PhysicsBodyJolt = struct {
+const PhysicsBodyJolt = extern struct {
     body: zphy.BodyId = .invalid,
 };
 
@@ -312,8 +304,8 @@ const init_physics_body_system_i = ecs.SystemI.implement(
         pub fn tick(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
             _ = dt;
 
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
+            const alloc = try tempalloc.create();
+            defer tempalloc.destroy(alloc);
 
             var body_ids = cetech1.ArrayList(zphy.BodyId){};
             defer body_ids.deinit(alloc);
@@ -419,8 +411,8 @@ const simulate_system_i = ecs.SystemI.implement(
                     // log.debug("Gravity {any}", .{sys.system.?.getGravity()});
 
                     // Sync active bodies transforms.
-                    const alloc = try _tmpalloc.create();
-                    defer _tmpalloc.destroy(alloc);
+                    const alloc = try tempalloc.create();
+                    defer tempalloc.destroy(alloc);
 
                     const all_bodies = system.getBodiesUnsafe();
                     var active_bodies = std.ArrayList(zphy.BodyId){};
@@ -453,8 +445,8 @@ const simulate_system_i = ecs.SystemI.implement(
 
                         t.world = a_t.blendTransform(b_t, alpha);
 
-                        //  _transform.transformChilds(world, ent);
-                        _transform.transformOnlyChilds(world, ent);
+                        //  transform.transformChilds(world, ent);
+                        transform.transformOnlyChilds(world, ent);
                         // world.modified(ent, transform.LocalTransformComponent);
                     }
                 }
@@ -500,8 +492,8 @@ const deleted_body_observer_i = ecs.ObserverI.implement(
         pub fn tick(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
             _ = dt;
 
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
+            const alloc = try tempalloc.create();
+            defer tempalloc.destroy(alloc);
 
             var body_ids = cetech1.ArrayList(zphy.BodyId){};
             defer body_ids.deinit(alloc);
@@ -853,7 +845,7 @@ const DebugRenderer = if (!debug_renderer_enabled) void else extern struct {
     const VTable = zphy.DebugRenderer.VTable(@This());
     vtable: *const VTable = zphy.DebugRenderer.initVTable(@This()),
 
-    dd: ?*const gpu.DDEncoder = null,
+    dd: ?*const gpu_dd.Encoder = null,
 
     pub fn shouldBodyDraw(_: *const zphy.Body) callconv(.c) bool {
         return true;
@@ -915,10 +907,10 @@ const DebugRenderer = if (!debug_renderer_enabled) void else extern struct {
         // _ = indices;
         // _ = index_count;
 
-        const alloc = _tmpalloc.create() catch undefined;
-        defer _tmpalloc.destroy(alloc);
+        const alloc = tempalloc.create() catch undefined;
+        defer tempalloc.destroy(alloc);
 
-        const dd_vers = alloc.alloc(gpu.DDVertex, vertex_count) catch undefined;
+        const dd_vers = alloc.alloc(gpu_dd.Vertex, vertex_count) catch undefined;
         defer alloc.free(dd_vers);
 
         for (0..vertex_count) |vidx| {
@@ -928,7 +920,7 @@ const DebugRenderer = if (!debug_renderer_enabled) void else extern struct {
                 .z = vertices[vidx].position[2],
             };
         }
-        const geom = _dd.createGeometry(vertex_count, dd_vers, index_count, @ptrCast(indices), true);
+        const geom = gpu_dd.createGeometry(vertex_count, dd_vers, index_count, @ptrCast(indices), true);
         return zphy.DebugRenderer.createTriangleBatch(@ptrFromInt(geom.idx + 1));
     }
     pub fn destroyTriangleBatch(
@@ -937,8 +929,8 @@ const DebugRenderer = if (!debug_renderer_enabled) void else extern struct {
     ) callconv(.c) void {
         _ = self;
 
-        const geom = gpu.DDGeometryHandle{ .idx = @truncate(@intFromPtr(batch) - 1) };
-        _dd.destroyGeometry(geom);
+        const geom = gpu_dd.GeometryHandle{ .idx = @truncate(@intFromPtr(batch) - 1) };
+        gpu_dd.destroyGeometry(geom);
     }
     pub fn drawGeometry(
         self: *DebugRenderer,
@@ -965,7 +957,7 @@ const DebugRenderer = if (!debug_renderer_enabled) void else extern struct {
             defer dd.pop();
 
             const prim = zphy.DebugRenderer.getPrimitiveFromBatch(geometry.LODs[0].batch);
-            const geom = gpu.DDGeometryHandle{ .idx = @truncate(@intFromPtr(prim) - 1) };
+            const geom = gpu_dd.GeometryHandle{ .idx = @truncate(@intFromPtr(prim) - 1) };
 
             dd.setColor(.fromU32(color.uint));
 
@@ -992,22 +984,19 @@ const DebugRenderer = if (!debug_renderer_enabled) void else extern struct {
 };
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
 
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _gpu = apidb.getZigApi(module_name, cetech1.gpu.GpuBackendApi).?;
-    _dd = apidb.getZigApi(module_name, cetech1.gpu.GpuDDApi).?;
 
-    _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
-    _transform = apidb.getZigApi(module_name, transform.TransformApi).?;
+    try cdb.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
+    try gpu_dd.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+    try ecs.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
+    try transform.loadAPI(module_name);
 
     // impl interface
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
@@ -1040,6 +1029,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_physics_jolt(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_physics_jolt(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

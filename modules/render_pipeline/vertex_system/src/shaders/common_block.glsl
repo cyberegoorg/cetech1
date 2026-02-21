@@ -16,7 +16,6 @@
 #define CT_VERTEX_SEMANTIC_MAX 16
 
 struct ct_vertex_loader_ctx {
-    uint instance_id;
     uint active_channels;
     uint num_vertices;
     uint num_sets;

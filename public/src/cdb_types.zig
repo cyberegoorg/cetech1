@@ -12,19 +12,19 @@ pub const Color3fCdb = cdb.CdbTypeDecl(
         B,
     },
     struct {
-        pub fn to(api: *const cdb.CdbAPI, obj: cdb.ObjId) math.Color3f {
-            const r = api.readObj(obj) orelse return .{ .r = 1, .g = 1, .b = 1 };
+        pub fn to(obj: cdb.ObjId) math.Color3f {
+            const r = cdb.readObj(obj) orelse return .{ .r = 1, .g = 1, .b = 1 };
             return .{
-                .r = Color3fCdb.readValue(f32, api, r, .R),
-                .g = Color3fCdb.readValue(f32, api, r, .G),
-                .b = Color3fCdb.readValue(f32, api, r, .B),
+                .r = Color3fCdb.readValue(f32, r, .R),
+                .g = Color3fCdb.readValue(f32, r, .G),
+                .b = Color3fCdb.readValue(f32, r, .B),
             };
         }
 
-        pub fn from(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: math.Color3f) void {
-            Color3fCdb.setValue(f32, api, obj_w, .R, value.r);
-            Color3fCdb.setValue(f32, api, obj_w, .G, value.g);
-            Color3fCdb.setValue(f32, api, obj_w, .B, value.b);
+        pub fn from(obj_w: *cdb.Obj, value: math.Color3f) void {
+            Color3fCdb.setValue(f32, obj_w, .R, value.r);
+            Color3fCdb.setValue(f32, obj_w, .G, value.g);
+            Color3fCdb.setValue(f32, obj_w, .B, value.b);
         }
     },
 );
@@ -38,21 +38,21 @@ pub const Color4fCdb = cdb.CdbTypeDecl(
         A,
     },
     struct {
-        pub fn to(api: *const cdb.CdbAPI, obj: cdb.ObjId) math.Color4f {
-            const r = api.readObj(obj) orelse return .{ .r = 1, .g = 1, .b = 1, .a = 1 };
+        pub fn to(obj: cdb.ObjId) math.Color4f {
+            const r = cdb.readObj(obj) orelse return .{ .r = 1, .g = 1, .b = 1, .a = 1 };
             return .{
-                .r = Color4fCdb.readValue(f32, api, r, .R),
-                .g = Color4fCdb.readValue(f32, api, r, .G),
-                .b = Color4fCdb.readValue(f32, api, r, .B),
-                .a = Color4fCdb.readValue(f32, api, r, .A),
+                .r = Color4fCdb.readValue(f32, r, .R),
+                .g = Color4fCdb.readValue(f32, r, .G),
+                .b = Color4fCdb.readValue(f32, r, .B),
+                .a = Color4fCdb.readValue(f32, r, .A),
             };
         }
 
-        pub fn from(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: math.Color4f) void {
-            Color4fCdb.setValue(f32, api, obj_w, .R, value.r);
-            Color4fCdb.setValue(f32, api, obj_w, .G, value.g);
-            Color4fCdb.setValue(f32, api, obj_w, .B, value.b);
-            Color4fCdb.setValue(f32, api, obj_w, .A, value.a);
+        pub fn from(obj_w: *cdb.Obj, value: math.Color4f) void {
+            Color4fCdb.setValue(f32, obj_w, .R, value.r);
+            Color4fCdb.setValue(f32, obj_w, .G, value.g);
+            Color4fCdb.setValue(f32, obj_w, .B, value.b);
+            Color4fCdb.setValue(f32, obj_w, .A, value.a);
         }
     },
 );
@@ -64,17 +64,17 @@ pub const Vec2fCdb = cdb.CdbTypeDecl(
         Y,
     },
     struct {
-        pub fn to(api: *const cdb.CdbAPI, obj: cdb.ObjId) math.Vec2f {
-            const r = api.readObj(obj) orelse return .{};
+        pub fn to(obj: cdb.ObjId) math.Vec2f {
+            const r = cdb.readObj(obj) orelse return .{};
             return .{
-                .x = Vec2fCdb.readValue(f32, api, r, .X),
-                .y = Vec2fCdb.readValue(f32, api, r, .Y),
+                .x = Vec2fCdb.readValue(f32, r, .X),
+                .y = Vec2fCdb.readValue(f32, r, .Y),
             };
         }
 
-        pub fn from(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: math.Vec2f) void {
-            Vec2fCdb.setValue(f32, api, obj_w, .X, value.x);
-            Vec2fCdb.setValue(f32, api, obj_w, .Y, value.y);
+        pub fn from(obj_w: *cdb.Obj, value: math.Vec2f) void {
+            Vec2fCdb.setValue(f32, obj_w, .X, value.x);
+            Vec2fCdb.setValue(f32, obj_w, .Y, value.y);
         }
     },
 );
@@ -87,19 +87,19 @@ pub const Vec3fCdb = cdb.CdbTypeDecl(
         Z,
     },
     struct {
-        pub fn to(api: *const cdb.CdbAPI, obj: cdb.ObjId) math.Vec3f {
-            const r = api.readObj(obj) orelse return .{};
+        pub fn to(obj: cdb.ObjId) math.Vec3f {
+            const r = cdb.readObj(obj) orelse return .{};
             return .{
-                .x = Vec3fCdb.readValue(f32, api, r, .X),
-                .y = Vec3fCdb.readValue(f32, api, r, .Y),
-                .z = Vec3fCdb.readValue(f32, api, r, .Z),
+                .x = Vec3fCdb.readValue(f32, r, .X),
+                .y = Vec3fCdb.readValue(f32, r, .Y),
+                .z = Vec3fCdb.readValue(f32, r, .Z),
             };
         }
 
-        pub fn from(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: math.Vec3f) void {
-            Vec3fCdb.setValue(f32, api, obj_w, .X, value.x);
-            Vec3fCdb.setValue(f32, api, obj_w, .Y, value.y);
-            Vec3fCdb.setValue(f32, api, obj_w, .Z, value.z);
+        pub fn from(obj_w: *cdb.Obj, value: math.Vec3f) void {
+            Vec3fCdb.setValue(f32, obj_w, .X, value.x);
+            Vec3fCdb.setValue(f32, obj_w, .Y, value.y);
+            Vec3fCdb.setValue(f32, obj_w, .Z, value.z);
         }
     },
 );
@@ -113,21 +113,21 @@ pub const Vec4fCdb = cdb.CdbTypeDecl(
         W,
     },
     struct {
-        pub fn to(api: *const cdb.CdbAPI, obj: cdb.ObjId) math.Vec4f {
-            const r = api.readObj(obj) orelse return .{};
+        pub fn to(obj: cdb.ObjId) math.Vec4f {
+            const r = cdb.readObj(obj) orelse return .{};
             return .{
-                .x = Vec4fCdb.readValue(f32, api, r, .X),
-                .y = Vec4fCdb.readValue(f32, api, r, .Y),
-                .z = Vec4fCdb.readValue(f32, api, r, .Z),
-                .w = Vec4fCdb.readValue(f32, api, r, .W),
+                .x = Vec4fCdb.readValue(f32, r, .X),
+                .y = Vec4fCdb.readValue(f32, r, .Y),
+                .z = Vec4fCdb.readValue(f32, r, .Z),
+                .w = Vec4fCdb.readValue(f32, r, .W),
             };
         }
 
-        pub fn from(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: math.Vec4f) void {
-            Vec4fCdb.setValue(f32, api, obj_w, .X, value[0]);
-            Vec4fCdb.setValue(f32, api, obj_w, .Y, value[1]);
-            Vec4fCdb.setValue(f32, api, obj_w, .Z, value[2]);
-            Vec4fCdb.setValue(f32, api, obj_w, .W, value[3]);
+        pub fn from(obj_w: *cdb.Obj, value: math.Vec4f) void {
+            Vec4fCdb.setValue(f32, obj_w, .X, value[0]);
+            Vec4fCdb.setValue(f32, obj_w, .Y, value[1]);
+            Vec4fCdb.setValue(f32, obj_w, .Z, value[2]);
+            Vec4fCdb.setValue(f32, obj_w, .W, value[3]);
         }
     },
 );
@@ -141,21 +141,21 @@ pub const QuatfCdb = cdb.CdbTypeDecl(
         W,
     },
     struct {
-        pub fn to(api: *const cdb.CdbAPI, obj: cdb.ObjId) math.Quatf {
-            const r = api.readObj(obj) orelse return .{};
+        pub fn to(obj: cdb.ObjId) math.Quatf {
+            const r = cdb.readObj(obj) orelse return .{};
             return .{
-                .x = QuatfCdb.readValue(f32, api, r, .X),
-                .y = QuatfCdb.readValue(f32, api, r, .Y),
-                .z = QuatfCdb.readValue(f32, api, r, .Z),
-                .w = QuatfCdb.readValue(f32, api, r, .W),
+                .x = QuatfCdb.readValue(f32, r, .X),
+                .y = QuatfCdb.readValue(f32, r, .Y),
+                .z = QuatfCdb.readValue(f32, r, .Z),
+                .w = QuatfCdb.readValue(f32, r, .W),
             };
         }
 
-        pub fn from(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: math.Quatf) void {
-            QuatfCdb.setValue(f32, api, obj_w, .X, value.x);
-            QuatfCdb.setValue(f32, api, obj_w, .Y, value.y);
-            QuatfCdb.setValue(f32, api, obj_w, .Z, value.z);
-            QuatfCdb.setValue(f32, api, obj_w, .W, value.w);
+        pub fn from(obj_w: *cdb.Obj, value: math.Quatf) void {
+            QuatfCdb.setValue(f32, obj_w, .X, value.x);
+            QuatfCdb.setValue(f32, obj_w, .Y, value.y);
+            QuatfCdb.setValue(f32, obj_w, .Z, value.z);
+            QuatfCdb.setValue(f32, obj_w, .W, value.w);
         }
     },
 );
@@ -168,19 +168,19 @@ pub const PositionCdb = cdb.CdbTypeDecl(
         Z,
     },
     struct {
-        pub fn to(api: *const cdb.CdbAPI, obj: cdb.ObjId) math.Vec3f {
-            const r = api.readObj(obj) orelse return .{};
+        pub fn to(obj: cdb.ObjId) math.Vec3f {
+            const r = cdb.readObj(obj) orelse return .{};
             return .{
-                .x = PositionCdb.readValue(f32, api, r, .X),
-                .y = PositionCdb.readValue(f32, api, r, .Y),
-                .z = PositionCdb.readValue(f32, api, r, .Z),
+                .x = PositionCdb.readValue(f32, r, .X),
+                .y = PositionCdb.readValue(f32, r, .Y),
+                .z = PositionCdb.readValue(f32, r, .Z),
             };
         }
 
-        pub fn from(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: math.Vec3f) void {
-            PositionCdb.setValue(f32, api, obj_w, .X, value.x);
-            PositionCdb.setValue(f32, api, obj_w, .Y, value.y);
-            PositionCdb.setValue(f32, api, obj_w, .Z, value.z);
+        pub fn from(obj_w: *cdb.Obj, value: math.Vec3f) void {
+            PositionCdb.setValue(f32, obj_w, .X, value.x);
+            PositionCdb.setValue(f32, obj_w, .Y, value.y);
+            PositionCdb.setValue(f32, obj_w, .Z, value.z);
         }
     },
 );
@@ -193,19 +193,19 @@ pub const ScaleCdb = cdb.CdbTypeDecl(
         Z,
     },
     struct {
-        pub fn to(api: *const cdb.CdbAPI, obj: cdb.ObjId) math.Vec3f {
-            const r = api.readObj(obj) orelse return .{ .x = 1.0, .y = 1.0, .z = 1.0 };
+        pub fn to(obj: cdb.ObjId) math.Vec3f {
+            const r = cdb.readObj(obj) orelse return .{ .x = 1.0, .y = 1.0, .z = 1.0 };
             return .{
-                ScaleCdb.readValue(f32, api, r, .X),
-                ScaleCdb.readValue(f32, api, r, .Y),
-                ScaleCdb.readValue(f32, api, r, .Z),
+                ScaleCdb.readValue(f32, r, .X),
+                ScaleCdb.readValue(f32, r, .Y),
+                ScaleCdb.readValue(f32, r, .Z),
             };
         }
 
-        pub fn from(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: math.Vec3f) void {
-            ScaleCdb.setValue(f32, api, obj_w, .X, value.x);
-            ScaleCdb.setValue(f32, api, obj_w, .Y, value.y);
-            ScaleCdb.setValue(f32, api, obj_w, .Z, value.z);
+        pub fn from(obj_w: *cdb.Obj, value: math.Vec3f) void {
+            ScaleCdb.setValue(f32, obj_w, .X, value.x);
+            ScaleCdb.setValue(f32, obj_w, .Y, value.y);
+            ScaleCdb.setValue(f32, obj_w, .Z, value.z);
         }
     },
 );
@@ -218,19 +218,19 @@ pub const RotationCdb = cdb.CdbTypeDecl(
         Z,
     },
     struct {
-        pub fn to(api: *const cdb.CdbAPI, obj: cdb.ObjId) math.Vec3f {
-            const r = api.readObj(obj) orelse return .{};
+        pub fn to(obj: cdb.ObjId) math.Vec3f {
+            const r = cdb.readObj(obj) orelse return .{};
             return .{
-                RotationCdb.readValue(f32, api, r, .X),
-                RotationCdb.readValue(f32, api, r, .Y),
-                RotationCdb.readValue(f32, api, r, .Z),
+                RotationCdb.readValue(f32, r, .X),
+                RotationCdb.readValue(f32, r, .Y),
+                RotationCdb.readValue(f32, r, .Z),
             };
         }
 
-        pub fn from(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: math.Vec3f) void {
-            ScaleCdb.setValue(f32, api, obj_w, .X, value.x);
-            ScaleCdb.setValue(f32, api, obj_w, .Y, value.y);
-            ScaleCdb.setValue(f32, api, obj_w, .Z, value.z);
+        pub fn from(obj_w: *cdb.Obj, value: math.Vec3f) void {
+            ScaleCdb.setValue(f32, obj_w, .X, value.x);
+            ScaleCdb.setValue(f32, obj_w, .Y, value.y);
+            ScaleCdb.setValue(f32, obj_w, .Z, value.z);
         }
     },
 );
@@ -251,7 +251,7 @@ pub const StringTypeCdb = cdb.CdbTypeDecl(
     struct {},
 );
 
-pub const i32TypeCdb = cdb.CdbTypeDecl(
+pub const I32TypeCdb = cdb.CdbTypeDecl(
     "ct_i32",
     enum(u32) {
         Value = 0,
@@ -259,7 +259,7 @@ pub const i32TypeCdb = cdb.CdbTypeDecl(
     struct {},
 );
 
-pub const u32TypeCdb = cdb.CdbTypeDecl(
+pub const U32TypeCdb = cdb.CdbTypeDecl(
     "ct_u32",
     enum(u32) {
         Value = 0,
@@ -267,7 +267,7 @@ pub const u32TypeCdb = cdb.CdbTypeDecl(
     struct {},
 );
 
-pub const i64TypeCdb = cdb.CdbTypeDecl(
+pub const I64TypeCdb = cdb.CdbTypeDecl(
     "ct_i64",
     enum(u32) {
         Value = 0,
@@ -275,7 +275,7 @@ pub const i64TypeCdb = cdb.CdbTypeDecl(
     struct {},
 );
 
-pub const u64TypeCdb = cdb.CdbTypeDecl(
+pub const U64TypeCdb = cdb.CdbTypeDecl(
     "ct_u64",
     enum(u32) {
         Value = 0,
@@ -283,7 +283,7 @@ pub const u64TypeCdb = cdb.CdbTypeDecl(
     struct {},
 );
 
-pub const f32TypeCdb = cdb.CdbTypeDecl(
+pub const F32TypeCdb = cdb.CdbTypeDecl(
     "ct_f32",
     enum(u32) {
         Value = 0,
@@ -291,7 +291,7 @@ pub const f32TypeCdb = cdb.CdbTypeDecl(
     struct {},
 );
 
-pub const f64TypeCdb = cdb.CdbTypeDecl(
+pub const F64TypeCdb = cdb.CdbTypeDecl(
     "ct_f64",
     enum(u32) {
         Value = 0,
@@ -323,8 +323,8 @@ pub fn BigTypeDecl(comptime type_name: [:0]const u8) type {
 }
 
 /// Add BigType db
-pub fn addBigType(db: *const cdb.CdbAPI, dbidx: cdb.DbId, name: []const u8, force_subobj_type: ?cetech1.StrId32) !cdb.TypeIdx {
-    return db.addType(
+pub fn addBigType(dbidx: cdb.DbId, name: []const u8, force_subobj_type: ?cetech1.StrId32) !cdb.TypeIdx {
+    return cdb.addType(
         dbidx,
         name,
         &.{

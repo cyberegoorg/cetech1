@@ -22,23 +22,17 @@ const module_name = .editor_entity_asset;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _coreui: *const coreui.CoreUIApi = undefined;
-var _editor: *const editor.EditorAPI = undefined;
+const apidb = cetech1.apidb;
+
 var _assetdb: *const assetdb.AssetDBAPI = undefined;
-var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _ecs: *const ecs.EcsAPI = undefined;
-var _editor_tree: *const editor_tree.TreeAPI = undefined;
-var _inspector: *const editor_inspector.InspectorAPI = undefined;
+const tempalloc = cetech1.tempalloc;
 
 // Global state that can surive hot-reload
 const G = struct {
@@ -49,7 +43,7 @@ const G = struct {
     entity_preview_aspect: *asset_preview.AssetPreviewAspectI = undefined,
     entity_children_drop_aspect: *editor.UiDropObj = undefined,
     entity_flaten_aspect: *editor_tree.UiTreeFlatenPropertyAspect = undefined,
-    entity_child_storage_prop_aspect: *editor_inspector.UiPropertyAspect = undefined,
+    entity_child_storage_prop_aspect: *editor_inspector.UiInspectorPropertyValueAspect = undefined,
 };
 var _g: *G = undefined;
 
@@ -63,17 +57,17 @@ var create_entity_i = editor_assetdb.CreateAssetI.implement(
             folder: cdb.ObjId,
         ) !void {
             var buff: [256:0]u8 = undefined;
-            const name = try _assetdb.buffGetValidName(
+            const name = try assetdb.buffGetValidName(
                 allocator,
                 &buff,
                 folder,
-                _cdb.getTypeIdx(db, ecs.EntityCdb.type_hash).?,
+                cdb.getTypeIdx(db, ecs.EntityCdb.type_hash).?,
                 "NewEntity",
             );
 
-            const new_obj = try ecs.EntityCdb.createObject(_cdb, db);
+            const new_obj = try ecs.EntityCdb.createObject(db);
 
-            _ = _assetdb.createAsset(name, folder, new_obj);
+            _ = assetdb.createAsset(name, folder, new_obj);
         }
 
         pub fn menuItem() ![:0]const u8 {
@@ -87,7 +81,7 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
         allocator: std.mem.Allocator,
         tab: *editor_tabs.TabO,
         context: cetech1.StrId64,
-        selection: []const coreui.SelectionItem,
+        selection: []const coreui.SelectedObj,
         filter: ?[:0]const u8,
     ) !bool {
         _ = tab;
@@ -95,16 +89,16 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
         if (context.id != editor.Contexts.create.id) return false;
 
         for (selection) |obj| {
-            const db = _cdb.getDbFromObjid(obj.obj);
-            const ent_obj = _assetdb.getObjForAsset(obj.obj) orelse obj.obj;
+            const db = cdb.getDbFromObjid(obj.obj);
+            const ent_obj = assetdb.getObjForAsset(obj.obj) orelse obj.obj;
 
-            if (!ent_obj.type_idx.eql(ecs.EntityCdb.typeIdx(_cdb, db))) return false;
+            if (!ent_obj.type_idx.eql(ecs.EntityCdb.typeIdx(db))) return false;
         }
 
         var valid = true;
         if (filter) |f| {
             valid = false;
-            if (_coreui.uiFilterPass(allocator, f, "Add component", false) != null) return true;
+            if (coreui.uiFilterPass(allocator, f, "Add component", false) != null) return true;
         }
         return true;
     }
@@ -113,7 +107,7 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
         allocator: std.mem.Allocator,
         tab: *editor_tabs.TabO,
         context: cetech1.StrId64,
-        selection: []const coreui.SelectionItem,
+        selection: []const coreui.SelectedObj,
         filter: ?[:0]const u8,
     ) !void {
         _ = context;
@@ -121,9 +115,9 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
 
         const obj = selection[0];
 
-        const ent_obj = _assetdb.getObjForAsset(obj.obj) orelse obj.obj;
-        if (_coreui.beginMenu(allocator, coreui.Icons.Add ++ "  " ++ "Add component", true, filter)) {
-            defer _coreui.endMenu();
+        const ent_obj = assetdb.getObjForAsset(obj.obj) orelse obj.obj;
+        if (coreui.beginMenu(allocator, coreui.Icons.Add ++ "  " ++ "Add component", true, filter)) {
+            defer coreui.endMenu();
 
             try entity_component_menu_aspect.add_menu(allocator, ent_obj, ecs.EntityCdb.propIdx(.Components), filter);
         }
@@ -138,17 +132,16 @@ const entity_component_menu_aspect = editor.UiSetMenusAspect.implement(struct {
         prop_idx: u32,
         filter: ?[:0]const u8,
     ) !void {
-        _ = prop_idx; // autofix
+        _ = prop_idx;
 
-        const db = _cdb.getDbFromObjid(obj);
-        const entity_r = ecs.EntityCdb.read(_cdb, obj).?;
+        const db = cdb.getDbFromObjid(obj);
+        const entity_r = ecs.EntityCdb.read(obj).?;
 
         var components_set = cetech1.ArraySet(cdb.TypeIdx).init();
         defer components_set.deinit(allocator);
 
-        if (try ecs.EntityCdb.readSubObjSet(_cdb, entity_r, .Components, allocator)) |components| {
+        if (try ecs.EntityCdb.readSubObjSet(entity_r, .Components, allocator)) |components| {
             defer allocator.free(components);
-            //try components_set.ensureTotalCapacity(components.len);
 
             for (components) |component_obj| {
                 _ = try components_set.add(allocator, component_obj.type_idx);
@@ -158,21 +151,21 @@ const entity_component_menu_aspect = editor.UiSetMenusAspect.implement(struct {
         var icon_buff: [32:0]u8 = undefined;
         var labbel_buff: [128:0]u8 = undefined;
 
-        const impls = try _apidb.getImpl(allocator, ecs.ComponentI);
+        const impls = try apidb.getImpl(allocator, ecs.ComponentI);
         defer allocator.free(impls);
 
         // Create category menu first
         if (filter == null) {
             for (impls) |iface| {
                 if (iface.cdb_type_hash.isEmpty()) continue;
-                if (components_set.contains(_cdb.getTypeIdx(db, iface.cdb_type_hash).?)) continue;
+                if (components_set.contains(cdb.getTypeIdx(db, iface.cdb_type_hash).?)) continue;
 
                 var buff: [128:0]u8 = undefined;
                 if (iface.category) |category| {
                     const label = try std.fmt.bufPrintZ(&buff, coreui.Icons.Folder ++ "  " ++ "{s}###{s}", .{ category, category });
 
-                    if (_coreui.beginMenu(allocator, label, true, null)) {
-                        _coreui.endMenu();
+                    if (coreui.beginMenu(allocator, label, true, null)) {
+                        coreui.endMenu();
                     }
                 }
             }
@@ -180,10 +173,10 @@ const entity_component_menu_aspect = editor.UiSetMenusAspect.implement(struct {
 
         for (impls) |iface| {
             if (iface.cdb_type_hash.isEmpty()) continue;
-            if (components_set.contains(_cdb.getTypeIdx(db, iface.cdb_type_hash).?)) continue;
+            if (components_set.contains(cdb.getTypeIdx(db, iface.cdb_type_hash).?)) continue;
 
             if (filter) |f| {
-                if (_coreui.uiFilterPass(allocator, f, iface.display_name, false) == null) continue;
+                if (coreui.uiFilterPass(allocator, f, iface.display_name, false) == null) continue;
             }
 
             var category_open = true;
@@ -191,22 +184,22 @@ const entity_component_menu_aspect = editor.UiSetMenusAspect.implement(struct {
                 if (iface.category) |category| {
                     var buff: [128:0]u8 = undefined;
                     const label = try std.fmt.bufPrintZ(&buff, "###{s}", .{category});
-                    category_open = _coreui.beginMenu(allocator, label, true, null);
+                    category_open = coreui.beginMenu(allocator, label, true, null);
                 }
             }
 
             var icon: [:0]const u8 = coreui.Icons.Component;
-            const aspect = _cdb.getAspect(
+            const aspect = cdb.getAspect(
                 editor.EditorComponentAspect,
                 db,
-                _cdb.getTypeIdx(db, iface.cdb_type_hash).?,
+                cdb.getTypeIdx(db, iface.cdb_type_hash).?,
             );
 
             icon = blk: {
                 if (aspect) |a| {
                     if (a.uiIcons) |uiIcons| break :blk (try uiIcons(&icon_buff, allocator, .{}));
                 }
-                break :blk "";
+                break :blk coreui.Icons.Component;
             };
 
             const label = blk: {
@@ -217,20 +210,20 @@ const entity_component_menu_aspect = editor.UiSetMenusAspect.implement(struct {
                 }
             };
 
-            if (category_open and _coreui.menuItem(allocator, label, .{}, null)) {
-                const obj_w = ecs.EntityCdb.write(_cdb, obj).?;
+            if (category_open and coreui.menuItem(allocator, label, .{}, null)) {
+                const obj_w = ecs.EntityCdb.write(obj).?;
 
-                const value_obj = try _cdb.createObject(db, _cdb.getTypeIdx(db, iface.cdb_type_hash).?);
-                const value_obj_w = _cdb.writeObj(value_obj).?;
+                const value_obj = try cdb.createObject(db, cdb.getTypeIdx(db, iface.cdb_type_hash).?);
+                const value_obj_w = cdb.writeObj(value_obj).?;
 
-                try ecs.EntityCdb.addSubObjToSet(_cdb, obj_w, .Components, &.{value_obj_w});
+                try ecs.EntityCdb.addSubObjToSet(obj_w, .Components, &.{value_obj_w});
 
-                try _cdb.writeCommit(value_obj_w);
-                try _cdb.writeCommit(obj_w);
+                try cdb.writeCommit(value_obj_w);
+                try cdb.writeCommit(obj_w);
             }
 
             if (category_open and iface.category != null and filter == null) {
-                _coreui.endMenu();
+                coreui.endMenu();
             }
         }
     }
@@ -242,10 +235,10 @@ var entity_visual_aspect = editor.UiVisualAspect.implement(struct {
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
     ) ![:0]const u8 {
-        _ = allocator; // autofix
-        const obj_r = _cdb.readObj(obj).?;
+        _ = allocator;
+        const obj_r = cdb.readObj(obj).?;
 
-        if (ecs.EntityCdb.readStr(_cdb, obj_r, .Name)) |name| {
+        if (ecs.EntityCdb.readStr(obj_r, .Name)) |name| {
             return std.fmt.bufPrintZ(
                 buff,
                 "{s}",
@@ -269,8 +262,8 @@ var entity_visual_aspect = editor.UiVisualAspect.implement(struct {
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
     ) ![:0]const u8 {
-        _ = obj; // autofix
-        _ = allocator; // autofix
+        _ = obj;
+        _ = allocator;
 
         return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Entity});
     }
@@ -282,7 +275,7 @@ var entity_preview_aspect = asset_preview.AssetPreviewAspectI.implement(struct {
         obj: cdb.ObjId,
         world: ecs.World,
     ) anyerror!ecs.EntityId {
-        const ents = try _ecs.spawnManyFromCDB(allocator, world, obj, 1);
+        const ents = try ecs.spawnManyFromCDB(allocator, world, obj, 1);
         return ents[0];
     }
 });
@@ -295,42 +288,42 @@ var entity_children_drop_aspect = editor.UiDropObj.implement(struct {
         prop_idx: ?u32,
         drag_obj: cdb.ObjId,
     ) !void {
-        _ = allocator; // autofix
-        _ = tab; // autofix
-        _ = prop_idx; // autofix
+        _ = allocator;
+        _ = tab;
+        _ = prop_idx;
 
-        const db = _cdb.getDbFromObjid(obj);
+        const db = cdb.getDbFromObjid(obj);
 
-        if (drag_obj.type_idx.eql(assetdb.AssetCdb.typeIdx(_cdb, db))) {
-            const asset_entity_obj = _assetdb.getObjForAsset(drag_obj).?;
+        if (drag_obj.type_idx.eql(assetdb.AssetCdb.typeIdx(db))) {
+            const asset_entity_obj = assetdb.getObjForAsset(drag_obj).?;
 
-            if (asset_entity_obj.type_idx.eql(ecs.EntityCdb.typeIdx(_cdb, db))) {
-                const new_obj = try _cdb.createObjectFromPrototype(asset_entity_obj);
+            if (asset_entity_obj.type_idx.eql(ecs.EntityCdb.typeIdx(db))) {
+                const new_obj = try cdb.createObjectFromPrototype(asset_entity_obj);
 
-                const new_obj_w = ecs.EntityCdb.write(_cdb, new_obj).?;
-                const entiy_obj_w = ecs.EntityCdb.write(_cdb, obj).?;
+                const new_obj_w = ecs.EntityCdb.write(new_obj).?;
+                const entiy_obj_w = ecs.EntityCdb.write(obj).?;
 
-                try ecs.EntityCdb.addSubObjToSet(_cdb, entiy_obj_w, .Childrens, &.{new_obj_w});
+                try ecs.EntityCdb.addSubObjToSet(entiy_obj_w, .Childrens, &.{new_obj_w});
 
-                try ecs.EntityCdb.commit(_cdb, new_obj_w);
-                try ecs.EntityCdb.commit(_cdb, entiy_obj_w);
+                try ecs.EntityCdb.commit(new_obj_w);
+                try ecs.EntityCdb.commit(entiy_obj_w);
             }
         }
     }
 });
 
 fn lessThanAsset(_: void, lhs: cdb.ObjId, rhs: cdb.ObjId) bool {
-    const db = _cdb.getDbFromObjid(lhs);
+    const db = cdb.getDbFromObjid(lhs);
 
     const l_order = blk: {
-        const component = _ecs.findComponentIByCdbHash(_cdb.getTypeHash(db, lhs.type_idx).?) orelse break :blk std.math.inf(f32);
-        const category = _ecs.findCategoryById(.fromStr(component.category orelse break :blk std.math.inf(f32))) orelse break :blk std.math.inf(f32);
+        const component = ecs.findComponentIByCdbHash(cdb.getTypeHash(db, lhs.type_idx).?) orelse break :blk std.math.inf(f32);
+        const category = ecs.findCategoryById(.fromStr(component.category orelse break :blk std.math.inf(f32))) orelse break :blk std.math.inf(f32);
         break :blk category.order + component.category_order;
     };
 
     const r_order = blk: {
-        const component = _ecs.findComponentIByCdbHash(_cdb.getTypeHash(db, rhs.type_idx).?) orelse break :blk std.math.inf(f32);
-        const category = _ecs.findCategoryById(.fromStr(component.category orelse break :blk std.math.inf(f32))) orelse break :blk std.math.inf(f32);
+        const component = ecs.findComponentIByCdbHash(cdb.getTypeHash(db, rhs.type_idx).?) orelse break :blk std.math.inf(f32);
+        const category = ecs.findCategoryById(.fromStr(component.category orelse break :blk std.math.inf(f32))) orelse break :blk std.math.inf(f32);
         break :blk category.order + component.category_order;
     };
 
@@ -353,9 +346,9 @@ var component_visual_aspect = editor.UiVisualAspect.implement(struct {
         obj: cdb.ObjId,
     ) ![:0]const u8 {
         _ = allocator;
-        const db = _cdb.getDbFromObjid(obj);
-        const component_cdb_type = _cdb.getTypeHash(db, obj.type_idx).?;
-        const iface = _ecs.findComponentIByCdbHash(component_cdb_type).?;
+        const db = cdb.getDbFromObjid(obj);
+        const component_cdb_type = cdb.getTypeHash(db, obj.type_idx).?;
+        const iface = ecs.findComponentIByCdbHash(component_cdb_type).?;
 
         return std.fmt.bufPrintZ(
             buff,
@@ -371,9 +364,9 @@ var component_visual_aspect = editor.UiVisualAspect.implement(struct {
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
     ) ![:0]const u8 {
-        const db = _cdb.getDbFromObjid(obj);
+        const db = cdb.getDbFromObjid(obj);
 
-        const aspect = _cdb.getAspect(
+        const aspect = cdb.getAspect(
             editor.EditorComponentAspect,
             db,
             obj.type_idx,
@@ -387,27 +380,26 @@ var component_visual_aspect = editor.UiVisualAspect.implement(struct {
     }
 });
 
-var children_storage_prop_aspect = editor_inspector.UiPropertyAspect.implement(struct {
+var children_storage_prop_aspect = editor_inspector.UiInspectorPropertyValueAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         prop_idx: u32,
-        args: editor_inspector.cdbPropertiesViewArgs,
+        args: editor_inspector.InspectorViewArgs,
     ) !void {
-        _ = allocator; // autofix
-        _ = args; // autofix
+        _ = prop_idx;
+        _ = allocator;
+        _ = args;
 
-        const r = ecs.EntityCdb.read(_cdb, obj).?;
-        const type_str = ecs.EntityCdb.readStr(_cdb, r, .ChildrenStorage) orelse "";
-        var type_enum: ecs.ChildrenStorageType = std.meta.stringToEnum(ecs.ChildrenStorageType, type_str) orelse .Parent;
+        const r = ecs.EntityCdb.read(obj).?;
 
-        try _inspector.uiPropInputBegin(obj, prop_idx, true);
-        defer _inspector.uiPropInputEnd();
+        var type_enum = ecs.EntityCdb.readStrEnum(ecs.ChildrenStorageType, r, .Storage, .Parent);
 
-        if (_coreui.comboFromEnum("", &type_enum)) {
-            const w = ecs.EntityCdb.write(_cdb, obj).?;
-            try ecs.EntityCdb.setStr(_cdb, w, .ChildrenStorage, @tagName(type_enum));
-            try ecs.EntityCdb.commit(_cdb, w);
+        coreui.setNextItemWidth(-1.0);
+        if (coreui.comboFromEnum("", &type_enum)) {
+            const w = ecs.EntityCdb.write(obj).?;
+            try ecs.EntityCdb.setStr(w, .Storage, @tagName(type_enum));
+            try ecs.EntityCdb.commit(w);
         }
     }
 });
@@ -416,7 +408,7 @@ const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
     pub fn postCreateTypes(db: cdb.DbId) !void {
         try ecs.EntityCdb.addPropertyAspect(
             editor.UiSetMenusAspect,
-            _cdb,
+
             db,
             .Components,
             _g.component_value_menu_aspect,
@@ -424,21 +416,21 @@ const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
 
         try ecs.EntityCdb.addAspect(
             editor.UiVisualAspect,
-            _cdb,
+
             db,
             _g.entity_visual_aspect,
         );
 
         try ecs.EntityCdb.addAspect(
             asset_preview.AssetPreviewAspectI,
-            _cdb,
+
             db,
             _g.entity_preview_aspect,
         );
 
         try ecs.EntityCdb.addPropertyAspect(
             editor.UiDropObj,
-            _cdb,
+
             db,
             .Childrens,
             _g.entity_children_drop_aspect,
@@ -446,7 +438,7 @@ const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
 
         try ecs.EntityCdb.addPropertyAspect(
             editor_tree.UiTreeFlatenPropertyAspect,
-            _cdb,
+
             db,
             .Components,
             _g.entity_flaten_aspect,
@@ -454,46 +446,44 @@ const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
 
         try ecs.EntityCdb.addPropertyAspect(
             editor.UiSetSortPropertyAspect,
-            _cdb,
+
             db,
             .Components,
             _g.components_sort_aspect,
         );
 
         try ecs.EntityCdb.addPropertyAspect(
-            editor_inspector.UiPropertyAspect,
-            _cdb,
+            editor_inspector.UiInspectorPropertyValueAspect,
+
             db,
-            .ChildrenStorage,
+            .Storage,
             _g.entity_child_storage_prop_aspect,
         );
 
         // Register UI aspect for CDB component types if there any.
-        const impls = try _apidb.getImpl(_allocator, ecs.ComponentI);
+        const impls = try apidb.getImpl(_allocator, ecs.ComponentI);
         defer _allocator.free(impls);
         for (impls) |iface| {
             if (iface.cdb_type_hash.isEmpty()) continue;
-            try _cdb.addAspect(editor.UiVisualAspect, db, _cdb.getTypeIdx(db, iface.cdb_type_hash).?, _g.component_visual_aspect);
+            try cdb.addAspect(editor.UiVisualAspect, db, cdb.getTypeIdx(db, iface.cdb_type_hash).?, _g.component_visual_aspect);
         }
     }
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _apidb = apidb;
 
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(module_name, coreui.CoreUIApi).?;
-    _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
-    _tempalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _assetdb = apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
-    _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
+    try cdb.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
+    try editor.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+    try assetdb.loadAPI(module_name);
+    try ecs.loadAPI(module_name);
 
-    _inspector = apidb.getZigApi(module_name, editor_inspector.InspectorAPI).?;
+    try editor_inspector.loadAPI(module_name);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
@@ -509,12 +499,12 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     _g.entity_children_drop_aspect = try apidb.setGlobalVarValue(editor.UiDropObj, module_name, "ct_entity_children_drop_aspect", entity_children_drop_aspect);
     _g.components_sort_aspect = try apidb.setGlobalVarValue(editor.UiSetSortPropertyAspect, module_name, "ct_components_sort_aspect", components_sort_aspect);
     _g.entity_flaten_aspect = try apidb.setGlobalVarValue(editor_tree.UiTreeFlatenPropertyAspect, module_name, "ct_entity_flaten_aspect", entity_flaten_aspect);
-    _g.entity_child_storage_prop_aspect = try apidb.setGlobalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_entity_child_storage_prop_aspect", children_storage_prop_aspect);
+    _g.entity_child_storage_prop_aspect = try apidb.setGlobalVarValue(editor_inspector.UiInspectorPropertyValueAspect, module_name, "ct_entity_child_storage_prop_aspect", children_storage_prop_aspect);
 
     return true;
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_entity_asset(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_editor_entity_asset(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

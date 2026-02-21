@@ -5,6 +5,7 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 const math = cetech1.math;
+const apidb = cetech1.apidb;
 
 const camera = @import("camera");
 
@@ -13,7 +14,7 @@ const CameraControlerTypr = enum(u8) {
     Orbital,
 };
 
-pub const CameraController = struct {
+pub const CameraController = extern struct {
     type: CameraControlerTypr = .FreeFlight,
     input_enabled: bool = false,
 
@@ -30,3 +31,9 @@ pub const CameraController = struct {
 };
 
 pub const CameraControllerAPI = struct {};
+
+pub var api: *const CameraControllerAPI = undefined;
+
+pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+    api = apidb.getZigApi(module, CameraControllerAPI).?;
+}

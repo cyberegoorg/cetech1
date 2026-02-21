@@ -1,8 +1,8 @@
 #define read_by_idx(a, idx) a[idx / 4][idx % 4]
 #define get_channel_data(channel_idx, offset) ((channel_idx == 0 ? get_vertex_system_channel0_buffer_data(offset): get_vertex_system_channel1_buffer_data(offset)))
 
-void init_vertex_loader(out ct_vertex_loader_ctx ctx, in ct_input input) {
-    ctx = (ct_vertex_loader_ctx)(0);
+void init_vertex_loader(out ct_vertex_loader_ctx ctx, in ct_input inputs) {
+    // ctx = (ct_vertex_loader_ctx)(0);
 
     ctx.active_channels = floatBitsToUint(load_vertex_system_header().x);
     ctx.num_vertices = floatBitsToUint(load_vertex_system_header().y);
@@ -11,8 +11,6 @@ void init_vertex_loader(out ct_vertex_loader_ctx ctx, in ct_input input) {
     load_vertex_system_offsets(ctx.offset);
     load_vertex_system_strides(ctx.stride);
     load_vertex_system_buffer_idx(ctx.buffer_idx);
-
-    // ctx.position = input.a_position;
 }
 
 float vertex_system_load_float(in uint channel_idx, in uint offset) {
@@ -32,7 +30,7 @@ vec4 vertex_system_load_vec4(in uint channel_idx, in uint offset) {
 }
 
 bool vertex_system_has_channel(in ct_vertex_loader_ctx ctx, in uint channel_id) {
-    return ctx.active_channels & (1 << channel_id);
+    return (ctx.active_channels & (1U << channel_id)) != 0;
 }
 
 vec4 load_vertex_position(in ct_vertex_loader_ctx ctx, in uint vertex_id, in uint set) {

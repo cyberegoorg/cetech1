@@ -8,6 +8,6 @@ pub const TonemapType = enum(u8) {
     luma_debug,
 };
 
-pub const TonemapComponent = struct {
+pub const TonemapComponent = extern struct {
     type: TonemapType = .aces,
 };

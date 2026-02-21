@@ -4,6 +4,7 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const gpu = cetech1.gpu;
 const ecs = cetech1.ecs;
+const apidb = cetech1.apidb;
 
 const render_graph = @import("render_graph");
 const shader_system = @import("shader_system");
@@ -63,14 +64,6 @@ pub const RenderPipelineI = struct {
     uiDebugMenuItems: *const fn (pipeline: *anyopaque, allocator: std.mem.Allocator) anyerror!void,
 
     pub fn implement(comptime T: type) RenderPipelineI {
-        if (!std.meta.hasFn(T, "create")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "destroy")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "getMainModule")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "begin")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "end")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "getGlobalSystem")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "uiDebugMenuItems")) @compileError("implement me");
-
         return RenderPipelineI{
             .create = T.create,
             .destroy = T.destroy,
@@ -83,6 +76,16 @@ pub const RenderPipelineI = struct {
     }
 };
 
+pub fn createDefault(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, world: ecs.World) anyerror!RenderPipeline {
+    return api.createDefault(allocator, gpu_backend, world);
+}
+
 pub const RenderPipelineApi = struct {
     createDefault: *const fn (allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, world: ecs.World) anyerror!RenderPipeline,
 };
+
+pub var api: *const RenderPipelineApi = undefined;
+
+pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+    api = apidb.getZigApi(module, RenderPipelineApi).?;
+}

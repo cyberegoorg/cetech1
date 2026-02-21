@@ -27,6 +27,9 @@
         .{ .name = "bgfx", .license = "externals/shared/lib/zbgfx/libs/bgfx/LICENSE" },
         .{ .name = "zbgfx", .license = "externals/shared/lib/zbgfx/LICENSE" },
 
+        .{ .name = "roboto", .license = "externals/shared/fonts/roboto/LICENSE" },
+        .{ .name = "lucide", .license = "externals/shared/fonts/lucide/LICENSE" },
+
         .{ .name = "cetech1", .license = "LICENSE" },
     },
 }

@@ -4,7 +4,7 @@ const Allocator = std.mem.Allocator;
 const cetech1 = @import("cetech1");
 const coreui = cetech1.coreui;
 const cdb = cetech1.cdb;
-
+const assetdb = cetech1.assetdb;
 const editor = @import("editor");
 const editor_assetdb = @import("editor_assetdb");
 
@@ -13,18 +13,14 @@ const Icons = cetech1.coreui.CoreIcons;
 const module_name = .editor_fixtures;
 
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 const log = std.log.scoped(module_name);
 
 var _allocator: Allocator = undefined;
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _editor: *const editor.EditorAPI = undefined;
-var _assetdb: *const cetech1.assetdb.AssetDBAPI = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
+const apidb = cetech1.apidb;
+
+const tempalloc = cetech1.tempalloc;
 
 // Global state
 const G = struct {};
@@ -40,20 +36,20 @@ var create_foo_asset_i = editor_assetdb.CreateAssetI.implement(
             folder: cdb.ObjId,
         ) !void {
             var buff: [256:0]u8 = undefined;
-            const name = try _assetdb.buffGetValidName(
+            const name = try assetdb.buffGetValidName(
                 allocator,
                 &buff,
                 folder,
-                _cdb.getTypeIdx(db, cetech1.assetdb.FooAsset.type_hash).?,
+                cdb.getTypeIdx(db, cetech1.assetdb.FooAsset.type_hash).?,
                 "NewFooAsset",
             );
-            const new_obj = try cetech1.assetdb.FooAsset.createObject(_cdb, db);
+            const new_obj = try cetech1.assetdb.FooAsset.createObject(db);
 
-            _ = _assetdb.createAsset(name, folder, new_obj);
+            _ = assetdb.createAsset(name, folder, new_obj);
         }
 
         pub fn menuItem() ![:0]const u8 {
-            return Icons.FA_FACE_SMILE_WINK ++ "  " ++ "Foo";
+            return coreui.Icons.Smile ++ "  " ++ "Foo";
         }
     },
 );
@@ -65,14 +61,14 @@ var foo_visual_aspect = editor.UiVisualAspect.implement(struct {
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
     ) ![:0]const u8 {
-        _ = allocator; // autofix
+        _ = allocator;
         _ = obj;
 
         return try std.fmt.bufPrintZ(
             buff,
             "{s}",
             .{
-                Icons.FA_FACE_SMILE_WINK,
+                coreui.Icons.Smile,
             },
         );
     }
@@ -83,7 +79,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.DbId) !void {
         try cetech1.assetdb.FooAsset.addAspect(
             editor.UiVisualAspect,
-            _cdb,
+
             db,
             &foo_visual_aspect,
         );
@@ -91,18 +87,16 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _apidb = apidb;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
 
-    _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
-    _assetdb = apidb.getZigApi(module_name, cetech1.assetdb.AssetDBAPI).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tempalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
+    try cdb.loadAPI(module_name);
+
+    try editor.loadAPI(module_name);
+    try assetdb.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
@@ -113,6 +107,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_fixtures(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_editor_fixtures(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

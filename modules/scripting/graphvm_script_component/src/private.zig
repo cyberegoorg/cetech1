@@ -7,6 +7,7 @@ const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
+const apidb = cetech1.apidb;
 
 const graphvm = @import("graphvm");
 const editor = @import("editor");
@@ -17,20 +18,15 @@ const module_name = .graphvm_script_component;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 
-var _ecs: *const ecs.EcsAPI = undefined;
-var _graphvm: *const graphvm.GraphVMApi = undefined;
+const tempalloc = cetech1.tempalloc;
 
 // Global state that can surive hot-reload
 const G = struct {
@@ -51,13 +47,13 @@ const logic_c = ecs.ComponentI.implement(
             obj: cdb.ObjId,
             data: []u8,
         ) anyerror!void {
-            _ = allocator; // autofix
+            _ = allocator;
 
-            const r = _cdb.readObj(obj) orelse return;
+            const r = cdb.readObj(obj) orelse return;
 
             const position = std.mem.bytesAsValue(public.GraphVMScriptComponent, data);
             position.* = public.GraphVMScriptComponent{
-                .graph = public.GraphVMScriptComponentCdb.readSubObj(_cdb, r, .Graph) orelse .{},
+                .graph = public.GraphVMScriptComponentCdb.readSubObj(r, .Graph) orelse .{},
             };
         }
     },
@@ -72,7 +68,7 @@ const logic_instance_c = ecs.ComponentI.implement(
         pub fn onDestroy(components: []public.GraphVMScriptComponentInstance) !void {
             for (components) |c| {
                 if (c.instance.isValid()) {
-                    _graphvm.destroyInstance(c.instance);
+                    graphvm.destroyInstance(c.instance);
                 }
             }
         }
@@ -89,12 +85,12 @@ const logic_instance_c = ecs.ComponentI.implement(
         pub fn onRemove(manager: ?*anyopaque, iter: *ecs.Iter) !void {
             _ = manager;
 
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
+            const alloc = try tempalloc.create();
+            defer tempalloc.destroy(alloc);
             const components = iter.field(public.GraphVMScriptComponentInstance, 0).?;
 
             // TODO: real multi call
-            try _graphvm.executeNode(alloc, toContanerSlice(components), graphvm.EVENT_SHUTDOWN_NODE_TYPE, .{ .use_tasks = false });
+            try graphvm.executeNode(alloc, toContanerSlice(components), graphvm.EVENT_SHUTDOWN_NODE_TYPE, .{ .use_tasks = false });
         }
     },
 );
@@ -107,9 +103,9 @@ const editor_graphvm_component_aspect = editor.EditorComponentAspect.implement(
             allocator: std.mem.Allocator,
             obj: cdb.ObjId,
         ) ![:0]const u8 {
-            _ = allocator; // autofix
-            _ = obj; // autofix
-            return std.fmt.bufPrintZ(buff, "{s}", .{coreui.CoreIcons.FA_GEARS});
+            _ = allocator;
+            _ = obj;
+            return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Gears});
         }
     },
 );
@@ -123,7 +119,7 @@ const init_logic_system_i = ecs.SystemI.implement(
             .{ .id = ecs.id(public.GraphVMScriptComponentInstance), .inout = .Out, .oper = .Not },
             .{ .id = ecs.id(public.GraphVMScriptComponent), .inout = .In },
         },
-        .orderByComponent = ecs.id(public.GraphVMScriptComponent),
+        .order_by_component = ecs.id(public.GraphVMScriptComponent),
     },
     struct {
         pub fn orderByCallback(e1: ecs.EntityId, c1: *const anyopaque, e2: ecs.EntityId, c2: *const anyopaque) callconv(.c) i32 {
@@ -138,8 +134,8 @@ const init_logic_system_i = ecs.SystemI.implement(
         pub fn tick(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
             _ = dt;
 
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
+            const alloc = try tempalloc.create();
+            defer tempalloc.destroy(alloc);
 
             var all_instances = cetech1.ArrayList(graphvm.GraphInstance){};
             defer all_instances.deinit(alloc);
@@ -158,7 +154,7 @@ const init_logic_system_i = ecs.SystemI.implement(
                 const instances = try alloc.alloc(graphvm.GraphInstance, ents.len);
                 defer alloc.free(instances);
 
-                try _graphvm.createInstances(alloc, render_components[0].graph, instances);
+                try graphvm.createInstances(alloc, render_components[0].graph, instances);
 
                 try all_instances.appendSlice(alloc, instances);
                 try all_ents.appendSlice(alloc, ents);
@@ -169,15 +165,15 @@ const init_logic_system_i = ecs.SystemI.implement(
             }
 
             if (all_instances.items.len > 0) {
-                try _graphvm.buildInstances(alloc, all_instances.items);
+                try graphvm.buildInstances(alloc, all_instances.items);
 
-                try _graphvm.setInstancesContext(all_instances.items, ecs.ECS_WORLD_CONTEXT, world.ptr);
+                try graphvm.setInstancesContext(all_instances.items, ecs.ECS_WORLD_CONTEXT, world.ptr);
 
                 for (all_ents.items, 0..) |ent, idx| {
-                    try _graphvm.setInstanceContext(all_instances.items[idx], ecs.ECS_ENTITY_CONTEXT, @ptrFromInt(ent));
+                    try graphvm.setInstanceContext(all_instances.items[idx], ecs.ECS_ENTITY_CONTEXT, @ptrFromInt(ent));
                 }
 
-                try _graphvm.executeNode(alloc, all_instances.items, graphvm.EVENT_INIT_NODE_TYPE, .{
+                try graphvm.executeNode(alloc, all_instances.items, graphvm.EVENT_INIT_NODE_TYPE, .{
                     .use_tasks = false,
                     .sort = false,
                 });
@@ -203,7 +199,7 @@ const tick_logic_system_i = ecs.SystemI.implement(
             .{ .id = ecs.id(public.GraphVMScriptComponentInstance), .inout = .In },
             .{ .id = ecs.id(public.GraphVMScriptComponent), .inout = .In },
         },
-        .orderByComponent = ecs.id(public.GraphVMScriptComponentInstance),
+        .order_by_component = ecs.id(public.GraphVMScriptComponentInstance),
     },
     struct {
         pub fn orderByCallback(e1: ecs.EntityId, c1: *const anyopaque, e2: ecs.EntityId, c2: *const anyopaque) callconv(.c) i32 {
@@ -218,8 +214,8 @@ const tick_logic_system_i = ecs.SystemI.implement(
         pub fn tick(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
             _ = dt;
 
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
+            const alloc = try tempalloc.create();
+            defer tempalloc.destroy(alloc);
 
             var all_instances = cetech1.ArrayList(graphvm.GraphInstance){};
             defer all_instances.deinit(alloc);
@@ -235,8 +231,8 @@ const tick_logic_system_i = ecs.SystemI.implement(
             // world.deferSuspend();
             if (all_instances.items.len > 0) {
                 // log.debug("Tick {any}", .{all_instances.items});
-                try _graphvm.setInstancesContext(all_instances.items, ecs.ECS_WORLD_CONTEXT, world.ptr);
-                try _graphvm.executeNode(alloc, all_instances.items, graphvm.EVENT_TICK_NODE_TYPE, .{
+                try graphvm.setInstancesContext(all_instances.items, ecs.ECS_WORLD_CONTEXT, world.ptr);
+                try graphvm.executeNode(alloc, all_instances.items, graphvm.EVENT_TICK_NODE_TYPE, .{
                     .use_tasks = false,
                     .sort = false,
                 });
@@ -281,8 +277,8 @@ const change_observer_i = ecs.ObserverI.implement(
         pub fn iterate(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
             _ = dt;
 
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
+            const alloc = try tempalloc.create();
+            defer tempalloc.destroy(alloc);
 
             const logic_components = it.field(public.GraphVMScriptComponent, 0).?;
             const instance_components = it.field(public.GraphVMScriptComponentInstance, 1).?;
@@ -292,17 +288,17 @@ const change_observer_i = ecs.ObserverI.implement(
             for (0..it.count()) |idx| {
                 if (instance_components[idx].instance.graph.eql(logic_components[idx].graph)) continue;
 
-                _graphvm.destroyInstance(instance_components[idx].instance);
+                graphvm.destroyInstance(instance_components[idx].instance);
                 var instances: [1]graphvm.GraphInstance = undefined;
 
-                try _graphvm.createInstances(alloc, logic_components[idx].graph, &instances);
+                try graphvm.createInstances(alloc, logic_components[idx].graph, &instances);
 
-                try _graphvm.buildInstances(alloc, &instances);
+                try graphvm.buildInstances(alloc, &instances);
 
                 _ = world.setComponent(public.GraphVMScriptComponentInstance, ents[idx], &public.GraphVMScriptComponentInstance{ .instance = instances[idx] });
 
-                try _graphvm.setInstanceContext(instances[idx], ecs.ECS_WORLD_CONTEXT, world.ptr);
-                try _graphvm.setInstanceContext(instances[idx], ecs.ECS_ENTITY_CONTEXT, @ptrFromInt(ents[idx]));
+                try graphvm.setInstanceContext(instances[idx], ecs.ECS_WORLD_CONTEXT, world.ptr);
+                try graphvm.setInstanceContext(instances[idx], ecs.ECS_ENTITY_CONTEXT, @ptrFromInt(ents[idx]));
 
                 // log.debug("changed logic: {d} {any} {any}", .{ idx, logic_components, instance_components });
             }
@@ -318,7 +314,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.DbId) !void {
         // EntityLogicComponentCdb
         {
-            _ = try _cdb.addType(
+            _ = try cdb.addType(
                 db,
                 public.GraphVMScriptComponentCdb.name,
                 &[_]cdb.PropDef{
@@ -333,7 +329,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
             try public.GraphVMScriptComponentCdb.addAspect(
                 editor.EditorComponentAspect,
-                _cdb,
+
                 db,
                 _g.editor_graphvm_component_aspect,
             );
@@ -342,17 +338,17 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
 
-    _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-    _graphvm = apidb.getZigApi(module_name, graphvm.GraphVMApi).?;
+    try cdb.loadAPI(module_name);
+    // try kernel.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+
+    try ecs.loadAPI(module_name);
+    try graphvm.loadAPI(module_name);
 
     // impl interface
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
@@ -377,6 +373,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_graphvm_script_component(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_graphvm_script_component(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

@@ -4,6 +4,7 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const modules = cetech1.modules;
 const math = cetech1.math;
+const apidb = cetech1.apidb;
 
 // TODO: MOVE
 pub const EVENT_INIT_NODE_TYPE_STR = "event_init";
@@ -48,8 +49,8 @@ pub const NodeTypeCdb = cdb.CdbTypeDecl(
         pos_y,
     },
     struct {
-        pub fn getNodeTypeId(db: *const cdb.CdbAPI, reader: *cdb.Obj) cetech1.StrId32 {
-            const str = NodeTypeCdb.readStr(db, reader, .node_type) orelse return .{};
+        pub fn getNodeTypeId(reader: *cdb.Obj) cetech1.StrId32 {
+            const str = NodeTypeCdb.readStr(reader, .node_type) orelse return .{};
             return .fromStr(str);
         }
     },
@@ -77,13 +78,13 @@ pub const ConnectionTypeCdb = cdb.CdbTypeDecl(
         to_pin,
     },
     struct {
-        pub fn getFromPinId(db: *const cdb.CdbAPI, reader: *cdb.Obj) cetech1.StrId32 {
-            const str = ConnectionTypeCdb.readStr(db, reader, .from_pin) orelse return .{};
+        pub fn getFromPinId(reader: *cdb.Obj) cetech1.StrId32 {
+            const str = ConnectionTypeCdb.readStr(reader, .from_pin) orelse return .{};
             return .fromStr(str);
         }
 
-        pub fn getToPinId(db: *const cdb.CdbAPI, reader: *cdb.Obj) cetech1.StrId32 {
-            const str = ConnectionTypeCdb.readStr(db, reader, .to_pin) orelse return .{};
+        pub fn getToPinId(reader: *cdb.Obj) cetech1.StrId32 {
+            const str = ConnectionTypeCdb.readStr(reader, .to_pin) orelse return .{};
             return .fromStr(str);
         }
     },
@@ -411,7 +412,7 @@ pub const GraphValueTypeI = struct {
     }
 };
 
-pub const GraphInstance = struct {
+pub const GraphInstance = extern struct {
     graph: cdb.ObjId = .{},
     inst: *anyopaque = undefined,
 
@@ -433,69 +434,140 @@ pub const GetNodeConfig = struct {
     sort: bool = true,
 };
 
+pub inline fn getNodeState(comptime T: type, allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32, cfg: GetNodeConfig) ![]?*T {
+    const result = try api.getNodeStateFn(allocator, instances, node_type, cfg);
+
+    var r: []?*T = undefined;
+    r.ptr = @ptrCast(@alignCast(result.ptr));
+    r.len = result.len;
+
+    return r;
+}
+
+pub inline fn executeNodeAndGetState(comptime T: type, allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32, cfg: ExecuteConfig) ![]?*T {
+    const result = try api.executeNodeAndGetStateFn(allocator, instances, node_type, cfg);
+
+    var r: []?*T = undefined;
+    r.ptr = @ptrCast(@alignCast(result.ptr));
+    r.len = result.len;
+
+    return r;
+}
+
+pub inline fn getContext(comptime T: type, instance: GraphInstance, context_name: cetech1.StrId32) ?*T {
+    const result = api.getContextFn(instance, context_name) orelse return null;
+    return @ptrCast(@alignCast(result));
+}
+
+pub fn findNodeI(type_hash: cetech1.StrId32) ?*const NodeI {
+    return api.findNodeI(type_hash);
+}
+pub fn findValueTypeI(type_hash: cetech1.StrId32) ?*const GraphValueTypeI {
+    return api.findValueTypeI(type_hash);
+}
+pub fn findValueTypeIByCdb(type_hash: cetech1.StrId32) ?*const GraphValueTypeI {
+    return api.findValueTypeIByCdb(type_hash);
+}
+pub fn createCdbNode(db: cdb.DbId, type_hash: cetech1.StrId32, pos: ?math.Vec2f) anyerror!cdb.ObjId {
+    return api.createCdbNode(db, type_hash, pos);
+}
+pub fn isOutputPin(allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: cetech1.StrId32, pin_hash: cetech1.StrId32) anyerror!bool {
+    return api.isOutputPin(allocator, graph_obj, node_obj, type_hash, pin_hash);
+}
+pub fn isInputPin(allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: cetech1.StrId32, pin_hash: cetech1.StrId32) anyerror!bool {
+    return api.isInputPin(allocator, graph_obj, node_obj, type_hash, pin_hash);
+}
+pub fn getInputPin(allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: cetech1.StrId32, pin_hash: cetech1.StrId32) anyerror!?NodePin {
+    return api.getInputPin(allocator, graph_obj, node_obj, type_hash, pin_hash);
+}
+pub fn getOutputPin(allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: cetech1.StrId32, pin_hash: cetech1.StrId32) anyerror!?NodePin {
+    return api.getOutputPin(allocator, graph_obj, node_obj, type_hash, pin_hash);
+}
+pub fn getTypeColor(type_hash: cetech1.StrId32) math.Color4f {
+    return api.getTypeColor(type_hash);
+}
+pub fn needCompile(graph: cdb.ObjId) bool {
+    return api.needCompile(graph);
+}
+pub fn compile(allocator: std.mem.Allocator, graph: cdb.ObjId) anyerror!void {
+    return api.compile(allocator, graph);
+}
+pub fn needCompileAny() bool {
+    return api.needCompileAny();
+}
+pub fn compileAllChanged(allocator: std.mem.Allocator) anyerror!void {
+    return api.compileAllChanged(allocator);
+}
+pub fn getPrototypeNode(graph: cdb.ObjId, node: cdb.ObjId) ?cdb.ObjId {
+    return api.getPrototypeNode(graph, node);
+}
+pub fn createInstance(allocator: std.mem.Allocator, graph: cdb.ObjId) anyerror!GraphInstance {
+    return api.createInstance(allocator, graph);
+}
+pub fn createInstances(allocator: std.mem.Allocator, graph: cdb.ObjId, instances: []GraphInstance) anyerror!void {
+    return api.createInstances(allocator, graph, instances);
+}
+pub fn destroyInstance(instance: GraphInstance) void {
+    return api.destroyInstance(instance);
+}
+pub fn buildInstances(allocator: std.mem.Allocator, instances: []const GraphInstance) anyerror!void {
+    return api.buildInstances(allocator, instances);
+}
+pub fn setInstanceContext(instance: GraphInstance, context_name: cetech1.StrId32, context: *anyopaque) anyerror!void {
+    return api.setInstanceContext(instance, context_name, context);
+}
+pub fn setInstancesContext(instances: []const GraphInstance, context_name: cetech1.StrId32, context: *anyopaque) anyerror!void {
+    return api.setInstancesContext(instances, context_name, context);
+}
+pub fn removeContext(instance: GraphInstance, context_name: cetech1.StrId32) void {
+    return api.removeContext(instance, context_name);
+}
+pub fn getInputPins(instance: GraphInstance) OutPins {
+    return api.getInputPins(instance);
+}
+pub fn getOutputPins(instance: GraphInstance) OutPins {
+    return api.getOutputPins(instance);
+}
+pub fn executeNode(allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32, cfg: ExecuteConfig) anyerror!void {
+    return api.executeNode(allocator, instances, node_type, cfg);
+}
+
+pub fn getNodeStateMultyFn(allocator: std.mem.Allocator, instances: []const GraphInstance, node_types: []const cetech1.StrId32, cfg: GetNodeConfig) anyerror![][]?*anyopaque {
+    return api.getNodeStateMultyFn(allocator, instances, node_types, cfg);
+}
 pub const GraphVMApi = struct {
-    pub inline fn getNodeState(self: *const GraphVMApi, comptime T: type, allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32, cfg: GetNodeConfig) ![]?*T {
-        const result = try self.getNodeStateFn(allocator, instances, node_type, cfg);
-
-        var r: []?*T = undefined;
-        r.ptr = @ptrCast(@alignCast(result.ptr));
-        r.len = result.len;
-
-        return r;
-    }
-
-    pub inline fn executeNodeAndGetState(self: *const GraphVMApi, comptime T: type, allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32, cfg: ExecuteConfig) ![]?*T {
-        const result = try self.executeNodeAndGetStateFn(allocator, instances, node_type, cfg);
-
-        var r: []?*T = undefined;
-        r.ptr = @ptrCast(@alignCast(result.ptr));
-        r.len = result.len;
-
-        return r;
-    }
-
-    pub inline fn getContext(self: *const GraphVMApi, comptime T: type, instance: GraphInstance, context_name: cetech1.StrId32) ?*T {
-        const result = self.getContextFn(instance, context_name) orelse return null;
-        return @ptrCast(@alignCast(result));
-    }
-
     findNodeI: *const fn (type_hash: cetech1.StrId32) ?*const NodeI,
     findValueTypeI: *const fn (type_hash: cetech1.StrId32) ?*const GraphValueTypeI,
     findValueTypeIByCdb: *const fn (type_hash: cetech1.StrId32) ?*const GraphValueTypeI,
-
     createCdbNode: *const fn (db: cdb.DbId, type_hash: cetech1.StrId32, pos: ?math.Vec2f) anyerror!cdb.ObjId,
-
     isOutputPin: *const fn (allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: cetech1.StrId32, pin_hash: cetech1.StrId32) anyerror!bool,
     isInputPin: *const fn (allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: cetech1.StrId32, pin_hash: cetech1.StrId32) anyerror!bool,
     getInputPin: *const fn (allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: cetech1.StrId32, pin_hash: cetech1.StrId32) anyerror!?NodePin,
     getOutputPin: *const fn (allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId, type_hash: cetech1.StrId32, pin_hash: cetech1.StrId32) anyerror!?NodePin,
-
-    // TODO: move to editor_graph?
     getTypeColor: *const fn (type_hash: cetech1.StrId32) math.Color4f,
-
     needCompile: *const fn (graph: cdb.ObjId) bool,
     compile: *const fn (allocator: std.mem.Allocator, graph: cdb.ObjId) anyerror!void,
-
     needCompileAny: *const fn () bool,
     compileAllChanged: *const fn (allocator: std.mem.Allocator) anyerror!void,
-
     getPrototypeNode: *const fn (graph: cdb.ObjId, node: cdb.ObjId) ?cdb.ObjId,
-
     createInstance: *const fn (allocator: std.mem.Allocator, graph: cdb.ObjId) anyerror!GraphInstance,
     createInstances: *const fn (allocator: std.mem.Allocator, graph: cdb.ObjId, instances: []GraphInstance) anyerror!void,
     destroyInstance: *const fn (instance: GraphInstance) void,
     buildInstances: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance) anyerror!void,
-
     setInstanceContext: *const fn (instance: GraphInstance, context_name: cetech1.StrId32, context: *anyopaque) anyerror!void,
     setInstancesContext: *const fn (instances: []const GraphInstance, context_name: cetech1.StrId32, context: *anyopaque) anyerror!void,
     getContextFn: *const fn (instance: GraphInstance, context_name: cetech1.StrId32) ?*anyopaque,
     removeContext: *const fn (instance: GraphInstance, context_name: cetech1.StrId32) void,
-
     getInputPins: *const fn (instance: GraphInstance) OutPins,
     getOutputPins: *const fn (instance: GraphInstance) OutPins,
-
     executeNode: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32, cfg: ExecuteConfig) anyerror!void,
     getNodeStateFn: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32, cfg: GetNodeConfig) anyerror![]?*anyopaque,
     getNodeStateMultyFn: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance, node_types: []const cetech1.StrId32, cfg: GetNodeConfig) anyerror![][]?*anyopaque,
     executeNodeAndGetStateFn: *const fn (allocator: std.mem.Allocator, instances: []const GraphInstance, node_type: cetech1.StrId32, cfg: ExecuteConfig) anyerror![]?*anyopaque,
 };
+
+pub var api: *const GraphVMApi = undefined;
+
+pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+    api = apidb.getZigApi(module, GraphVMApi).?;
+}

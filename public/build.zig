@@ -61,8 +61,9 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    const translate_c = b.addTranslateC(.{
-        .root_source_file = b.path("src/faicons.h"),
+    // TODO: remove?
+    const lucide_c = b.addTranslateC(.{
+        .root_source_file = b.path("src/IconsLucide.h"),
         .target = target,
         .optimize = optimize,
     });
@@ -73,7 +74,7 @@ pub fn build(b: *std.Build) !void {
             .root_source_file = b.path("src/root.zig"),
         },
     );
-    cetech1_module.addImport("icons_c", translate_c.createModule());
+    cetech1_module.addImport("lucide_icons", lucide_c.createModule());
     cetech1_module.addImport("zmath", zmath.module("root"));
     cetech1_module.addImport("ziglangSet", ziglangSet.module("ziglangSet"));
 

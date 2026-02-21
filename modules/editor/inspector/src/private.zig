@@ -6,6 +6,7 @@ const public = @import("editor_inspector.zig");
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 
+const kernel = cetech1.kernel;
 const assetdb = cetech1.assetdb;
 const coreui = cetech1.coreui;
 const coreui_icons = cetech1.coreui;
@@ -20,7 +21,7 @@ const Icons = coreui.CoreIcons;
 const module_name = .editor_inspector;
 
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 const log = std.log.scoped(module_name);
 
@@ -30,39 +31,34 @@ const INSPECTOR_TAB_NAME_HASH = .fromStr(INSPECTOR_TAB_NAME);
 const PROP_HEADER_BG_COLOR = .{ 0.2, 0.2, 0.2, 0.65 };
 
 var _allocator: Allocator = undefined;
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
-var _uuid: *const cetech1.uuid.UuidAPI = undefined;
-var _assetdb: *const assetdb.AssetDBAPI = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _profiler: *const profiler.ProfilerAPI = undefined;
+const apidb = cetech1.apidb;
 
-var _editor: *const editor.EditorAPI = undefined;
-var _tabs: *const editor_tabs.TabsAPI = undefined;
+const uuid = cetech1.uuid;
+var _assetdb: *const assetdb.AssetDBAPI = undefined;
+const tempalloc = cetech1.tempalloc;
 
 // Global state
 const G = struct {
     tab_vt: *editor_tabs.TabTypeI = undefined,
-    asset_prop_aspect: *public.UiPropertiesAspect = undefined,
+    asset_prop_aspect: *public.UiInspectorObjAspect = undefined,
 
-    vec3f_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+    vec3f_properties_aspec: *public.UiInspectorPropertyValueAspect = undefined,
 
-    color3f_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
-    Color4f_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+    color3f_properties_aspec: *public.UiInspectorPropertyValueAspect = undefined,
+    color4f_properties_aspec: *public.UiInspectorPropertyValueAspect = undefined,
 
-    position_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
-    rotation_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
-    scale_properties_aspec: *public.UiEmbedPropertiesAspect = undefined,
+    position_properties_aspec: *public.UiInspectorPropertyValueAspect = undefined,
+    rotation_properties_aspec: *public.UiInspectorPropertyValueAspect = undefined,
+    scale_properties_aspec: *public.UiInspectorPropertyValueAspect = undefined,
 
     hide_proto_property_config_aspect: *public.UiPropertiesConfigAspect = undefined,
 };
 var _g: *G = undefined;
 
-var api = public.InspectorAPI{
-    .uiPropLabel = uiPropLabel,
+const api = public.InspectorAPI{
+    .uiProperty = uiProperty,
+    .uiPropBegin = uiPropBegin,
+    .uiPropEnd = uiPropEnd,
     .uiPropInput = uiPropInput,
     .uiPropInputRaw = uiPropInputRaw,
     .uiPropInputBegin = uiPropInputBegin,
@@ -109,18 +105,17 @@ fn uiAssetInput(
     obj: cdb.ObjId,
     prop_idx: u32,
     read_only: bool,
-    in_table: bool,
 ) !void {
-    const obj_r = _cdb.readObj(obj) orelse return;
-    const db = _cdb.getDbFromObjid(obj);
+    const obj_r = cdb.readObj(obj) orelse return;
+    const db = cdb.getDbFromObjid(obj);
 
-    const defs = _cdb.getTypePropDef(db, obj.type_idx).?;
+    const defs = cdb.getTypePropDef(db, obj.type_idx).?;
     const prop_def = defs[prop_idx];
 
     var value_obj: cdb.ObjId = .{};
     switch (prop_def.type) {
         .REFERENCE => {
-            if (_cdb.readRef(obj_r, prop_idx)) |o| {
+            if (cdb.readRef(obj_r, prop_idx)) |o| {
                 value_obj = o;
             }
         },
@@ -129,21 +124,40 @@ fn uiAssetInput(
         },
     }
 
-    return uiAssetInputGeneric(
-        allocator,
-        db,
-        tab,
-        obj,
-        value_obj,
-        read_only,
-        false,
-        prop_idx,
-        in_table,
-    );
+    {
+        try uiPropInputBegin(obj, prop_idx, !read_only);
+        defer uiPropInputEnd(!read_only);
+        try uiAssetInputRaw(
+            allocator,
+            db,
+            tab,
+            obj,
+            value_obj,
+            read_only,
+            false,
+            prop_idx,
+        );
+    }
+
+    {
+        try uiPropButtonsBegin(obj, prop_idx, !read_only);
+        defer uiPropButtonEnd();
+    }
 }
 
 fn uiAssetInputProto(allocator: std.mem.Allocator, db: cdb.DbId, tab: *editor_tabs.TabO, obj: cdb.ObjId, value_obj: cdb.ObjId, read_only: bool) !void {
-    return uiAssetInputGeneric(
+    coreui.pushObjUUID(obj);
+    coreui.pushName("prototype");
+    coreui.beginDisabled(.{ .disabled = read_only });
+
+    defer {
+        coreui.endDisabled();
+        _ = coreui.tableNextColumn();
+        coreui.popId();
+        coreui.popId();
+    }
+
+    try uiAssetInputRaw(
         allocator,
         db,
         tab,
@@ -152,11 +166,10 @@ fn uiAssetInputProto(allocator: std.mem.Allocator, db: cdb.DbId, tab: *editor_ta
         read_only,
         true,
         0,
-        true,
     );
 }
 
-fn uiAssetInputGeneric(
+fn uiAssetInputRaw(
     allocator: std.mem.Allocator,
     db: cdb.DbId,
     tab: *editor_tabs.TabO,
@@ -165,79 +178,60 @@ fn uiAssetInputGeneric(
     read_only: bool,
     is_proto: bool,
     prop_idx: u32,
-    in_table: bool,
 ) !void {
     var buff: [128:0]u8 = undefined;
     var buff_asset: [128:0]u8 = undefined;
     var asset_name: [:0]u8 = undefined;
-    const value_asset: ?cdb.ObjId = _assetdb.getAssetForObj(value_obj);
+    const value_asset: ?cdb.ObjId = assetdb.getAssetForObj(value_obj);
 
     if (value_asset) |asset| {
-        if (_assetdb.isAssetFolder(asset)) {
-            const path = try _assetdb.getPathForFolder(&buff_asset, asset);
+        if (assetdb.isAssetFolder(asset)) {
+            const path = try assetdb.getPathForFolder(&buff_asset, asset);
             asset_name = try std.fmt.bufPrintZ(&buff, "{s}", .{if (std.fs.path.dirname(path)) |p| p else "/"});
         } else {
-            const path = try _assetdb.getFilePathForAsset(&buff_asset, asset);
+            const path = try assetdb.getFilePathForAsset(&buff_asset, asset);
             asset_name = try std.fmt.bufPrintZ(&buff, "{s}", .{path});
         }
     } else {
         asset_name = try std.fmt.bufPrintZ(&buff, "", .{});
     }
 
-    const prop_def = _cdb.getTypePropDef(db, obj.type_idx).?;
-    const allowed_type = if (is_proto) obj.type_idx else _cdb.getTypeIdx(db, prop_def[prop_idx].type_hash) orelse cdb.TypeIdx{};
+    const prop_def = cdb.getTypePropDef(db, obj.type_idx).?;
+    const allowed_type = if (is_proto) obj.type_idx else cdb.getTypeIdx(db, prop_def[prop_idx].type_hash) orelse cdb.TypeIdx{};
 
-    _coreui.pushObjUUID(obj);
-    defer _coreui.popId();
-
-    if (!is_proto) _coreui.pushPropName(obj, prop_idx);
-    defer if (!is_proto) _coreui.popId();
-
-    if (in_table) {
-        _coreui.tableNextColumn();
-    }
-
-    if (!is_proto) {
-        try uiInputProtoBtns(obj, prop_idx);
-    }
-
-    if (_coreui.beginPopup("ui_asset_context_menu", .{})) {
-        defer _coreui.endPopup();
-        if (_tabs.selectObjFromMenu(allocator, _assetdb.getObjForAsset(obj) orelse obj, allowed_type)) |selected| {
+    if (coreui.beginPopup("ui_asset_context_menu", .{})) {
+        defer coreui.endPopup();
+        if (editor_tabs.selectObjFromMenu(allocator, assetdb.getObjForAsset(obj) orelse obj, allowed_type, !read_only)) |selected| {
             if (is_proto) {
-                try _cdb.setPrototype(obj, selected);
+                try cdb.setPrototype(obj, selected);
             } else {
-                const w = _cdb.writeObj(obj).?;
-                try _cdb.setRef(w, prop_idx, selected);
-                try _cdb.writeCommit(w);
+                const w = cdb.writeObj(obj).?;
+                try cdb.setRef(w, prop_idx, selected);
+                try cdb.writeCommit(w);
             }
         }
 
-        if (!_assetdb.isAssetObjTypeOf(obj, assetdb.FolderCdb.typeIdx(_cdb, db))) {
-            if (_coreui.menuItem(allocator, coreui.Icons.Clear ++ "  " ++ "Clear" ++ "###Clear", .{ .enabled = !read_only and value_asset != null }, null)) {
+        if (!assetdb.isAssetObjTypeOf(obj, assetdb.FolderCdb.typeIdx(db))) {
+            if (coreui.menuItem(allocator, coreui.Icons.Clear ++ "  " ++ "Clear" ++ "###Clear", .{ .enabled = !read_only and value_asset != null }, null)) {
                 if (is_proto) {
-                    try _cdb.setPrototype(obj, .{});
+                    try cdb.setPrototype(obj, .{});
                 } else {
-                    const w = _cdb.writeObj(obj).?;
-                    try _cdb.clearRef(w, prop_idx);
-                    try _cdb.writeCommit(w);
+                    const w = cdb.writeObj(obj).?;
+                    try cdb.clearRef(w, prop_idx);
+                    try cdb.writeCommit(w);
                 }
             }
         }
 
-        if (_coreui.beginMenu(allocator, coreui.Icons.ContextMenu ++ "  " ++ "Context", value_asset != null, null)) {
-            defer _coreui.endMenu();
-            try _editor.showObjContextMenu(allocator, tab, &.{editor.Contexts.open}, .{ .top_level_obj = value_asset.?, .obj = value_asset.? });
+        if (coreui.beginMenu(allocator, coreui.Icons.ContextMenu ++ "  " ++ "Context", value_asset != null, null)) {
+            defer coreui.endMenu();
+            try editor.showObjContextMenu(allocator, tab, &.{editor.Contexts.open}, .{ .top_level_obj = value_asset.?, .obj = value_asset.? });
         }
     }
-
-    if (_coreui.button(Icons.FA_ELLIPSIS ++ "###AssetInputMenu", .{})) {
-        _coreui.openPopup("ui_asset_context_menu", .{});
-    }
-
-    _coreui.sameLine(.{});
-    _coreui.setNextItemWidth(-std.math.floatMin(f32));
-    _ = _coreui.inputText("", .{
+    const item_spacing = coreui.getStyle().cell_padding.x;
+    const button_w = coreui.calcTextSize(coreui.Icons.Elispis, .{}).x + item_spacing + (coreui.getStyle().frame_border_size + coreui.getStyle().frame_padding.x) * 2.0;
+    coreui.setNextItemWidth(-button_w);
+    _ = coreui.inputText("", .{
         .buf = asset_name,
         .flags = .{
             .read_only = true,
@@ -245,105 +239,213 @@ fn uiAssetInputGeneric(
         },
     });
 
-    if (_coreui.beginDragDropTarget()) {
-        if (_coreui.acceptDragDropPayload("obj", .{ .source_allow_null_id = true })) |payload| {
+    if (coreui.beginDragDropTarget()) {
+        if (coreui.acceptDragDropPayload("obj", .{ .source_allow_null_id = true })) |payload| {
             var drag_obj: cdb.ObjId = std.mem.bytesToValue(cdb.ObjId, payload.data.?);
             if (drag_obj.type_idx.eql(AssetTypeIdx)) {
-                drag_obj = assetdb.AssetCdb.readSubObj(_cdb, _cdb.readObj(drag_obj).?, .Object).?;
+                drag_obj = assetdb.AssetCdb.readSubObj(cdb.readObj(drag_obj).?, .Object).?;
             }
 
             if (is_proto) {
                 if (!drag_obj.eql(obj) and drag_obj.type_idx.eql(obj.type_idx)) {
-                    try _cdb.setPrototype(obj, drag_obj);
+                    try cdb.setPrototype(obj, drag_obj);
                 }
             } else {
-                const allowed_type_hash = _cdb.getTypeIdx(db, _cdb.getTypePropDef(db, obj.type_idx).?[prop_idx].type_hash) orelse cdb.TypeIdx{};
+                const allowed_type_hash = cdb.getTypeIdx(db, cdb.getTypePropDef(db, obj.type_idx).?[prop_idx].type_hash) orelse cdb.TypeIdx{};
                 if (allowed_type_hash.isEmpty() or allowed_type_hash.eql(drag_obj.type_idx)) {
-                    const w = _cdb.writeObj(obj).?;
-                    try _cdb.setRef(w, prop_idx, drag_obj);
-                    try _cdb.writeCommit(w);
+                    const w = cdb.writeObj(obj).?;
+                    try cdb.setRef(w, prop_idx, drag_obj);
+                    try cdb.writeCommit(w);
                 }
             }
         }
-        defer _coreui.endDragDropTarget();
+        defer coreui.endDragDropTarget();
+    }
+
+    coreui.sameLine(.{ .spacing = item_spacing });
+    if (coreui.button(coreui.Icons.Elispis ++ "###AssetInputMenu", .{})) {
+        coreui.openPopup("ui_asset_context_menu", .{});
     }
 }
 
 fn beginPropTable(name: [:0]const u8) bool {
-    return _coreui.beginTable(name, .{
-        .column = 2,
+    // _ = name;
+    // return true;
+    return coreui.beginTable(name, .{
+        .column = 3,
         .flags = .{
             .sizing = .stretch_prop,
             .no_saved_settings = true,
-            //.borders = cetech1.coreui.TableBorderFlags.outer,
-            .row_bg = true,
+            // .borders = .outer,
+            // .row_bg = true,
             //.resizable = true,
         },
     });
 }
 
 fn endPropTabel() void {
-    _coreui.endTable();
+    coreui.endTable();
 }
 
-fn beginSection(label: [:0]const u8, leaf: bool, default_open: bool, flat: bool) bool {
+fn beginSection(label: [:0]const u8, framed: bool, leaf: bool, default_open: bool, flat: bool) bool {
     if (flat) return true;
-    const open = _coreui.treeNodeFlags(label, .{
-        .framed = true,
+    const open = coreui.treeNodeFlags(label, .{
+        .framed = framed,
         .leaf = leaf,
         .default_open = default_open,
         .no_auto_open_on_log = !leaf,
-        .span_avail_width = true,
-        //.no_tree_push_on_open = true,
+        // .span_avail_width = true,
+        // .no_tree_push_on_open = true,
     });
-    if (open) {
-        // _coreui.pushStyleColor4f(.{ .idx = .frame_bg, .c = .{ 0, 0, 0, 0 } });
-        // defer _coreui.popStyleColor(.{});
-        // _ = _coreui.beginChild(
-        //     label,
-        //     .{
-        //         .child_flags = .{
-        //             .border = false,
-        //             .frame_style = true,
-        //             .auto_resize_y = true,
-        //             .always_auto_resize = true,
-        //             .nav_flattened = true,
-        //         },
-        //     },
-        // );
-    }
     return open;
+}
+
+fn beginObjSection(allocator: std.mem.Allocator, label: [:0]const u8, tab: *editor_tabs.TabO, selected_obj: coreui.SelectedObj, framed: bool, leaf: bool, default_open: bool, flat: bool) !bool {
+    if (flat) return true;
+
+    try objContextMenuBtn(allocator, tab, selected_obj);
+    coreui.sameLine(.{});
+
+    return beginSection(label, framed, leaf, default_open, flat);
 }
 
 fn endSection(open: bool, flat: bool) void {
     if (flat) return;
 
     if (open) {
-        // _coreui.endChild();
-        _coreui.treePop();
+        coreui.treePop();
     }
 }
 
-fn cdbPropertiesView(allocator: std.mem.Allocator, tab: *editor_tabs.TabO, top_level_obj: cdb.ObjId, obj: cdb.ObjId, depth: u32, args: public.cdbPropertiesViewArgs) !void {
-    _coreui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = 10 });
-    defer _coreui.popStyleVar(.{});
+fn cdbPropertiesView(allocator: std.mem.Allocator, tab: *editor_tabs.TabO, top_level_obj: cdb.ObjId, obj: cdb.ObjId, depth: u32, args: public.InspectorViewArgs) !void {
+    coreui.pushStyleVar1f(.{ .idx = .indent_spacing, .v = coreui.getFontSize() / 2.0 });
+    defer coreui.popStyleVar(.{});
+
+    // const open = beginObjSection(allocator, "dasdas", tab, .{ .top_level_obj = top_level_obj, .obj = obj }, true, true, true, args.flat);
+    // defer endSection(open, args.flat);
+
     try cdbPropertiesObj(allocator, tab, top_level_obj, obj, depth, args);
 }
 const REMOVED_COLOR = .{ 0.7, 0.0, 0.0, 1.0 };
 
-fn objContextMenuBtn(allocator: std.mem.Allocator, tab: *editor_tabs.TabO, top_level_obj: cdb.ObjId, obj: cdb.ObjId, prop_idx: ?u32, in_set_obj: ?cdb.ObjId) !void {
-    if (_coreui.beginPopup("property_obj_menu", .{})) {
-        defer _coreui.endPopup();
-        try _editor.showObjContextMenu(allocator, tab, &.{editor.Contexts.open}, .{
-            .top_level_obj = top_level_obj,
-            .obj = obj,
-            .prop_idx = prop_idx,
-            .in_set_obj = in_set_obj,
-        });
+fn objContextMenuBtn(allocator: std.mem.Allocator, tab: *editor_tabs.TabO, selected_obj: coreui.SelectedObj) !void {
+    if (coreui.beginPopup("property_obj_menu", .{})) {
+        defer coreui.endPopup();
+        try editor.showObjContextMenu(allocator, tab, &.{editor.Contexts.open}, selected_obj);
     }
 
-    if (_coreui.button(Icons.FA_ELLIPSIS ++ "###PropertyCtxMenu", .{})) {
-        _coreui.openPopup("property_obj_menu", .{});
+    if (coreui.button(coreui.Icons.Elispis ++ "###PropertyCtxMenu", .{})) {
+        coreui.openPopup("property_obj_menu", .{});
+    }
+}
+
+fn uiProperty(
+    allocator: std.mem.Allocator,
+    tab: *editor_tabs.TabO,
+    top_level_obj: cdb.ObjId,
+    obj: cdb.ObjId,
+    prop_idx: u32,
+    prop_label: ?[:0]const u8,
+    args: public.InspectorViewArgs,
+) !void {
+    var buff: [128:0]u8 = undefined;
+    var prop_name_buff: [128:0]u8 = undefined;
+
+    const obj_r = cdb.readObj(obj) orelse return;
+
+    const db = cdb.getDbFromObjid(obj);
+    const prop_defs = cdb.getTypePropDef(db, obj.type_idx).?;
+    const prop_def = prop_defs[prop_idx];
+
+    const prop_name = prop_label orelse try formatedPropNameToBuff(&prop_name_buff, prop_def.name);
+    const prop_state = cdb.getRelation(top_level_obj, obj, prop_idx, null);
+    const prop_color = editor.getStateColor(prop_state);
+
+    const enabled = if (args.parent_disabled) false else cdb.isChildOff(top_level_obj, obj);
+
+    switch (prop_def.type) {
+        .REFERENCE_SET, .SUBOBJECT_SET => {
+            if (cdb.getPropertyAspect(public.UiInspectorPropertyValueAspect, db, obj.type_idx, prop_idx)) |aspect| {
+                const lbl = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
+                if (uiPropBegin(allocator, lbl, prop_color, enabled, args)) {
+                    defer uiPropEnd(enabled, args);
+                    try aspect.ui(allocator, obj, prop_idx, args);
+                    return;
+                }
+            }
+        },
+
+        // If subobject type implement UiInspectorPropertyValueAspect show it in table
+        .SUBOBJECT => {
+            //if (prop_def.type_hash.id == 0) continue;
+            const subobj = cdb.readSubObj(obj_r, prop_idx);
+            const type_idx = if (subobj) |s| s.type_idx else cdb.getTypeIdx(db, prop_def.type_hash) orelse return;
+
+            if (cdb.getAspect(public.UiInspectorPropertyValueAspect, db, type_idx)) |aspect| {
+                const lbl = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
+
+                if (uiPropBegin(allocator, lbl, prop_color, enabled, args)) {
+                    defer uiPropEnd(enabled, args);
+                    {
+                        try uiPropInputBegin(obj, prop_idx, enabled);
+                        defer uiPropInputEnd(enabled);
+
+                        if (subobj == null) {
+                            try objContextMenuBtn(
+                                allocator,
+                                tab,
+                                .{ .top_level_obj = top_level_obj, .obj = obj, .prop_idx = prop_idx },
+                            );
+                        } else {
+                            try aspect.ui(allocator, subobj.?, prop_idx, args);
+                        }
+                    }
+
+                    {
+                        try uiPropButtonsBegin(obj, prop_idx, enabled);
+                        defer uiPropButtonEnd();
+                    }
+                }
+            }
+        },
+
+        .REFERENCE => {
+            var ref: ?cdb.ObjId = null;
+
+            if (args.filter) |filter| {
+                if (coreui.uiFilterPass(allocator, std.mem.sliceTo(filter, 0), prop_def.name, false) == null) {
+                    return;
+                }
+            }
+
+            ref = cdb.readRef(obj_r, prop_idx);
+
+            const label = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
+
+            if (uiPropBegin(allocator, label, prop_color, enabled, args)) {
+                defer uiPropEnd(enabled, args);
+                try uiAssetInput(allocator, tab, obj, prop_idx, !enabled);
+            }
+        },
+        else => {
+            if (args.filter) |filter| {
+                if (coreui.uiFilterPass(allocator, std.mem.sliceTo(filter, 0), prop_def.name, false) == null) {
+                    return;
+                }
+            }
+
+            const label = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
+            if (uiPropBegin(allocator, label, prop_color, enabled, args)) {
+                defer uiPropEnd(enabled, args);
+                if (cdb.getPropertyAspect(public.UiInspectorPropertyValueAspect, db, obj.type_idx, prop_idx)) |aspect| {
+                    try uiPropInputBegin(obj, prop_idx, enabled);
+                    defer uiPropInputEnd(enabled);
+                    try aspect.ui(allocator, obj, prop_idx, args);
+                } else {
+                    try uiPropInput(obj, prop_idx, enabled, args);
+                }
+            }
+        },
     }
 }
 
@@ -353,34 +455,34 @@ fn cdbPropertiesObj(
     top_level_obj: cdb.ObjId,
     obj: cdb.ObjId,
     depth: u32,
-    args: public.cdbPropertiesViewArgs,
+    args: public.InspectorViewArgs,
 ) !void {
-    var zone_ctx = _profiler.Zone(@src());
+    var zone_ctx = profiler.Zone(@src());
     defer zone_ctx.End();
 
-    const enabled = if (args.parent_disabled) false else _cdb.isChildOff(top_level_obj, obj);
+    const enabled = if (args.parent_disabled) false else cdb.isChildOff(top_level_obj, obj);
 
-    const db = _cdb.getDbFromObjid(obj);
+    const db = cdb.getDbFromObjid(obj);
 
     // Find properties asspect for obj type.
-    const ui_aspect = _cdb.getAspect(public.UiPropertiesAspect, db, obj.type_idx);
+    const ui_aspect = cdb.getAspect(public.UiInspectorObjAspect, db, obj.type_idx);
     if (ui_aspect) |aspect| {
         try aspect.ui_properties(allocator, tab, top_level_obj, obj, depth, args);
         return;
     }
 
-    _coreui.pushObjUUID(obj);
-    defer _coreui.popId();
+    coreui.pushObjUUID(obj);
+    defer coreui.popId();
 
-    const obj_r = _cdb.readObj(obj) orelse return;
+    const obj_r = cdb.readObj(obj) orelse return;
 
     // Find properties config asspect for obj type.
-    const config_aspect = _cdb.getAspect(public.UiPropertiesConfigAspect, db, obj.type_idx);
+    const config_aspect = cdb.getAspect(public.UiPropertiesConfigAspect, db, obj.type_idx);
 
-    const prototype_obj = _cdb.getPrototype(obj_r);
+    const prototype_obj = cdb.getPrototype(obj_r);
     //const has_prototype = !prototype_obj.isEmpty();
 
-    const prop_defs = _cdb.getTypePropDef(db, obj.type_idx).?;
+    const prop_defs = cdb.getTypePropDef(db, obj.type_idx).?;
 
     var buff: [128:0]u8 = undefined;
     var prop_name_buff: [128:0]u8 = undefined;
@@ -391,121 +493,33 @@ fn cdbPropertiesObj(
     if (config_aspect) |aspect| {
         show_proto = !aspect.hide_prototype;
     }
-
+    // Force hide
     if (args.hide_proto) {
         show_proto = false;
     }
 
-    // Scalars valus
+    //
+    // Scalars valus (they are in table one prop per table row)
+    //
     if (beginPropTable("Inspector")) {
         defer endPropTabel();
 
         if (show_proto) {
-            if (uiPropLabel(allocator, "Prototype", null, enabled, args)) {
-                _coreui.beginDisabled(.{ .disabled = !enabled });
-                defer _coreui.endDisabled();
-                try uiAssetInputProto(allocator, db, tab, obj, prototype_obj, false);
+            if (uiPropBegin(allocator, "Prototype", null, enabled, args)) {
+                defer uiPropEnd(enabled, args);
+                try uiAssetInputProto(allocator, db, tab, obj, prototype_obj, !enabled);
             }
         }
-
-        for (prop_defs, 0..) |prop_def, idx| {
+        // const visible = coreui.isRectVisible(.{ coreui.getContentRegionMax()[0], coreui.getFontSize() * coreui.getScaleFactor() });
+        for (0..prop_defs.len) |idx| {
             const prop_idx: u32 = @truncate(idx);
-            // const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
-
-            const prop_name = try formatedPropNameToBuff(&prop_name_buff, prop_def.name);
-            const prop_state = _cdb.getRelation(top_level_obj, obj, prop_idx, null);
-            const prop_color = _editor.getStateColor(prop_state);
-
-            switch (prop_def.type) {
-                else => {},
-            }
-            var ui_prop_aspect: ?*public.UiPropertyAspect = null;
-            if (prop_def.type != .REFERENCE_SET and prop_def.type != .SUBOBJECT_SET) {
-                ui_prop_aspect = _cdb.getPropertyAspect(public.UiPropertyAspect, db, obj.type_idx, prop_idx);
-                // If exist aspect and is empty hide property.
-                //if (ui_prop_aspect != null and ui_prop_aspect.?.ui_property == null) continue;
-            }
-
-            switch (prop_def.type) {
-                .REFERENCE_SET, .SUBOBJECT_SET => {
-                    const ui_embed_prop_aspect = _cdb.getPropertyAspect(public.UiEmbedPropertyAspect, db, obj.type_idx, prop_idx);
-                    if (ui_embed_prop_aspect) |aspect| {
-                        const lbl = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
-                        if (uiPropLabel(allocator, lbl, prop_color, enabled, args)) {
-                            _coreui.beginDisabled(.{ .disabled = !enabled });
-                            defer _coreui.endDisabled();
-                            try aspect.ui_properties(allocator, obj, prop_idx, args);
-                            continue;
-                        }
-                    }
-                },
-
-                // If subobject type implement UiEmbedPropertiesAspect show it in table
-                .SUBOBJECT => {
-                    //if (prop_def.type_hash.id == 0) continue;
-                    const subobj = _cdb.readSubObj(obj_r, prop_idx);
-                    const type_idx = if (subobj) |s| s.type_idx else _cdb.getTypeIdx(db, prop_def.type_hash) orelse continue;
-
-                    const ui_embed_prop_aspect = _cdb.getAspect(public.UiEmbedPropertiesAspect, db, type_idx);
-                    if (ui_embed_prop_aspect) |aspect| {
-                        const lbl = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
-
-                        if (uiPropLabel(allocator, lbl, prop_color, enabled, args)) {
-                            _coreui.tableNextColumn();
-                            if (subobj == null) {
-                                try objContextMenuBtn(allocator, tab, top_level_obj, obj, prop_idx, null);
-                            } else {
-                                _coreui.beginDisabled(.{ .disabled = !enabled });
-                                defer _coreui.endDisabled();
-                                try aspect.ui_properties(allocator, subobj.?, args);
-                            }
-                        }
-                    }
-                    continue;
-                },
-
-                .REFERENCE => {
-                    var ref: ?cdb.ObjId = null;
-
-                    if (args.filter) |filter| {
-                        if (_coreui.uiFilterPass(allocator, std.mem.sliceTo(filter, 0), prop_def.name, false) == null) {
-                            continue;
-                        }
-                    }
-
-                    ref = _cdb.readRef(obj_r, prop_idx);
-
-                    const label = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
-
-                    if (uiPropLabel(allocator, label, prop_color, enabled, args)) {
-                        _coreui.beginDisabled(.{ .disabled = !enabled });
-                        defer _coreui.endDisabled();
-                        try uiAssetInput(allocator, tab, obj, prop_idx, false, true);
-                    }
-                },
-                else => {
-                    if (args.filter) |filter| {
-                        if (_coreui.uiFilterPass(allocator, std.mem.sliceTo(filter, 0), prop_def.name, false) == null) {
-                            continue;
-                        }
-                    }
-
-                    const label = try std.fmt.bufPrintZ(&buff, "{s}", .{prop_name});
-                    if (uiPropLabel(allocator, label, prop_color, enabled, args)) {
-                        _coreui.beginDisabled(.{ .disabled = !enabled });
-                        defer _coreui.endDisabled();
-                        if (ui_prop_aspect) |aspect| {
-                            try aspect.ui_property(allocator, obj, prop_idx, args);
-                        } else {
-                            try uiPropInput(obj, prop_idx, enabled, args);
-                        }
-                    }
-                },
-            }
+            try uiProperty(allocator, tab, top_level_obj, obj, prop_idx, null, args);
         }
     }
 
-    // Compound values
+    //
+    // Compound values (Seperated by colapsing header)
+    //
     for (prop_defs, 0..) |prop_def, idx| {
         switch (prop_def.type) {
             .SUBOBJECT, .REFERENCE_SET, .SUBOBJECT_SET => {},
@@ -514,84 +528,72 @@ fn cdbPropertiesObj(
 
         const prop_idx: u32 = @truncate(idx);
 
-        _coreui.pushPropName(obj, @truncate(idx));
-        defer _coreui.popId();
+        coreui.pushPropName(obj, @truncate(idx));
+        defer coreui.popId();
 
-        //const visible = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
+        //const visible = coreui.isRectVisible(.{ coreui.getContentRegionMax()[0], coreui.getFontSize() * coreui.getScaleFactor() });
 
         const prop_name = try formatedPropNameToBuff(&prop_name_buff, prop_def.name);
-        const prop_state = _cdb.getRelation(top_level_obj, obj, prop_idx, null);
-        const prop_color = _editor.getStateColor(prop_state);
-
-        const ui_prop_aspect = _cdb.getPropertyAspect(public.UiPropertyAspect, db, obj.type_idx, prop_idx);
-        // If exist aspect and is empty hide property.
-        if (ui_prop_aspect) |aspect| {
-            var a = args;
-            a.parent_disabled = !enabled;
-
-            try aspect.ui_property(allocator, obj, prop_idx, a);
-            continue;
-        }
+        const prop_state = cdb.getRelation(top_level_obj, obj, prop_idx, null);
+        const prop_color = editor.getStateColor(prop_state);
 
         switch (prop_def.type) {
             .SUBOBJECT => {
-                var subobj: ?cdb.ObjId = null;
-
                 if (args.filter) |filter| {
-                    if (_coreui.uiFilterPass(allocator, std.mem.sliceTo(filter, 0), prop_def.name, false) == null) {
+                    if (coreui.uiFilterPass(allocator, std.mem.sliceTo(filter, 0), prop_def.name, false) == null) {
                         continue;
                     }
                 }
 
-                subobj = _cdb.readSubObj(obj_r, prop_idx);
-                const type_idx = if (subobj) |s| s.type_idx else _cdb.getTypeIdx(db, prop_def.type_hash);
-                if (type_idx) |tidx| {
-                    if (_cdb.getAspect(public.UiEmbedPropertiesAspect, db, tidx) != null) continue;
-                }
+                const subobj = cdb.readSubObj(obj_r, prop_idx);
+                const type_idx = if (subobj) |s| s.type_idx else cdb.getTypeIdx(db, prop_def.type_hash);
 
-                const label = try std.fmt.bufPrintZ(&buff, "{s}  {s}", .{ prop_name, if (prop_def.type == .REFERENCE) "  " ++ Icons.FA_LINK else "" });
+                // SKip if subobject has embed aspect
+                if (type_idx) |tidx| if (cdb.getAspect(public.UiInspectorPropertyValueAspect, db, tidx) != null) continue;
 
-                if (!args.flat) {
-                    try objContextMenuBtn(allocator, tab, top_level_obj, obj, prop_idx, null);
-                    _coreui.sameLine(.{});
-                }
+                const label = try std.fmt.bufPrintZ(&buff, "{s}  {s}", .{ prop_name, if (prop_def.type == .REFERENCE) "  " ++ coreui.Icons.Link else "" });
+                {
+                    coreui.pushStyleColor4f(.{ .idx = .text, .c = prop_color });
+                    const open = try beginObjSection(
+                        allocator,
+                        label,
+                        tab,
+                        .{ .top_level_obj = top_level_obj, .obj = obj, .prop_idx = prop_idx },
+                        true,
+                        subobj == null,
+                        depth < args.max_autopen_depth,
+                        args.flat,
+                    );
+                    coreui.popStyleColor(.{});
+                    defer endSection(open, args.flat);
 
-                _coreui.pushStyleColor4f(.{ .idx = .text, .c = prop_color });
-                const open = beginSection(label, subobj == null, depth < args.max_autopen_depth, args.flat);
-                defer endSection(open, args.flat);
-                _coreui.popStyleColor(.{});
+                    if (open) {
+                        if (subobj != null) {
+                            var a = args;
+                            a.parent_disabled = !enabled;
 
-                if (open) {
-                    if (subobj != null) {
-                        var a = args;
-                        a.parent_disabled = !enabled;
-
-                        try cdbPropertiesObj(allocator, tab, top_level_obj, subobj.?, depth + 1, a);
+                            try cdbPropertiesObj(allocator, tab, top_level_obj, subobj.?, depth + 1, a);
+                        }
                     }
                 }
             },
 
             .SUBOBJECT_SET, .REFERENCE_SET => {
-                if (_cdb.getPropertyAspect(public.UiEmbedPropertyAspect, db, obj.type_idx, prop_idx) != null) {
+                if (cdb.getPropertyAspect(public.UiInspectorPropertyValueAspect, db, obj.type_idx, prop_idx) != null) {
                     continue;
                 }
 
                 const prop_label = try std.fmt.bufPrintZ(&buff, "{s}  {s} {s}", .{
                     prop_name,
-                    Icons.FA_LIST,
-                    if (prop_def.type == .REFERENCE_SET) "  " ++ Icons.FA_LINK else "",
+                    coreui.Icons.List,
+                    if (prop_def.type == .REFERENCE_SET) "  " ++ coreui.Icons.Link else "",
                 });
-
-                if (!args.flat) {
-                    try objContextMenuBtn(allocator, tab, top_level_obj, obj, prop_idx, null);
-                    _coreui.sameLine(.{});
-                }
 
                 var set: ?[]cdb.ObjId = undefined;
                 if (prop_def.type == .REFERENCE_SET) {
-                    set = _cdb.readRefSet(obj_r, prop_idx, allocator);
+                    set = cdb.readRefSet(obj_r, prop_idx, allocator);
                 } else {
-                    set = try _cdb.readSubObjSet(obj_r, prop_idx, allocator);
+                    set = try cdb.readSubObjSet(obj_r, prop_idx, allocator);
                 }
 
                 defer {
@@ -600,39 +602,63 @@ fn cdbPropertiesObj(
                     }
                 }
                 const is_empty = if (set) |s| s.len == 0 else true;
-                _coreui.pushStyleColor4f(.{ .idx = .text, .c = prop_color });
-                const open = beginSection(prop_label, false, !is_empty and depth < args.max_autopen_depth, args.flat);
+                coreui.pushStyleColor4f(.{ .idx = .text, .c = prop_color });
+
+                const open = try beginObjSection(
+                    allocator,
+                    prop_label,
+                    tab,
+                    .{ .top_level_obj = top_level_obj, .obj = obj, .prop_idx = prop_idx },
+                    true,
+                    false,
+                    !is_empty and depth < args.max_autopen_depth,
+                    args.flat,
+                );
                 defer endSection(open, args.flat);
-                _coreui.popStyleColor(.{});
+                coreui.popStyleColor(.{});
 
                 if (open) {
                     if (set) |s| {
                         defer allocator.free(s);
 
-                        const ui_sort_aspect = _cdb.getPropertyAspect(editor.UiSetSortPropertyAspect, db, obj.type_idx, prop_idx);
+                        const ui_sort_aspect = cdb.getPropertyAspect(editor.UiSetSortPropertyAspect, db, obj.type_idx, prop_idx);
                         if (ui_sort_aspect) |aspect| {
                             try aspect.sort(allocator, s);
                         }
 
                         for (s, 0..) |subobj, set_idx| {
-                            _coreui.pushIntId(@truncate(set_idx));
-                            defer _coreui.popId();
+                            coreui.pushIntId(@truncate(set_idx));
+                            defer coreui.popId();
 
-                            try objContextMenuBtn(allocator, tab, top_level_obj, obj, prop_idx, subobj);
-                            _coreui.sameLine(.{});
+                            //const visible_item = coreui.isRectVisible(.{ coreui.getContentRegionMax()[0], coreui.getFontSize() * coreui.getScaleFactor() });
 
-                            //const visible_item = _coreui.isRectVisible(.{ _coreui.getContentRegionMax()[0], _coreui.getFontSize() * _coreui.getScaleFactor() });
+                            const label = try editor.formatObjLabel(
+                                allocator,
+                                subobj,
+                                set_idx,
+                                .{ .with_txt = true, .with_id = true, .with_icon = true, .with_status_icons = true },
+                            );
+                            defer allocator.free(label);
 
-                            const label = _editor.buffFormatObjLabel(allocator, &buff, subobj, .{ .with_txt = true, .with_id = true, .with_status_icons = true }) orelse try std.fmt.bufPrintZ(&buff, "{d}", .{set_idx});
-                            const set_state = _cdb.getRelation(top_level_obj, obj, prop_idx, subobj);
-                            const set_color = _editor.getStateColor(set_state);
+                            const set_state = cdb.getRelation(top_level_obj, obj, prop_idx, subobj);
+                            const set_color = editor.getStateColor(set_state);
 
-                            _coreui.pushStyleColor4f(.{ .idx = .text, .c = set_color });
-                            const open_inset = beginSection(label, false, depth < args.max_autopen_depth, args.flat);
+                            coreui.pushStyleColor4f(.{ .idx = .text, .c = set_color });
 
-                            //_coreui.sameLine(.{});
+                            const open_inset = try beginObjSection(
+                                allocator,
+                                label,
+                                tab,
+                                .{ .top_level_obj = top_level_obj, .obj = obj, .prop_idx = prop_idx, .in_set_obj = subobj },
+                                true,
+                                false,
+                                depth < args.max_autopen_depth,
+                                args.flat,
+                            );
+                            coreui.popStyleColor(.{});
+
+                            //coreui.sameLine(.{});
                             defer endSection(open_inset, args.flat);
-                            _coreui.popStyleColor(.{});
 
                             if (open_inset) {
                                 var a = args;
@@ -650,504 +676,517 @@ fn cdbPropertiesObj(
     }
 }
 
-fn uiInputProtoBtns(obj: cdb.ObjId, prop_idx: u32) !void {
-    const proto_obj = _cdb.getPrototype(_cdb.readObj(obj).?);
+fn uiInputProtoBtns(obj: cdb.ObjId, prop_idx: u32, enabled: bool) !void {
+    const proto_obj = cdb.getPrototype(cdb.readObj(obj).?);
     if (proto_obj.isEmpty()) return;
 
-    const db = _cdb.getDbFromObjid(obj);
+    const db = cdb.getDbFromObjid(obj);
 
-    const types = _cdb.getTypePropDef(db, obj.type_idx).?;
+    const types = cdb.getTypePropDef(db, obj.type_idx).?;
     const prop_def = types[prop_idx];
-    const is_overided = _cdb.isPropertyOverrided(_cdb.readObj(obj).?, prop_idx);
+    const is_overided = cdb.isPropertyOverrided(cdb.readObj(obj).?, prop_idx);
 
     if (prop_def.type == .BLOB) return;
 
-    if (_coreui.beginPopup("property_protoypes_menu", .{})) {
-        defer _coreui.endPopup();
+    if (coreui.beginPopup("property_protoypes_menu", .{})) {
+        defer coreui.endPopup();
 
-        if (_coreui.menuItem(_allocator, Icons.FA_ARROW_ROTATE_LEFT ++ "  " ++ "Reset to prototype value" ++ "###ResetToPrototypeValue", .{ .enabled = is_overided }, null)) {
-            const w = _cdb.writeObj(obj).?;
-            _cdb.resetPropertyOveride(w, prop_idx);
-            try _cdb.writeCommit(w);
+        if (coreui.menuItem(_allocator, coreui.Icons.ResetToPrototype ++ "  " ++ "Reset to prototype value" ++ "###ResetToPrototypeValue", .{ .enabled = enabled and is_overided }, null)) {
+            const w = cdb.writeObj(obj).?;
+            cdb.resetPropertyOveride(w, prop_idx);
+            try cdb.writeCommit(w);
         }
 
-        if (_coreui.menuItem(_allocator, Icons.FA_ARROW_UP ++ "  " ++ "Propagate to prototype" ++ "###PropagateToPrototype", .{ .enabled = is_overided }, null)) {
+        if (coreui.menuItem(_allocator, coreui.Icons.PropagateToProtoype ++ "  " ++ "Propagate to prototype" ++ "###PropagateToPrototype", .{ .enabled = enabled and is_overided }, null)) {
             // TODO: TO CDB!!!
             // Set value from parent. This is probably not need.
             {
-                const w = _cdb.writeObj(proto_obj).?;
-                const r = _cdb.readObj(obj).?;
+                const w = cdb.writeObj(proto_obj).?;
+                const r = cdb.readObj(obj).?;
 
                 switch (prop_def.type) {
                     .BOOL => {
-                        const value = _cdb.readValue(bool, r, prop_idx);
-                        _cdb.setValue(bool, w, prop_idx, value);
+                        const value = cdb.readValue(bool, r, prop_idx);
+                        cdb.setValue(bool, w, prop_idx, value);
                     },
                     .F32 => {
-                        const value = _cdb.readValue(f32, r, prop_idx);
-                        _cdb.setValue(f32, w, prop_idx, value);
+                        const value = cdb.readValue(f32, r, prop_idx);
+                        cdb.setValue(f32, w, prop_idx, value);
                     },
                     .F64 => {
-                        const value = _cdb.readValue(f64, r, prop_idx);
-                        _cdb.setValue(f64, w, prop_idx, value);
+                        const value = cdb.readValue(f64, r, prop_idx);
+                        cdb.setValue(f64, w, prop_idx, value);
                     },
                     .I32 => {
-                        const value = _cdb.readValue(i32, r, prop_idx);
-                        _cdb.setValue(i32, w, prop_idx, value);
+                        const value = cdb.readValue(i32, r, prop_idx);
+                        cdb.setValue(i32, w, prop_idx, value);
                     },
                     .U32 => {
-                        const value = _cdb.readValue(u32, r, prop_idx);
-                        _cdb.setValue(u32, w, prop_idx, value);
+                        const value = cdb.readValue(u32, r, prop_idx);
+                        cdb.setValue(u32, w, prop_idx, value);
                     },
                     .I64 => {
-                        const value = _cdb.readValue(i64, r, prop_idx);
-                        _cdb.setValue(i64, w, prop_idx, value);
+                        const value = cdb.readValue(i64, r, prop_idx);
+                        cdb.setValue(i64, w, prop_idx, value);
                     },
                     .U64 => {
-                        const value = _cdb.readValue(u64, r, prop_idx);
-                        _cdb.setValue(u64, w, prop_idx, value);
+                        const value = cdb.readValue(u64, r, prop_idx);
+                        cdb.setValue(u64, w, prop_idx, value);
                     },
                     .STR => {
-                        if (_cdb.readStr(r, prop_idx)) |str| {
-                            try _cdb.setStr(w, prop_idx, str);
+                        if (cdb.readStr(r, prop_idx)) |str| {
+                            try cdb.setStr(w, prop_idx, str);
                         }
                     },
                     .REFERENCE => {
-                        if (_cdb.readRef(r, prop_idx)) |ref| {
-                            try _cdb.setRef(w, prop_idx, ref);
+                        if (cdb.readRef(r, prop_idx)) |ref| {
+                            try cdb.setRef(w, prop_idx, ref);
                         }
                     },
                     .BLOB => {},
                     else => {},
                 }
-                _cdb.resetPropertyOveride(w, prop_idx);
-                try _cdb.writeCommit(w);
+                cdb.resetPropertyOveride(w, prop_idx);
+                try cdb.writeCommit(w);
             }
 
             // reset value overide
             {
-                const w = _cdb.writeObj(obj).?;
-                _cdb.resetPropertyOveride(w, prop_idx);
-                try _cdb.writeCommit(w);
+                const w = cdb.writeObj(obj).?;
+                cdb.resetPropertyOveride(w, prop_idx);
+                try cdb.writeCommit(w);
             }
         }
     }
 
-    if (_coreui.button(Icons.FA_SWATCHBOOK ++ "###PrototypeButtons", .{})) {
-        _coreui.openPopup("property_protoypes_menu", .{});
+    if (coreui.button(coreui.Icons.PrototypeBtn ++ "###PrototypeButtons", .{})) {
+        coreui.openPopup("property_protoypes_menu", .{});
     }
 
-    _coreui.sameLine(.{});
+    coreui.sameLine(.{});
+}
+
+fn uiPropBegin(allocator: std.mem.Allocator, name: [:0]const u8, color: ?math.Color4f, enabled: bool, args: public.InspectorViewArgs) bool {
+    if (args.filter) |filter| {
+        if (coreui.uiFilterPass(allocator, filter, name, false) == null) return false;
+    }
+
+    _ = coreui.tableNextRow(.{});
+    _ = coreui.tableNextColumn();
+    defer _ = coreui.tableNextColumn();
+
+    if (args.no_prop_label) return true;
+
+    coreui.alignTextToFramePadding();
+    if (enabled) {
+        if (color) |colorr| {
+            coreui.pushStyleColor4f(.{ .idx = .text, .c = colorr });
+        }
+        defer if (color != null) coreui.popStyleColor(.{});
+        coreui.text(name);
+    } else {
+        coreui.beginDisabled(.{});
+        defer coreui.endDisabled();
+        coreui.text(name);
+    }
+    return true;
+}
+
+fn uiPropEnd(enabled: bool, args: public.InspectorViewArgs) void {
+    _ = args;
+    _ = enabled;
 }
 
 fn uiPropInputBegin(obj: cdb.ObjId, prop_idx: u32, enabled: bool) !void {
-    _ = enabled; // autofix
-    _coreui.tableNextColumn();
+    coreui.pushObjUUID(obj);
+    coreui.pushPropName(obj, prop_idx);
 
-    _coreui.pushObjUUID(obj);
-    _coreui.pushPropName(obj, prop_idx);
-
-    try uiInputProtoBtns(obj, prop_idx);
-
-    _coreui.setNextItemWidth(-std.math.floatMin(f32));
+    coreui.beginDisabled(.{ .disabled = !enabled });
 }
 
-fn uiPropInputEnd() void {
-    _coreui.popId();
-    _coreui.popId();
+fn uiPropInputEnd(enabled: bool) void {
+    _ = enabled;
+    coreui.endDisabled();
+    _ = coreui.tableNextColumn();
+    coreui.popId();
+    coreui.popId();
 }
 
-fn uiPropInput(obj: cdb.ObjId, prop_idx: u32, enabled: bool, args: public.cdbPropertiesViewArgs) !void {
-    try uiPropInputBegin(obj, prop_idx, enabled);
-    defer uiPropInputEnd();
-    try uiPropInputRaw(obj, prop_idx, args);
+fn uiPropButtonsBegin(obj: cdb.ObjId, prop_idx: u32, enabled: bool) !void {
+    coreui.pushObjUUID(obj);
+    coreui.pushPropName(obj, prop_idx);
+    coreui.beginDisabled(.{ .disabled = !enabled });
+    try uiInputProtoBtns(obj, prop_idx, enabled);
 }
 
-fn uiPropInputRaw(obj: cdb.ObjId, prop_idx: u32, args: public.cdbPropertiesViewArgs) !void {
-    _ = args; // autofix
+fn uiPropButtonEnd() void {
+    coreui.endDisabled();
+    coreui.popId();
+    coreui.popId();
+}
 
-    const visible = _coreui.isRectVisible(.{ .x = _coreui.getContentRegionAvail().x, .y = _coreui.getFontSize() * _coreui.getScaleFactor() });
+fn uiPropInput(obj: cdb.ObjId, prop_idx: u32, enabled: bool, args: public.InspectorViewArgs) !void {
+    {
+        try uiPropInputBegin(obj, prop_idx, enabled);
+        defer uiPropInputEnd(enabled);
+        try uiPropInputRaw(obj, prop_idx, args);
+    }
+
+    {
+        try uiPropButtonsBegin(obj, prop_idx, enabled);
+        defer uiPropButtonEnd();
+    }
+}
+
+fn uiPropInputRaw(obj: cdb.ObjId, prop_idx: u32, args: public.InspectorViewArgs) !void {
+    _ = args;
+
+    const visible = coreui.isRectVisible(.{ .x = coreui.getContentRegionAvail().x, .y = coreui.getFontSize() });
     if (!visible) {
-        _coreui.dummy(.{ .w = -1, .h = _coreui.getFontSize() * _coreui.getScaleFactor() });
+        coreui.dummy(.{ .w = -1, .h = coreui.getFontSize() });
         return;
     }
 
     var buf: [128:0]u8 = undefined;
     @memset(&buf, 0);
 
-    const db = _cdb.getDbFromObjid(obj);
-    const prop_defs = _cdb.getTypePropDef(db, obj.type_idx).?;
+    const db = cdb.getDbFromObjid(obj);
+    const prop_defs = cdb.getTypePropDef(db, obj.type_idx).?;
     const prop_def = prop_defs[prop_idx];
 
     var buf_label: [128:0]u8 = undefined;
     @memset(&buf_label, 0);
     const label = try std.fmt.bufPrintZ(&buf_label, "###edit", .{});
 
-    const reader = _cdb.readObj(obj) orelse return;
+    const reader = cdb.readObj(obj) orelse return;
 
+    coreui.setNextItemWidth(-1.0);
     switch (prop_def.type) {
         .BOOL => {
-            var value = _cdb.readValue(bool, reader, prop_idx);
-            if (_coreui.checkbox(label, .{
+            var value = cdb.readValue(bool, reader, prop_idx);
+            if (coreui.checkbox(label, .{
                 .v = &value,
             })) {
-                const w = _cdb.writeObj(obj).?;
-                _cdb.setValue(bool, w, prop_idx, value);
-                try _cdb.writeCommit(w);
+                const w = cdb.writeObj(obj).?;
+                cdb.setValue(bool, w, prop_idx, value);
+                try cdb.writeCommit(w);
             }
         },
         .F32 => {
-            var value = _cdb.readValue(f32, reader, prop_idx);
-            if (_coreui.dragF32(label, .{
+            var value = cdb.readValue(f32, reader, prop_idx);
+            if (coreui.dragF32(label, .{
                 .v = &value,
                 .flags = .{
                     //.enter_returns_true = true,
                 },
             })) {
-                const w = _cdb.writeObj(obj).?;
-                _cdb.setValue(f32, w, prop_idx, value);
-                try _cdb.writeCommit(w);
+                const w = cdb.writeObj(obj).?;
+                cdb.setValue(f32, w, prop_idx, value);
+                try cdb.writeCommit(w);
             }
         },
         .F64 => {
-            var value = _cdb.readValue(f64, reader, prop_idx);
-            if (_coreui.dragF64(label, .{
+            var value = cdb.readValue(f64, reader, prop_idx);
+            if (coreui.dragF64(label, .{
                 .v = &value,
                 .flags = .{
                     //.enter_returns_true = true,
                 },
             })) {
-                const w = _cdb.writeObj(obj).?;
-                _cdb.setValue(f64, w, prop_idx, value);
-                try _cdb.writeCommit(w);
+                const w = cdb.writeObj(obj).?;
+                cdb.setValue(f64, w, prop_idx, value);
+                try cdb.writeCommit(w);
             }
         },
         .I32 => {
-            var value = _cdb.readValue(i32, reader, prop_idx);
-            if (_coreui.dragI32(label, .{
+            var value = cdb.readValue(i32, reader, prop_idx);
+            if (coreui.dragI32(label, .{
                 .v = &value,
                 .flags = .{
                     //.enter_returns_true = true,
                 },
             })) {
-                const w = _cdb.writeObj(obj).?;
-                _cdb.setValue(i32, w, prop_idx, value);
-                try _cdb.writeCommit(w);
+                const w = cdb.writeObj(obj).?;
+                cdb.setValue(i32, w, prop_idx, value);
+                try cdb.writeCommit(w);
             }
         },
         .U32 => {
-            var value = _cdb.readValue(u32, reader, prop_idx);
-            if (_coreui.dragU32(label, .{
+            var value = cdb.readValue(u32, reader, prop_idx);
+            if (coreui.dragU32(label, .{
                 .v = &value,
                 .flags = .{
                     //.enter_returns_true = true,
                 },
             })) {
-                const w = _cdb.writeObj(obj).?;
-                _cdb.setValue(u32, w, prop_idx, value);
-                try _cdb.writeCommit(w);
+                const w = cdb.writeObj(obj).?;
+                cdb.setValue(u32, w, prop_idx, value);
+                try cdb.writeCommit(w);
             }
         },
         .I64 => {
-            var value = _cdb.readValue(i64, reader, prop_idx);
-            if (_coreui.dragI64(label, .{
+            var value = cdb.readValue(i64, reader, prop_idx);
+            if (coreui.dragI64(label, .{
                 .v = &value,
                 .flags = .{
                     //.enter_returns_true = true,
                 },
             })) {
-                const w = _cdb.writeObj(obj).?;
-                _cdb.setValue(i64, w, prop_idx, value);
-                try _cdb.writeCommit(w);
+                const w = cdb.writeObj(obj).?;
+                cdb.setValue(i64, w, prop_idx, value);
+                try cdb.writeCommit(w);
             }
         },
         .U64 => {
-            var value = _cdb.readValue(u64, reader, prop_idx);
-            if (_coreui.dragU64(label, .{
+            var value = cdb.readValue(u64, reader, prop_idx);
+            if (coreui.dragU64(label, .{
                 .v = &value,
                 .flags = .{
                     //.enter_returns_true = true,
                 },
             })) {
-                const w = _cdb.writeObj(obj).?;
-                _cdb.setValue(u64, w, prop_idx, value);
-                try _cdb.writeCommit(w);
+                const w = cdb.writeObj(obj).?;
+                cdb.setValue(u64, w, prop_idx, value);
+                try cdb.writeCommit(w);
             }
         },
         .STR => {
-            const name = _cdb.readStr(reader, prop_idx);
+            const name = cdb.readStr(reader, prop_idx);
             if (name) |str| {
                 _ = try std.fmt.bufPrintZ(&buf, "{s}", .{str});
             }
-            if (_coreui.inputText(label, .{
+            if (coreui.inputText(label, .{
                 .buf = &buf,
                 .flags = .{
                     .enter_returns_true = true,
                 },
             })) {
-                const w = _cdb.writeObj(obj).?;
+                const w = cdb.writeObj(obj).?;
                 var new_name_buf: [128:0]u8 = undefined;
                 const new_name = try std.fmt.bufPrintZ(&new_name_buf, "{s}", .{std.mem.sliceTo(&buf, 0)});
-                try _cdb.setStr(w, prop_idx, new_name);
-                try _cdb.writeCommit(w);
+                try cdb.setStr(w, prop_idx, new_name);
+                try cdb.writeCommit(w);
             }
         },
         .BLOB => {
-            _coreui.text("---");
+            coreui.text("---");
         },
         else => {
-            _coreui.text("- !!INVALID TYPE!! -");
+            coreui.text("- !!INVALID TYPE!! -");
             log.err("Invalid property type for uiInputForProperty {}", .{prop_def.type});
         },
     }
 }
 
-fn uiPropLabel(allocator: std.mem.Allocator, name: [:0]const u8, color: ?math.Color4f, enabled: bool, args: public.cdbPropertiesViewArgs) bool {
-    if (args.filter) |filter| {
-        if (_coreui.uiFilterPass(allocator, filter, name, false) == null) return false;
-    }
-    _coreui.tableNextColumn();
-
-    if (args.no_prop_label) return true;
-
-    // const max_x = _coreui.getContentRegionAvail()[0];
-    // const style = _coreui.getStyle();
-    // const txt_size = _coreui.calcTextSize(name, .{});
-    // const space_x = max_x - _coreui.getScrollX() - style.item_spacing[0] * 0.5 - txt_size[0];
-
-    // _coreui.dummy(.{ .w = space_x, .h = txt_size[1] });
-    // _coreui.sameLine(.{});
-
-    _coreui.alignTextToFramePadding();
-
-    if (enabled) {
-        if (color) |colorr| {
-            _coreui.textColored(colorr, name);
-        } else {
-            _coreui.text(name);
-        }
-    } else {
-        _coreui.beginDisabled(.{});
-        _coreui.text(name);
-        _coreui.endDisabled();
-    }
-
-    return true;
-}
-
 // Asset properties aspect
-var asset_properties_aspec = public.UiPropertiesAspect.implement(struct {
+var asset_properties_aspec = public.UiInspectorObjAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         tab: *editor_tabs.TabO,
         top_level_obj: cdb.ObjId,
         obj: cdb.ObjId,
         depth: u32,
-        args: public.cdbPropertiesViewArgs,
+        args: public.InspectorViewArgs,
     ) !void {
-        const obj_r = _cdb.readObj(obj) orelse return;
+        const obj_r = cdb.readObj(obj) orelse return;
 
         var buf: [128:0]u8 = undefined;
 
-        _coreui.separatorText("Asset");
+        if (beginSection(coreui.Icons.Asset ++ " Asset##Asset", true, false, true, false)) {
+            defer endSection(true, false);
 
-        if (beginPropTable("AssetInspector")) {
-            defer endPropTabel();
-            // Asset UUID
-            if (_assetdb.getUuid(obj)) |asset_uuid| {
-                if (uiPropLabel(allocator, "UUID", null, true, args)) {
-                    _coreui.tableNextColumn();
-                    _ = try std.fmt.bufPrintZ(&buf, "{f}", .{asset_uuid});
+            if (beginPropTable("Inspector")) {
+                defer endPropTabel();
 
-                    _coreui.setNextItemWidth(-std.math.floatMin(f32));
-                    _ = _coreui.inputText("", .{
-                        .buf = &buf,
-                        .flags = .{
-                            .read_only = true,
-                            .auto_select_all = true,
-                        },
-                    });
-                }
-            }
+                // Asset UUID
+                if (assetdb.getUuid(obj)) |asset_uuid| {
+                    if (uiPropBegin(allocator, "UUID", null, true, args)) {
+                        defer uiPropEnd(true, args);
+                        // coreui.indent(.{});
+                        // defer coreui.unindent(.{});
 
-            var is_project = false;
-            if (_assetdb.getObjForAsset(obj)) |o| {
-                is_project = o.type_idx.eql(AssetTypeIdx);
-            }
+                        _ = try std.fmt.bufPrintZ(&buf, "{f}", .{asset_uuid});
 
-            const db = _cdb.getDbFromObjid(obj);
-
-            // Asset name
-            if (!is_project and !_assetdb.isRootFolder(obj) and uiPropLabel(allocator, "Name", null, true, args)) {
-                try uiPropInput(obj, assetdb.AssetCdb.propIdx(.Name), true, args);
-            }
-
-            // Asset name
-            if (!_assetdb.isRootFolder(obj) and uiPropLabel(allocator, "Description", null, true, args)) {
-                try uiPropInput(obj, assetdb.AssetCdb.propIdx(.Description), true, args);
-            }
-
-            // Folder
-            if (!is_project and !_assetdb.isRootFolder(obj) and uiPropLabel(allocator, "Folder", null, true, args)) {
-                try uiAssetInput(allocator, tab, obj, assetdb.AssetCdb.propIdx(.Folder), false, true);
-            }
-
-            // Tags
-            if (!is_project and !_assetdb.isRootFolder(obj)) {
-                // TODO: SHIT HACK
-                const ui_prop_aspect = _cdb.getPropertyAspect(public.UiEmbedPropertyAspect, db, obj.type_idx, assetdb.AssetCdb.propIdx(.Tags));
-                // If exist aspect and is empty hide property.
-                if (ui_prop_aspect) |aspect| {
-                    if (uiPropLabel(allocator, "Tags", null, true, args)) {
-                        try aspect.ui_properties(allocator, obj, assetdb.AssetCdb.propIdx(.Tags), args);
+                        coreui.setNextItemWidth(-1.0);
+                        _ = coreui.inputText("##UUID", .{
+                            .buf = &buf,
+                            .flags = .{
+                                .read_only = true,
+                                .auto_select_all = true,
+                            },
+                        });
                     }
+                }
+
+                var is_project = false;
+                if (assetdb.getObjForAsset(obj)) |o| {
+                    is_project = o.type_idx.eql(AssetTypeIdx);
+                }
+
+                // Asset name
+                if (!is_project and !assetdb.isRootFolder(obj) and uiPropBegin(allocator, "Name", null, true, args)) {
+                    defer uiPropEnd(true, args);
+                    try uiPropInput(obj, assetdb.AssetCdb.propIdx(.Name), true, args);
+                }
+
+                // Asset description
+                if (!assetdb.isRootFolder(obj) and uiPropBegin(allocator, "Description", null, true, args)) {
+                    defer uiPropEnd(true, args);
+                    try uiPropInput(obj, assetdb.AssetCdb.propIdx(.Description), true, args);
+                }
+
+                // Folder
+                if (!is_project and !assetdb.isRootFolder(obj) and uiPropBegin(allocator, "Folder", null, true, args)) {
+                    defer uiPropEnd(true, args);
+                    try uiAssetInput(allocator, tab, obj, assetdb.AssetCdb.propIdx(.Folder), true);
+                }
+
+                // Tags
+                if (!is_project and !assetdb.isRootFolder(obj)) {
+                    try uiProperty(allocator, tab, top_level_obj, obj, assetdb.AssetCdb.propIdx(.Tags), null, args);
                 }
             }
         }
 
         // Asset object
-        _coreui.separatorText("Asset object");
-        try cdbPropertiesObj(allocator, tab, top_level_obj, assetdb.AssetCdb.readSubObj(_cdb, obj_r, .Object).?, depth + 1, args);
+        if (beginSection("Asset object", true, false, true, false)) {
+            defer endSection(true, false);
+            try cdbPropertiesObj(allocator, tab, top_level_obj, assetdb.AssetCdb.readSubObj(obj_r, .Object).?, depth + 1, args);
+        }
     }
 });
 
 //
 
 // Asset properties aspect
-var Color4f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+var color4f_properties_aspec = public.UiInspectorPropertyValueAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
-        args: public.cdbPropertiesViewArgs,
+        prop_idx: u32,
+        args: public.InspectorViewArgs,
     ) !void {
         _ = allocator;
+        _ = prop_idx;
         _ = args;
 
-        _coreui.pushObjUUID(obj);
-        defer _coreui.popId();
+        var color = cetech1.cdb_types.Color4fCdb.f.to(obj);
 
-        var color = cetech1.cdb_types.Color4fCdb.f.to(_cdb, obj);
-
-        _coreui.setNextItemWidth(-1);
-        if (_coreui.colorEdit4("", .{ .col = &color })) {
-            const w = _cdb.writeObj(obj).?;
-            cetech1.cdb_types.Color4fCdb.f.from(_cdb, w, color);
-            try _cdb.writeCommit(w);
+        coreui.setNextItemWidth(-1.0);
+        if (coreui.colorEdit4("", .{ .col = &color })) {
+            const w = cdb.writeObj(obj).?;
+            cetech1.cdb_types.Color4fCdb.f.from(w, color);
+            try cdb.writeCommit(w);
         }
     }
 });
 
-var color3f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+var color3f_properties_aspec = public.UiInspectorPropertyValueAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
-        args: public.cdbPropertiesViewArgs,
+        prop_idx: u32,
+        args: public.InspectorViewArgs,
     ) !void {
         _ = allocator;
+        _ = prop_idx;
         _ = args;
 
-        _coreui.pushObjUUID(obj);
-        defer _coreui.popId();
-
-        const color = cetech1.cdb_types.Color3fCdb.f.to(_cdb, obj);
-        var c: math.Color4f = .fromColor4f(color, 1.0);
-        _coreui.setNextItemWidth(-1);
-        if (_coreui.colorEdit4("", .{ .col = &c, .flags = .{ .no_alpha = true } })) {
-            const w = _cdb.writeObj(obj).?;
-            cetech1.cdb_types.Color3fCdb.f.from(_cdb, w, c.toColor3f());
-            try _cdb.writeCommit(w);
+        const color = cetech1.cdb_types.Color3fCdb.f.to(obj);
+        var c: math.Color4f = .fromColor3f(color, 1.0);
+        coreui.setNextItemWidth(-1.0);
+        if (coreui.colorEdit4("", .{ .col = &c, .flags = .{ .no_alpha = true } })) {
+            const w = cdb.writeObj(obj).?;
+            cetech1.cdb_types.Color3fCdb.f.from(w, c.toColor3f());
+            try cdb.writeCommit(w);
         }
     }
 });
 
-var vec3f_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+var vec3f_properties_aspec = public.UiInspectorPropertyValueAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
-        args: public.cdbPropertiesViewArgs,
+        prop_idx: u32,
+        args: public.InspectorViewArgs,
     ) !void {
         _ = allocator;
+        _ = prop_idx;
         _ = args;
 
-        _coreui.pushObjUUID(obj);
-        defer _coreui.popId();
+        var rotation = cetech1.cdb_types.Vec3fCdb.f.to(obj);
 
-        var rotation = cetech1.cdb_types.Vec3fCdb.f.to(_cdb, obj);
-
-        _coreui.setNextItemWidth(-1);
-        if (_coreui.dragVec3f("", .{ .v = &rotation })) {
-            const w = _cdb.writeObj(obj).?;
-            cetech1.cdb_types.Vec3fCdb.f.from(_cdb, w, rotation);
-            try _cdb.writeCommit(w);
+        coreui.setNextItemWidth(-1.0);
+        if (coreui.dragVec3f("", .{ .v = &rotation })) {
+            const w = cdb.writeObj(obj).?;
+            cetech1.cdb_types.Vec3fCdb.f.from(w, rotation);
+            try cdb.writeCommit(w);
         }
     }
 });
 
-var position_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+var position_properties_aspec = public.UiInspectorPropertyValueAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
-        args: public.cdbPropertiesViewArgs,
+        prop_idx: u32,
+        args: public.InspectorViewArgs,
     ) !void {
         _ = allocator;
+        _ = prop_idx;
         _ = args;
 
-        _coreui.pushObjUUID(obj);
-        defer _coreui.popId();
+        var position = cetech1.cdb_types.Vec3fCdb.f.to(obj);
 
-        var position = cetech1.cdb_types.Vec3fCdb.f.to(_cdb, obj);
-
-        _coreui.setNextItemWidth(-1);
-        if (_coreui.dragVec3f("", .{ .v = &position })) {
-            const w = _cdb.writeObj(obj).?;
-            cetech1.cdb_types.Vec3fCdb.f.from(_cdb, w, position);
-            try _cdb.writeCommit(w);
+        coreui.setNextItemWidth(-1.0);
+        if (coreui.dragVec3f("", .{ .v = &position })) {
+            const w = cdb.writeObj(obj).?;
+            cetech1.cdb_types.Vec3fCdb.f.from(w, position);
+            try cdb.writeCommit(w);
         }
     }
 });
 
-var rotation_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+var rotation_properties_aspec = public.UiInspectorPropertyValueAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
-        args: public.cdbPropertiesViewArgs,
+        prop_idx: u32,
+        args: public.InspectorViewArgs,
     ) !void {
         _ = allocator;
+        _ = prop_idx;
         _ = args;
 
-        _coreui.pushObjUUID(obj);
-        defer _coreui.popId();
+        var rotation = cetech1.cdb_types.Vec3fCdb.f.to(obj);
 
-        var rotation = cetech1.cdb_types.Vec3fCdb.f.to(_cdb, obj);
-
-        _coreui.setNextItemWidth(-1);
-        if (_coreui.dragVec3f("", .{ .v = &rotation })) {
-            const w = _cdb.writeObj(obj).?;
-            cetech1.cdb_types.Vec3fCdb.f.from(_cdb, w, rotation);
-            try _cdb.writeCommit(w);
+        coreui.setNextItemWidth(-1.0);
+        if (coreui.dragVec3f("", .{ .v = &rotation })) {
+            const w = cdb.writeObj(obj).?;
+            cetech1.cdb_types.Vec3fCdb.f.from(w, rotation);
+            try cdb.writeCommit(w);
         }
     }
 });
 
-var scale_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
+var scale_properties_aspec = public.UiInspectorPropertyValueAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
-        args: public.cdbPropertiesViewArgs,
+        prop_idx: u32,
+        args: public.InspectorViewArgs,
     ) !void {
         _ = allocator;
+        _ = prop_idx;
         _ = args;
 
-        _coreui.pushObjUUID(obj);
-        defer _coreui.popId();
+        var rotation = cetech1.cdb_types.Vec3fCdb.f.to(obj);
 
-        var rotation = cetech1.cdb_types.Vec3fCdb.f.to(_cdb, obj);
-
-        _coreui.setNextItemWidth(-1);
-        if (_coreui.dragVec3f("", .{ .v = &rotation })) {
-            const w = _cdb.writeObj(obj).?;
-            cetech1.cdb_types.Vec3fCdb.f.from(_cdb, w, rotation);
-            try _cdb.writeCommit(w);
+        coreui.setNextItemWidth(-1.0);
+        if (coreui.dragVec3f("", .{ .v = &rotation })) {
+            const w = cdb.writeObj(obj).?;
+            cetech1.cdb_types.Vec3fCdb.f.from(w, rotation);
+            try cdb.writeCommit(w);
         }
     }
 });
@@ -1157,7 +1196,8 @@ var scale_properties_aspec = public.UiEmbedPropertiesAspect.implement(struct {
 const PropertyTab = struct {
     tab_i: editor_tabs.TabI,
 
-    selected_obj: coreui.SelectionItem,
+    selected_obj: coreui.SelectedObj,
+
     filter_buff: [256:0]u8 = std.mem.zeroes([256:0]u8),
     filter: ?[:0]const u8 = null,
 };
@@ -1183,8 +1223,8 @@ var inspector_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
     }
 
     // Can open tab
-    pub fn canOpen(allocator: Allocator, selection: []const coreui.SelectionItem) !bool {
-        _ = allocator; // autofix
+    pub fn canOpen(allocator: Allocator, selection: []const coreui.SelectedObj) !bool {
+        _ = allocator;
         _ = selection;
 
         return true;
@@ -1200,7 +1240,7 @@ var inspector_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
                 .inst = @ptrCast(tab_inst),
             },
 
-            .selected_obj = coreui.SelectionItem.empty(),
+            .selected_obj = coreui.SelectedObj.empty(),
         };
 
         return &tab_inst.tab_i;
@@ -1215,36 +1255,52 @@ var inspector_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
     // Draw tab menu
     pub fn menu(inst: *editor_tabs.TabO) !void {
         const tab_o: *PropertyTab = @ptrCast(@alignCast(inst));
-        _ = tab_o;
+
+        if (coreui.beginMenu(_allocator, coreui.Icons.ContextMenu ++ "###ObjContextMenu", !tab_o.selected_obj.isEmpty(), null)) {
+            defer coreui.endMenu();
+
+            const allocator = try tempalloc.create();
+            defer tempalloc.destroy(allocator);
+
+            const first_selected_obj = tab_o.selected_obj;
+            try editor.showObjContextMenu(
+                allocator,
+                tab_o,
+                &.{
+                    editor.Contexts.create,
+                    editor.Contexts.open,
+                    editor.Contexts.debug,
+                },
+                first_selected_obj,
+            );
+        }
     }
 
     // Draw tab content
     pub fn ui(inst: *editor_tabs.TabO, kernel_tick: u64, dt: f32) !void {
-        _ = kernel_tick; // autofix
-        _ = dt; // autofix
+        _ = kernel_tick;
+        _ = dt;
         var tab_o: *PropertyTab = @ptrCast(@alignCast(inst));
 
         if (tab_o.selected_obj.isEmpty()) {
             return;
         }
 
-        const allocator = try _tempalloc.create();
-        defer _tempalloc.destroy(allocator);
+        const allocator = try tempalloc.create();
+        defer tempalloc.destroy(allocator);
 
-        if (_coreui.uiFilter(&tab_o.filter_buff, tab_o.filter)) |filter| {
-            tab_o.filter = filter;
-        }
+        tab_o.filter = coreui.uiFilter(&tab_o.filter_buff, tab_o.filter);
 
-        defer _coreui.endChild();
-        if (_coreui.beginChild("Inspector", .{ .child_flags = .{ .border = true } })) {
+        defer coreui.endChild();
+        if (coreui.beginChild("Inspector", .{ .child_flags = .{ .border = true } })) {
             const obj: cdb.ObjId = tab_o.selected_obj.obj;
             try cdbPropertiesView(allocator, tab_o, tab_o.selected_obj.top_level_obj, obj, 0, .{ .filter = tab_o.filter });
         }
     }
 
     // Selected object
-    pub fn objSelected(inst: *editor_tabs.TabO, obj: []const coreui.SelectionItem, sender_tab_hash: ?cetech1.StrId32) !void {
-        _ = sender_tab_hash; // autofix
+    pub fn objSelected(inst: *editor_tabs.TabO, obj: []const coreui.SelectedObj, sender_tab_hash: ?cetech1.StrId32) !void {
+        _ = sender_tab_hash;
         var tab_o: *PropertyTab = @ptrCast(@alignCast(inst));
         tab_o.selected_obj = obj[0];
     }
@@ -1252,7 +1308,7 @@ var inspector_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
     // pub fn assetRootOpened(inst: *editor_tabs.TabO) !void {
     //     const tab_o: *PropertyTab = @alignCast(@ptrCast(inst));
     //     tab_o.filter = null;
-    //     tab_o.selected_obj = coreui.SelectionItem.empty();
+    //     tab_o.selected_obj = coreui.SelectedObj.empty();
     // }
 });
 
@@ -1272,66 +1328,66 @@ var ProjectTypeIdx: cdb.TypeIdx = undefined;
 
 const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
     pub fn postCreateTypes(db: cdb.DbId) !void {
-        AssetTypeIdx = assetdb.AssetCdb.typeIdx(_cdb, db);
-        ProjectTypeIdx = assetdb.ProjectCdb.typeIdx(_cdb, db);
+        AssetTypeIdx = assetdb.AssetCdb.typeIdx(db);
+        ProjectTypeIdx = assetdb.ProjectCdb.typeIdx(db);
 
         try assetdb.FolderCdb.addAspect(
             public.UiPropertiesConfigAspect,
-            _cdb,
+
             db,
             _g.hide_proto_property_config_aspect,
         );
 
         try assetdb.ProjectCdb.addAspect(
             public.UiPropertiesConfigAspect,
-            _cdb,
+
             db,
             _g.hide_proto_property_config_aspect,
         );
 
         try assetdb.AssetCdb.addAspect(
-            public.UiPropertiesAspect,
-            _cdb,
+            public.UiInspectorObjAspect,
+
             db,
             _g.asset_prop_aspect,
         );
 
         try cetech1.cdb_types.Color4fCdb.addAspect(
-            public.UiEmbedPropertiesAspect,
-            _cdb,
+            public.UiInspectorPropertyValueAspect,
+
             db,
-            _g.Color4f_properties_aspec,
+            _g.color4f_properties_aspec,
         );
 
         try cetech1.cdb_types.Color3fCdb.addAspect(
-            public.UiEmbedPropertiesAspect,
-            _cdb,
+            public.UiInspectorPropertyValueAspect,
+
             db,
             _g.color3f_properties_aspec,
         );
 
         try cetech1.cdb_types.Vec3fCdb.addAspect(
-            public.UiEmbedPropertiesAspect,
-            _cdb,
+            public.UiInspectorPropertyValueAspect,
+
             db,
             _g.vec3f_properties_aspec,
         );
 
         try cetech1.cdb_types.PositionCdb.addAspect(
-            public.UiEmbedPropertiesAspect,
-            _cdb,
+            public.UiInspectorPropertyValueAspect,
+
             db,
             _g.position_properties_aspec,
         );
         try cetech1.cdb_types.RotationCdb.addAspect(
-            public.UiEmbedPropertiesAspect,
-            _cdb,
+            public.UiInspectorPropertyValueAspect,
+
             db,
             _g.rotation_properties_aspec,
         );
         try cetech1.cdb_types.ScaleCdb.addAspect(
-            public.UiEmbedPropertiesAspect,
-            _cdb,
+            public.UiInspectorPropertyValueAspect,
+
             db,
             _g.scale_properties_aspec,
         );
@@ -1341,134 +1397,134 @@ const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
 // Tests
 var register_tests_i = coreui.RegisterTestsI.implement(struct {
     pub fn registerTests() !void {
-        _ = _coreui.registerTest(
+        _ = coreui.registerTest(
             "Inspector",
             "should_edit_basic_properties",
             @src(),
             struct {
                 pub fn run(ctx: *coreui.TestContext) !void {
-                    _kernel.openAssetRoot("fixtures/test_property");
-                    ctx.yield(_coreui, 1);
+                    kernel.openAssetRoot("fixtures/test_property");
+                    ctx.yield(1);
 
-                    const db = _kernel.getDb();
-                    _ = db; // autofix
-                    const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f").?).?;
+                    const db = kernel.getDb();
+                    _ = db;
+                    const obj = assetdb.getObjId(uuid.fromStr("018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f").?).?;
 
-                    ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###asset1.ct_foo_asset", .{}, null);
-                    ctx.itemAction(_coreui, .Click, "**/###asset2.ct_foo_asset", .{}, null);
+                    ctx.setRef("###ct_editor_asset_browser_tab_1");
+                    // ctx.menuAction(  .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(.DoubleClick, "**/###asset1.ct_foo_asset", .{}, null);
+                    ctx.itemAction(.Click, "**/###asset2.ct_foo_asset", .{}, null);
 
-                    ctx.setRef(_coreui, "###ct_editor_inspector_tab_1");
-                    ctx.windowFocus(_coreui, "");
+                    ctx.setRef("###ct_editor_inspector_tab_1");
+                    ctx.windowFocus("");
 
                     // Bool
                     {
-                        ctx.itemAction(_coreui, .Check, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/bool/###edit", .{}, null);
+                        ctx.itemAction(.Check, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/bool/###edit", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(bool, _cdb, obj_r, .Bool);
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(bool, obj_r, .Bool);
                         std.testing.expect(value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // U64
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/u64/###edit", 666);
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(u64, _cdb, obj_r, .U64);
+                        ctx.itemInputIntValue("**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/u64/###edit", 666);
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(u64, obj_r, .U64);
                         std.testing.expectEqual(666, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // I64
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/i64/###edit", -666);
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value: i64 = assetdb.FooAsset.readValue(i64, _cdb, obj_r, .I64);
+                        ctx.itemInputIntValue("**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/i64/###edit", -666);
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value: i64 = assetdb.FooAsset.readValue(i64, obj_r, .I64);
                         std.testing.expectEqual(-666, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // U32
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/u32/###edit", 666);
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(u32, _cdb, obj_r, .U32);
+                        ctx.itemInputIntValue("**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/u32/###edit", 666);
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(u32, obj_r, .U32);
                         std.testing.expectEqual(666, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // I32
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/i32/###edit", -666);
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(i32, _cdb, obj_r, .I32);
+                        ctx.itemInputIntValue("**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/i32/###edit", -666);
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(i32, obj_r, .I32);
                         std.testing.expectEqual(-666, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // F32
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/f32/###edit", -666);
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(f32, _cdb, obj_r, .F32);
+                        ctx.itemInputIntValue("**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/f32/###edit", -666);
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(f32, obj_r, .F32);
                         std.testing.expectEqual(-666, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // F64
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/f64/###edit", -666);
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(f64, _cdb, obj_r, .F64);
+                        ctx.itemInputIntValue("**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/f64/###edit", -666);
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(f64, obj_r, .F64);
                         std.testing.expectEqual(-666, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // String
                     {
-                        ctx.itemInputStrValue(_coreui, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/str/###edit", "foo");
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const str = assetdb.FooAsset.readStr(_cdb, obj_r, .Str);
+                        ctx.itemInputStrValue("**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/str/###edit", "foo");
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const str = assetdb.FooAsset.readStr(obj_r, .Str);
                         std.testing.expect(str != null) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                         std.testing.expectEqualStrings(str.?, "foo") catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // Ref
                     {
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/reference/###AssetInputMenu", .{}, null);
-                        ctx.yield(_coreui, 1);
-                        ctx.menuAction(_coreui, .Click, "//$FOCUSED/###SelectFrom/###1");
+                        ctx.itemAction(.Click, "**/018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f/reference/###AssetInputMenu", .{}, null);
+                        ctx.yield(1);
+                        ctx.menuAction(.Click, "//$FOCUSED/###SelectFrom/###1");
 
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const ref = assetdb.FooAsset.readRef(_cdb, obj_r, .Reference);
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const ref = assetdb.FooAsset.readRef(obj_r, .Reference);
                         std.testing.expect(ref != null) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return;
                         };
-                        std.testing.expect(ref.?.eql(_assetdb.getObjId(_uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?)) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                        std.testing.expect(ref.?.eql(assetdb.getObjId(uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?)) catch |err| {
+                            coreui.checkTestError(@src(), err);
                             return;
                         };
                     }
@@ -1476,168 +1532,168 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             },
         );
 
-        _ = _coreui.registerTest(
+        _ = coreui.registerTest(
             "Inspector",
             "should_reset_value_from_prototype",
             @src(),
             struct {
                 pub fn run(ctx: *coreui.TestContext) !void {
-                    _kernel.openAssetRoot("fixtures/test_property");
-                    ctx.yield(_coreui, 1);
+                    kernel.openAssetRoot("fixtures/test_property");
+                    ctx.yield(1);
 
-                    ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###asset1_1.ct_foo_asset", .{}, null);
-                    ctx.itemAction(_coreui, .Click, "**/###asset2.ct_foo_asset", .{}, null);
+                    ctx.setRef("###ct_editor_asset_browser_tab_1");
+                    // ctx.menuAction(  .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(.DoubleClick, "**/###asset1_1.ct_foo_asset", .{}, null);
+                    ctx.itemAction(.Click, "**/###asset2.ct_foo_asset", .{}, null);
 
-                    ctx.setRef(_coreui, "###ct_editor_inspector_tab_1");
-                    ctx.windowFocus(_coreui, "");
+                    ctx.setRef("###ct_editor_inspector_tab_1");
+                    ctx.windowFocus("");
 
-                    const db = _kernel.getDb();
-                    _ = db; // autofix
+                    const db = kernel.getDb();
+                    _ = db;
 
                     // Bool
                     {
-                        ctx.itemAction(_coreui, .Check, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/bool/###edit", .{}, null);
+                        ctx.itemAction(.Check, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/bool/###edit", .{}, null);
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/bool/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/bool/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(bool, _cdb, obj_r, .Bool);
+                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(bool, obj_r, .Bool);
                         std.testing.expect(!value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // U64
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/u64/###edit", 666);
+                        ctx.itemInputIntValue("**/018e4b5d-01cb-7fc9-8730-7939c945c996/u64/###edit", 666);
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/u64/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/u64/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(u64, _cdb, obj_r, .U64);
+                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(u64, obj_r, .U64);
                         std.testing.expectEqual(0, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // I64
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/i64/###edit", -666);
+                        ctx.itemInputIntValue("**/018e4b5d-01cb-7fc9-8730-7939c945c996/i64/###edit", -666);
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/i64/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/i64/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(i64, _cdb, obj_r, .I64);
+                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(i64, obj_r, .I64);
                         std.testing.expectEqual(0, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // U32
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/u32/###edit", 666);
+                        ctx.itemInputIntValue("**/018e4b5d-01cb-7fc9-8730-7939c945c996/u32/###edit", 666);
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/u32/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/u32/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(u32, _cdb, obj_r, .U32);
+                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(u32, obj_r, .U32);
                         std.testing.expectEqual(0, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // I32
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/i32/###edit", -666);
+                        ctx.itemInputIntValue("**/018e4b5d-01cb-7fc9-8730-7939c945c996/i32/###edit", -666);
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/i32/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/i32/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(i32, _cdb, obj_r, .I32);
+                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(i32, obj_r, .I32);
                         std.testing.expectEqual(0, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // F32
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/f32/###edit", -666);
+                        ctx.itemInputIntValue("**/018e4b5d-01cb-7fc9-8730-7939c945c996/f32/###edit", -666);
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/f32/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/f32/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(f32, _cdb, obj_r, .F32);
+                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(f32, obj_r, .F32);
                         std.testing.expectEqual(0, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // F64
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/f64/###edit", -666);
+                        ctx.itemInputIntValue("**/018e4b5d-01cb-7fc9-8730-7939c945c996/f64/###edit", -666);
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/f64/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/f64/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(f64, _cdb, obj_r, .F64);
+                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(f64, obj_r, .F64);
                         std.testing.expectEqual(0, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // String
                     {
-                        ctx.itemInputStrValue(_coreui, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/str/###edit", "foo");
+                        ctx.itemInputStrValue("**/018e4b5d-01cb-7fc9-8730-7939c945c996/str/###edit", "foo");
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/str/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/str/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const str = assetdb.FooAsset.readStr(_cdb, obj_r, .Str);
+                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const str = assetdb.FooAsset.readStr(obj_r, .Str);
                         std.testing.expect(str == null) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // Ref
                     {
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/reference/###AssetInputMenu", .{}, null);
-                        ctx.yield(_coreui, 1);
-                        ctx.menuAction(_coreui, .Click, "//$FOCUSED/###SelectFrom/###1");
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/reference/###AssetInputMenu", .{}, null);
+                        ctx.yield(1);
+                        ctx.menuAction(.Click, "//$FOCUSED/###SelectFrom/###1");
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/reference/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###ResetToPrototypeValue", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/reference/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const ref = assetdb.FooAsset.readRef(_cdb, obj_r, .Reference);
+                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const ref = assetdb.FooAsset.readRef(obj_r, .Reference);
                         std.testing.expect(ref == null) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
@@ -1645,168 +1701,168 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             },
         );
 
-        _ = _coreui.registerTest(
+        _ = coreui.registerTest(
             "Inspector",
             "should_propagate_value_to_prototype",
             @src(),
             struct {
                 pub fn run(ctx: *coreui.TestContext) !void {
-                    _kernel.openAssetRoot("fixtures/test_property");
-                    ctx.yield(_coreui, 1);
+                    kernel.openAssetRoot("fixtures/test_property");
+                    ctx.yield(1);
 
-                    ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###asset1_1.ct_foo_asset", .{}, null);
-                    ctx.itemAction(_coreui, .Click, "**/###asset2.ct_foo_asset", .{}, null);
+                    ctx.setRef("###ct_editor_asset_browser_tab_1");
+                    // ctx.menuAction(  .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(.DoubleClick, "**/###asset1_1.ct_foo_asset", .{}, null);
+                    ctx.itemAction(.Click, "**/###asset2.ct_foo_asset", .{}, null);
 
-                    ctx.setRef(_coreui, "###ct_editor_inspector_tab_1");
-                    ctx.windowFocus(_coreui, "");
+                    ctx.setRef("###ct_editor_inspector_tab_1");
+                    ctx.windowFocus("");
 
-                    const db = _kernel.getDb();
-                    _ = db; // autofix
-                    const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f").?).?;
+                    const db = kernel.getDb();
+                    _ = db;
+                    const obj = assetdb.getObjId(uuid.fromStr("018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f").?).?;
 
                     // Bool
                     {
-                        ctx.itemAction(_coreui, .Check, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/bool/###edit", .{}, null);
+                        ctx.itemAction(.Check, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/bool/###edit", .{}, null);
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/bool/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/bool/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(bool, _cdb, obj_r, .Bool);
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(bool, obj_r, .Bool);
                         std.testing.expect(value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // U64
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/u64/###edit", 666);
+                        ctx.itemInputIntValue("**/018e4b5d-01cb-7fc9-8730-7939c945c996/u64/###edit", 666);
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/u64/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/u64/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(u64, _cdb, obj_r, .U64);
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(u64, obj_r, .U64);
                         std.testing.expectEqual(666, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // I64
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/i64/###edit", -666);
+                        ctx.itemInputIntValue("**/018e4b5d-01cb-7fc9-8730-7939c945c996/i64/###edit", -666);
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/i64/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/i64/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(i64, _cdb, obj_r, .I64);
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(i64, obj_r, .I64);
                         std.testing.expectEqual(-666, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // U32
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/u32/###edit", 666);
+                        ctx.itemInputIntValue("**/018e4b5d-01cb-7fc9-8730-7939c945c996/u32/###edit", 666);
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/u32/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/u32/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(u32, _cdb, obj_r, .U32);
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(u32, obj_r, .U32);
                         std.testing.expectEqual(666, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // I32
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/i32/###edit", -666);
+                        ctx.itemInputIntValue("**/018e4b5d-01cb-7fc9-8730-7939c945c996/i32/###edit", -666);
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/i32/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/i32/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(i32, _cdb, obj_r, .I32);
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(i32, obj_r, .I32);
                         std.testing.expectEqual(-666, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // F32
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/f32/###edit", -666);
+                        ctx.itemInputIntValue("**/018e4b5d-01cb-7fc9-8730-7939c945c996/f32/###edit", -666);
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/f32/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/f32/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(f32, _cdb, obj_r, .F32);
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(f32, obj_r, .F32);
                         std.testing.expectEqual(-666, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // F64
                     {
-                        ctx.itemInputIntValue(_coreui, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/f64/###edit", -666);
+                        ctx.itemInputIntValue("**/018e4b5d-01cb-7fc9-8730-7939c945c996/f64/###edit", -666);
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/f64/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/f64/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const value = assetdb.FooAsset.readValue(f64, _cdb, obj_r, .F64);
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const value = assetdb.FooAsset.readValue(f64, obj_r, .F64);
                         std.testing.expectEqual(-666, value) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // String
                     {
-                        ctx.itemInputStrValue(_coreui, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/str/###edit", "foo");
+                        ctx.itemInputStrValue("**/018e4b5d-01cb-7fc9-8730-7939c945c996/str/###edit", "foo");
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/str/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/str/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const str = assetdb.FooAsset.readStr(_cdb, obj_r, .Str);
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const str = assetdb.FooAsset.readStr(obj_r, .Str);
                         std.testing.expect(str != null) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                         std.testing.expectEqualStrings(str.?, "foo") catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
 
                     // Ref
                     {
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/reference/###AssetInputMenu", .{}, null);
-                        ctx.yield(_coreui, 1);
-                        ctx.menuAction(_coreui, .Click, "//$FOCUSED/###SelectFrom/###1");
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/reference/###AssetInputMenu", .{}, null);
+                        ctx.yield(1);
+                        ctx.menuAction(.Click, "//$FOCUSED/###SelectFrom/###1");
 
-                        ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/reference/###PrototypeButtons", .{}, null);
-                        ctx.itemAction(_coreui, .Click, "**/###PropagateToPrototype", .{}, null);
+                        ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/reference/###PrototypeButtons", .{}, null);
+                        ctx.itemAction(.Click, "**/###PropagateToPrototype", .{}, null);
 
-                        const obj_r = assetdb.FooAsset.read(_cdb, obj).?;
-                        const ref = assetdb.FooAsset.readRef(_cdb, obj_r, .Reference);
+                        const obj_r = assetdb.FooAsset.read(obj).?;
+                        const ref = assetdb.FooAsset.readRef(obj_r, .Reference);
                         std.testing.expect(ref != null) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
-                        std.testing.expect(ref.?.eql(_assetdb.getObjId(_uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?)) catch |err| {
-                            _coreui.checkTestError(@src(), err);
+                        std.testing.expect(ref.?.eql(assetdb.getObjId(uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?)) catch |err| {
+                            coreui.checkTestError(@src(), err);
                             return err;
                         };
                     }
@@ -1814,150 +1870,149 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
             },
         );
 
-        _ = _coreui.registerTest(
+        _ = coreui.registerTest(
             "ContextMenu",
             "should_open_asset_in_inspector",
             @src(),
             struct {
                 pub fn run(ctx: *coreui.TestContext) !void {
-                    _kernel.openAssetRoot("fixtures/test_asset");
-                    ctx.yield(_coreui, 1);
+                    kernel.openAssetRoot("fixtures/test_asset");
+                    ctx.yield(1);
 
-                    ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-                    ctx.windowFocus(_coreui, "");
-                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###foo.ct_foo_asset", .{}, null);
+                    ctx.setRef("###ct_editor_asset_browser_tab_1");
+                    ctx.windowFocus("");
+                    // ctx.menuAction(  .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(.DoubleClick, "**/###foo.ct_foo_asset", .{}, null);
 
-                    ctx.menuAction(_coreui, .Click, "###ObjContextMenu/###OpenIn_ct_editor_inspector_tab");
+                    ctx.menuAction(.Click, "###ObjContextMenu/###OpenIn_ct_editor_inspector_tab");
 
-                    ctx.yield(_coreui, 1);
+                    ctx.yield(1);
 
-                    ctx.setRef(_coreui, "###ct_editor_inspector_tab_2");
-                    ctx.windowFocus(_coreui, "");
-                    //ctx.itemAction (_coreui, .Check, "**/018b5846-c2d5-712f-bb12-9d9d15321ecb/bool/###edit", .{}, null);
+                    ctx.setRef("###ct_editor_inspector_tab_2");
+                    ctx.windowFocus("");
+                    //ctx.itemAction (  .Check, "**/018b5846-c2d5-712f-bb12-9d9d15321ecb/bool/###edit", .{}, null);
                 }
             },
         );
 
-        _ = _coreui.registerTest(
+        _ = coreui.registerTest(
             "Inspector",
             "should_set_prototype",
             @src(),
             struct {
                 pub fn run(ctx: *coreui.TestContext) !void {
-                    _kernel.openAssetRoot("fixtures/test_property");
-                    ctx.yield(_coreui, 1);
+                    kernel.openAssetRoot("fixtures/test_property");
+                    ctx.yield(1);
 
-                    ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###asset2.ct_foo_asset", .{}, null);
-                    ctx.itemAction(_coreui, .Click, "**/###asset1.ct_foo_asset", .{}, null);
+                    ctx.setRef("###ct_editor_asset_browser_tab_1");
+                    // ctx.menuAction(  .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(.DoubleClick, "**/###asset2.ct_foo_asset", .{}, null);
+                    ctx.itemAction(.Click, "**/###asset1.ct_foo_asset", .{}, null);
 
-                    ctx.setRef(_coreui, "###ct_editor_inspector_tab_1");
-                    ctx.windowFocus(_coreui, "");
+                    ctx.setRef("###ct_editor_inspector_tab_1");
+                    ctx.windowFocus("");
 
-                    ctx.itemAction(_coreui, .Click, "**/018e4c98-35a7-7cdb-8538-6c3030bc4fe9/###AssetInputMenu", .{}, null);
-                    ctx.yield(_coreui, 1);
-                    ctx.menuAction(_coreui, .Click, "//$FOCUSED/###SelectFrom/###1");
+                    ctx.itemAction(.Click, "**/018e4c98-35a7-7cdb-8538-6c3030bc4fe9/prototype/###AssetInputMenu", .{}, null);
+                    ctx.yield(1);
+                    ctx.menuAction(.Click, "//$FOCUSED/###SelectFrom/###1");
 
-                    const obj = _assetdb.getObjId(_uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?;
-                    const proto_obj = _assetdb.getObjId(_uuid.fromStr("018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f").?).?;
+                    const obj = assetdb.getObjId(uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?;
+                    const proto_obj = assetdb.getObjId(uuid.fromStr("018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f").?).?;
 
-                    std.testing.expect(proto_obj.eql(_cdb.getPrototype(_cdb.readObj(obj).?))) catch |err| {
-                        _coreui.checkTestError(@src(), err);
+                    std.testing.expect(proto_obj.eql(cdb.getPrototype(cdb.readObj(obj).?))) catch |err| {
+                        coreui.checkTestError(@src(), err);
                         return err;
                     };
                 }
             },
         );
 
-        _ = _coreui.registerTest(
+        _ = coreui.registerTest(
             "Inspector",
             "should_clear_prototype",
             @src(),
             struct {
                 pub fn run(ctx: *coreui.TestContext) !void {
-                    _kernel.openAssetRoot("fixtures/test_property");
-                    ctx.yield(_coreui, 1);
+                    kernel.openAssetRoot("fixtures/test_property");
+                    ctx.yield(1);
 
-                    ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###asset1_1.ct_foo_asset", .{}, null);
+                    ctx.setRef("###ct_editor_asset_browser_tab_1");
+                    // ctx.menuAction(  .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(.DoubleClick, "**/###asset1_1.ct_foo_asset", .{}, null);
 
-                    ctx.setRef(_coreui, "###ct_editor_inspector_tab_1");
-                    ctx.windowFocus(_coreui, "");
+                    ctx.setRef("###ct_editor_inspector_tab_1");
+                    ctx.windowFocus("");
+                    ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/prototype/###AssetInputMenu", .{}, null);
+                    ctx.yield(1);
+                    ctx.menuAction(.Click, "//$FOCUSED/###Clear");
 
-                    ctx.itemAction(_coreui, .Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/###AssetInputMenu", .{}, null);
-                    ctx.yield(_coreui, 1);
-                    ctx.menuAction(_coreui, .Click, "//$FOCUSED/###Clear");
-
-                    const obj = _assetdb.getObjId(_uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
-                    std.testing.expect(_cdb.getPrototype(_cdb.readObj(obj).?).isEmpty()) catch |err| {
-                        _coreui.checkTestError(@src(), err);
+                    const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                    std.testing.expect(cdb.getPrototype(cdb.readObj(obj).?).isEmpty()) catch |err| {
+                        coreui.checkTestError(@src(), err);
                         return err;
                     };
                 }
             },
         );
 
-        _ = _coreui.registerTest(
+        _ = coreui.registerTest(
             "Inspector",
             "should_add_remove_tag",
             @src(),
             struct {
                 pub fn run(ctx: *coreui.TestContext) !void {
-                    _kernel.openAssetRoot("fixtures/test_asset");
-                    ctx.yield(_coreui, 1);
+                    kernel.openAssetRoot("fixtures/test_asset");
+                    ctx.yield(1);
 
-                    ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-                    ctx.windowFocus(_coreui, "");
-                    // // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.setRef("###ct_editor_asset_browser_tab_1");
+                    ctx.windowFocus("");
+                    // // ctx.menuAction(  .Check, "###AssetBrowserMenu/###Vertical");
 
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###foo.ct_foo_asset", .{}, null);
+                    ctx.itemAction(.DoubleClick, "**/###foo.ct_foo_asset", .{}, null);
 
-                    ctx.setRef(_coreui, "###ct_editor_inspector_tab_1");
-                    ctx.windowFocus(_coreui, "");
+                    ctx.setRef("###ct_editor_inspector_tab_1");
+                    ctx.windowFocus("");
 
-                    ctx.itemAction(_coreui, .Click, "**/###AddTags", .{}, null);
-                    ctx.itemAction(_coreui, .Click, "**/018e0348-b358-779f-b40c-7d34d3fca2a7/###Tag", .{}, null);
+                    ctx.itemAction(.Click, "**/###AddTags", .{}, null);
+                    ctx.itemAction(.Click, "**/018e0348-b358-779f-b40c-7d34d3fca2a7/###Tag", .{}, null);
 
-                    ctx.itemAction(_coreui, .Click, "**/018e0348-b358-779f-b40c-7d34d3fca2a7/###Tag", .{}, null);
+                    ctx.itemAction(.Click, "**/018e0348-b358-779f-b40c-7d34d3fca2a7/###Tag", .{}, null);
                 }
             },
         );
 
-        _ = _coreui.registerTest(
+        _ = coreui.registerTest(
             "Inspector",
             "should_add_ref_to_set",
             @src(),
             struct {
                 pub fn run(ctx: *coreui.TestContext) !void {
-                    _kernel.openAssetRoot("fixtures/test_property");
-                    ctx.yield(_coreui, 1);
+                    kernel.openAssetRoot("fixtures/test_property");
+                    ctx.yield(1);
 
-                    ctx.setRef(_coreui, "###ct_editor_asset_browser_tab_1");
-                    // ctx.menuAction(_coreui, .Check, "###AssetBrowserMenu/###Vertical");
-                    ctx.itemAction(_coreui, .DoubleClick, "**/###asset2.ct_foo_asset", .{}, null);
-                    ctx.itemAction(_coreui, .Click, "**/###asset1.ct_foo_asset", .{}, null);
+                    ctx.setRef("###ct_editor_asset_browser_tab_1");
+                    // ctx.menuAction(  .Check, "###AssetBrowserMenu/###Vertical");
+                    ctx.itemAction(.DoubleClick, "**/###asset2.ct_foo_asset", .{}, null);
+                    ctx.itemAction(.Click, "**/###asset1.ct_foo_asset", .{}, null);
 
-                    ctx.setRef(_coreui, "###ct_editor_inspector_tab_1");
-                    ctx.windowFocus(_coreui, "");
+                    ctx.setRef("###ct_editor_inspector_tab_1");
+                    ctx.windowFocus("");
 
-                    ctx.itemAction(_coreui, .Click, "**/018e4c98-35a7-7cdb-8538-6c3030bc4fe9/reference_set/###PropertyCtxMenu", .{}, null);
-                    ctx.yield(_coreui, 1);
-                    ctx.menuAction(_coreui, .Click, "//$FOCUSED/###AddToSet/###SelectFrom/###1");
+                    ctx.itemAction(.Click, "**/018e4c98-35a7-7cdb-8538-6c3030bc4fe9/reference_set/###PropertyCtxMenu", .{}, null);
+                    ctx.yield(1);
+                    ctx.menuAction(.Click, "//$FOCUSED/###AddToSet/###SelectFrom/###1");
 
-                    const obj = _assetdb.getObjId(_uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?;
+                    const obj = assetdb.getObjId(uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?;
 
-                    const set = try assetdb.FooAsset.readSubObjSet(_cdb, _cdb.readObj(obj).?, .ReferenceSet, _allocator);
+                    const set = try assetdb.FooAsset.readSubObjSet(cdb.readObj(obj).?, .ReferenceSet, _allocator);
                     std.testing.expect(set != null) catch |err| {
-                        _coreui.checkTestError(@src(), err);
+                        coreui.checkTestError(@src(), err);
                         return err;
                     };
 
                     defer _allocator.free(set.?);
                     std.testing.expect(set.?.len == 1) catch |err| {
-                        _coreui.checkTestError(@src(), err);
+                        coreui.checkTestError(@src(), err);
                         return err;
                     };
                 }
@@ -1967,21 +2022,22 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _apidb = apidb;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
-    _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
-    _assetdb = apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tempalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _uuid = apidb.getZigApi(module_name, cetech1.uuid.UuidAPI).?;
-    _profiler = apidb.getZigApi(module_name, profiler.ProfilerAPI).?;
-    _tabs = apidb.getZigApi(module_name, editor_tabs.TabsAPI).?;
+    public.api = &api;
+
+    try cdb.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
+    try editor.loadAPI(module_name);
+    try assetdb.loadAPI(module_name);
+    try kernel.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
+
+    try tempalloc.loadAPI(module_name);
+    try uuid.loadAPI(module_name);
+    try editor_tabs.loadAPI(module_name);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
@@ -1990,7 +2046,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 
     // Aspects
     _g.asset_prop_aspect = try apidb.setGlobalVarValue(
-        public.UiPropertiesAspect,
+        public.UiInspectorObjAspect,
         module_name,
         "ct_asset_properties_aspect",
         asset_properties_aspec,
@@ -2003,38 +2059,38 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     );
 
     _g.color3f_properties_aspec = try apidb.setGlobalVarValue(
-        public.UiEmbedPropertiesAspect,
+        public.UiInspectorPropertyValueAspect,
         module_name,
         "ct_color_3f_properties_aspect",
         color3f_properties_aspec,
     );
-    _g.Color4f_properties_aspec = try apidb.setGlobalVarValue(
-        public.UiEmbedPropertiesAspect,
+    _g.color4f_properties_aspec = try apidb.setGlobalVarValue(
+        public.UiInspectorPropertyValueAspect,
         module_name,
         "ct_color_4f_properties_aspect",
-        Color4f_properties_aspec,
+        color4f_properties_aspec,
     );
     _g.position_properties_aspec = try apidb.setGlobalVarValue(
-        public.UiEmbedPropertiesAspect,
+        public.UiInspectorPropertyValueAspect,
         module_name,
         "ct_position_properties_aspect",
         position_properties_aspec,
     );
     _g.rotation_properties_aspec = try apidb.setGlobalVarValue(
-        public.UiEmbedPropertiesAspect,
+        public.UiInspectorPropertyValueAspect,
         module_name,
         "ct_rotation_properties_aspect",
         rotation_properties_aspec,
     );
     _g.scale_properties_aspec = try apidb.setGlobalVarValue(
-        public.UiEmbedPropertiesAspect,
+        public.UiInspectorPropertyValueAspect,
         module_name,
         "ct_scale_properties_aspect",
         scale_properties_aspec,
     );
 
     _g.vec3f_properties_aspec = try apidb.setGlobalVarValue(
-        public.UiEmbedPropertiesAspect,
+        public.UiInspectorPropertyValueAspect,
         module_name,
         "ct_vec3f_properties_aspect",
         vec3f_properties_aspec,
@@ -2051,8 +2107,8 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_inspector(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_editor_inspector(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }
 
 // Assert C api == C api in zig.

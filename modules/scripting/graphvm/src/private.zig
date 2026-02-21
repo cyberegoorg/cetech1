@@ -9,6 +9,7 @@ const cdb_types = cetech1.cdb_types;
 const ecs = cetech1.ecs;
 const gpu = cetech1.gpu;
 const math = cetech1.math;
+const assetdb = cetech1.assetdb;
 
 const public = @import("graphvm.zig");
 
@@ -18,22 +19,19 @@ const module_name = .graphvm;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
 
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _task: *const cetech1.task.TaskAPI = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _assetdb: *const cetech1.assetdb.AssetDBAPI = undefined;
+const tempalloc = cetech1.tempalloc;
+
+const apidb = cetech1.apidb;
+const task = cetech1.task;
+const profiler = cetech1.profiler;
 
 // Global state that can surive hot-reload
 const G = struct {
@@ -161,7 +159,7 @@ const InputPinData = struct {
     }
 
     pub fn fromPins(self: *Self, allocator: std.mem.Allocator, blob_size: usize, pins: []const public.NodePin) !void {
-        var zone_ctx = _profiler.ZoneN(@src(), "GraphVM - from in pins");
+        var zone_ctx = profiler.ZoneN(@src(), "GraphVM - from in pins");
         defer zone_ctx.End();
         _ = allocator;
         _ = pins;
@@ -199,7 +197,7 @@ const OutputPinData = struct {
     }
 
     pub fn fromPins(self: *Self, allocator: std.mem.Allocator, blob_size: usize, pins: []const public.NodePin) !void {
-        var zone_ctx = _profiler.ZoneN(@src(), "GraphVM - from out pins");
+        var zone_ctx = profiler.ZoneN(@src(), "GraphVM - from out pins");
         defer zone_ctx.End();
 
         if (blob_size != 0) {
@@ -249,7 +247,7 @@ const InstanceNode = struct {
         output_blob_size: usize,
         vmnode_idx: VMNodeIdx,
     ) !Self {
-        var zone_ctx = _profiler.ZoneN(@src(), "GraphVM - create instance node");
+        var zone_ctx = profiler.ZoneN(@src(), "GraphVM - create instance node");
         defer zone_ctx.End();
 
         var self = Self{
@@ -449,8 +447,8 @@ const RebuildTask = struct {
     vm: *GraphVM,
 
     pub fn exec(self: *const @This()) !void {
-        const alloc = try _tmpalloc.create();
-        defer _tmpalloc.destroy(alloc);
+        const alloc = try tempalloc.create();
+        defer tempalloc.destroy(alloc);
         try self.vm.buildInstances(alloc, self.instances, self.deleted_nodes, self.changed_nodes, true);
     }
 };
@@ -645,7 +643,7 @@ const GraphVM = struct {
     }
 
     fn findNodeByType(self: Self, node_type: cetech1.StrId32) ?[]VMNodeIdx {
-        // var zone_ctx = _profiler.Zone(@src());
+        // var zone_ctx = profiler.Zone(@src());
         // defer zone_ctx.End();
 
         if (self.node_by_type.get(node_type)) |nodes| {
@@ -660,7 +658,7 @@ const GraphVM = struct {
         var size: usize = 0;
 
         for (pins, 0..) |pin, idx| {
-            _ = idx; // autofix
+            _ = idx;
             const type_def = findValueTypeI(pin.type_hash).?;
             // const alignn = std.mem.alignForwardLog2(size, @intCast(type_def.alignn)) - size;
             size += type_def.size;
@@ -679,14 +677,14 @@ const GraphVM = struct {
         changed_nodes: *IdxSet,
         root: bool,
     ) anyerror!void {
-        _ = root; // autofix
+        _ = root;
 
-        const node_r = _cdb.readObj(node_obj).?;
-        const type_hash = public.NodeTypeCdb.f.getNodeTypeId(_cdb, node_r);
+        const node_r = cdb.readObj(node_obj).?;
+        const type_hash = public.NodeTypeCdb.f.getNodeTypeId(node_r);
         const iface = findNodeI(type_hash).?;
 
-        const prototype = _cdb.getPrototype(node_r);
-        const node_version = _cdb.getVersion(node_obj);
+        const prototype = cdb.getPrototype(node_r);
+        const node_version = cdb.getVersion(node_obj);
 
         //log.debug("addNode graph {any}", .{parent_graph});
 
@@ -704,7 +702,7 @@ const GraphVM = struct {
             vmnode.cdb_version = node_version;
         }
 
-        const settings = public.NodeTypeCdb.readSubObj(_cdb, node_r, .settings);
+        const settings = public.NodeTypeCdb.readSubObj(node_r, .settings);
 
         if (!prototype.isEmpty()) {
             try node_prototype_map.put(allocator, prototype, node_obj);
@@ -768,13 +766,13 @@ const GraphVM = struct {
         parent_node: ?cdb.ObjId,
         root: bool,
     ) !void {
-        const graph_r = _cdb.readObj(graph).?;
+        const graph_r = cdb.readObj(graph).?;
 
         // Nodes
-        const nodes = (try public.GraphTypeCdb.readSubObjSet(_cdb, graph_r, .nodes, allocator)).?;
+        const nodes = (try public.GraphTypeCdb.readSubObjSet(graph_r, .nodes, allocator)).?;
         defer allocator.free(nodes);
 
-        const connections = (try public.GraphTypeCdb.readSubObjSet(_cdb, graph_r, .connections, allocator)).?;
+        const connections = (try public.GraphTypeCdb.readSubObjSet(graph_r, .connections, allocator)).?;
         defer allocator.free(connections);
 
         //try self.vmnodes.ensureUnusedCapacity(self.allocator, nodes.len);
@@ -785,8 +783,8 @@ const GraphVM = struct {
 
         // Add node expect subgraph
         for (nodes) |node| {
-            const node_r = _cdb.readObj(node).?;
-            const type_hash = public.NodeTypeCdb.f.getNodeTypeId(_cdb, node_r);
+            const node_r = cdb.readObj(node).?;
+            const type_hash = public.NodeTypeCdb.f.getNodeTypeId(node_r);
             const iface = findNodeI(type_hash).?;
 
             if (!root) {
@@ -800,9 +798,9 @@ const GraphVM = struct {
             }
 
             if (iface.type_hash.eql(call_graph_node_i.type_hash)) {
-                const s = public.NodeTypeCdb.readSubObj(_cdb, node_r, .settings) orelse continue;
-                const s_r = public.CallGraphNodeSettingsCdb.read(_cdb, s).?;
-                if (public.CallGraphNodeSettingsCdb.readSubObj(_cdb, s_r, .graph)) |sub_graph| {
+                const s = public.NodeTypeCdb.readSubObj(node_r, .settings) orelse continue;
+                const s_r = public.CallGraphNodeSettingsCdb.read(s).?;
+                if (public.CallGraphNodeSettingsCdb.readSubObj(s_r, .graph)) |sub_graph| {
                     try self.addNodes(
                         allocator,
                         sub_graph,
@@ -826,12 +824,12 @@ const GraphVM = struct {
         }
 
         for (connections) |connection| {
-            const connection_r = _cdb.readObj(connection).?;
-            var from_node_obj = public.ConnectionTypeCdb.readRef(_cdb, connection_r, .from_node).?;
-            const from_pin = public.ConnectionTypeCdb.f.getFromPinId(_cdb, connection_r);
+            const connection_r = cdb.readObj(connection).?;
+            var from_node_obj = public.ConnectionTypeCdb.readRef(connection_r, .from_node).?;
+            const from_pin = public.ConnectionTypeCdb.f.getFromPinId(connection_r);
 
-            var to_node_obj = public.ConnectionTypeCdb.readRef(_cdb, connection_r, .to_node).?;
-            const to_pin = public.ConnectionTypeCdb.f.getToPinId(_cdb, connection_r);
+            var to_node_obj = public.ConnectionTypeCdb.readRef(connection_r, .to_node).?;
+            const to_pin = public.ConnectionTypeCdb.f.getToPinId(connection_r);
 
             // Rewrite connection from prototype
             if (node_prototype_map.get(from_node_obj)) |node| {
@@ -841,14 +839,14 @@ const GraphVM = struct {
                 to_node_obj = node;
             }
 
-            const from_node_obj_r = _cdb.readObj(from_node_obj).?;
-            const from_node_type = public.NodeTypeCdb.f.getNodeTypeId(_cdb, from_node_obj_r);
+            const from_node_obj_r = cdb.readObj(from_node_obj).?;
+            const from_node_type = public.NodeTypeCdb.f.getNodeTypeId(from_node_obj_r);
             const from_subgraph = call_graph_node_i.type_hash.eql(from_node_type);
             const from_inputs = graph_inputs_i.type_hash.eql(from_node_type);
             const from_node = !from_subgraph and !from_inputs;
 
-            const to_node_obj_r = _cdb.readObj(to_node_obj).?;
-            const to_node_type = public.NodeTypeCdb.f.getNodeTypeId(_cdb, to_node_obj_r);
+            const to_node_obj_r = cdb.readObj(to_node_obj).?;
+            const to_node_type = public.NodeTypeCdb.f.getNodeTypeId(to_node_obj_r);
             const to_subgraph = call_graph_node_i.type_hash.eql(to_node_type);
             const to_outputs = graph_outputs_i.type_hash.eql(to_node_type);
             const to_node = !to_subgraph and !to_outputs;
@@ -889,16 +887,16 @@ const GraphVM = struct {
         }
 
         // Data
-        if (try public.GraphTypeCdb.readSubObjSet(_cdb, graph_r, .data, allocator)) |datas| {
+        if (try public.GraphTypeCdb.readSubObjSet(graph_r, .data, allocator)) |datas| {
             for (datas) |data| {
-                const data_r = public.GraphDataTypeCdb.read(_cdb, data).?;
-                const value_obj = public.GraphDataTypeCdb.readSubObj(_cdb, data_r, .value).?;
-                const db = _cdb.getDbFromObjid(value_obj);
+                const data_r = public.GraphDataTypeCdb.read(data).?;
+                const value_obj = public.GraphDataTypeCdb.readSubObj(data_r, .value).?;
+                const db = cdb.getDbFromObjid(value_obj);
 
-                const type_def = findValueTypeIByCdb(_cdb.getTypeHash(db, value_obj.type_idx).?).?;
+                const type_def = findValueTypeIByCdb(cdb.getTypeHash(db, value_obj.type_idx).?).?;
 
-                const to_node = public.GraphDataTypeCdb.readRef(_cdb, data_r, .to_node).?;
-                const to_node_pin_str = public.GraphDataTypeCdb.readStr(_cdb, data_r, .to_node_pin).?;
+                const to_node = public.GraphDataTypeCdb.readRef(data_r, .to_node).?;
+                const to_node_pin_str = public.GraphDataTypeCdb.readStr(data_r, .to_node_pin).?;
 
                 const to_node_pin = cetech1.strId32(to_node_pin_str);
 
@@ -932,7 +930,7 @@ const GraphVM = struct {
         out_data: *OutDataList,
         root: bool,
     ) !void {
-        const graph_r = _cdb.readObj(graph).?;
+        const graph_r = cdb.readObj(graph).?;
 
         try self.addNodes(
             allocator,
@@ -951,18 +949,18 @@ const GraphVM = struct {
         );
 
         // Now scan for CallGraph node and build
-        const nodes = (try public.GraphTypeCdb.readSubObjSet(_cdb, graph_r, .nodes, allocator)).?;
+        const nodes = (try public.GraphTypeCdb.readSubObjSet(graph_r, .nodes, allocator)).?;
         defer allocator.free(nodes);
         for (nodes) |node| {
-            const node_r = _cdb.readObj(node).?;
-            const type_hash = public.NodeTypeCdb.f.getNodeTypeId(_cdb, node_r);
+            const node_r = cdb.readObj(node).?;
+            const type_hash = public.NodeTypeCdb.f.getNodeTypeId(node_r);
             const iface = findNodeI(type_hash).?;
-            _ = iface; // autofix
+            _ = iface;
 
             if (type_hash.eql(call_graph_node_i.type_hash)) {
-                const s = public.NodeTypeCdb.readSubObj(_cdb, node_r, .settings) orelse continue;
-                const s_r = public.CallGraphNodeSettingsCdb.read(_cdb, s).?;
-                if (public.CallGraphNodeSettingsCdb.readSubObj(_cdb, s_r, .graph)) |sub_graph| {
+                const s = public.NodeTypeCdb.readSubObj(node_r, .settings) orelse continue;
+                const s_r = public.CallGraphNodeSettingsCdb.read(s).?;
+                if (public.CallGraphNodeSettingsCdb.readSubObj(s_r, .graph)) |sub_graph| {
                     try self.buildGraph(
                         allocator,
                         sub_graph,
@@ -987,8 +985,8 @@ const GraphVM = struct {
         if (node_map.get(.{ .obj = node_obj, .pin = pin })) |nexts| {
             var it = nexts.iterator();
             while (it.next()) |v| {
-                const node_obj_r = _cdb.readObj(v.key_ptr.obj).?;
-                const node_type = public.NodeTypeCdb.f.getNodeTypeId(_cdb, node_obj_r);
+                const node_obj_r = cdb.readObj(v.key_ptr.obj).?;
+                const node_type = public.NodeTypeCdb.f.getNodeTypeId(node_obj_r);
                 const from_subgraph = call_graph_node_i.type_hash.eql(node_type);
 
                 if (from_subgraph) {
@@ -1001,14 +999,14 @@ const GraphVM = struct {
     }
 
     pub fn buildVM(self: *Self, allocator: std.mem.Allocator) !void {
-        var zone_ctx = _profiler.ZoneN(@src(), "GraphVM - build");
+        var zone_ctx = profiler.ZoneN(@src(), "GraphVM - build");
         defer zone_ctx.End();
 
         try self.clean();
 
-        _ = _cdb.readObj(self.graph_obj);
+        _ = cdb.readObj(self.graph_obj);
 
-        const graph_version = _cdb.getVersion(self.graph_obj);
+        const graph_version = cdb.getVersion(self.graph_obj);
         self.graph_version = graph_version;
 
         var pivots = cetech1.ArrayList(VMNodeIdx){};
@@ -1059,12 +1057,12 @@ const GraphVM = struct {
         );
 
         for (out_connections.items) |v| {
-            const connection_r = _cdb.readObj(v.c).?;
-            var from_node_obj = public.ConnectionTypeCdb.readRef(_cdb, connection_r, .from_node).?;
-            const from_pin = public.ConnectionTypeCdb.f.getFromPinId(_cdb, connection_r);
+            const connection_r = cdb.readObj(v.c).?;
+            var from_node_obj = public.ConnectionTypeCdb.readRef(connection_r, .from_node).?;
+            const from_pin = public.ConnectionTypeCdb.f.getFromPinId(connection_r);
 
-            var to_node_obj = public.ConnectionTypeCdb.readRef(_cdb, connection_r, .to_node).?;
-            const to_pin = public.ConnectionTypeCdb.f.getToPinId(_cdb, connection_r);
+            var to_node_obj = public.ConnectionTypeCdb.readRef(connection_r, .to_node).?;
+            const to_pin = public.ConnectionTypeCdb.f.getToPinId(connection_r);
 
             // Rewrite connection from prototype
             if (self.node_prototype_map.get(from_node_obj)) |node| {
@@ -1074,14 +1072,14 @@ const GraphVM = struct {
                 to_node_obj = node;
             }
 
-            const from_node_obj_r = _cdb.readObj(from_node_obj).?;
-            const from_node_type = public.NodeTypeCdb.f.getNodeTypeId(_cdb, from_node_obj_r);
+            const from_node_obj_r = cdb.readObj(from_node_obj).?;
+            const from_node_type = public.NodeTypeCdb.f.getNodeTypeId(from_node_obj_r);
             const from_subgraph = call_graph_node_i.type_hash.eql(from_node_type);
             const from_inputs = graph_inputs_i.type_hash.eql(from_node_type);
             const from_node = !from_subgraph and !from_inputs;
 
-            const to_node_obj_r = _cdb.readObj(to_node_obj).?;
-            const to_node_type = public.NodeTypeCdb.f.getNodeTypeId(_cdb, to_node_obj_r);
+            const to_node_obj_r = cdb.readObj(to_node_obj).?;
+            const to_node_type = public.NodeTypeCdb.f.getNodeTypeId(to_node_obj_r);
             const to_subgraph = call_graph_node_i.type_hash.eql(to_node_type);
             const to_outputs = graph_outputs_i.type_hash.eql(to_node_type);
             const to_node = !to_subgraph and !to_outputs;
@@ -1100,7 +1098,7 @@ const GraphVM = struct {
                     const node_to_idx = self.node_idx_map.get(.{ .parent = vv.key_ptr.graph, .node = vv.key_ptr.obj });
 
                     if (node_to_idx == null) {
-                        log.err("Invalid node_to_idx for node with UUID {any}", .{_assetdb.getUuid(vv.key_ptr.obj)});
+                        log.err("Invalid node_to_idx for node with UUID {any}", .{assetdb.getUuid(vv.key_ptr.obj)});
                     }
 
                     const to_vmnode = self.vmnodes.get(node_to_idx.?);
@@ -1140,7 +1138,7 @@ const GraphVM = struct {
                 const to_vmnode = self.vmnodes.get(node_to_idx.?);
 
                 // const node_to_idx = self.node_idx_map.get(.{ .parent = v.graph, .node = to_node_obj }) orelse {
-                //     log.err("Could not find to_node_obj with UUID {s}", .{_assetdb.getUuid(to_node_obj).?});
+                //     log.err("Could not find to_node_obj with UUID {s}", .{assetdb.getUuid(to_node_obj).?});
                 //     continue;
                 // };
 
@@ -1149,7 +1147,7 @@ const GraphVM = struct {
                     //const node_from_idx = self.node_idx_map.get(.{ .parent = v.graph, .node = vv.key_ptr.obj }) orelse continue;
 
                     const node_from_idx = self.node_idx_map.get(.{ .parent = vv.key_ptr.graph, .node = vv.key_ptr.obj }) orelse {
-                        log.err("Could not find vv.key_ptr.obj with UUID {f} in graph UUID {f}", .{ _assetdb.getUuid(vv.key_ptr.obj).?, _assetdb.getUuid(vv.key_ptr.graph).? });
+                        log.err("Could not find vv.key_ptr.obj with UUID {f} in graph UUID {f}", .{ assetdb.getUuid(vv.key_ptr.obj).?, assetdb.getUuid(vv.key_ptr.graph).? });
                         continue;
                     };
 
@@ -1182,12 +1180,12 @@ const GraphVM = struct {
                 }
             } else {
                 const node_from_idx = self.node_idx_map.get(.{ .parent = v.graph, .node = from_node_obj }) orelse {
-                    log.err("Could not find from_node_obj with UUID {f}", .{_assetdb.getUuid(from_node_obj).?});
+                    log.err("Could not find from_node_obj with UUID {f}", .{assetdb.getUuid(from_node_obj).?});
                     continue;
                 };
 
                 const node_to_idx = self.node_idx_map.get(.{ .parent = v.graph, .node = to_node_obj }) orelse {
-                    log.err("Could not find to_node_obj with UUID {f}", .{_assetdb.getUuid(to_node_obj).?});
+                    log.err("Could not find to_node_obj with UUID {f}", .{assetdb.getUuid(to_node_obj).?});
                     continue;
                 };
 
@@ -1234,8 +1232,8 @@ const GraphVM = struct {
                 to_node_obj = node;
             }
 
-            const to_node_obj_r = _cdb.readObj(to_node_obj).?;
-            const to_node_type = public.NodeTypeCdb.f.getNodeTypeId(_cdb, to_node_obj_r);
+            const to_node_obj_r = cdb.readObj(to_node_obj).?;
+            const to_node_type = public.NodeTypeCdb.f.getNodeTypeId(to_node_obj_r);
             const to_subgraph = call_graph_node_i.type_hash.eql(to_node_type);
             const to_outputs = graph_outputs_i.type_hash.eql(to_node_type);
             const to_node = !to_subgraph and !to_outputs;
@@ -1319,7 +1317,7 @@ const GraphVM = struct {
             for (1..self.vmnodes.alocated_items.raw) |node_idx| {
                 depends.clearRetainingCapacity();
 
-                // log.debug("\tdddd: {s} {s}", .{ _assetdb.getUuid(vm_node.node_obj).?, ifaces[node_idx].name });
+                // log.debug("\tdddd: {s} {s}", .{ assetdb.getUuid(vm_node.node_obj).?, ifaces[node_idx].name });
 
                 for (self.connection.items) |connect| {
                     const from_node = connect.from.node;
@@ -1342,14 +1340,14 @@ const GraphVM = struct {
 
             // for (dag.output.keys()) |node_idx| {
             //     const vm_node = self.vmnodes.get(node_idx);
-            //     log.debug("\taaaaaa {s} {s}", .{ _assetdb.getUuid(vm_node.node_obj).?, ifaces[node_idx].name });
+            //     log.debug("\taaaaaa {s} {s}", .{ assetdb.getUuid(vm_node.node_obj).?, ifaces[node_idx].name });
             // }
 
             // log.debug("Collect types:", .{});
             for (dag.output.keys()) |node_idx| {
                 const vmnode = self.vmnodes.get(node_idx);
 
-                // log.debug("\t{s} {s}", .{ _assetdb.getUuid(vm_node.node_obj).?, ifaces[node_idx].name });
+                // log.debug("\t{s} {s}", .{ assetdb.getUuid(vm_node.node_obj).?, ifaces[node_idx].name });
 
                 const in_pins = vmnode.pin_def.in;
                 const out_pins = vmnode.pin_def.out;
@@ -1392,7 +1390,7 @@ const GraphVM = struct {
                 const vm_node = self.vmnodes.get(node_idx);
                 const size = try vm_node.getOutputPinsSize(vm_node.pin_def.out);
                 vm_node.output_blob_size = size;
-                log.debug("Pathed output type {f} {s}", .{ _assetdb.getUuid(vm_node.node_obj) orelse cetech1.uuid.Uuid{}, vm_node.iface.name });
+                log.debug("Pathed output type {f} {s}", .{ assetdb.getUuid(vm_node.node_obj) orelse cetech1.uuid.Uuid{}, vm_node.iface.name });
             }
         }
 
@@ -1403,13 +1401,13 @@ const GraphVM = struct {
             _ = try deleted_nodes.add(allocator, k);
         }
 
-        const root_graph_r = _cdb.readObj(self.graph_obj).?;
+        const root_graph_r = cdb.readObj(self.graph_obj).?;
 
         //
         // Interafces
         //
-        if (public.GraphTypeCdb.readSubObj(_cdb, root_graph_r, .interface)) |interface_obj| {
-            _ = interface_obj; // autofix
+        if (public.GraphTypeCdb.readSubObj(root_graph_r, .interface)) |interface_obj| {
+            _ = interface_obj;
 
             const in_pin_def = try graph_inputs_i.getPinsDef(&graph_inputs_i, self.allocator, self.graph_obj, .{});
             const out_pin_def = try graph_outputs_i.getPinsDef(&graph_outputs_i, self.allocator, self.graph_obj, .{});
@@ -1596,8 +1594,6 @@ const GraphVM = struct {
             if (try cetech1.task.batchWorkloadTask(
                 .{
                     .allocator = allocator,
-                    .task_api = _task,
-                    .profiler_api = _profiler,
 
                     .count = inst_count,
                 },
@@ -1618,7 +1614,7 @@ const GraphVM = struct {
                     }
                 },
             )) |t| {
-                _task.wait(t);
+                task.wait(t);
             }
         }
 
@@ -1634,7 +1630,7 @@ const GraphVM = struct {
     }
 
     pub fn buildInstances(self: *Self, allocator: std.mem.Allocator, instances: []const *VMInstance, deleted_nodes: ?*const NodeSet, changed_nodes: ?*const IdxSet, rebuild: bool) !void {
-        var zone_ctx = _profiler.ZoneN(@src(), "GraphVM - Instance build many");
+        var zone_ctx = profiler.ZoneN(@src(), "GraphVM - Instance build many");
         defer zone_ctx.End();
 
         // TODO: Need this? fast recreates is mayber better
@@ -1648,7 +1644,7 @@ const GraphVM = struct {
             const state_alloc = vminstance.node_arena.allocator();
 
             {
-                var zzone_ctx = _profiler.ZoneN(@src(), "GraphVM - Init graph io");
+                var zzone_ctx = profiler.ZoneN(@src(), "GraphVM - Init graph io");
                 defer zzone_ctx.End();
 
                 // Graph input pins
@@ -1669,7 +1665,7 @@ const GraphVM = struct {
 
             // Init nodes
             {
-                var zzone_ctx = _profiler.ZoneN(@src(), "GraphVM - Init nodes");
+                var zzone_ctx = profiler.ZoneN(@src(), "GraphVM - Init nodes");
                 defer zzone_ctx.End();
 
                 for (self.node_idx_map.keys(), self.node_idx_map.values()) |k, node_idx| {
@@ -1715,7 +1711,7 @@ const GraphVM = struct {
             // Set input slice in input node to output slice of output node
             // With this is not needeed to propagate value after exec because input is linked to output.
             {
-                var zzone_ctx = _profiler.ZoneN(@src(), "GraphVM - Wire nodes");
+                var zzone_ctx = profiler.ZoneN(@src(), "GraphVM - Wire nodes");
                 defer zzone_ctx.End();
 
                 var graph_data = vminstance.graph_data;
@@ -1767,7 +1763,7 @@ const GraphVM = struct {
     }
 
     pub fn buildVMNodes(self: *Self, node_idx: VMNodeIdx, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !void {
-        var zone_ctx = _profiler.ZoneN(@src(), "GraphVM - Build VM nodes");
+        var zone_ctx = profiler.ZoneN(@src(), "GraphVM - Build VM nodes");
         defer zone_ctx.End();
 
         const vm_node = self.vmnodes.get(node_idx);
@@ -1846,7 +1842,7 @@ const GraphVM = struct {
     }
 
     pub fn createInstances(self: *Self, allocator: std.mem.Allocator, count: usize) ![]*VMInstance {
-        var zone_ctx = _profiler.ZoneN(@src(), "GraphVM - Create instances");
+        var zone_ctx = profiler.ZoneN(@src(), "GraphVM - Create instances");
         defer zone_ctx.End();
 
         const instances = try allocator.alloc(*VMInstance, count);
@@ -1881,7 +1877,7 @@ const GraphVM = struct {
         out_states: ?[]?*anyopaque,
         out_idxs: []const usize,
     ) !void {
-        var zone_ctx = _profiler.Zone(@src());
+        var zone_ctx = profiler.Zone(@src());
         defer zone_ctx.End();
 
         if (self.findNodeByType(node_type)) |event_nodes| {
@@ -1927,7 +1923,7 @@ const GraphVM = struct {
                         }
 
                         if (!node.eval or node_inputs_changed) {
-                            // var zone_exec_ctx = _profiler.ZoneN(@src(), "GraphVM - execute one node");
+                            // var zone_exec_ctx = profiler.ZoneN(@src(), "GraphVM - execute one node");
                             // defer zone_exec_ctx.End();
 
                             const ts = self.transpile_state_map.get(node_idx);
@@ -1971,8 +1967,8 @@ const GraphVM = struct {
         stage: ?cetech1.StrId32,
         context: ?[]const u8,
     ) !void {
-        _ = node_type; // autofix
-        var zone_ctx = _profiler.Zone(@src());
+        _ = node_type;
+        var zone_ctx = profiler.Zone(@src());
         defer zone_ctx.End();
 
         for (instances) |instance| {
@@ -1988,7 +1984,7 @@ const GraphVM = struct {
                 const in_pins = node.in_data.toPins();
                 var out_pins = node.out_data.toPins();
 
-                var zone_exec_ctx = _profiler.ZoneN(@src(), "GraphVM - transpile one node");
+                var zone_exec_ctx = profiler.ZoneN(@src(), "GraphVM - transpile one node");
                 defer zone_exec_ctx.End();
 
                 const transpile_fce = iface.transpile orelse continue;
@@ -2015,7 +2011,7 @@ const GraphVM = struct {
     }
 
     pub fn getNodeStateMany(self: *Self, results: []?*anyopaque, instances: []const public.GraphInstance, node_type: cetech1.StrId32, instance_idx: []const usize) !void {
-        var zone_ctx = _profiler.Zone(@src());
+        var zone_ctx = profiler.Zone(@src());
         defer zone_ctx.End();
 
         if (self.findNodeByType(node_type)) |nodes| {
@@ -2034,7 +2030,7 @@ const GraphVM = struct {
     }
 
     pub fn getNodeStateManyMulty(self: *Self, results: [][]?*anyopaque, instances: []const public.GraphInstance, node_types: []const cetech1.StrId32, instance_idx: []const usize) !void {
-        var zone_ctx = _profiler.Zone(@src());
+        var zone_ctx = profiler.Zone(@src());
         defer zone_ctx.End();
 
         for (instances, 0..) |instance, idx| {
@@ -2056,14 +2052,14 @@ const GraphVM = struct {
     }
 
     fn writePlanD2(self: *Self, allocator: std.mem.Allocator) !void {
-        if (_assetdb.getAssetRootPath() == null) return;
+        if (assetdb.getAssetRootPath() == null) return;
 
-        var root_dir = try std.fs.cwd().openDir(_assetdb.getAssetRootPath().?, .{});
+        var root_dir = try std.fs.cwd().openDir(assetdb.getAssetRootPath().?, .{});
         defer root_dir.close();
 
-        const asset_obj = _assetdb.getAssetForObj(self.graph_obj).?;
-        const asset_obj_r = cetech1.assetdb.AssetCdb.read(_cdb, asset_obj).?;
-        const name = cetech1.assetdb.AssetCdb.readStr(_cdb, asset_obj_r, .Name).?;
+        const asset_obj = assetdb.getAssetForObj(self.graph_obj).?;
+        const asset_obj_r = cetech1.assetdb.AssetCdb.read(asset_obj).?;
+        const name = cetech1.assetdb.AssetCdb.readStr(asset_obj_r, .Name).?;
 
         const filename = try std.fmt.allocPrint(allocator, "{s}/graph_{s}.md", .{ cetech1.assetdb.CT_TEMP_FOLDER, name });
         defer allocator.free(filename);
@@ -2090,7 +2086,7 @@ const GraphVM = struct {
 
             for (v) |node| {
                 const vmnode = self.vmnodes.get(node);
-                try writer.print("{f}: {s}\n", .{ try _assetdb.getOrCreateUuid(vmnode.node_obj), vmnode.iface.name });
+                try writer.print("{f}: {s}\n", .{ try assetdb.getOrCreateUuid(vmnode.node_obj), vmnode.iface.name });
             }
 
             try writer.print("\n", .{});
@@ -2102,7 +2098,7 @@ const GraphVM = struct {
                 const vmnode = self.vmnodes.get(node);
                 const nex_vmnode = self.vmnodes.get(nex_node);
 
-                try writer.print("{f}->{f}\n", .{ try _assetdb.getOrCreateUuid(vmnode.node_obj), try _assetdb.getOrCreateUuid(nex_vmnode.node_obj) });
+                try writer.print("{f}->{f}\n", .{ try assetdb.getOrCreateUuid(vmnode.node_obj), try assetdb.getOrCreateUuid(nex_vmnode.node_obj) });
             }
 
             try writer.print("```\n", .{});
@@ -2154,25 +2150,25 @@ var CallGraphNodeSettingsIdx: cdb.TypeIdx = undefined;
 
 pub fn createCdbNode(db: cdb.DbId, type_hash: cetech1.StrId32, pos: ?math.Vec2f) !cdb.ObjId {
     const iface = findNodeI(type_hash).?;
-    const node = try public.NodeTypeCdb.createObject(_cdb, db);
+    const node = try public.NodeTypeCdb.createObject(db);
 
-    const node_w = public.NodeTypeCdb.write(_cdb, node).?;
-    try public.NodeTypeCdb.setStr(_cdb, node_w, .node_type, iface.type_name);
+    const node_w = public.NodeTypeCdb.write(node).?;
+    try public.NodeTypeCdb.setStr(node_w, .node_type, iface.type_name);
 
     if (!iface.settings_type.isEmpty()) {
-        const settings = try _cdb.createObject(db, _cdb.getTypeIdx(db, iface.settings_type).?);
+        const settings = try cdb.createObject(db, cdb.getTypeIdx(db, iface.settings_type).?);
 
-        const settings_w = _cdb.writeObj(settings).?;
-        try public.NodeTypeCdb.setSubObj(_cdb, node_w, .settings, settings_w);
-        try _cdb.writeCommit(settings_w);
+        const settings_w = cdb.writeObj(settings).?;
+        try public.NodeTypeCdb.setSubObj(node_w, .settings, settings_w);
+        try cdb.writeCommit(settings_w);
     }
 
     if (pos) |p| {
-        public.NodeTypeCdb.setValue(f32, _cdb, node_w, .pos_x, p.x);
-        public.NodeTypeCdb.setValue(f32, _cdb, node_w, .pos_y, p.y);
+        public.NodeTypeCdb.setValue(f32, node_w, .pos_x, p.x);
+        public.NodeTypeCdb.setValue(f32, node_w, .pos_y, p.y);
     }
 
-    try _cdb.writeCommit(node_w);
+    try cdb.writeCommit(node_w);
     return node;
 }
 
@@ -2265,8 +2261,8 @@ fn createVM(graph: cdb.ObjId) !*GraphVM {
     vm.* = try GraphVM.init(_allocator, graph);
     try _g.vm_map.put(_allocator, graph, vm);
 
-    const alloc = try _tmpalloc.create();
-    defer _tmpalloc.destroy(alloc);
+    const alloc = try tempalloc.create();
+    defer tempalloc.destroy(alloc);
     try vm.buildVM(alloc);
 
     return vm;
@@ -2314,8 +2310,8 @@ const executeNodesTask = struct {
     vm: *GraphVM,
 
     pub fn exec(self: *const @This()) !void {
-        const alloc = try _tmpalloc.create();
-        defer _tmpalloc.destroy(alloc);
+        const alloc = try tempalloc.create();
+        defer tempalloc.destroy(alloc);
         try self.vm.executeNodesMany(alloc, self.instances, self.event_hash, self.out_states, self.instance_idx);
     }
 };
@@ -2325,8 +2321,8 @@ const buildInstancesTask = struct {
     vm: *GraphVM,
 
     pub fn exec(self: *const @This()) !void {
-        const alloc = try _tmpalloc.create();
-        defer _tmpalloc.destroy(alloc);
+        const alloc = try tempalloc.create();
+        defer tempalloc.destroy(alloc);
 
         var instatnces = try alloc.alloc(*VMInstance, self.instances.len);
         defer alloc.free(instatnces);
@@ -2340,7 +2336,7 @@ const buildInstancesTask = struct {
 };
 
 fn lessThanGraphInstance(ctx: void, lhs: public.GraphInstance, rhs: public.GraphInstance) bool {
-    _ = ctx; // autofix
+    _ = ctx;
     return lhs.graph.toU64() < rhs.graph.toU64();
 }
 
@@ -2357,7 +2353,7 @@ const Clusters = struct {
 };
 
 fn clusterByGraph(allocator: std.mem.Allocator, sorted_instances: []const public.GraphInstance, instances_idx: ?[]const usize) !Clusters {
-    var zone2_ctx = _profiler.ZoneN(@src(), "clusterByGraph");
+    var zone2_ctx = profiler.ZoneN(@src(), "clusterByGraph");
     defer zone2_ctx.End();
 
     var clusters = cetech1.ArrayList([]const public.GraphInstance){};
@@ -2408,7 +2404,7 @@ const SortDrawCallsContext = struct {
 };
 
 fn executeNodes(allocator: std.mem.Allocator, instances: []const public.GraphInstance, event_hash: cetech1.StrId32, cfg: public.ExecuteConfig) !void {
-    var zone_ctx = _profiler.ZoneN(@src(), "GraphVM - execute nodes");
+    var zone_ctx = profiler.ZoneN(@src(), "GraphVM - execute nodes");
     defer zone_ctx.End();
 
     if (instances.len == 0) return;
@@ -2454,8 +2450,6 @@ fn executeNodes(allocator: std.mem.Allocator, instances: []const public.GraphIns
         if (try cetech1.task.batchWorkloadTask(
             .{
                 .allocator = allocator,
-                .task_api = _task,
-                .profiler_api = _profiler,
 
                 .count = cluster.len,
                 .batch_size = if (cfg.use_tasks) cetech1.task.default_batch_size else cluster.len,
@@ -2484,12 +2478,12 @@ fn executeNodes(allocator: std.mem.Allocator, instances: []const public.GraphIns
     }
 
     if (tasks.items.len != 0) {
-        _task.waitMany(tasks.items);
+        task.waitMany(tasks.items);
     }
 }
 
 fn buildInstances(allocator: std.mem.Allocator, instances: []const public.GraphInstance) !void {
-    var zone_ctx = _profiler.ZoneN(@src(), "GraphVM - buildInstances");
+    var zone_ctx = profiler.ZoneN(@src(), "GraphVM - buildInstances");
     defer zone_ctx.End();
 
     if (instances.len == 0) return;
@@ -2513,8 +2507,6 @@ fn buildInstances(allocator: std.mem.Allocator, instances: []const public.GraphI
         if (try cetech1.task.batchWorkloadTask(
             .{
                 .allocator = allocator,
-                .task_api = _task,
-                .profiler_api = _profiler,
 
                 .count = cluster.len,
             },
@@ -2536,15 +2528,15 @@ fn buildInstances(allocator: std.mem.Allocator, instances: []const public.GraphI
     }
 
     if (tasks.items.len != 0) {
-        _task.waitMany(tasks.items);
+        task.waitMany(tasks.items);
     }
 }
 
 fn needCompile(graph: cdb.ObjId) bool {
     const vm = _g.vm_map.get(graph) orelse return false;
     if (graph.isEmpty()) return false;
-    if (!_cdb.isAlive(graph)) return false;
-    return vm.graph_version != _cdb.getVersion(graph);
+    if (!cdb.isAlive(graph)) return false;
+    return vm.graph_version != cdb.getVersion(graph);
 }
 fn compile(allocator: std.mem.Allocator, graph: cdb.ObjId) !void {
     var vm = _g.vm_map.get(graph).?;
@@ -2591,7 +2583,7 @@ const getNodeStateMultyTask = struct {
 };
 
 pub fn getNodeState(allocator: std.mem.Allocator, instances: []const public.GraphInstance, node_type: cetech1.StrId32, cfg: public.GetNodeConfig) ![]?*anyopaque {
-    var zone_ctx = _profiler.ZoneN(@src(), "GraphVM - get node state");
+    var zone_ctx = profiler.ZoneN(@src(), "GraphVM - get node state");
     defer zone_ctx.End();
 
     var results = try cetech1.ArrayList(?*anyopaque).initCapacity(allocator, instances.len);
@@ -2609,7 +2601,7 @@ pub fn getNodeState(allocator: std.mem.Allocator, instances: []const public.Grap
 
     const sorted_instances = blk: {
         if (cfg.sort) {
-            var zzone_ctx = _profiler.ZoneN(@src(), "GraphVM - sort");
+            var zzone_ctx = profiler.ZoneN(@src(), "GraphVM - sort");
             defer zzone_ctx.End();
 
             const sorted = try allocator.dupe(public.GraphInstance, instances);
@@ -2644,8 +2636,6 @@ pub fn getNodeState(allocator: std.mem.Allocator, instances: []const public.Grap
         if (try cetech1.task.batchWorkloadTask(
             .{
                 .allocator = allocator,
-                .task_api = _task,
-                .profiler_api = _profiler,
 
                 .count = cluster.len,
             },
@@ -2673,14 +2663,14 @@ pub fn getNodeState(allocator: std.mem.Allocator, instances: []const public.Grap
     }
 
     if (tasks.items.len != 0) {
-        _task.waitMany(tasks.items);
+        task.waitMany(tasks.items);
     }
 
     return results.toOwnedSlice(allocator);
 }
 
 pub fn getNodeStateMulty(allocator: std.mem.Allocator, instances: []const public.GraphInstance, node_types: []const cetech1.StrId32, cfg: public.GetNodeConfig) ![][]?*anyopaque {
-    var zone_ctx = _profiler.ZoneN(@src(), "GraphVM - get node state multy");
+    var zone_ctx = profiler.ZoneN(@src(), "GraphVM - get node state multy");
     defer zone_ctx.End();
 
     var results = try cetech1.ArrayList([]?*anyopaque).initCapacity(allocator, node_types.len);
@@ -2709,7 +2699,7 @@ pub fn getNodeStateMulty(allocator: std.mem.Allocator, instances: []const public
 
     const sorted_instances = blk: {
         if (cfg.sort) {
-            var zzone_ctx = _profiler.ZoneN(@src(), "GraphVM - sort");
+            var zzone_ctx = profiler.ZoneN(@src(), "GraphVM - sort");
             defer zzone_ctx.End();
 
             const sorted = try allocator.dupe(public.GraphInstance, instances);
@@ -2744,8 +2734,6 @@ pub fn getNodeStateMulty(allocator: std.mem.Allocator, instances: []const public
         if (try cetech1.task.batchWorkloadTask(
             .{
                 .allocator = allocator,
-                .task_api = _task,
-                .profiler_api = _profiler,
 
                 .count = cluster.len,
             },
@@ -2773,7 +2761,7 @@ pub fn getNodeStateMulty(allocator: std.mem.Allocator, instances: []const public
     }
 
     if (tasks.items.len != 0) {
-        _task.waitMany(tasks.items);
+        task.waitMany(tasks.items);
     }
 
     return results.toOwnedSlice(allocator);
@@ -2835,13 +2823,13 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
             _ = kernel_tick;
             _ = dt;
 
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
+            const alloc = try tempalloc.create();
+            defer tempalloc.destroy(alloc);
 
-            const nodetype_i_version = _apidb.getInterafcesVersion(public.NodeI);
+            const nodetype_i_version = apidb.getInterafcesVersion(public.NodeI);
             if (nodetype_i_version != _g.nodetype_i_version) {
                 log.debug("Supported nodes:", .{});
-                const impls = try _apidb.getImpl(alloc, public.NodeI);
+                const impls = try apidb.getImpl(alloc, public.NodeI);
                 defer alloc.free(impls);
                 for (impls) |iface| {
                     log.debug("\t - {s} - {s} - {d}", .{ iface.name, iface.type_name, iface.type_hash.id });
@@ -2850,11 +2838,11 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
                 _g.nodetype_i_version = nodetype_i_version;
             }
 
-            const valuetype_i_version = _apidb.getInterafcesVersion(public.GraphValueTypeI);
+            const valuetype_i_version = apidb.getInterafcesVersion(public.GraphValueTypeI);
             if (valuetype_i_version != _g.valuetype_i_version) {
                 log.debug("Supported values:", .{});
 
-                const impls = try _apidb.getImpl(alloc, public.GraphValueTypeI);
+                const impls = try apidb.getImpl(alloc, public.GraphValueTypeI);
                 defer alloc.free(impls);
                 for (impls) |iface| {
                     log.debug("\t - {s} - {d}", .{ iface.name, iface.type_hash.id });
@@ -2869,9 +2857,9 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
                 var processed_obj = ChangedObjsSet{};
                 defer processed_obj.deinit(alloc);
 
-                const db = _assetdb.getDb();
+                const db = assetdb.getDb();
 
-                const changed = try _cdb.getChangeObjects(alloc, db, public.GraphTypeCdb.typeIdx(_cdb, db), _last_check);
+                const changed = try cdb.getChangeObjects(alloc, db, public.GraphTypeCdb.typeIdx(db), _last_check);
                 defer alloc.free(changed.objects);
 
                 if (!changed.need_fullscan) {
@@ -2880,31 +2868,30 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
 
                         if (!_g.vm_map.contains(graph)) {
                             // skip subgraph
-                            const parent = _cdb.getParent(graph);
+                            const parent = cdb.getParent(graph);
                             if (!parent.isEmpty()) {
                                 if (parent.type_idx.eql(CallGraphNodeSettingsIdx)) continue;
                             }
 
                             const vm = try createVM(graph);
-                            _ = vm; // autofix
+                            _ = vm;
                         }
 
                         try processed_obj.put(alloc, graph, {});
                         try _g.graph_to_compile.put(_allocator, graph, {});
                     }
                 } else {
-                    if (_cdb.getAllObjectByType(alloc, db, public.GraphTypeCdb.typeIdx(_cdb, db))) |objs| {
+                    if (cdb.getAllObjectByType(alloc, db, public.GraphTypeCdb.typeIdx(db))) |objs| {
                         for (objs) |graph| {
                             if (!_g.vm_map.contains(graph)) {
                                 // skip subgraph
-                                const parent = _cdb.getParent(graph);
+                                const parent = cdb.getParent(graph);
                                 if (!parent.isEmpty()) {
                                     if (parent.type_idx.eql(CallGraphNodeSettingsIdx)) continue;
                                 }
 
                                 const vm = try createVM(graph);
-                                _ = vm; // autofix
-
+                                _ = vm;
                             }
                             try _g.graph_to_compile.put(_allocator, graph, {});
                         }
@@ -2935,31 +2922,31 @@ const graph_inputs_i = public.NodeI.implement(
         const Self = @This();
 
         pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
-            _ = self; // autofix
+            _ = self;
             _ = node_obj;
 
-            const db = _cdb.getDbFromObjid(graph_obj);
+            const db = cdb.getDbFromObjid(graph_obj);
             var pins = public.NodePinList{};
 
-            const graph_r = public.GraphTypeCdb.read(_cdb, graph_obj).?;
+            const graph_r = public.GraphTypeCdb.read(graph_obj).?;
 
-            if (public.GraphTypeCdb.readSubObj(_cdb, graph_r, .interface)) |iface_obj| {
-                const iface_r = public.InterfaceCdb.read(_cdb, iface_obj).?;
+            if (public.GraphTypeCdb.readSubObj(graph_r, .interface)) |iface_obj| {
+                const iface_r = public.InterfaceCdb.read(iface_obj).?;
 
-                if (try public.InterfaceCdb.readSubObjSet(_cdb, iface_r, .inputs, allocator)) |inputs| {
+                if (try public.InterfaceCdb.readSubObjSet(iface_r, .inputs, allocator)) |inputs| {
                     defer allocator.free(inputs);
 
                     for (inputs) |input| {
-                        const input_r = _cdb.readObj(input).?;
+                        const input_r = cdb.readObj(input).?;
 
-                        const name = public.InterfaceInputCdb.readStr(_cdb, input_r, .name) orelse "NO NAME!!";
-                        const value_obj = public.InterfaceInputCdb.readSubObj(_cdb, input_r, .value) orelse continue;
+                        const name = public.InterfaceInputCdb.readStr(input_r, .name) orelse "NO NAME!!";
+                        const value_obj = public.InterfaceInputCdb.readSubObj(input_r, .value) orelse continue;
 
-                        const uuid = try _assetdb.getOrCreateUuid(input);
+                        const uuid = try assetdb.getOrCreateUuid(input);
                         var buffer: [128]u8 = undefined;
                         const str = try std.fmt.bufPrintZ(&buffer, "{f}", .{uuid});
 
-                        const value_type = findValueTypeIByCdb(_cdb.getTypeHash(db, value_obj.type_idx).?).?;
+                        const value_type = findValueTypeIByCdb(cdb.getTypeHash(db, value_obj.type_idx).?).?;
 
                         try pins.append(
                             allocator,
@@ -2980,8 +2967,8 @@ const graph_inputs_i = public.NodeI.implement(
         }
 
         pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
-            _ = self; // autofix
-            _ = in_pins; // autofix
+            _ = self;
+            _ = in_pins;
 
             const graph_in_pins = api.getInputPins(args.instance);
 
@@ -2999,9 +2986,9 @@ const graph_inputs_i = public.NodeI.implement(
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
             return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Input});
         }
@@ -3020,31 +3007,31 @@ const graph_outputs_i = public.NodeI.implement(
         const Self = @This();
 
         pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
-            _ = self; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = node_obj;
             var pins = public.NodePinList{};
 
-            const db = _cdb.getDbFromObjid(graph_obj);
+            const db = cdb.getDbFromObjid(graph_obj);
 
-            const graph_r = public.GraphTypeCdb.read(_cdb, graph_obj).?;
+            const graph_r = public.GraphTypeCdb.read(graph_obj).?;
 
-            if (public.GraphTypeCdb.readSubObj(_cdb, graph_r, .interface)) |iface_obj| {
-                const iface_r = public.InterfaceCdb.read(_cdb, iface_obj).?;
+            if (public.GraphTypeCdb.readSubObj(graph_r, .interface)) |iface_obj| {
+                const iface_r = public.InterfaceCdb.read(iface_obj).?;
 
-                if (try public.InterfaceCdb.readSubObjSet(_cdb, iface_r, .outputs, allocator)) |outputs| {
+                if (try public.InterfaceCdb.readSubObjSet(iface_r, .outputs, allocator)) |outputs| {
                     defer allocator.free(outputs);
 
                     for (outputs) |input| {
-                        const input_r = _cdb.readObj(input).?;
+                        const input_r = cdb.readObj(input).?;
 
-                        const name = public.InterfaceInputCdb.readStr(_cdb, input_r, .name) orelse "NO NAME!!";
-                        const value_obj = public.InterfaceInputCdb.readSubObj(_cdb, input_r, .value) orelse continue;
+                        const name = public.InterfaceInputCdb.readStr(input_r, .name) orelse "NO NAME!!";
+                        const value_obj = public.InterfaceInputCdb.readSubObj(input_r, .value) orelse continue;
 
-                        const uuid = try _assetdb.getOrCreateUuid(input);
+                        const uuid = try assetdb.getOrCreateUuid(input);
                         var buffer: [128]u8 = undefined;
                         const str = try std.fmt.bufPrintZ(&buffer, "{f}", .{uuid});
 
-                        const value_type = findValueTypeIByCdb(_cdb.getTypeHash(db, value_obj.type_idx).?).?;
+                        const value_type = findValueTypeIByCdb(cdb.getTypeHash(db, value_obj.type_idx).?).?;
 
                         try pins.append(
                             allocator,
@@ -3065,8 +3052,8 @@ const graph_outputs_i = public.NodeI.implement(
         }
 
         pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
-            _ = self; // autofix
-            _ = out_pins; // autofix
+            _ = self;
+            _ = out_pins;
 
             var graph_out_pins = api.getOutputPins(args.instance);
 
@@ -3087,9 +3074,9 @@ const graph_outputs_i = public.NodeI.implement(
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
             return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Output});
         }
@@ -3114,35 +3101,35 @@ const call_graph_node_i = public.NodeI.implement(
         const Self = @This();
 
         pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
-            _ = self; // autofix
-            const db = _cdb.getDbFromObjid(graph_obj);
+            _ = self;
+            const db = cdb.getDbFromObjid(graph_obj);
             var in_pins = public.NodePinList{};
             var out_pins = public.NodePinList{};
 
-            const node_obj_r = public.NodeTypeCdb.read(_cdb, node_obj).?;
-            if (public.NodeTypeCdb.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
-                const settings_r = public.CallGraphNodeSettingsCdb.read(_cdb, settings).?;
-                if (public.CallGraphNodeSettingsCdb.readSubObj(_cdb, settings_r, .graph)) |graph| {
-                    const graph_r = public.GraphTypeCdb.read(_cdb, graph).?;
-                    if (public.GraphTypeCdb.readSubObj(_cdb, graph_r, .interface)) |iface_obj| {
-                        const iface_r = public.InterfaceCdb.read(_cdb, iface_obj).?;
+            const node_obj_r = public.NodeTypeCdb.read(node_obj).?;
+            if (public.NodeTypeCdb.readSubObj(node_obj_r, .settings)) |settings| {
+                const settings_r = public.CallGraphNodeSettingsCdb.read(settings).?;
+                if (public.CallGraphNodeSettingsCdb.readSubObj(settings_r, .graph)) |graph| {
+                    const graph_r = public.GraphTypeCdb.read(graph).?;
+                    if (public.GraphTypeCdb.readSubObj(graph_r, .interface)) |iface_obj| {
+                        const iface_r = public.InterfaceCdb.read(iface_obj).?;
 
-                        if (try public.InterfaceCdb.readSubObjSet(_cdb, iface_r, .inputs, allocator)) |inputs| {
+                        if (try public.InterfaceCdb.readSubObjSet(iface_r, .inputs, allocator)) |inputs| {
                             defer allocator.free(inputs);
 
                             try in_pins.ensureTotalCapacityPrecise(allocator, inputs.len);
 
                             for (inputs) |input| {
-                                const input_r = _cdb.readObj(input).?;
+                                const input_r = cdb.readObj(input).?;
 
-                                const name = public.InterfaceInputCdb.readStr(_cdb, input_r, .name) orelse "NO NAME!!";
-                                const value_obj = public.InterfaceInputCdb.readSubObj(_cdb, input_r, .value) orelse continue;
+                                const name = public.InterfaceInputCdb.readStr(input_r, .name) orelse "NO NAME!!";
+                                const value_obj = public.InterfaceInputCdb.readSubObj(input_r, .value) orelse continue;
 
-                                const uuid = try _assetdb.getOrCreateUuid(input);
+                                const uuid = try assetdb.getOrCreateUuid(input);
                                 var buffer: [128]u8 = undefined;
                                 const str = try std.fmt.bufPrintZ(&buffer, "{f}", .{uuid});
 
-                                const value_type = findValueTypeIByCdb(_cdb.getTypeHash(db, value_obj.type_idx).?).?;
+                                const value_type = findValueTypeIByCdb(cdb.getTypeHash(db, value_obj.type_idx).?).?;
 
                                 in_pins.appendAssumeCapacity(
                                     public.NodePin.initRaw(name, try _g.string_intern.intern(str), value_type.type_hash),
@@ -3150,22 +3137,22 @@ const call_graph_node_i = public.NodeI.implement(
                             }
                         }
 
-                        if (try public.InterfaceCdb.readSubObjSet(_cdb, iface_r, .outputs, allocator)) |outputs| {
+                        if (try public.InterfaceCdb.readSubObjSet(iface_r, .outputs, allocator)) |outputs| {
                             defer allocator.free(outputs);
 
                             try out_pins.ensureTotalCapacityPrecise(allocator, outputs.len);
 
                             for (outputs) |input| {
-                                const input_r = _cdb.readObj(input).?;
+                                const input_r = cdb.readObj(input).?;
 
-                                const name = public.InterfaceOutputCdb.readStr(_cdb, input_r, .name) orelse "NO NAME!!";
-                                const value_obj = public.InterfaceOutputCdb.readSubObj(_cdb, input_r, .value) orelse continue;
+                                const name = public.InterfaceOutputCdb.readStr(input_r, .name) orelse "NO NAME!!";
+                                const value_obj = public.InterfaceOutputCdb.readSubObj(input_r, .value) orelse continue;
 
-                                const uuid = try _assetdb.getOrCreateUuid(input);
+                                const uuid = try assetdb.getOrCreateUuid(input);
                                 var buffer: [128]u8 = undefined;
                                 const str = try std.fmt.bufPrintZ(&buffer, "{f}", .{uuid});
 
-                                const value_type = findValueTypeIByCdb(_cdb.getTypeHash(db, value_obj.type_idx).?).?;
+                                const value_type = findValueTypeIByCdb(cdb.getTypeHash(db, value_obj.type_idx).?).?;
 
                                 out_pins.appendAssumeCapacity(
                                     public.NodePin.initRaw(name, try _g.string_intern.intern(str), value_type.type_hash),
@@ -3187,28 +3174,28 @@ const call_graph_node_i = public.NodeI.implement(
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]const u8 {
-            _ = self; // autofix
-            const node_obj_r = public.NodeTypeCdb.read(_cdb, node_obj).?;
+            _ = self;
+            const node_obj_r = public.NodeTypeCdb.read(node_obj).?;
 
-            if (public.NodeTypeCdb.readSubObj(_cdb, node_obj_r, .settings)) |settings| {
-                const settings_r = public.CallGraphNodeSettingsCdb.read(_cdb, settings).?;
-                if (public.CallGraphNodeSettingsCdb.readSubObj(_cdb, settings_r, .graph)) |graph| {
-                    const graph_r = public.GraphTypeCdb.read(_cdb, graph).?;
+            if (public.NodeTypeCdb.readSubObj(node_obj_r, .settings)) |settings| {
+                const settings_r = public.CallGraphNodeSettingsCdb.read(settings).?;
+                if (public.CallGraphNodeSettingsCdb.readSubObj(settings_r, .graph)) |graph| {
+                    const graph_r = public.GraphTypeCdb.read(graph).?;
 
-                    if (public.GraphTypeCdb.readStr(_cdb, graph_r, .name)) |name| {
+                    if (public.GraphTypeCdb.readStr(graph_r, .name)) |name| {
                         if (name.len != 0) {
                             return allocator.dupeZ(u8, name);
                         }
                     }
 
-                    const prototype = _cdb.getPrototype(graph_r);
+                    const prototype = cdb.getPrototype(graph_r);
                     if (prototype.isEmpty()) {
-                        const graph_asset = _assetdb.getAssetForObj(graph) orelse return allocator.dupeZ(u8, "");
-                        const name = cetech1.assetdb.AssetCdb.readStr(_cdb, _cdb.readObj(graph_asset).?, .Name) orelse return allocator.dupeZ(u8, "");
+                        const graph_asset = assetdb.getAssetForObj(graph) orelse return allocator.dupeZ(u8, "");
+                        const name = cetech1.assetdb.AssetCdb.readStr(cdb.readObj(graph_asset).?, .Name) orelse return allocator.dupeZ(u8, "");
                         return allocator.dupeZ(u8, name);
                     } else {
-                        const graph_asset = _assetdb.getAssetForObj(prototype) orelse return allocator.dupeZ(u8, "");
-                        const name = cetech1.assetdb.AssetCdb.readStr(_cdb, _cdb.readObj(graph_asset).?, .Name) orelse return allocator.dupeZ(u8, "");
+                        const graph_asset = assetdb.getAssetForObj(prototype) orelse return allocator.dupeZ(u8, "");
+                        const name = cetech1.assetdb.AssetCdb.readStr(cdb.readObj(graph_asset).?, .Name) orelse return allocator.dupeZ(u8, "");
                         return allocator.dupeZ(u8, name);
                     }
                 } else {
@@ -3225,18 +3212,18 @@ const call_graph_node_i = public.NodeI.implement(
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
             return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Graph});
         }
 
         pub fn execute(self: *const public.NodeI, args: public.ExecuteArgs, in_pins: public.InPins, out_pins: *public.OutPins) !void {
-            _ = self; // autofix
-            _ = args; // autofix
-            _ = in_pins; // autofix
-            _ = out_pins; // autofix
+            _ = self;
+            _ = args;
+            _ = in_pins;
+            _ = out_pins;
         }
     },
 );
@@ -3252,7 +3239,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
         // GraphNodeType
         {
-            _ = try _cdb.addType(
+            _ = try cdb.addType(
                 db,
                 public.GraphTypeCdb.name,
                 &[_]cdb.PropDef{
@@ -3268,7 +3255,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
         // GraphNodeType
         {
-            _ = try _cdb.addType(
+            _ = try cdb.addType(
                 db,
                 public.GraphDataTypeCdb.name,
                 &[_]cdb.PropDef{
@@ -3281,7 +3268,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
         // GraphNodeType
         {
-            _ = try _cdb.addType(
+            _ = try cdb.addType(
                 db,
                 public.NodeTypeCdb.name,
                 &[_]cdb.PropDef{
@@ -3295,7 +3282,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
         // GroupType
         {
-            _ = try _cdb.addType(
+            _ = try cdb.addType(
                 db,
                 public.GroupTypeCdb.name,
                 &[_]cdb.PropDef{
@@ -3311,7 +3298,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
         // GraphConnectionType
         {
-            _ = try _cdb.addType(
+            _ = try cdb.addType(
                 db,
                 public.ConnectionTypeCdb.name,
                 &[_]cdb.PropDef{
@@ -3325,7 +3312,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
         // Interface
         {
-            _ = try _cdb.addType(
+            _ = try cdb.addType(
                 db,
                 public.InterfaceCdb.name,
                 &[_]cdb.PropDef{
@@ -3337,7 +3324,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
         // InterfaceInput
         {
-            _ = try _cdb.addType(
+            _ = try cdb.addType(
                 db,
                 public.InterfaceInputCdb.name,
                 &[_]cdb.PropDef{
@@ -3349,7 +3336,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
         // InterfaceOutput
         {
-            _ = try _cdb.addType(
+            _ = try cdb.addType(
                 db,
                 public.InterfaceOutputCdb.name,
                 &[_]cdb.PropDef{
@@ -3361,7 +3348,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 
         // CallGraphNodeSettings
         {
-            CallGraphNodeSettingsIdx = try _cdb.addType(
+            CallGraphNodeSettingsIdx = try cdb.addType(
                 db,
                 public.CallGraphNodeSettingsCdb.name,
                 &[_]cdb.PropDef{
@@ -3373,24 +3360,23 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
         try basic_nodes.createTypes(db);
 
         // TODO:  Move
-        AssetTypeIdx = cetech1.assetdb.AssetCdb.typeIdx(_cdb, db);
+        AssetTypeIdx = cetech1.assetdb.AssetCdb.typeIdx(db);
     }
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _apidb = apidb;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
+    public.api = &api;
 
-    _task = apidb.getZigApi(module_name, cetech1.task.TaskAPI).?;
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
-    _assetdb = apidb.getZigApi(module_name, cetech1.assetdb.AssetDBAPI).?;
+    try cdb.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+
+    try task.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
+    try assetdb.loadAPI(module_name);
 
     // impl interface
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskI, &kernel_task, load);
@@ -3400,7 +3386,7 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     try apidb.setOrRemoveZigApi(module_name, public.GraphVMApi, &api, load);
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
 
-    try basic_nodes.addOrRemove(module_name, apidb, _cdb, _log, &api, load);
+    try basic_nodes.addOrRemove(module_name, load);
 
     try apidb.implOrRemove(module_name, public.NodeI, &graph_inputs_i, load);
     try apidb.implOrRemove(module_name, public.NodeI, &graph_outputs_i, load);
@@ -3413,6 +3399,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_graphvm(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_graphvm(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

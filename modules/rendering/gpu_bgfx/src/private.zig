@@ -12,32 +12,24 @@ const task = cetech1.task;
 const tempalloc = cetech1.tempalloc;
 const math = cetech1.math;
 const host = cetech1.host;
+const gpu_dd = cetech1.gpu_dd;
+const metrics = cetech1.metrics;
 
 const public = cetech1.gpu;
-
 const core_shader = @import("shaders.zig").core_shader;
 
 const module_name = .gpu_bgfx;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-
-var _metrics: *const cetech1.metrics.MetricsAPI = undefined;
-var _task: *const cetech1.task.TaskAPI = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
-var _window: *const host.WindowApi = undefined;
+const apidb = cetech1.apidb;
 
 // Global state
 const G = struct {};
@@ -295,7 +287,7 @@ pub const TextureFlags = struct {
 
         r |= switch (self.rt) {
             .NoRT => 0,
-            .RT => bgfx.TextureFlags_RtWriteOnly,
+            .RT => bgfx.TextureFlags_Rt,
             .MssaaX2 => bgfx.TextureFlags_RtMsaaX2,
             .MssaaX4 => bgfx.TextureFlags_RtMsaaX4,
             .MssaaX8 => bgfx.TextureFlags_RtMsaaX8,
@@ -349,18 +341,28 @@ pub const BufferFlags = struct {
 
 const DiscardFlags = struct {
     pub fn toState(self: public.DiscardFlags) u8 {
-        if (self.Bindings and self.IndexBuffer and self.State and self.Transform and self.VertexStreams) {
+        if (self.bindings and self.index_buffer and self.state and self.transform and self.vertex_streams) {
             return bgfx.DiscardFlags_All;
         }
 
         var r: u8 = bgfx.DiscardFlags_None;
 
-        if (self.Bindings) r |= bgfx.DiscardFlags_Bindings;
-        if (self.IndexBuffer) r |= bgfx.DiscardFlags_IndexBuffer;
-        if (self.State) r |= bgfx.DiscardFlags_State;
-        if (self.Transform) r |= bgfx.DiscardFlags_Transform;
-        if (self.VertexStreams) r |= bgfx.DiscardFlags_VertexStreams;
+        if (self.bindings) r |= bgfx.DiscardFlags_Bindings;
+        if (self.index_buffer) r |= bgfx.DiscardFlags_IndexBuffer;
+        if (self.state) r |= bgfx.DiscardFlags_State;
+        if (self.transform) r |= bgfx.DiscardFlags_Transform;
+        if (self.vertex_streams) r |= bgfx.DiscardFlags_VertexStreams;
 
+        return r;
+    }
+};
+
+const FrameFlags = struct {
+    pub fn toState(self: public.FrameFlags) u8 {
+        var r: u8 = bgfx.FrameFlags_None;
+
+        if (self.debug_capture) r |= bgfx.FrameFlags_DebugCapture;
+        if (self.discard) r |= bgfx.FrameFlags_Discard;
         return r;
     }
 };
@@ -378,18 +380,18 @@ pub const ResetFlags = struct {
             };
         }
 
-        if (self.Fullscreen) r |= bgfx.ResetFlags_Fullscreen;
-        if (self.Vsync) r |= bgfx.ResetFlags_Vsync;
-        if (self.Maxanisotropy) r |= bgfx.ResetFlags_Maxanisotropy;
-        if (self.Capture) r |= bgfx.ResetFlags_Capture;
-        if (self.FlushAfterRender) r |= bgfx.ResetFlags_FlushAfterRender;
-        if (self.FlipAfterRender) r |= bgfx.ResetFlags_FlipAfterRender;
-        if (self.SrgbBackbuffer) r |= bgfx.ResetFlags_SrgbBackbuffer;
-        if (self.Hdr10) r |= bgfx.ResetFlags_Hdr10;
-        if (self.Hidpi) r |= bgfx.ResetFlags_Hidpi;
-        if (self.DepthClamp) r |= bgfx.ResetFlags_DepthClamp;
-        if (self.Suspend) r |= bgfx.ResetFlags_Suspend;
-        if (self.TransparentBackbuffer) r |= bgfx.ResetFlags_TransparentBackbuffer;
+        if (self.fullscreen) r |= bgfx.ResetFlags_Fullscreen;
+        if (self.vsync) r |= bgfx.ResetFlags_Vsync;
+        if (self.maxanisotropy) r |= bgfx.ResetFlags_Maxanisotropy;
+        if (self.capture) r |= bgfx.ResetFlags_Capture;
+        if (self.flush_after_render) r |= bgfx.ResetFlags_FlushAfterRender;
+        if (self.flip_after_render) r |= bgfx.ResetFlags_FlipAfterRender;
+        if (self.srgb_backbuffer) r |= bgfx.ResetFlags_SrgbBackbuffer;
+        if (self.hdr10) r |= bgfx.ResetFlags_Hdr10;
+        if (self.hidpi) r |= bgfx.ResetFlags_Hidpi;
+        if (self.depth_clamp) r |= bgfx.ResetFlags_DepthClamp;
+        if (self.@"suspend") r |= bgfx.ResetFlags_Suspend;
+        if (self.transparent_backbuffer) r |= bgfx.ResetFlags_TransparentBackbuffer;
 
         return r;
     }
@@ -399,19 +401,19 @@ pub const ClearFlags = struct {
     pub fn toState(self: public.ClearFlags) bgfx.ClearFlags {
         var r = bgfx.ClearFlags_None;
 
-        if (self.Color) r |= bgfx.ClearFlags_Color;
-        if (self.Depth) r |= bgfx.ClearFlags_Depth;
-        if (self.Stencil) r |= bgfx.ClearFlags_Stencil;
-        if (self.DiscardColor0) r |= bgfx.ClearFlags_DiscardColor0;
-        if (self.DiscardColor1) r |= bgfx.ClearFlags_DiscardColor1;
-        if (self.DiscardColor2) r |= bgfx.ClearFlags_DiscardColor2;
-        if (self.DiscardColor3) r |= bgfx.ClearFlags_DiscardColor3;
-        if (self.DiscardColor4) r |= bgfx.ClearFlags_DiscardColor4;
-        if (self.DiscardColor5) r |= bgfx.ClearFlags_DiscardColor5;
-        if (self.DiscardColor6) r |= bgfx.ClearFlags_DiscardColor6;
-        if (self.DiscardColor7) r |= bgfx.ClearFlags_DiscardColor7;
-        if (self.DiscardDepth) r |= bgfx.ClearFlags_DiscardDepth;
-        if (self.DiscardStencil) r |= bgfx.ClearFlags_DiscardStencil;
+        if (self.color) r |= bgfx.ClearFlags_Color;
+        if (self.depth) r |= bgfx.ClearFlags_Depth;
+        if (self.stencil) r |= bgfx.ClearFlags_Stencil;
+        if (self.discard_color0) r |= bgfx.ClearFlags_DiscardColor0;
+        if (self.discard_color1) r |= bgfx.ClearFlags_DiscardColor1;
+        if (self.discard_color2) r |= bgfx.ClearFlags_DiscardColor2;
+        if (self.discard_color3) r |= bgfx.ClearFlags_DiscardColor3;
+        if (self.discard_color4) r |= bgfx.ClearFlags_DiscardColor4;
+        if (self.discard_color5) r |= bgfx.ClearFlags_DiscardColor5;
+        if (self.discard_color6) r |= bgfx.ClearFlags_DiscardColor6;
+        if (self.discard_color7) r |= bgfx.ClearFlags_DiscardColor7;
+        if (self.discard_depth) r |= bgfx.ClearFlags_DiscardDepth;
+        if (self.discard_stencil) r |= bgfx.ClearFlags_DiscardStencil;
 
         return r;
     }
@@ -486,75 +488,6 @@ pub const Backend = enum(c_int) {
     }
 };
 
-const embed_varying_def =
-    \\vec4 v_color0    : COLOR0    = vec4(1.0, 0.0, 0.0, 1.0);
-    \\vec2 v_texcoord0 : TEXCOORD0 = vec2(0.0, 0.0);
-    \\
-    \\vec2 a_position  : POSITION;
-    \\vec4 a_color0    : COLOR0;
-    \\vec2 a_texcoord0 : TEXCOORD0;
-    \\
-;
-const fs_imgui_image_code = std.fmt.comptimePrint(
-    \\$input v_texcoord0
-    \\
-    \\{[bgfx]s}
-    \\
-    \\uniform vec4 u_imageLodEnabled;
-    \\SAMPLER2D(s_texColor, 0);
-    \\#define u_imageLod     u_imageLodEnabled.x
-    \\#define u_imageEnabled u_imageLodEnabled.y
-    \\void main()
-    \\{{
-    \\vec3 color = texture2DLod(s_texColor, v_texcoord0, u_imageLod).xyz;
-    \\float alpha = 0.2 + 0.8*u_imageEnabled;
-    \\gl_FragColor = vec4(color, alpha);
-    \\}}
-    \\
-, .{ .bgfx = core_shader });
-const fs_ocornut_imgui_code = std.fmt.comptimePrint(
-    \\$input v_color0, v_texcoord0
-    \\
-    \\{[bgfx]s}
-    \\
-    \\SAMPLER2D(s_tex, 0);
-    \\
-    \\void main()
-    \\{{
-    \\vec4 texel = texture2D(s_tex, v_texcoord0);
-    \\gl_FragColor = texel * v_color0;
-    \\}}
-    \\
-, .{ .bgfx = core_shader });
-const vs_imgui_image_code = std.fmt.comptimePrint(
-    \\$input a_position, a_texcoord0
-    \\$output v_texcoord0
-    \\
-    \\{[bgfx]s}
-    \\
-    \\void main()
-    \\{{
-    \\gl_Position = mul(u_viewProj, vec4(a_position.xy, 0.0, 1.0) );
-    \\v_texcoord0 = a_texcoord0;
-    \\}}
-    \\
-, .{ .bgfx = core_shader });
-const vs_ocornut_imgui_code = std.fmt.comptimePrint(
-    \\$input a_position, a_texcoord0, a_color0
-    \\$output v_color0, v_texcoord0
-    \\
-    \\{[bgfx]s}
-    \\
-    \\void main()
-    \\{{
-    \\vec4 pos = mul(u_viewProj, vec4(a_position.xy, 0.0, 1.0) );
-    \\gl_Position = vec4(pos.x, pos.y, 0.0, 1.0);
-    \\v_texcoord0 = a_texcoord0;
-    \\v_color0    = a_color0;
-    \\}}
-    \\
-, .{ .bgfx = core_shader });
-
 pub const backend_api = public.GpuBackendApi.implement(struct {
     pub fn destroyBackend(self: *anyopaque) void {
         const inst: *BgfxBackend = @ptrCast(@alignCast(self));
@@ -566,10 +499,6 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
                 backend_api.destroyProgram(inst, inst.coreui_program);
             }
 
-            if (inst.coreui_image_program.isValid()) {
-                backend_api.destroyProgram(inst, inst.coreui_image_program);
-            }
-
             const Task = struct {
                 inst: *BgfxBackend,
                 pub fn exec(selff: *@This()) !void {
@@ -578,12 +507,12 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
                     selff.inst.encoders.deinit(_allocator);
                 }
             };
-            const task_id = _task.schedule(
+            const task_id = task.schedule(
                 cetech1.task.TaskID.none,
                 Task{ .inst = inst },
                 .{ .affinity = 1 },
             ) catch undefined;
-            while (!_task.isDone(task_id)) {
+            while (!task.isDone(task_id)) {
                 std.Thread.sleep(1 * std.time.ns_per_ms);
                 _ = bgfx.renderFrame(0);
             }
@@ -619,7 +548,7 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
     pub fn endAllUsedEncoders(self: *anyopaque) void {
         const context: *BgfxBackend = @ptrCast(@alignCast(self));
 
-        var zone_ctx = _profiler.ZoneN(@src(), "endAllUsedEncoders");
+        var zone_ctx = profiler.ZoneN(@src(), "endAllUsedEncoders");
         defer zone_ctx.End();
 
         // log.debug("Begin end encoders", .{});
@@ -648,7 +577,7 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
     pub fn createDefaultOptionsForRenderer(self: *anyopaque) public.ShadercOptions {
         const context: *BgfxBackend = @ptrCast(@alignCast(self));
         if (context.bgfx_backend == .Noop) {
-            return .{ .shaderType = .fragment, .platform = .linux, .profile = .spirv };
+            return .{ .shaderType = .Fragment, .platform = .Linux, .profile = .Spirv };
         }
 
         const res = zbgfx.shaderc.createDefaultOptionsForRenderer(zbgfx.bgfx.getRendererType());
@@ -670,6 +599,11 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
         const caps = bgfx.getCaps().*;
         return caps.homogeneousDepth;
     }
+    pub fn isOriginBottomLeft(self: *anyopaque) bool {
+        _ = self;
+        const caps = bgfx.getCaps().*;
+        return caps.originBottomLeft;
+    }
     pub fn getNullVb(self: *anyopaque) public.VertexBufferHandle {
         const context: *BgfxBackend = @ptrCast(@alignCast(self));
         return context.null_vb;
@@ -682,9 +616,9 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
         _ = self;
         zbgfx.bgfx.reset(_width, _height, ResetFlags.toState(_flags), @enumFromInt(@intFromEnum(_format)));
     }
-    pub fn frame(self: *anyopaque, _capture: bool) u32 {
+    pub fn frame(self: *anyopaque, flags: public.FrameFlags) u32 {
         _ = self;
-        return zbgfx.bgfx.frame(_capture);
+        return zbgfx.bgfx.frame(FrameFlags.toState(flags));
     }
     pub fn alloc(self: *anyopaque, _size: u32) *const public.Memory {
         _ = self;
@@ -717,10 +651,10 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
     pub fn getEncoder(self: *anyopaque) ?public.GpuEncoder {
         const context: *BgfxBackend = @ptrCast(@alignCast(self));
 
-        var zone_ctx = _profiler.ZoneN(@src(), "getEncoder");
+        var zone_ctx = profiler.ZoneN(@src(), "getEncoder");
         defer zone_ctx.End();
 
-        const wid = _task.getWorkerId();
+        const wid = task.getWorkerId();
         if (context.encoders.items[wid]) |encoder| {
             return .{ .ptr = @ptrCast(encoder), .vtable = &encoder_vt };
         } else {
@@ -737,13 +671,13 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
     }
     pub fn endEncoder(self: *anyopaque, encoder: public.GpuEncoder) void {
         _ = self;
-        var zone_ctx = _profiler.ZoneN(@src(), "endEncoder");
+        var zone_ctx = profiler.ZoneN(@src(), "endEncoder");
         defer zone_ctx.End();
 
         encoder.discard(.all);
 
         // bgfx.encoderEnd(@ptrCast(encoder.ptr));
-        // const wid = _task.getWorkerId();
+        // const wid = task.getWorkerId();
 
         // _encoders.items[wid] = null;
         // bgfx.encoderEnd(@ptrCast(encoder.ptr));
@@ -906,7 +840,7 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
             ).idx,
         };
     }
-    pub fn createTexture2D(self: *anyopaque, _width: u16, _height: u16, _hasMips: bool, _numLayers: u16, _format: public.TextureFormat, _flags: public.TextureFlags, _sampler_flags: ?public.SamplerFlags, _mem: ?*const public.Memory) public.TextureHandle {
+    pub fn createTexture2D(self: *anyopaque, _width: u16, _height: u16, _hasMips: bool, _numLayers: u16, _format: public.TextureFormat, _flags: public.TextureFlags, _sampler_flags: ?public.SamplerFlags, _mem: ?*const public.Memory, _external: u64) public.TextureHandle {
         _ = self;
         return .{
             .idx = bgfx.createTexture2D(
@@ -917,10 +851,11 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
                 @enumFromInt(@intFromEnum(_format)),
                 TextureFlags.toState(_flags) | if (_sampler_flags) |f| SamplerFlags.toState(f) else 0,
                 @ptrCast(_mem),
+                _external,
             ).idx,
         };
     }
-    pub fn createTexture3D(self: *anyopaque, _width: u16, _height: u16, _depth: u16, _hasMips: bool, _format: public.TextureFormat, _flags: public.TextureFlags, _sampler_flags: ?public.SamplerFlags, _mem: ?*const public.Memory) public.TextureHandle {
+    pub fn createTexture3D(self: *anyopaque, _width: u16, _height: u16, _depth: u16, _hasMips: bool, _format: public.TextureFormat, _flags: public.TextureFlags, _sampler_flags: ?public.SamplerFlags, _mem: ?*const public.Memory, _external: u64) public.TextureHandle {
         _ = self;
         return .{
             .idx = bgfx.createTexture3D(
@@ -931,10 +866,11 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
                 @enumFromInt(@intFromEnum(_format)),
                 TextureFlags.toState(_flags) | if (_sampler_flags) |f| SamplerFlags.toState(f) else 0,
                 @ptrCast(_mem),
+                _external,
             ).idx,
         };
     }
-    pub fn createTextureCube(self: *anyopaque, _size: u16, _hasMips: bool, _numLayers: u16, _format: public.TextureFormat, _flags: public.TextureFlags, _sampler_flags: ?public.SamplerFlags, _mem: ?*const public.Memory) public.TextureHandle {
+    pub fn createTextureCube(self: *anyopaque, _size: u16, _hasMips: bool, _numLayers: u16, _format: public.TextureFormat, _flags: public.TextureFlags, _sampler_flags: ?public.SamplerFlags, _mem: ?*const public.Memory, _external: u64) public.TextureHandle {
         _ = self;
         return .{
             .idx = bgfx.createTextureCube(
@@ -944,6 +880,7 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
                 @enumFromInt(@intFromEnum(_format)),
                 TextureFlags.toState(_flags) | if (_sampler_flags) |f| SamplerFlags.toState(f) else 0,
                 @ptrCast(_mem),
+                _external,
             ).idx,
         };
     }
@@ -1111,11 +1048,6 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
         return zbgfx.bgfx.VertexLayout.end(@ptrCast(self));
     }
 
-    pub fn getCoreUIImageProgram(self: *anyopaque) public.ProgramHandle {
-        const inst: *BgfxBackend = @ptrCast(@alignCast(self));
-        return inst.coreui_image_program;
-    }
-
     pub fn getCoreUIProgram(self: *anyopaque) public.ProgramHandle {
         const inst: *BgfxBackend = @ptrCast(@alignCast(self));
         return inst.coreui_program;
@@ -1156,11 +1088,11 @@ pub const DebugFlags = struct {
     pub fn toState(self: public.DebugFlags) bgfx.DebugFlags {
         var r = bgfx.DebugFlags_None;
 
-        if (self.Wireframe) r |= bgfx.DebugFlags_Wireframe;
-        if (self.Ifh) r |= bgfx.DebugFlags_Ifh;
-        if (self.Stats) r |= bgfx.DebugFlags_Stats;
-        if (self.Text) r |= bgfx.DebugFlags_Text;
-        if (self.Profiler) r |= bgfx.DebugFlags_Profiler;
+        if (self.wireframe) r |= bgfx.DebugFlags_Wireframe;
+        if (self.ifh) r |= bgfx.DebugFlags_Ifh;
+        if (self.stats) r |= bgfx.DebugFlags_Stats;
+        if (self.text) r |= bgfx.DebugFlags_Text;
+        if (self.profiler) r |= bgfx.DebugFlags_Profiler;
 
         return r;
     }
@@ -1175,7 +1107,7 @@ fn initBgfx(context: *BgfxBackend, backend: bgfx.RendererType, vsync: bool, head
 
     context.bgfxInit.type = @enumFromInt(@intFromEnum(backend));
 
-    const cpu_count: u16 = @intCast(_task.getThreadNum());
+    const cpu_count: u16 = @intCast(task.getThreadNum());
 
     context.bgfxInit.debug = debug;
     context.bgfxInit.profile = profile;
@@ -1196,11 +1128,9 @@ fn initBgfx(context: *BgfxBackend, backend: bgfx.RendererType, vsync: bool, head
             context.bgfxInit.resolution.reset |= bgfx.ResetFlags_Vsync;
         }
 
+        context.bgfxInit.platformData.type = if (host.getWMType() == .Wayland) bgfx.NativeWindowHandleType.Wayland else .Default;
         context.bgfxInit.platformData.nwh = context.window.?.getOsWindowHandler();
         context.bgfxInit.platformData.ndt = context.window.?.getOsDisplayHandler();
-
-        // TODO: wayland
-        context.bgfxInit.platformData.type = if (_window.getWMType() == .Wayland) bgfx.NativeWindowHandleType.Wayland else .Default;
     }
 
     // // Do not create render thread.
@@ -1213,8 +1143,8 @@ fn initBgfx(context: *BgfxBackend, backend: bgfx.RendererType, vsync: bool, head
     context.bgfx_init = true;
     zbgfx.debugdraw.init();
 
-    context.encoders = try .initCapacity(_allocator, _task.getThreadNum());
-    for (0.._task.getThreadNum()) |_| {
+    context.encoders = try .initCapacity(_allocator, task.getThreadNum());
+    for (0..task.getThreadNum()) |_| {
         context.encoders.appendAssumeCapacity(null);
     }
 
@@ -1246,8 +1176,8 @@ fn initBgfx(context: *BgfxBackend, backend: bgfx.RendererType, vsync: bool, head
     log.debug("\t- maxOcclusionQueries: {d}", .{limits.maxOcclusionQueries});
     log.debug("\t- maxEncoders: {d}", .{limits.maxEncoders});
     log.debug("\t- minResourceCbSize: {d}", .{limits.minResourceCbSize});
-    log.debug("\t- transientVbSize: {d}", .{limits.maxTransientVbSize});
-    log.debug("\t- transientIbSize: {d}", .{limits.maxTansientIbSize});
+    log.debug("\t- maxTransientVbSize: {d}", .{limits.maxTransientVbSize});
+    log.debug("\t- maxTransientIbSize: {d}", .{limits.maxTransientIbSize});
 
     context.null_layout = NullVertex.layoutInit();
     context.null_vb = backend_api.createVertexBuffer(
@@ -1279,7 +1209,6 @@ const BgfxBackend = struct {
     encoders: EncoderArray = .{},
     pallet_map: PalletColorMap = .{},
 
-    coreui_image_program: public.ProgramHandle = .{},
     coreui_program: public.ProgramHandle = .{},
 };
 
@@ -1301,6 +1230,18 @@ const bgfx_dx12 = public.GpuBackendI{
     .isDefault = isBgfxDefault,
 };
 
+const bgfx_dx11 = public.GpuBackendI{
+    .name = "bgfx_dx11",
+    .createBackend = createBgfxBackend,
+    .isDefault = isBgfxDefault,
+};
+
+const bgfx_opengl = public.GpuBackendI{
+    .name = "bgfx_opengl",
+    .createBackend = createBgfxBackend,
+    .isDefault = isBgfxDefault,
+};
+
 const bgfx_noop = public.GpuBackendI{
     .name = "bgfx_noop",
     .createBackend = createBgfxBackend,
@@ -1316,6 +1257,45 @@ fn isBgfxDefault(backend: []const u8, headles: bool) bool {
 
     return false;
 }
+
+const embed_varying_def =
+    \\vec4 v_color0    : COLOR0    = vec4(1.0, 0.0, 0.0, 1.0);
+    \\vec2 v_texcoord0 : TEXCOORD0 = vec2(0.0, 0.0);
+    \\
+    \\vec2 a_position  : POSITION;
+    \\vec4 a_color0    : COLOR0;
+    \\vec2 a_texcoord0 : TEXCOORD0;
+    \\
+;
+const fs_ocornut_imgui_code =
+    \\$input v_color0, v_texcoord0
+    \\
+    \\{[bgfx]s}
+    \\
+    \\SAMPLER2D(s_tex, 0);
+    \\
+    \\void main()
+    \\{{
+    \\vec4 texel = texture2D(s_tex, v_texcoord0);
+    \\gl_FragColor = texel * v_color0;
+    \\}}
+    \\
+;
+const vs_ocornut_imgui_code =
+    \\$input a_position, a_texcoord0, a_color0
+    \\$output v_color0, v_texcoord0
+    \\
+    \\{[bgfx]s}
+    \\
+    \\void main()
+    \\{{
+    \\vec4 pos = mul(u_viewProj, vec4(a_position.xy, 0.0, 1.0) );
+    \\gl_Position = vec4(pos.x, pos.y, 0.0, 1.0);
+    \\v_texcoord0 = a_texcoord0;
+    \\v_color0    = a_color0;
+    \\}}
+    \\
+;
 
 fn createBgfxBackend(
     window: ?cetech1.host.Window,
@@ -1363,7 +1343,7 @@ fn createBgfxBackend(
             );
         }
     };
-    const task_id = try _task.schedule(
+    const task_id = try task.schedule(
         cetech1.task.TaskID.none,
         Task{
             .context = context,
@@ -1375,40 +1355,35 @@ fn createBgfxBackend(
         },
         .{ .affinity = 1 },
     );
-    while (!_task.isDone(task_id)) {
+    while (!task.isDone(task_id)) {
         std.Thread.sleep(1 * std.time.ns_per_ms);
         _ = bgfx.renderFrame(0);
     }
 
     const api = public.GpuBackend{ .inst = @ptrCast(context), .api = &backend_api };
 
-    // Dont compile shader in headless.
-    // TODO: need shaderc compiled but now in CI shderc is not compiled
-    if (window != null) {
-        var fs_options = api.createDefaultShadercOptions();
-        fs_options.shaderType = .fragment;
+    var fs_options = api.createDefaultShadercOptions();
+    fs_options.shaderType = .Fragment;
 
-        var vs_options = api.createDefaultShadercOptions();
-        vs_options.shaderType = .vertex;
+    var vs_options = api.createDefaultShadercOptions();
+    vs_options.shaderType = .Vertex;
 
-        const alloc = try _tmpalloc.create();
-        defer _tmpalloc.destroy(alloc);
+    const alloc = try tempalloc.create();
+    defer tempalloc.destroy(alloc);
 
-        const vs_imgui_image_data = try api.compileShader(alloc, embed_varying_def, vs_imgui_image_code, vs_options);
-        const fs_imgui_image_data = try api.compileShader(alloc, embed_varying_def, fs_imgui_image_code, fs_options);
+    const vs_ocornut_imgui_code_final = try std.fmt.allocPrint(alloc, vs_ocornut_imgui_code, .{ .bgfx = core_shader });
+    defer alloc.free(vs_ocornut_imgui_code_final);
 
-        const vs_ocornut_imgui_data = try api.compileShader(alloc, embed_varying_def, vs_ocornut_imgui_code, vs_options);
-        const fs_ocornut_imgui_data = try api.compileShader(alloc, embed_varying_def, fs_ocornut_imgui_code, fs_options);
+    const fs_ocornut_imgui_code_final = try std.fmt.allocPrint(alloc, fs_ocornut_imgui_code, .{ .bgfx = core_shader });
+    defer alloc.free(fs_ocornut_imgui_code_final);
 
-        const vs_imgui_image = api.createShader(api.copy(vs_imgui_image_data.ptr, @intCast(vs_imgui_image_data.len)));
-        const fs_imgui_image = api.createShader(api.copy(fs_imgui_image_data.ptr, @intCast(fs_imgui_image_data.len)));
+    const vs_ocornut_imgui_data = try api.compileShader(alloc, embed_varying_def, vs_ocornut_imgui_code_final, vs_options);
+    const fs_ocornut_imgui_data = try api.compileShader(alloc, embed_varying_def, fs_ocornut_imgui_code_final, fs_options);
 
-        const vs_ocornut_imgui = api.createShader(api.copy(vs_ocornut_imgui_data.ptr, @intCast(vs_ocornut_imgui_data.len)));
-        const fs_ocornut_imgui = api.createShader(api.copy(fs_ocornut_imgui_data.ptr, @intCast(fs_ocornut_imgui_data.len)));
+    const vs_ocornut_imgui = api.createShader(api.copy(vs_ocornut_imgui_data.ptr, @intCast(vs_ocornut_imgui_data.len)));
+    const fs_ocornut_imgui = api.createShader(api.copy(fs_ocornut_imgui_data.ptr, @intCast(fs_ocornut_imgui_data.len)));
 
-        context.coreui_image_program = api.createProgram(vs_imgui_image, fs_imgui_image, true);
-        context.coreui_program = api.createProgram(vs_ocornut_imgui, fs_ocornut_imgui, true);
-    }
+    context.coreui_program = api.createProgram(vs_ocornut_imgui, fs_ocornut_imgui, true);
 
     return api;
 }
@@ -1565,7 +1540,7 @@ const encoder_vt = public.GpuEncoder.implement(struct {
     }
 });
 
-const dd_encoder_vt = public.DDEncoder.implement(struct {
+const dd_encoder_vt = gpu_dd.Encoder.implement(struct {
     pub fn begin(dde: *anyopaque, _viewId: u16, _depthTestLess: bool, _encoder: *anyopaque) void {
         zbgfx.debugdraw.Encoder.begin(@ptrCast(@alignCast(dde)), _viewId, _depthTestLess, @ptrCast(@alignCast(_encoder)));
     }
@@ -1670,15 +1645,15 @@ const dd_encoder_vt = public.DDEncoder.implement(struct {
         zbgfx.debugdraw.Encoder.drawCone(@ptrCast(@alignCast(dde)), pos.toArray(), _end.toArray(), radius);
     }
 
-    pub fn drawGeometry(dde: *anyopaque, _handle: public.DDGeometryHandle) void {
+    pub fn drawGeometry(dde: *anyopaque, _handle: gpu_dd.GeometryHandle) void {
         zbgfx.debugdraw.Encoder.drawGeometry(@ptrCast(@alignCast(dde)), .{ .idx = _handle.idx });
     }
 
-    pub fn drawLineList(dde: *anyopaque, _numVertices: u32, _vertices: []const public.DDVertex, _numIndices: u32, _indices: ?[*]const u16) void {
+    pub fn drawLineList(dde: *anyopaque, _numVertices: u32, _vertices: []const gpu_dd.Vertex, _numIndices: u32, _indices: ?[*]const u16) void {
         zbgfx.debugdraw.Encoder.drawLineList(@ptrCast(@alignCast(dde)), _numVertices, std.mem.bytesAsSlice(zbgfx.debugdraw.Vertex, std.mem.sliceAsBytes(_vertices)), _numIndices, _indices);
     }
 
-    pub fn drawTriList(dde: *anyopaque, _numVertices: u32, _vertices: []const public.DDVertex, _numIndices: u32, _indices: ?[*]const u16) void {
+    pub fn drawTriList(dde: *anyopaque, _numVertices: u32, _vertices: []const gpu_dd.Vertex, _numIndices: u32, _indices: ?[*]const u16) void {
         zbgfx.debugdraw.Encoder.drawTriList(@ptrCast(@alignCast(dde)), _numVertices, std.mem.bytesAsSlice(zbgfx.debugdraw.Vertex, std.mem.sliceAsBytes(_vertices)), _numIndices, _indices.?);
     }
 
@@ -1686,7 +1661,7 @@ const dd_encoder_vt = public.DDEncoder.implement(struct {
         zbgfx.debugdraw.Encoder.drawFrustum(@ptrCast(@alignCast(dde)), @constCast(&_viewProj.toArray()));
     }
 
-    pub fn drawArc(dde: *anyopaque, _axis: public.DDAxis, _xyz: math.Vec3f, _radius: f32, _degrees: f32) void {
+    pub fn drawArc(dde: *anyopaque, _axis: gpu_dd.Axis, _xyz: math.Vec3f, _radius: f32, _degrees: f32) void {
         zbgfx.debugdraw.Encoder.drawArc(@ptrCast(@alignCast(dde)), @enumFromInt(@intFromEnum(_axis)), _xyz.toArray(), _radius, _degrees);
     }
 
@@ -1694,7 +1669,7 @@ const dd_encoder_vt = public.DDEncoder.implement(struct {
         zbgfx.debugdraw.Encoder.drawCircle(@ptrCast(@alignCast(dde)), _normal.toArray(), _center.toArray(), _radius, _weight);
     }
 
-    pub fn drawCircleAxis(dde: *anyopaque, _axis: public.DDAxis, _xyz: math.Vec3f, _radius: f32, _weight: f32) void {
+    pub fn drawCircleAxis(dde: *anyopaque, _axis: gpu_dd.Axis, _xyz: math.Vec3f, _radius: f32, _weight: f32) void {
         zbgfx.debugdraw.Encoder.drawCircleAxis(@ptrCast(@alignCast(dde)), @enumFromInt(@intFromEnum(_axis)), _xyz.toArray(), _radius, _weight);
     }
 
@@ -1702,7 +1677,7 @@ const dd_encoder_vt = public.DDEncoder.implement(struct {
         zbgfx.debugdraw.Encoder.drawQuad(@ptrCast(@alignCast(dde)), _normal.toArray(), _center.toArray(), _size);
     }
 
-    pub fn drawQuadSprite(dde: *anyopaque, _handle: public.DDSpriteHandle, _normal: math.Vec3f, _center: math.Vec3f, _size: f32) void {
+    pub fn drawQuadSprite(dde: *anyopaque, _handle: gpu_dd.SpriteHandle, _normal: math.Vec3f, _center: math.Vec3f, _size: f32) void {
         zbgfx.debugdraw.Encoder.drawQuadSprite(@ptrCast(@alignCast(dde)), .{ .idx = _handle.idx }, _normal.toArray(), _center.toArray(), _size);
     }
 
@@ -1710,7 +1685,7 @@ const dd_encoder_vt = public.DDEncoder.implement(struct {
         zbgfx.debugdraw.Encoder.drawQuadTexture(@ptrCast(@alignCast(dde)), .{ .idx = _handle.idx }, _normal.toArray(), _center.toArray(), _size);
     }
 
-    pub fn drawAxis(dde: *anyopaque, _xyz: math.Vec3f, _len: f32, _highlight: public.DDAxis, _thickness: f32) void {
+    pub fn drawAxis(dde: *anyopaque, _xyz: math.Vec3f, _len: f32, _highlight: gpu_dd.Axis, _thickness: f32) void {
         zbgfx.debugdraw.Encoder.drawAxis(@ptrCast(@alignCast(dde)), _xyz.toArray(), _len, @enumFromInt(@intFromEnum(_highlight)), _thickness);
     }
 
@@ -1718,68 +1693,66 @@ const dd_encoder_vt = public.DDEncoder.implement(struct {
         zbgfx.debugdraw.Encoder.drawGrid(@ptrCast(@alignCast(dde)), _normal.toArray(), _center.toArray(), _size, _step);
     }
 
-    pub fn drawGridAxis(dde: *anyopaque, _axis: public.DDAxis, _center: math.Vec3f, _size: u32, _step: f32) void {
+    pub fn drawGridAxis(dde: *anyopaque, _axis: gpu_dd.Axis, _center: math.Vec3f, _size: u32, _step: f32) void {
         zbgfx.debugdraw.Encoder.drawGridAxis(@ptrCast(@alignCast(dde)), @enumFromInt(@intFromEnum(_axis)), _center.toArray(), _size, _step);
     }
 
-    pub fn drawOrb(dde: *anyopaque, _xyz: math.Vec3f, _radius: f32, _highlight: public.DDAxis) void {
+    pub fn drawOrb(dde: *anyopaque, _xyz: math.Vec3f, _radius: f32, _highlight: gpu_dd.Axis) void {
         zbgfx.debugdraw.Encoder.drawOrb(@ptrCast(@alignCast(dde)), _xyz.toArray(), _radius, @enumFromInt(@intFromEnum(_highlight)));
     }
 });
 
-pub const dd_api = public.GpuDDApi{
-    .createSprite = @ptrCast(&zbgfx.debugdraw.createSprite),
-    .destroySprite = @ptrCast(&zbgfx.debugdraw.destroySprite),
-    .createGeometry = @ptrCast(&zbgfx.debugdraw.createGeometry),
-    .destroyGeometry = @ptrCast(&zbgfx.debugdraw.destroyGeometry),
-
-    .encoderCreate = createDDEncoder,
-    .encoderDestroy = destroyDDEncoder,
+pub const dd_api = gpu_dd.GpuDDApi{
+    .create_sprite = @ptrCast(&zbgfx.debugdraw.createSprite),
+    .destroy_sprite = @ptrCast(&zbgfx.debugdraw.destroySprite),
+    .create_geometry = @ptrCast(&zbgfx.debugdraw.createGeometry),
+    .destroy_geometry = @ptrCast(&zbgfx.debugdraw.destroyGeometry),
+    .encoder_create = createDDEncoder,
+    .encoder_destroy = destroyDDEncoder,
 };
 
-pub fn createDDEncoder() public.DDEncoder {
-    return public.DDEncoder{
+pub fn createDDEncoder() gpu_dd.Encoder {
+    return gpu_dd.Encoder{
         .ptr = zbgfx.debugdraw.Encoder.create(),
         .vtable = &dd_encoder_vt,
     };
 }
-pub fn destroyDDEncoder(encoder: public.DDEncoder) void {
+pub fn destroyDDEncoder(encoder: gpu_dd.Encoder) void {
     zbgfx.debugdraw.Encoder.destroy(@ptrCast(encoder.ptr));
 }
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
 
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _apidb = apidb;
 
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
+    try host.loadAPI(module_name);
+    // try kernel.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
 
-    _metrics = apidb.getZigApi(module_name, cetech1.metrics.MetricsAPI).?;
-    _task = apidb.getZigApi(module_name, cetech1.task.TaskAPI).?;
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
-    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
-    _window = apidb.getZigApi(module_name, host.WindowApi).?;
+    try metrics.loadAPI(module_name);
+    try task.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
 
     // create global variable that can survive reload
-    _g = try _apidb.setGlobalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
     // impl interface
     try apidb.implOrRemove(module_name, public.GpuBackendI, &bgfx_metal, load);
     try apidb.implOrRemove(module_name, public.GpuBackendI, &bgfx_vulkan, load);
     try apidb.implOrRemove(module_name, public.GpuBackendI, &bgfx_dx12, load);
+    try apidb.implOrRemove(module_name, public.GpuBackendI, &bgfx_dx11, load);
+    try apidb.implOrRemove(module_name, public.GpuBackendI, &bgfx_opengl, load);
     try apidb.implOrRemove(module_name, public.GpuBackendI, &bgfx_noop, load);
 
-    try apidb.setOrRemoveZigApi(module_name, public.GpuDDApi, &dd_api, load);
+    try apidb.setOrRemoveZigApi(module_name, gpu_dd.GpuDDApi, &dd_api, load);
 
     return true;
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_gpu_bgfx(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_gpu_bgfx(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

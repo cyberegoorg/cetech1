@@ -9,11 +9,11 @@ const shader_system = @import("shader_system");
 const vertex_system = @import("vertex_system");
 const visibility_flags = @import("visibility_flags");
 
-pub const RenderComponent = struct {
+pub const RenderComponent = extern struct {
     graph: cdb.ObjId = .{},
 };
 
-pub const RenderComponentInstance = struct {
+pub const RenderComponentInstance = extern struct {
     instance: graphvm.GraphInstance = .{},
 };
 

@@ -6,12 +6,11 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 const math = cetech1.math;
-
-const render_viewport = @import("render_viewport");
-const render_graph = @import("render_graph");
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
 
+const render_viewport = @import("render_viewport");
+const render_graph = @import("render_graph");
 const graphvm = @import("graphvm");
 const transform = @import("transform");
 const shader_system = @import("shader_system");
@@ -26,27 +25,20 @@ const module_name = .render_component;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _task: *const cetech1.task.TaskAPI = undefined;
 
-var _ecs: *const ecs.EcsAPI = undefined;
-var _graphvm: *const graphvm.GraphVMApi = undefined;
+const tempalloc = cetech1.tempalloc;
+const profiler = cetech1.profiler;
+const task = cetech1.task;
+const apidb = cetech1.apidb;
 
-var _dd: *const gpu.GpuDDApi = undefined;
 var _shader_system: *const shader_system.ShaderSystemAPI = undefined;
-var _visibility_flags: *const visibility_flags.VisibilityFlagsApi = undefined;
-var _instance_system: *const instance_system.InstanceSystemApi = undefined;
 
 // Global state that can surive hot-reload
 const G = struct {
@@ -67,13 +59,13 @@ const render_component_c = ecs.ComponentI.implement(
             obj: cdb.ObjId,
             data: []u8,
         ) anyerror!void {
-            _ = allocator; // autofix
+            _ = allocator;
 
-            const r = _cdb.readObj(obj) orelse return;
+            const r = cdb.readObj(obj) orelse return;
 
             const component = std.mem.bytesAsValue(public.RenderComponent, data);
             component.* = public.RenderComponent{
-                .graph = public.RenderComponentCdb.readSubObj(_cdb, r, .Graph) orelse .{},
+                .graph = public.RenderComponentCdb.readSubObj(r, .Graph) orelse .{},
             };
         }
     },
@@ -87,9 +79,9 @@ const editor_render_component_aspect = editor.EditorComponentAspect.implement(
             allocator: std.mem.Allocator,
             obj: cdb.ObjId,
         ) ![:0]const u8 {
-            _ = allocator; // autofix
-            _ = obj; // autofix
-            return std.fmt.bufPrintZ(buff, "{s}", .{coreui.CoreIcons.FA_CUBES});
+            _ = allocator;
+            _ = obj;
+            return std.fmt.bufPrintZ(buff, "{s}", .{coreui.Icons.Cubes});
         }
     },
 );
@@ -103,7 +95,7 @@ const rc_initialized_c = ecs.ComponentI.implement(
         pub fn onDestroy(components: []public.RenderComponentInstance) !void {
             for (components) |c| {
                 if (c.instance.isValid()) {
-                    _graphvm.destroyInstance(c.instance);
+                    graphvm.destroyInstance(c.instance);
                 }
             }
         }
@@ -120,11 +112,11 @@ const rc_initialized_c = ecs.ComponentI.implement(
         pub fn onRemove(manager: ?*anyopaque, iter: *ecs.Iter) !void {
             _ = manager;
 
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
+            const alloc = try tempalloc.create();
+            defer tempalloc.destroy(alloc);
             const components = iter.field(public.RenderComponentInstance, 0).?;
 
-            try _graphvm.executeNode(alloc, toInstanceSlice(components), graphvm.EVENT_SHUTDOWN_NODE_TYPE, .{ .use_tasks = false });
+            try graphvm.executeNode(alloc, toInstanceSlice(components), graphvm.EVENT_SHUTDOWN_NODE_TYPE, .{ .use_tasks = false });
         }
     },
 );
@@ -138,7 +130,7 @@ const init_render_component_system_i = ecs.SystemI.implement(
             .{ .id = ecs.id(public.RenderComponentInstance), .inout = .Out, .oper = .Not },
             .{ .id = ecs.id(public.RenderComponent), .inout = .In },
         },
-        .orderByComponent = ecs.id(public.RenderComponent),
+        .order_by_component = ecs.id(public.RenderComponent),
     },
     struct {
         pub fn orderByCallback(e1: ecs.EntityId, c1: *const anyopaque, e2: ecs.EntityId, c2: *const anyopaque) callconv(.c) i32 {
@@ -153,8 +145,8 @@ const init_render_component_system_i = ecs.SystemI.implement(
         pub fn tick(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
             _ = dt;
 
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
+            const alloc = try tempalloc.create();
+            defer tempalloc.destroy(alloc);
 
             var all_instances = cetech1.ArrayList(graphvm.GraphInstance){};
             defer all_instances.deinit(alloc);
@@ -173,7 +165,7 @@ const init_render_component_system_i = ecs.SystemI.implement(
                 const instances = try alloc.alloc(graphvm.GraphInstance, ents.len);
                 defer alloc.free(instances);
 
-                try _graphvm.createInstances(alloc, render_components[0].graph, instances);
+                try graphvm.createInstances(alloc, render_components[0].graph, instances);
 
                 try all_instances.appendSlice(alloc, instances);
                 try all_ents.appendSlice(alloc, ents);
@@ -184,15 +176,15 @@ const init_render_component_system_i = ecs.SystemI.implement(
             }
 
             if (all_instances.items.len > 0) {
-                try _graphvm.buildInstances(alloc, all_instances.items);
+                try graphvm.buildInstances(alloc, all_instances.items);
 
-                try _graphvm.setInstancesContext(all_instances.items, ecs.ECS_WORLD_CONTEXT, world.ptr);
+                try graphvm.setInstancesContext(all_instances.items, ecs.ECS_WORLD_CONTEXT, world.ptr);
 
                 for (all_ents.items, 0..) |ent, idx| {
-                    try _graphvm.setInstanceContext(all_instances.items[idx], ecs.ECS_ENTITY_CONTEXT, @ptrFromInt(ent));
+                    try graphvm.setInstanceContext(all_instances.items[idx], ecs.ECS_ENTITY_CONTEXT, @ptrFromInt(ent));
                 }
 
-                try _graphvm.executeNode(alloc, all_instances.items, graphvm.EVENT_INIT_NODE_TYPE, .{
+                try graphvm.executeNode(alloc, all_instances.items, graphvm.EVENT_INIT_NODE_TYPE, .{
                     .use_tasks = false,
                     .sort = false,
                 });
@@ -217,7 +209,7 @@ const update_render_component_system_i = ecs.SystemI.implement(
             .{ .id = ecs.id(public.RenderComponentInstance), .inout = .In },
             .{ .id = ecs.id(public.RenderComponent), .inout = .In },
         },
-        .orderByComponent = ecs.id(public.RenderComponentInstance),
+        .order_by_component = ecs.id(public.RenderComponentInstance),
     },
     struct {
         pub fn orderByCallback(e1: ecs.EntityId, c1: *const anyopaque, e2: ecs.EntityId, c2: *const anyopaque) callconv(.c) i32 {
@@ -232,8 +224,8 @@ const update_render_component_system_i = ecs.SystemI.implement(
         pub fn tick(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
             _ = dt;
 
-            const alloc = try _tmpalloc.create();
-            defer _tmpalloc.destroy(alloc);
+            const alloc = try tempalloc.create();
+            defer tempalloc.destroy(alloc);
 
             var all_instances = cetech1.ArrayList(graphvm.GraphInstance){};
             defer all_instances.deinit(alloc);
@@ -246,8 +238,8 @@ const update_render_component_system_i = ecs.SystemI.implement(
 
             if (all_instances.items.len > 0) {
                 // log.debug("render component Tick {d}", .{all_instances.items.len});
-                try _graphvm.setInstancesContext(all_instances.items, ecs.ECS_WORLD_CONTEXT, world.ptr);
-                try _graphvm.executeNode(alloc, all_instances.items, graphvm.EVENT_TICK_NODE_TYPE, .{
+                try graphvm.setInstancesContext(all_instances.items, ecs.ECS_WORLD_CONTEXT, world.ptr);
+                try graphvm.executeNode(alloc, all_instances.items, graphvm.EVENT_TICK_NODE_TYPE, .{
                     .use_tasks = false,
                     .sort = false,
                 });
@@ -256,15 +248,15 @@ const update_render_component_system_i = ecs.SystemI.implement(
 
         // pub fn iterate(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
         //     _ = dt;
-        //     const alloc = try _tmpalloc.create();
-        //     defer _tmpalloc.destroy(alloc);
+        //     const alloc = try tempalloc.create();
+        //     defer tempalloc.destroy(alloc);
 
         //     const render_component = it.field(public.RenderComponentInstance, 0).?;
         //     const instances = toContanerSlice(render_component);
 
         //     // log.debug("render component Tick {d}", .{all_instances.items.len});
-        //     try _graphvm.setInstancesContext(instances, ecs.ECS_WORLD_CONTEXT, world.ptr);
-        //     try _graphvm.executeNode(alloc, instances, graphvm.EVENT_TICK_NODE_TYPE, .{ .use_tasks = true, .sort = false });
+        //     try graphvm.setInstancesContext(instances, ecs.ECS_WORLD_CONTEXT, world.ptr);
+        //     try graphvm.executeNode(alloc, instances, graphvm.EVENT_TICK_NODE_TYPE, .{ .use_tasks = true, .sort = false });
         // }
     },
 );
@@ -282,8 +274,8 @@ const deleted_observer_i = ecs.ObserverI.implement(
         pub fn iterate(world: ecs.World, it: *ecs.Iter, dt: f32) !void {
             _ = dt;
 
-            // const alloc = try _tmpalloc.create();
-            // defer _tmpalloc.destroy(alloc);
+            // const alloc = try tempalloc.create();
+            // defer tempalloc.destroy(alloc);
 
             const ents = it.entities();
 
@@ -301,7 +293,7 @@ const UpdateHashesTask = struct {
     hashes: []u64,
 
     pub fn exec(self: *@This()) !void {
-        var zzz = _profiler.ZoneN(@src(), "RenderComponentTask - Update hashes");
+        var zzz = profiler.ZoneN(@src(), "RenderComponentTask - Update hashes");
         defer zzz.End();
         for (self.draw_calls, 0..) |dc, idx| {
             var h = std.hash.Fnv1a_64.init();
@@ -348,7 +340,7 @@ const DrawCallCusterDef = struct {
 };
 
 fn clusterByDrawCallByHash(allocator: std.mem.Allocator, sorted_instances: []?*renderer_nodes.DrawCall, hash: []u64, max_cluster: usize) ![]DrawCallCusterDef {
-    var zone2_ctx = _profiler.ZoneN(@src(), "clusterByDrawCallByHash");
+    var zone2_ctx = profiler.ZoneN(@src(), "clusterByDrawCallByHash");
     defer zone2_ctx.End();
 
     var clusters = try cetech1.ArrayList(DrawCallCusterDef).initCapacity(allocator, max_cluster);
@@ -377,7 +369,7 @@ fn clusterByDrawCallByHash(allocator: std.mem.Allocator, sorted_instances: []?*r
 }
 
 fn clusterByDrawCallByGraph(allocator: std.mem.Allocator, sorted_instances: []?*renderer_nodes.DrawCall, instances: []const graphvm.GraphInstance, max_cluster: usize) ![]DrawCallCusterDef {
-    var zone2_ctx = _profiler.ZoneN(@src(), "clusterByDrawCallWithinstances");
+    var zone2_ctx = profiler.ZoneN(@src(), "clusterByDrawCallWithinstances");
     defer zone2_ctx.End();
 
     var clusters = try cetech1.ArrayList(DrawCallCusterDef).initCapacity(allocator, max_cluster);
@@ -434,7 +426,7 @@ fn submitDrawcall(
         while (visibility_flags_it.next()) |flags_idx| {
             var flag = visibility_flags.VisibilityFlags.initEmpty();
             flag.set(flags_idx);
-            contexts.appendAssumeCapacity(_visibility_flags.toName(flag).?);
+            contexts.appendAssumeCapacity(visibility_flags.toName(flag).?);
         }
 
         const variants = try _shader_system.selectShaderVariant(
@@ -476,7 +468,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
             allocator: std.mem.Allocator,
             data: []*anyopaque,
         ) !void {
-            var zz = _profiler.ZoneN(@src(), "RenderComponent - Init callback");
+            var zz = profiler.ZoneN(@src(), "RenderComponent - Init callback");
             defer zz.End();
 
             var containers = try cetech1.ArrayList(graphvm.GraphInstance).initCapacity(allocator, data.len);
@@ -484,7 +476,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
             try containers.resize(allocator, data.len);
 
             {
-                var zzz = _profiler.ZoneN(@src(), "RenderComponent - unpack data");
+                var zzz = profiler.ZoneN(@src(), "RenderComponent - unpack data");
                 defer zzz.End();
                 // TODO: is this still valid? conver to slice and send to execute nodes.
                 for (data, 0..) |d, idx| {
@@ -494,7 +486,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
             }
             // log.debug("ddd: {any}", .{containers.items});
 
-            try _graphvm.executeNode(
+            try graphvm.executeNode(
                 allocator,
                 containers.items,
                 renderer_nodes.CULLING_VOLUME_NODE_TYPE,
@@ -510,7 +502,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
             volume_type: render_viewport.BoundingVolumeType,
             volumes: []u8,
         ) !void {
-            var zz = _profiler.ZoneN(@src(), "RenderComponent - fillBoundingVolumes");
+            var zz = profiler.ZoneN(@src(), "RenderComponent - fillBoundingVolumes");
             defer zz.End();
 
             var containers = try cetech1.ArrayList(graphvm.GraphInstance).initCapacity(allocator, transforms.len);
@@ -529,7 +521,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
                 }
             }
 
-            const all_states = try _graphvm.getNodeStateMultyFn(
+            const all_states = try graphvm.getNodeStateMultyFn(
                 allocator,
                 containers.items,
                 &.{
@@ -550,7 +542,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
             const draw_calls = std.mem.bytesAsSlice(?*renderer_nodes.DrawCall, std.mem.sliceAsBytes(all_states[1]));
 
             {
-                var zzz = _profiler.ZoneN(@src(), "RenderComponent - write volumes");
+                var zzz = profiler.ZoneN(@src(), "RenderComponent - write volumes");
                 defer zzz.End();
 
                 switch (volume_type) {
@@ -622,7 +614,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
             render_components: []*anyopaque,
             visibility: []const render_viewport.VisibilityBitField,
         ) !void {
-            var zz = _profiler.ZoneN(@src(), "RenderComponent - Render callback");
+            var zz = profiler.ZoneN(@src(), "RenderComponent - Render callback");
             defer zz.End();
             // _ = world;
             _ = viewport;
@@ -632,7 +624,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
             try containers.resize(allocator, entites_idx.len);
 
             {
-                var zzz = _profiler.ZoneN(@src(), "RenderComponent - Convert");
+                var zzz = profiler.ZoneN(@src(), "RenderComponent - Convert");
                 defer zzz.End();
 
                 for (entites_idx, 0..) |ent_idx, idx| {
@@ -642,14 +634,14 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
             }
 
             {
-                var zzz = _profiler.ZoneN(@src(), "RenderComponent - setContext");
+                var zzz = profiler.ZoneN(@src(), "RenderComponent - setContext");
                 defer zzz.End();
 
                 // TODO: SHIT
-                try _graphvm.setInstancesContext(containers.items, ecs.ECS_WORLD_CONTEXT, world.ptr);
+                try graphvm.setInstancesContext(containers.items, ecs.ECS_WORLD_CONTEXT, world.ptr);
             }
 
-            const draw_calls = try _graphvm.executeNodeAndGetState(
+            const draw_calls = try graphvm.executeNodeAndGetState(
                 renderer_nodes.DrawCall,
                 allocator,
                 containers.items,
@@ -665,7 +657,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
             // const hashes = try allocator.alloc(u64, draw_calls.len);
             // defer allocator.free(hashes);
             // {
-            //     var zzz = _profiler.ZoneN(@src(), "RenderComponentTask - Update hashes");
+            //     var zzz = profiler.ZoneN(@src(), "RenderComponentTask - Update hashes");
             //     defer zzz.End();
             //     const update_hash_wih_task = true;
             //     if (update_hash_wih_task) {
@@ -677,8 +669,6 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
             //         if (try cetech1.task.batchWorkloadTask(
             //             .{
             //                 .allocator = allocator,
-            //                 .task_api = _task,
-            //                 .profiler_api = _profiler,
             //                 .count = entites_idx.len,
             //             },
             //
@@ -698,7 +688,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
             //                 }
             //             },
             //         )) |t| {
-            //             _task.wait(t);
+            //             task.wait(t);
             //         }
             //     } else {
             //         for (draw_calls, 0..) |dc, idx| {
@@ -712,7 +702,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
             //     }
             // }
             // {
-            //     var zzz = _profiler.ZoneN(@src(), "RenderComponentTask - Sort drawcalls");
+            //     var zzz = profiler.ZoneN(@src(), "RenderComponentTask - Sort drawcalls");
             //     defer zzz.End()
             //     var sort_ctx = SortDrawCallsContext{
             //         .drawcalls = draw_calls,
@@ -736,7 +726,7 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
                 if (gpu_backend.getEncoder()) |e| {
                     defer gpu_backend.endEncoder(e);
 
-                    var zzz = _profiler.ZoneN(@src(), "RenderComponentTask - Draw cluster");
+                    var zzz = profiler.ZoneN(@src(), "RenderComponentTask - Draw cluster");
                     defer zzz.End();
                     const draw_call_count: u32 = @truncate(cluster.calls.len);
 
@@ -752,8 +742,8 @@ const render_component_renderer_i = render_viewport.RendereableComponentI.implem
                             mtxs[idx] = transforms[entites_idx[cluster.first_idx + idx]].world.toMat();
                         }
 
-                        const inst_system = try _instance_system.createInstanceSystem(mtxs);
-                        defer _instance_system.destroyInstanceSystem(inst_system);
+                        const inst_system = try instance_system.createInstanceSystem(mtxs);
+                        defer instance_system.destroyInstanceSystem(inst_system);
 
                         var shader_context = try _shader_system.cloneSystemContext(system_context.*);
                         defer _shader_system.destroySystemContext(shader_context);
@@ -800,7 +790,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.DbId) !void {
         // RenderComponentCdb
         {
-            const type_idx = try _cdb.addType(
+            const type_idx = try cdb.addType(
                 db,
                 public.RenderComponentCdb.name,
                 &[_]cdb.PropDef{
@@ -812,11 +802,11 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
                     },
                 },
             );
-            _ = type_idx; // autofix
+            _ = type_idx;
 
             try public.RenderComponentCdb.addAspect(
                 editor.EditorComponentAspect,
-                _cdb,
+
                 db,
                 _g.render_component_editor_component_aspect,
             );
@@ -825,24 +815,23 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
-    _task = apidb.getZigApi(module_name, cetech1.task.TaskAPI).?;
 
-    _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-    _graphvm = apidb.getZigApi(module_name, graphvm.GraphVMApi).?;
+    try cdb.loadAPI(module_name);
+    // try kernel.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
+    try task.loadAPI(module_name);
 
-    _dd = apidb.getZigApi(module_name, gpu.GpuDDApi).?;
+    try ecs.loadAPI(module_name);
+    try graphvm.loadAPI(module_name);
+
     _shader_system = apidb.getZigApi(module_name, shader_system.ShaderSystemAPI).?;
-    _visibility_flags = apidb.getZigApi(module_name, visibility_flags.VisibilityFlagsApi).?;
-    _instance_system = apidb.getZigApi(module_name, instance_system.InstanceSystemApi).?;
+    try visibility_flags.loadAPI(module_name);
+    try instance_system.loadAPI(module_name);
 
     // impl interface
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
@@ -868,6 +857,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_render_component(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_render_component(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

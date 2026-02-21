@@ -4,10 +4,11 @@ const cetech1 = @import("root.zig");
 const zm = cetech1.math.zm;
 const coreui = cetech1.coreui;
 const math = cetech1.math;
+const cdb = cetech1.cdb;
+const gpu = cetech1.gpu;
+const gpu_dd = cetech1.gpu_dd;
 
-const cdb = @import("cdb.zig");
-const gpu = @import("gpu.zig");
-
+const apidb = cetech1.apidb;
 const log = std.log.scoped(.ecs);
 
 pub const Id = u64;
@@ -16,6 +17,9 @@ pub const ComponentId = EntityId;
 pub const SystemId = EntityId;
 
 pub const IdStrId = cetech1.StrId64;
+
+pub const ECS_WORLD_CONTEXT = cetech1.strId32("ecs_world_context"); // TODO: This is bad as context because it can change. we need something like exxecuteargs.
+pub const ECS_ENTITY_CONTEXT = cetech1.strId32("ecs_entity_context");
 
 pub const PinTypes = struct {
     pub const Entity = cetech1.strId32("entity");
@@ -73,6 +77,7 @@ pub const OnTableEmpty: IdStrId = .fromStr("OnTableEmpty");
 pub const OnTableFill: IdStrId = .fromStr("OnTableFill");
 pub const Parent: IdStrId = .fromStr("Parent");
 
+// TODO: as strid
 pub const Self_ = 1 << 63;
 pub const Up: u64 = 1 << 62;
 pub const Trav = 1 << 61;
@@ -93,7 +98,7 @@ pub const EntityCdb = cdb.CdbTypeDecl(
     "ct_entity",
     enum(u32) {
         Name = 0,
-        ChildrenStorage,
+        Storage,
         Components,
         Childrens,
     },
@@ -159,9 +164,9 @@ pub const EntityDecs = struct {
 };
 
 const OnInstantiateType = enum(u8) {
-    override = 0,
-    inherit,
-    dont_inherit,
+    Override = 0,
+    Inherit,
+    DontInherit,
 };
 
 pub const ComponentI = struct {
@@ -185,21 +190,21 @@ pub const ComponentI = struct {
 
     with: ?[]const IdStrId = null,
     singleton: bool = false,
-    on_instantiate: OnInstantiateType = .override,
+    on_instantiate: OnInstantiateType = .Override,
 
-    createManager: ?*const fn (world: World) anyerror!*anyopaque = null,
-    destroyManager: ?*const fn (world: World, manager: *anyopaque) void = null,
+    create_manager: ?*const fn (world: World) anyerror!*anyopaque = null,
+    destroy_manager: ?*const fn (world: World, manager: *anyopaque) void = null,
 
-    onAdd: ?*const fn (manager: ?*anyopaque, iter: *Iter) anyerror!void = null,
-    onSet: ?*const fn (manager: ?*anyopaque, iter: *Iter) anyerror!void = null,
-    onRemove: ?*const fn (manager: ?*anyopaque, iter: *Iter) anyerror!void = null,
+    on_add: ?*const fn (manager: ?*anyopaque, iter: *Iter) anyerror!void = null,
+    on_set: ?*const fn (manager: ?*anyopaque, iter: *Iter) anyerror!void = null,
+    on_remove: ?*const fn (manager: ?*anyopaque, iter: *Iter) anyerror!void = null,
 
-    onCreate: ?*const fn (ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void = null,
-    onDestroy: ?*const fn (ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void = null,
-    onCopy: ?*const fn (dst_ptr: *anyopaque, src_ptr: *const anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void = null,
-    onMove: ?*const fn (dst_ptr: *anyopaque, src_ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void = null,
+    on_create: ?*const fn (ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void = null,
+    on_destroy: ?*const fn (ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void = null,
+    on_copy: ?*const fn (dst_ptr: *anyopaque, src_ptr: *const anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void = null,
+    on_move: ?*const fn (dst_ptr: *anyopaque, src_ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void = null,
 
-    fromCdb: ?*const fn (
+    from_cdb: ?*const fn (
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         data: []u8,
@@ -207,7 +212,7 @@ pub const ComponentI = struct {
 
     debugdraw: ?*const fn (
         gpu_backend: gpu.GpuBackend,
-        dd: gpu.DDEncoder,
+        dd: gpu_dd.Encoder,
         world: World,
         entites: []const EntityId,
         data: []const u8,
@@ -215,6 +220,9 @@ pub const ComponentI = struct {
     ) anyerror!void = null,
 
     pub fn implement(comptime T: type, args: ComponentI, comptime Hooks: type) Self {
+        // Must be extern for C ABI compatibility.
+        std.debug.assert(@typeInfo(T).@"struct".layout == .@"extern");
+
         return Self{
             .name = nameFromType(T),
             .type_name = @typeName(T),
@@ -233,17 +241,17 @@ pub const ComponentI = struct {
             .singleton = args.singleton,
             .on_instantiate = args.on_instantiate,
 
-            .fromCdb = if (std.meta.hasFn(Hooks, "fromCdb")) Hooks.fromCdb else null,
+            .from_cdb = if (std.meta.hasFn(Hooks, "fromCdb")) Hooks.fromCdb else null,
             .debugdraw = if (std.meta.hasFn(Hooks, "debugdraw")) Hooks.debugdraw else null,
 
-            .onAdd = if (std.meta.hasFn(Hooks, "onAdd")) Hooks.onAdd else null,
-            .onSet = if (std.meta.hasFn(Hooks, "onSet")) Hooks.onSet else null,
-            .onRemove = if (std.meta.hasFn(Hooks, "onRemove")) Hooks.onRemove else null,
+            .on_add = if (std.meta.hasFn(Hooks, "onAdd")) Hooks.onAdd else null,
+            .on_set = if (std.meta.hasFn(Hooks, "onSet")) Hooks.onSet else null,
+            .on_remove = if (std.meta.hasFn(Hooks, "onRemove")) Hooks.onRemove else null,
 
-            .createManager = if (std.meta.hasFn(Hooks, "createManager")) Hooks.createManager else null,
-            .destroyManager = if (std.meta.hasFn(Hooks, "destroyManager")) Hooks.destroyManager else null,
+            .create_manager = if (std.meta.hasFn(Hooks, "createManager")) Hooks.createManager else null,
+            .destroy_manager = if (std.meta.hasFn(Hooks, "destroyManager")) Hooks.destroyManager else null,
 
-            .onCreate = if (std.meta.hasFn(Hooks, "onCreate")) struct {
+            .on_create = if (std.meta.hasFn(Hooks, "onCreate")) struct {
                 fn f(ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void {
                     _ = type_info;
                     var tptr: []T = undefined;
@@ -256,7 +264,7 @@ pub const ComponentI = struct {
                 }
             }.f else null,
 
-            .onDestroy = if (std.meta.hasFn(Hooks, "onDestroy")) struct {
+            .on_destroy = if (std.meta.hasFn(Hooks, "onDestroy")) struct {
                 fn f(ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void {
                     _ = type_info;
                     var tptr: []T = undefined;
@@ -269,7 +277,7 @@ pub const ComponentI = struct {
                 }
             }.f else null,
 
-            .onCopy = if (std.meta.hasFn(Hooks, "onCopy")) struct {
+            .on_copy = if (std.meta.hasFn(Hooks, "onCopy")) struct {
                 fn f(dst_ptr: *anyopaque, src_ptr: *const anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void {
                     _ = type_info;
 
@@ -287,7 +295,7 @@ pub const ComponentI = struct {
                 }
             }.f else null,
 
-            .onMove = if (std.meta.hasFn(Hooks, "onMove")) struct {
+            .on_move = if (std.meta.hasFn(Hooks, "onMove")) struct {
                 fn f(dst_ptr: *anyopaque, src_ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void {
                     _ = type_info;
 
@@ -321,8 +329,8 @@ pub const SystemI = struct {
 
     simulation: bool = false,
 
-    orderByComponent: ?IdStrId = null,
-    orderByCallback: ?*const fn (e1: EntityId, c1: *const anyopaque, e2: EntityId, c2: *const anyopaque) callconv(.c) i32 = null, // TODO: how without callconv?
+    order_by_component: ?IdStrId = null,
+    order_by_callback: ?*const fn (e1: EntityId, c1: *const anyopaque, e2: EntityId, c2: *const anyopaque) callconv(.c) i32 = null, // TODO: how without callconv?
 
     // Call one per tick.
     tick: ?*const fn (world: World, iter: *Iter, dt: f32) anyerror!void = null,
@@ -342,7 +350,7 @@ pub const SystemI = struct {
 
             .iterate = if (std.meta.hasFn(T, "iterate")) T.iterate else null,
             .tick = if (std.meta.hasFn(T, "tick")) T.tick else null,
-            .orderByCallback = if (std.meta.hasFn(T, "orderByCallback")) T.orderByCallback else null,
+            .order_by_callback = if (std.meta.hasFn(T, "orderByCallback")) T.orderByCallback else null,
         };
     }
 };
@@ -379,16 +387,13 @@ pub const OnWorldI = struct {
     pub const c_name = "ct_ecs_on_world_i";
     pub const name_hash = cetech1.strId64(@This().c_name);
 
-    onCreate: *const fn (world: World) anyerror!void = undefined,
-    onDestroy: *const fn (world: World) anyerror!void = undefined,
+    on_create: *const fn (world: World) anyerror!void = undefined,
+    on_destroy: *const fn (world: World) anyerror!void = undefined,
 
     pub fn implement(comptime T: type) OnWorldI {
-        if (!std.meta.hasFn(T, "onCreate")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "onDestroy")) @compileError("implement me");
-
         return OnWorldI{
-            .onCreate = T.onCreate,
-            .onDestroy = T.onDestroy,
+            .on_create = T.onCreate,
+            .on_destroy = T.onDestroy,
         };
     }
 };
@@ -434,11 +439,6 @@ pub const Query = struct {
         next: *const fn (query: *anyopaque, it: *Iter) bool,
 
         pub fn implement(comptime T: type) VTable {
-            if (!std.meta.hasFn(T, "destroy")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "iter")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "next")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "count")) @compileError("implement me");
-
             return VTable{
                 .destroy = T.destroy,
                 .iter = T.iter,
@@ -451,66 +451,66 @@ pub const Query = struct {
 
 pub const QueryDesc = struct {
     query: []const QueryTerm,
-    orderByComponent: ?IdStrId = null,
-    orderByCallback: ?*const fn (e1: EntityId, c1: *const anyopaque, e2: EntityId, c2: *const anyopaque) callconv(.c) i32 = null, // TODO: how without callconv?
+    order_by_component: ?IdStrId = null,
+    order_by_callback: ?*const fn (e1: EntityId, c1: *const anyopaque, e2: EntityId, c2: *const anyopaque) callconv(.c) i32 = null, // TODO: how without callconv?
 };
 
 pub const World = struct {
     pub inline fn newEntity(self: World, desc: EntityDecs) EntityId {
-        return self.vtable.newEntity(self.ptr, desc);
+        return self.vtable.new_entity(self.ptr, desc);
     }
 
     pub inline fn newEntities(self: World, allocator: std.mem.Allocator, eid: EntityId, count: usize) ?[]EntityId {
-        return self.vtable.newEntities(self.ptr, allocator, eid, count);
+        return self.vtable.new_entities(self.ptr, allocator, eid, count);
     }
 
     pub inline fn destroyEntities(self: World, ents: []const EntityId) void {
-        return self.vtable.destroyEntities(self.ptr, ents);
+        return self.vtable.destroy_entities(self.ptr, ents);
     }
 
     pub inline fn setComponent(self: World, comptime T: type, entity: EntityId, ptr: ?*const T) EntityId {
-        return self.vtable.setComponent(self.ptr, entity, id(T), @sizeOf(T), ptr);
+        return self.vtable.set_component(self.ptr, entity, id(T), @sizeOf(T), ptr);
     }
 
     pub inline fn setComponentRaw(self: World, entity: EntityId, cid: IdStrId, size: usize, ptr: ?*const anyopaque) EntityId {
-        return self.vtable.setComponent(self.ptr, entity, cid, size, ptr);
+        return self.vtable.set_component(self.ptr, entity, cid, size, ptr);
     }
 
     pub inline fn getMutComponent(self: World, comptime T: type, entity: EntityId) ?*T {
-        const ptr = self.vtable.getMutComponent(self.ptr, entity, id(T));
+        const ptr = self.vtable.get_mut_component(self.ptr, entity, id(T));
         return @ptrCast(@alignCast(ptr));
     }
 
     pub inline fn getComponent(self: World, comptime T: type, entity: EntityId) ?*const T {
-        const ptr = self.vtable.getComponent(self.ptr, entity, id(T));
+        const ptr = self.vtable.get_component(self.ptr, entity, id(T));
         return @ptrCast(@alignCast(ptr));
     }
 
     pub inline fn getComponentRaw(self: World, comp_id: IdStrId, entity: EntityId) ?*const anyopaque {
-        const ptr = self.vtable.getComponent(self.ptr, entity, comp_id);
+        const ptr = self.vtable.get_component(self.ptr, entity, comp_id);
         return ptr;
     }
 
     pub inline fn setSingletonComponent(self: World, comptime T: type, ptr: ?*const T) void {
-        self.vtable.setSingletonComponent(self.ptr, id(T), @sizeOf(T), ptr);
+        self.vtable.set_singleton_component(self.ptr, id(T), @sizeOf(T), ptr);
     }
 
     pub inline fn getSingletonComponent(self: World, comptime T: type) ?*const T {
-        const ptr = self.vtable.getSingletonComponent(self.ptr, id(T));
+        const ptr = self.vtable.get_singleton_component(self.ptr, id(T));
         return @ptrCast(@alignCast(ptr));
     }
 
     pub inline fn getComponentManager(self: World, comptime ComponentT: type, comptime ManagerT: type) ?*ManagerT {
-        const ptr = self.vtable.getComponentManager(self.ptr, id(ComponentT));
+        const ptr = self.vtable.get_component_manager(self.ptr, id(ComponentT));
         return @ptrCast(@alignCast(ptr));
     }
 
     pub inline fn getComponentManagerRaw(self: World, component_id: IdStrId) ?*anyopaque {
-        return self.vtable.getComponentManager(self.ptr, component_id);
+        return self.vtable.get_component_manager(self.ptr, component_id);
     }
 
     pub inline fn removeComponent(self: World, comptime T: type, entity: EntityId) void {
-        return self.vtable.removeComponent(self.ptr, entity, id(T));
+        return self.vtable.remove_component(self.ptr, entity, id(T));
     }
 
     pub inline fn modified(self: World, entity: EntityId, comptime T: type) void {
@@ -534,47 +534,47 @@ pub const World = struct {
     }
 
     pub inline fn createQuery(self: World, query: QueryDesc) !Query {
-        return self.vtable.createQuery(self.ptr, query);
+        return self.vtable.create_query(self.ptr, query);
     }
 
     pub inline fn deferBegin(self: World) bool {
-        return self.vtable.deferBegin(self.ptr);
+        return self.vtable.defer_begin(self.ptr);
     }
 
     pub inline fn deferEnd(self: World) bool {
-        return self.vtable.deferEnd(self.ptr);
+        return self.vtable.defer_end(self.ptr);
     }
 
     pub inline fn deferResume(self: World) void {
-        self.vtable.deferResume(self.ptr);
+        self.vtable.defer_resume(self.ptr);
     }
 
     pub inline fn deferSuspend(self: World) void {
-        self.vtable.deferSuspend(self.ptr);
+        self.vtable.defer_suspend(self.ptr);
     }
 
     pub fn isRemoteDebugActive(self: World) bool {
-        return self.vtable.isRemoteDebugActive(self.ptr);
+        return self.vtable.is_remote_debug_active(self.ptr);
     }
 
     pub fn setRemoteDebugActive(self: World, active: bool) ?u16 {
-        return self.vtable.setRemoteDebugActive(self.ptr, active);
+        return self.vtable.set_remote_debug_active(self.ptr, active);
     }
 
     pub fn setSimulate(self: World, simulate: bool) void {
-        self.vtable.setSimulate(self.ptr, simulate);
+        self.vtable.set_simulate(self.ptr, simulate);
     }
 
     pub fn isSimulate(self: World) bool {
-        return self.vtable.isSimulate(self.ptr);
+        return self.vtable.is_simulate(self.ptr);
     }
 
     pub fn enableObserver(self: World, observer_id: cetech1.StrId32, enable: bool) void {
-        return self.vtable.enableObserver(self.ptr, observer_id, enable);
+        return self.vtable.enable_observer(self.ptr, observer_id, enable);
     }
 
     pub fn doStep(self: World) void {
-        return self.vtable.doStep(self.ptr);
+        return self.vtable.do_step(self.ptr);
     }
 
     pub fn clear(self: World) void {
@@ -582,69 +582,56 @@ pub const World = struct {
     }
 
     pub fn debuguiMenuItems(self: World, allocator: std.mem.Allocator) void {
-        return self.vtable.debuguiMenuItems(self.ptr, allocator);
+        return self.vtable.debugui_menu_items(self.ptr, allocator);
     }
 
     pub fn uiRemoteDebugMenuItems(self: World, allocator: std.mem.Allocator, port: ?u16) ?u16 {
-        return self.vtable.uiRemoteDebugMenuItems(self.ptr, allocator, port);
+        return self.vtable.ui_remote_debug_menu_items(self.ptr, allocator, port);
     }
 
     pub fn findEntityByCdbObj(self: World, ent_obj: cdb.ObjId) !?EntityId {
-        return self.vtable.findEntityByCdbObj(self.ptr, ent_obj);
+        return self.vtable.find_entity_by_cdb_obj(self.ptr, ent_obj);
     }
 
     ptr: *anyopaque,
     vtable: *const VTable,
 
     pub const VTable = struct {
-        newEntity: *const fn (world: *anyopaque, desc: EntityDecs) EntityId,
-        newEntities: *const fn (world: *anyopaque, allocator: std.mem.Allocator, id: EntityId, count: usize) ?[]EntityId,
-        destroyEntities: *const fn (self: *anyopaque, ents: []const EntityId) void,
-
-        setComponent: *const fn (world: *anyopaque, entity: EntityId, id: IdStrId, size: usize, ptr: ?*const anyopaque) EntityId,
-        getMutComponent: *const fn (world: *anyopaque, entity: EntityId, id: IdStrId) ?*anyopaque,
-        getComponent: *const fn (world: *anyopaque, entity: EntityId, id: IdStrId) ?*const anyopaque,
-
-        setSingletonComponent: *const fn (world: *anyopaque, id: IdStrId, size: usize, ptr: ?*const anyopaque) void,
-        getSingletonComponent: *const fn (world: *anyopaque, id: IdStrId) ?*const anyopaque,
-
-        removeComponent: *const fn (world: *anyopaque, entity: EntityId, id: IdStrId) void,
-
-        getComponentManager: *const fn (world: *anyopaque, id: IdStrId) ?*anyopaque,
-
+        new_entity: *const fn (world: *anyopaque, desc: EntityDecs) EntityId,
+        new_entities: *const fn (world: *anyopaque, allocator: std.mem.Allocator, id: EntityId, count: usize) ?[]EntityId,
+        destroy_entities: *const fn (self: *anyopaque, ents: []const EntityId) void,
+        set_component: *const fn (world: *anyopaque, entity: EntityId, id: IdStrId, size: usize, ptr: ?*const anyopaque) EntityId,
+        get_mut_component: *const fn (world: *anyopaque, entity: EntityId, id: IdStrId) ?*anyopaque,
+        get_component: *const fn (world: *anyopaque, entity: EntityId, id: IdStrId) ?*const anyopaque,
+        set_singleton_component: *const fn (world: *anyopaque, id: IdStrId, size: usize, ptr: ?*const anyopaque) void,
+        get_singleton_component: *const fn (world: *anyopaque, id: IdStrId) ?*const anyopaque,
+        remove_component: *const fn (world: *anyopaque, entity: EntityId, id: IdStrId) void,
+        get_component_manager: *const fn (world: *anyopaque, id: IdStrId) ?*anyopaque,
         parent: *const fn (world: *anyopaque, entity: EntityId) ?EntityId,
         children: *const fn (world: *anyopaque, entity: EntityId) Iter,
-
-        createQuery: *const fn (world: *anyopaque, query: QueryDesc) anyerror!Query,
+        create_query: *const fn (world: *anyopaque, query: QueryDesc) anyerror!Query,
         modified: *const fn (world: *anyopaque, entity: EntityId, id: IdStrId) void,
         progress: *const fn (world: *anyopaque, dt: f32) bool,
-
-        deferBegin: *const fn (world: *anyopaque) bool,
-        deferEnd: *const fn (world: *anyopaque) bool,
-        deferSuspend: *const fn (world: *anyopaque) void,
-        deferResume: *const fn (world: *anyopaque) void,
-
-        isRemoteDebugActive: *const fn (world: *anyopaque) bool,
-        setRemoteDebugActive: *const fn (world: *anyopaque, active: bool) ?u16,
-
-        setSimulate: *const fn (world: *anyopaque, simulate: bool) void,
-        isSimulate: *const fn (world: *anyopaque) bool,
-        doStep: *const fn (world: *anyopaque) void,
-
-        enableObserver: *const fn (world: *anyopaque, id: cetech1.StrId32, simulate: bool) void,
-
+        defer_begin: *const fn (world: *anyopaque) bool,
+        defer_end: *const fn (world: *anyopaque) bool,
+        defer_suspend: *const fn (world: *anyopaque) void,
+        defer_resume: *const fn (world: *anyopaque) void,
+        is_remote_debug_active: *const fn (world: *anyopaque) bool,
+        set_remote_debug_active: *const fn (world: *anyopaque, active: bool) ?u16,
+        set_simulate: *const fn (world: *anyopaque, simulate: bool) void,
+        is_simulate: *const fn (world: *anyopaque) bool,
+        do_step: *const fn (world: *anyopaque) void,
+        enable_observer: *const fn (world: *anyopaque, id: cetech1.StrId32, simulate: bool) void,
         clear: *const fn (world: *anyopaque) void,
-
-        findEntityByCdbObj: *const fn (world: *anyopaque, ent_obj: cdb.ObjId) anyerror!?EntityId,
-
-        debuguiMenuItems: *const fn (world: *anyopaque, allocator: std.mem.Allocator) void,
-        uiRemoteDebugMenuItems: *const fn (world: *anyopaque, allocator: std.mem.Allocator, port: ?u16) ?u16,
+        find_entity_by_cdb_obj: *const fn (world: *anyopaque, ent_obj: cdb.ObjId) anyerror!?EntityId,
+        debugui_menu_items: *const fn (world: *anyopaque, allocator: std.mem.Allocator) void,
+        ui_remote_debug_menu_items: *const fn (world: *anyopaque, allocator: std.mem.Allocator, port: ?u16) ?u16,
     };
 };
 
 pub const Iter = struct {
     pub inline fn getWorld(self: *Iter) World {
-        return self.vtable.getWorld(&self.data);
+        return self.vtable.get_world(&self.data);
     }
 
     pub inline fn count(self: *Iter) usize {
@@ -669,11 +656,11 @@ pub const Iter = struct {
     }
 
     pub inline fn isSelf(self: *Iter, index: i8) bool {
-        return self.vtable.isSelf(&self.data, index);
+        return self.vtable.is_self(&self.data, index);
     }
 
     pub inline fn getParam(self: *Iter, comptime T: type) ?*T {
-        const p: *T = @ptrCast(@alignCast(self.vtable.getParam(&self.data) orelse return null));
+        const p: *T = @ptrCast(@alignCast(self.vtable.get_param(&self.data) orelse return null));
         return p;
     }
 
@@ -694,67 +681,46 @@ pub const Iter = struct {
     }
 
     pub inline fn nextChildren(self: *Iter) bool {
-        return self.vtable.nextChildren(&self.data);
+        return self.vtable.next_children(&self.data);
     }
 
     pub inline fn getSystem(self: *Iter) *const SystemI {
-        return self.vtable.getSystem();
+        return self.vtable.get_system();
     }
 
     data: [360]u8, // TODO: SHIT
     vtable: *const VTable,
 
     pub const VTable = struct {
-        getWorld: *const fn (self: *anyopaque) World,
+        get_world: *const fn (self: *anyopaque) World,
         count: *const fn (self: *anyopaque) usize,
         field: *const fn (self: *anyopaque, size: usize, index: i8) ?*anyopaque,
-        getParam: *const fn (self: *anyopaque) ?*anyopaque,
+        get_param: *const fn (self: *anyopaque) ?*anyopaque,
         entities: *const fn (self: *anyopaque) []const EntityId,
-
         changed: *const fn (self: *anyopaque) bool,
-
         skip: *const fn (self: *anyopaque) void,
-
-        isSelf: *const fn (self: *anyopaque, index: i8) bool,
-
+        is_self: *const fn (self: *anyopaque, index: i8) bool,
         next: *const fn (self: *anyopaque) bool,
-        nextChildren: *const fn (self: *anyopaque) bool,
-        getSystem: *const fn (self: *anyopaque) *const SystemI,
+        next_children: *const fn (self: *anyopaque) bool,
+        get_system: *const fn (self: *anyopaque) *const SystemI,
 
         pub fn implement(comptime T: type) VTable {
-            if (!std.meta.hasFn(T, "getWorld")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "count")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "field")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "getParam")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "changed")) @compileError("implement me");
-
-            if (!std.meta.hasFn(T, "skip")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "isSelf")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "next")) @compileError("implement me");
-
-            if (!std.meta.hasFn(T, "next")) @compileError("implement me");
-
-            if (!std.meta.hasFn(T, "getSystem")) @compileError("implement me");
-
             return VTable{
-                .getWorld = T.getWorld,
+                .get_world = T.getWorld,
                 .count = T.count,
                 .field = T.field,
-                .getParam = T.getParam,
+                .get_param = T.getParam,
                 .entities = T.entites,
                 .changed = T.changed,
                 .skip = T.skip,
-                .isSelf = T.isSelf,
+                .is_self = T.isSelf,
                 .next = T.next,
-                .nextChildren = T.nextChildren,
-                .getSystem = T.getSystem,
+                .next_children = T.nextChildren,
+                .get_system = T.getSystem,
             };
         }
     };
 };
-
-pub const ECS_WORLD_CONTEXT = cetech1.strId32("ecs_world_context"); // TODO: This is bad as context because it can change. we need something like exxecuteargs.
-pub const ECS_ENTITY_CONTEXT = cetech1.strId32("ecs_entity_context");
 
 pub fn id(comptime T: type) IdStrId {
     var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
@@ -762,19 +728,45 @@ pub fn id(comptime T: type) IdStrId {
     return .fromStr(name);
 }
 
+pub fn createWorld() anyerror!World {
+    return api.createWorld();
+}
+pub fn destroyWorld(world: World) void {
+    return api.destroyWorld(world);
+}
+pub fn toWorld(world: *anyopaque) World {
+    return api.toWorld(world);
+}
+pub fn findComponentIById(name: IdStrId) ?*const ComponentI {
+    return api.findComponentIById(name);
+}
+pub fn findComponentIByCdbHash(cdb_hash: cdb.TypeHash) ?*const ComponentI {
+    return api.findComponentIByCdbHash(cdb_hash);
+}
+pub fn findCategoryById(name: cetech1.StrId32) ?*const ComponentCategoryI {
+    return api.findCategoryById(name);
+}
+pub fn spawnManyFromCDB(allocator: std.mem.Allocator, world: World, obj: cdb.ObjId, count: usize) anyerror![]EntityId {
+    return api.spawnManyFromCdb(allocator, world, obj, count);
+}
+
 pub const EcsAPI = struct {
     createWorld: *const fn () anyerror!World,
     destroyWorld: *const fn (world: World) void,
-
-    // TODO: REMOVE !!!
-    toWorld: *const fn (world: *anyopaque) World,
-
     findComponentIById: *const fn (name: IdStrId) ?*const ComponentI,
     findComponentIByCdbHash: *const fn (cdb_hash: cdb.TypeHash) ?*const ComponentI,
     findCategoryById: *const fn (name: cetech1.StrId32) ?*const ComponentCategoryI,
+    spawnManyFromCdb: *const fn (allocator: std.mem.Allocator, world: World, obj: cdb.ObjId, count: usize) anyerror![]EntityId,
 
-    spawnManyFromCDB: *const fn (allocator: std.mem.Allocator, world: World, obj: cdb.ObjId, count: usize) anyerror![]EntityId,
+    // TODO: REMOVE !!!
+    toWorld: *const fn (world: *anyopaque) World,
 };
+
+pub var api: *const EcsAPI = undefined;
+
+pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+    api = apidb.getZigApi(module, EcsAPI).?;
+}
 
 fn nameFromType(comptime T: type) [:0]const u8 {
     var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");

@@ -13,7 +13,7 @@ const module_name = .editor_foo_tab;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
@@ -22,10 +22,7 @@ const TAB_NAME = "ct_editor_foo_tab";
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _coreui: *const coreui.CoreUIApi = undefined;
+const apidb = cetech1.apidb;
 
 // Global state that can surive hot-reload
 const G = struct {
@@ -47,13 +44,13 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
 
     // Return name for menu /Tabs/
     pub fn menuName() ![:0]const u8 {
-        return Icons.FA_ROBOT ++ "  " ++ "Foo tab";
+        return coreui.Icons.Entity ++ "  " ++ "Foo tab";
     }
 
     // Return tab title
     pub fn title(inst: *editor_tabs.TabO) ![:0]const u8 {
         _ = inst;
-        return Icons.FA_ROBOT ++ "  " ++ "Foo tab";
+        return coreui.Icons.Entity ++ "  " ++ "Foo tab";
     }
 
     // Create new tab instantce
@@ -76,8 +73,8 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
 
     // Draw tab content
     pub fn ui(inst: *editor_tabs.TabO, kernel_tick: u64, dt: f32) !void {
-        _ = kernel_tick; // autofix
-        _ = dt; // autofix
+        _ = kernel_tick;
+        _ = dt;
         const tab_o: *FooTab = @ptrCast(@alignCast(inst));
         _ = tab_o;
     }
@@ -86,27 +83,26 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
     pub fn menu(inst: *editor_tabs.TabO) !void {
         const tab_o: *FooTab = @ptrCast(@alignCast(inst));
         _ = tab_o;
-        if (_coreui.beginMenu(_allocator, "foo", true, null)) {
-            defer _coreui.endMenu();
+        if (coreui.beginMenu(_allocator, "foo", true, null)) {
+            defer coreui.endMenu();
 
-            if (_coreui.beginMenu(_allocator, "bar", true, null)) {
-                defer _coreui.endMenu();
+            if (coreui.beginMenu(_allocator, "bar", true, null)) {
+                defer coreui.endMenu();
 
-                _ = _coreui.menuItem(_allocator, "baz", .{}, null);
+                _ = coreui.menuItem(_allocator, "baz", .{}, null);
             }
         }
     }
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(module_name, coreui.CoreUIApi).?;
-    _apidb = apidb;
+
+    try cdb.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
@@ -121,6 +117,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_foo_tab(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_editor_foo_tab(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

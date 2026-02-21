@@ -234,7 +234,7 @@ vec3 pbr_calc_out_radiance(in vec3 V, in vec3 N, in vec3 wp, in ct_pbr_material 
     //
     // POINT LIGHT
     //
-    for (int i = 0; i < point_light_count; i++) {
+    for (uint i = 0; i < point_light_count; i++) {
         const ct_point_light light = get_point_light(i);
         const vec3 unL = light.position - wp;
         const vec3 L = normalize(unL);
@@ -245,7 +245,7 @@ vec3 pbr_calc_out_radiance(in vec3 V, in vec3 N, in vec3 wp, in ct_pbr_material 
     //
     // SPOT LIGHT
     //
-    for (int i = 0; i < spot_light_count; i++) {
+    for (uint i = 0; i < spot_light_count; i++) {
         const ct_spot_light light = get_spot_light(i);
 
         const vec3 unL = light.pl.position - wp;
@@ -253,7 +253,8 @@ vec3 pbr_calc_out_radiance(in vec3 V, in vec3 N, in vec3 wp, in ct_pbr_material 
         const float dist = distance(light.pl.position, wp);
 
         const vec3 point_rad = calc_point_light(light.pl, dist, L, unL, V, N, NoV, mat_coef);
-        if (!any(point_rad)) continue;
+
+        if(point_rad.x == 0.0 && point_rad.y == 0.0 && point_rad.z == 0.0) continue;
 
         const float spot_attenuation = get_angle_attenuation(-L, light.direction, light.angle_scale, light.angle_offset);
 
@@ -263,7 +264,7 @@ vec3 pbr_calc_out_radiance(in vec3 V, in vec3 N, in vec3 wp, in ct_pbr_material 
     //
     // DIRECTIONAL LIGHT
     //
-    for (int i = 0; i < directional_light_count; i++) {
+    for (uint i = 0; i < directional_light_count; i++) {
         const ct_direction_light light = get_directional_light(i);
 
         const vec3 unL = -light.direction;

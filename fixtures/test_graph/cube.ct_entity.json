@@ -74,15 +74,15 @@
                 ]
               }
             },
-            "pos_x": 899,
+            "pos_x": 911,
             "pos_y": -6
           },
           {
             "__type_name": "ct_graph_node",
             "__uuid": "01989449-a2bf-711e-9473-2fdd7063f8fd",
             "node_type": "culling_volume",
-            "pos_x": 892,
-            "pos_y": -338
+            "pos_x": 911,
+            "pos_y": 144
           }
         ],
         "connections": [

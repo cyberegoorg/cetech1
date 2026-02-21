@@ -1,8 +1,8 @@
 const std = @import("std");
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
-
 const coreui = cetech1.coreui;
+const apidb = cetech1.apidb;
 
 const log = std.log.scoped(.editor_tree);
 
@@ -17,15 +17,13 @@ pub const UiTreeAspect = struct {
         allocator: std.mem.Allocator,
         tab: *editor_tabs.TabO,
         context: []const cetech1.StrId64,
-        obj: coreui.SelectionItem,
+        obj: coreui.SelectedObj,
         selected_obj: *coreui.Selection,
         depth: u32,
         args: CdbTreeViewArgs,
     ) anyerror!bool = undefined,
 
     pub fn implement(comptime T: type) UiTreeAspect {
-        if (!std.meta.hasFn(T, "uiTree")) @compileError("implement me");
-
         return UiTreeAspect{
             .ui_tree = T.uiTree,
         };
@@ -53,31 +51,33 @@ pub const CdbTreeViewArgs = struct {
     show_status_icons: bool = false,
 };
 
+pub fn cdbTreeView(allocator: std.mem.Allocator, tab: *editor_tabs.TabO, contexts: []const cetech1.StrId64, obj: coreui.SelectedObj, selection: *coreui.Selection, depth: u32, args: CdbTreeViewArgs) anyerror!bool {
+    return api.cdbTreeView(allocator, tab, contexts, obj, selection, depth, args);
+}
+pub fn cdbObjTree(allocator: std.mem.Allocator, tab: *editor_tabs.TabO, contexts: []const cetech1.StrId64, obj: coreui.SelectedObj, selection: *coreui.Selection, depth: u32, args: CdbTreeViewArgs) anyerror!bool {
+    return api.cdbObjTree(allocator, tab, contexts, obj, selection, depth, args);
+}
+pub fn cdbTreeNode(label: [:0]const u8, default_open: bool, no_push: bool, selected: bool, leaf: bool, args: CdbTreeViewArgs) bool {
+    return api.cdbTreeNode(label, default_open, no_push, selected, leaf, args);
+}
+pub fn cdbTreePop() void {
+    return api.cdbTreePop();
+}
+pub fn cdbObjTreeNode(allocator: std.mem.Allocator, tab: *editor_tabs.TabO, contexts: []const cetech1.StrId64, selection: *coreui.Selection, obj: coreui.SelectedObj, default_open: bool, no_push: bool, leaf: bool, args: CdbTreeViewArgs) bool {
+    return api.cdbObjTreeNode(allocator, tab, contexts, selection, obj, default_open, no_push, leaf, args);
+}
+
 // TODO: need unshit api
 pub const TreeAPI = struct {
-    // Tree view
-    cdbTreeView: *const fn (
-        allocator: std.mem.Allocator,
-        tab: *editor_tabs.TabO,
-        []const cetech1.StrId64,
-        obj: coreui.SelectionItem,
-        selection: *coreui.Selection,
-        depth: u32,
-        args: CdbTreeViewArgs,
-    ) anyerror!bool,
-
+    cdbTreeView: *const fn (allocator: std.mem.Allocator, tab: *editor_tabs.TabO, []const cetech1.StrId64, obj: coreui.SelectedObj, selection: *coreui.Selection, depth: u32, args: CdbTreeViewArgs) anyerror!bool,
+    cdbObjTree: *const fn (allocator: std.mem.Allocator, tab: *editor_tabs.TabO, []const cetech1.StrId64, obj: coreui.SelectedObj, selection: *coreui.Selection, depth: u32, args: CdbTreeViewArgs) anyerror!bool,
     cdbTreeNode: *const fn (label: [:0]const u8, default_open: bool, no_push: bool, selected: bool, leaf: bool, args: CdbTreeViewArgs) bool,
     cdbTreePop: *const fn () void,
-
-    cdbObjTreeNode: *const fn (
-        allocator: std.mem.Allocator,
-        tab: *editor_tabs.TabO,
-        contexts: []const cetech1.StrId64,
-        selection: *coreui.Selection,
-        obj: coreui.SelectionItem,
-        default_open: bool,
-        no_push: bool,
-        leaf: bool,
-        args: CdbTreeViewArgs,
-    ) bool,
+    cdbObjTreeNode: *const fn (allocator: std.mem.Allocator, tab: *editor_tabs.TabO, contexts: []const cetech1.StrId64, selection: *coreui.Selection, obj: coreui.SelectedObj, default_open: bool, no_push: bool, leaf: bool, args: CdbTreeViewArgs) bool,
 };
+
+pub var api: *const TreeAPI = undefined;
+
+pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+    api = apidb.getZigApi(module, TreeAPI).?;
+}

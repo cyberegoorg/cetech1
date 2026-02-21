@@ -8,15 +8,15 @@
       "__type_name": "ct_graph_node",
       "__uuid": "0190603a-e033-77c8-9593-1ea764665206",
       "node_type": "graph_inputs",
-      "pos_x": 2.84e2,
-      "pos_y": 3.8e1
+      "pos_x": 284,
+      "pos_y": 38
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "0190603b-4e22-7b03-ac92-15e807d87fc3",
       "node_type": "graph_outputs",
-      "pos_x": 5.25e2,
-      "pos_y": 3.8e1
+      "pos_x": 525,
+      "pos_y": 38
     }
   ],
   "connections": [

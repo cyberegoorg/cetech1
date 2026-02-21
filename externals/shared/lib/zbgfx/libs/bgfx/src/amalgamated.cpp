@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2025 Branimir Karadzic. All rights reserved.
+ * Copyright 2011-2026 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bgfx/blob/master/LICENSE
  */
 
@@ -15,9 +15,11 @@
 #include "renderer_d3d12.cpp"
 #include "renderer_gl.cpp"
 #include "renderer_gnm.cpp"
+#include "renderer_mtl.cpp"
 #include "renderer_noop.cpp"
 #include "renderer_nvn.cpp"
 #include "renderer_vk.cpp"
+#include "renderer_webgpu.cpp"
 #include "shader.cpp"
 #include "shader_dxbc.cpp"
 #include "shader_spirv.cpp"

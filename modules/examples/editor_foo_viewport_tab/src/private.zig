@@ -10,6 +10,7 @@ const ecs = cetech1.ecs;
 const assetdb = cetech1.assetdb;
 const uuid = cetech1.uuid;
 const task = cetech1.task;
+const kernel = cetech1.kernel;
 
 const render_viewport = @import("render_viewport");
 const render_pipeline = @import("render_pipeline");
@@ -27,7 +28,7 @@ const module_name = .editor_foo_viewport_tab;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
@@ -36,22 +37,12 @@ const TAB_NAME = "ct_editor_foo_viewport_tab";
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _coreui: *const coreui.CoreUIApi = undefined;
+const apidb = cetech1.apidb;
 
-var _render_graph: *const render_graph.RenderGraphApi = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _ecs: *const ecs.EcsAPI = undefined;
 var _tempalloc: *const tempalloc.TempAllocApi = undefined;
 var _assetdb: *const assetdb.AssetDBAPI = undefined;
-var _uuid: *const uuid.UuidAPI = undefined;
-var _task: *const task.TaskAPI = undefined;
-var _render_viewport: *const render_viewport.RenderViewportApi = undefined;
-var _render_pipeline: *const render_pipeline.RenderPipelineApi = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _camera_controller: *const camera_controller.CameraControllerAPI = undefined;
+
+const profiler = cetech1.profiler;
 
 // Global state that can surive hot-reload
 const G = struct {
@@ -82,18 +73,18 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
 
     // Return name for menu /Tabs/
     pub fn menuName() ![:0]const u8 {
-        return Icons.FA_ROBOT ++ "  " ++ "Foo viewport";
+        return coreui.Icons.Entity ++ "  " ++ "Foo viewport";
     }
 
     // Return tab title
     pub fn title(inst: *editor_tabs.TabO) ![:0]const u8 {
         _ = inst;
-        return Icons.FA_ROBOT ++ "  " ++ "Foo viewport";
+        return coreui.Icons.Entity ++ "  " ++ "Foo viewport";
     }
 
     // Create new tab instantce
     pub fn create(tab_id: u32) !?*editor_tabs.TabI {
-        const w = try _ecs.createWorld();
+        const w = try ecs.createWorld();
 
         var buf: [128]u8 = undefined;
         const name = try std.fmt.bufPrintZ(&buf, "Foo viewport {d}", .{tab_id});
@@ -102,12 +93,12 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
         _ = w.setComponent(camera.Camera, camera_ent, &camera.Camera{});
         _ = w.setComponent(camera_controller.CameraController, camera_ent, &camera_controller.CameraController{ .position = .{ .y = 2, .z = -12 } });
 
-        const gpu_backend = _kernel.getGpuBackend().?;
-        const pipeline = try _render_pipeline.createDefault(_allocator, gpu_backend, w);
+        const gpu_backend = kernel.getGpuBackend().?;
+        const pipeline = try render_pipeline.createDefault(_allocator, gpu_backend, w);
 
         var tab_inst = _allocator.create(FooViewportTab) catch undefined;
         tab_inst.* = .{
-            .viewport = try _render_viewport.createViewport(name, gpu_backend, pipeline, w, false),
+            .viewport = try render_viewport.createViewport(name, gpu_backend, pipeline, w, false),
             .world = w,
             .camera_ent = camera_ent,
             .render_pipeline = pipeline,
@@ -125,9 +116,9 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
     // Destroy tab instantce
     pub fn destroy(tab_inst: *editor_tabs.TabI) !void {
         const tab_o: *FooViewportTab = @ptrCast(@alignCast(tab_inst.inst));
-        _render_viewport.destroyViewport(tab_o.viewport);
+        render_viewport.destroyViewport(tab_o.viewport);
         tab_o.render_pipeline.deinit();
-        _ecs.destroyWorld(tab_o.world);
+        ecs.destroyWorld(tab_o.world);
         _allocator.destroy(tab_o);
     }
 
@@ -137,18 +128,18 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
         _ = dt;
 
         const tab_o: *FooViewportTab = @ptrCast(@alignCast(inst));
-        const size = _coreui.getContentRegionAvail();
+        const size = coreui.getContentRegionAvail();
         tab_o.viewport.setSize(size);
 
         if (tab_o.viewport.getTexture()) |texture| {
-            _coreui.image(
+            coreui.image(
                 texture,
                 .{
                     .w = size.x,
                     .h = size.y,
                 },
             );
-            const hovered = _coreui.isItemHovered(.{});
+            const hovered = coreui.isItemHovered(.{});
 
             var controller = tab_o.world.getMutComponent(camera_controller.CameraController, tab_o.camera_ent).?;
             controller.input_enabled = hovered;
@@ -161,13 +152,13 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
     pub fn menu(inst: *editor_tabs.TabO) !void {
         const tab_o: *FooViewportTab = @ptrCast(@alignCast(inst));
 
-        const allocator = try _tempalloc.create();
-        defer _tempalloc.destroy(allocator);
+        const allocator = try tempalloc.create();
+        defer tempalloc.destroy(allocator);
 
-        if (_coreui.beginMenu(allocator, cetech1.coreui.Icons.Debug, true, null)) {
-            defer _coreui.endMenu();
+        if (coreui.beginMenu(allocator, cetech1.coreui.Icons.Debug, true, null)) {
+            defer coreui.endMenu();
             tab_o.flecs_port = tab_o.world.uiRemoteDebugMenuItems(allocator, tab_o.flecs_port);
-            try _render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
+            try render_viewport.uiDebugMenuItems(allocator, tab_o.viewport);
         }
     }
 });
@@ -180,26 +171,23 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _apidb = apidb;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(module_name, coreui.CoreUIApi).?;
 
-    _render_graph = apidb.getZigApi(module_name, render_graph.RenderGraphApi).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-    _tempalloc = apidb.getZigApi(module_name, tempalloc.TempAllocApi).?;
+    try cdb.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
 
-    _assetdb = apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
-    _uuid = apidb.getZigApi(module_name, uuid.UuidAPI).?;
-    _task = apidb.getZigApi(module_name, task.TaskAPI).?;
-    _render_viewport = apidb.getZigApi(module_name, render_viewport.RenderViewportApi).?;
-    _render_pipeline = apidb.getZigApi(module_name, render_pipeline.RenderPipelineApi).?;
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
+    try render_graph.loadAPI(module_name);
+    try kernel.loadAPI(module_name);
+    try ecs.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+
+    try assetdb.loadAPI(module_name);
+    try render_viewport.loadAPI(module_name);
+    try render_pipeline.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
@@ -215,6 +203,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_foo_viewport_tab(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_editor_foo_viewport_tab(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

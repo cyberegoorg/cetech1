@@ -21,6 +21,7 @@ pub const cdb_types = @import("cdb_types.zig");
 pub const assetdb = @import("assetdb.zig");
 pub const ecs = @import("ecs.zig");
 pub const gpu = @import("gpu.zig");
+pub const gpu_dd = @import("gpu_dd.zig");
 
 // TODO: to module (need platform based appi aka backed)
 pub const coreui = @import("coreui.zig");

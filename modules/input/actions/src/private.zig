@@ -9,29 +9,25 @@ const input = cetech1.input;
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
 const math = cetech1.math;
+const apidb = cetech1.apidb;
 
+const kernel = cetech1.kernel;
 const public = @import("actions.zig");
 
 const module_name = .actions;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _platform: *const cetech1.host.PlatformApi = undefined;
-var _input: *const cetech1.input.InputApi = undefined;
 
-var _ecs: *const ecs.EcsAPI = undefined;
+const tempalloc = cetech1.tempalloc;
+const profiler = cetech1.profiler;
 
 // Global state that can surive hot-reload
 const G = struct {};
@@ -47,7 +43,7 @@ var _mouse_delta: [2]f64 = .{ 0.0, 0.0 };
 var _last_scroll: [2]f64 = .{ 0.0, 0.0 };
 var _scroll_delta: [2]f64 = .{ 0.0, 0.0 };
 
-pub var api = public.ActionsAPI{
+const api = public.ActionsAPI{
     .createActionSet = createActionSet,
     .addActions = addActions,
     .addMappings = addMappings,
@@ -188,7 +184,7 @@ fn getActionAxis(action: cetech1.StrId32) math.Vec2f {
 
     if (a.action.action != .axis) return .{};
 
-    const w = _kernel.getMainWindow().?; // TODO: param?
+    const w = kernel.getMainWindow().?; // TODO: param?
 
     var axis: math.Vec2f = .{};
 
@@ -267,7 +263,7 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
 );
 
 pub fn checkInputs() void {
-    const w = _kernel.getMainWindow() orelse return;
+    const w = kernel.getMainWindow() orelse return;
 
     const mouse_pos = w.getCursorPos();
 
@@ -292,19 +288,19 @@ pub fn checkInputs() void {
 }
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
+
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _platform = apidb.getZigApi(module_name, cetech1.host.PlatformApi).?;
-    _input = apidb.getZigApi(module_name, cetech1.input.InputApi).?;
+    public.api = &api;
 
-    _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
+    try cdb.loadAPI(module_name);
+    try kernel.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+    try input.loadAPI(module_name);
+    try ecs.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
 
     // impl api
     try apidb.setOrRemoveZigApi(module_name, public.ActionsAPI, &api, load);
@@ -316,13 +312,13 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
-    _keyboard_source = _input.getSourceByType(allocator, input.KEYBOARD_TYPE).?;
-    _mouse_source = _input.getSourceByType(allocator, input.MOUSE_TYPE).?;
-    _gamepad_source = _input.getSourceByType(allocator, input.GAMEPAD_TYPE).?;
+    _keyboard_source = input.getSourceByType(allocator, input.KEYBOARD_TYPE).?;
+    _mouse_source = input.getSourceByType(allocator, input.MOUSE_TYPE).?;
+    _gamepad_source = input.getSourceByType(allocator, input.GAMEPAD_TYPE).?;
     return true;
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_actions(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_actions(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

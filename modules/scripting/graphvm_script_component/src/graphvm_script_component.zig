@@ -3,11 +3,11 @@ const cdb = cetech1.cdb;
 
 const graphvm = @import("graphvm");
 
-pub const GraphVMScriptComponent = struct {
+pub const GraphVMScriptComponent = extern struct {
     graph: cdb.ObjId = .{},
 };
 
-pub const GraphVMScriptComponentInstance = struct {
+pub const GraphVMScriptComponentInstance = extern struct {
     instance: graphvm.GraphInstance = .{},
 };
 

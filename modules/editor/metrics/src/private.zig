@@ -15,7 +15,7 @@ const module_name = .editor_metrics;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
@@ -24,11 +24,8 @@ const TAB_NAME = "ct_editor_metrics_tab";
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _coreui: *const coreui.CoreUIApi = undefined;
-var _metrics: *const metrics.MetricsAPI = undefined;
+const apidb = cetech1.apidb;
+
 var _tempalloc: *const tempalloc.TempAllocApi = undefined;
 
 // Global state that can surive hot-reload
@@ -92,16 +89,16 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
 
     // Draw tab content
     pub fn ui(inst: *editor_tabs.TabO, kernel_tick: u64, dt: f32) !void {
-        _ = kernel_tick; // autofix
-        _ = dt; // autofix
+        _ = kernel_tick;
+        _ = dt;
         const tab_o: *MetricsTab = @ptrCast(@alignCast(inst));
 
-        const allocator = try _tempalloc.create();
-        defer _tempalloc.destroy(allocator);
+        const allocator = try tempalloc.create();
+        defer tempalloc.destroy(allocator);
 
         var buf: [256]u8 = undefined;
 
-        if (_coreui.beginPlot("Metrics", .{
+        if (coreui.beginPlot("Metrics", .{
             .h = -1,
             .flags = .{
                 .no_title = true,
@@ -109,29 +106,29 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
                 .equal = false,
             },
         })) {
-            defer _coreui.endPlot();
+            defer coreui.endPlot();
 
             {
-                defer _coreui.setupFinish();
+                defer coreui.setupFinish();
 
-                _coreui.setupAxis(.x1, .{
+                coreui.setupAxis(.x1, .{
                     .flags = .{
                         .auto_fit = true,
                     },
                 });
 
-                _coreui.setupAxis(.y1, .{
+                coreui.setupAxis(.y1, .{
                     .flags = .{
                         .auto_fit = true,
                     },
                 });
 
-                _coreui.setupLegend(coreui.PlotLocation.north_west, .{
+                coreui.setupLegend(coreui.PlotLocation.north_west, .{
                     .outside = true,
                 });
             }
 
-            const metrics_name = try _metrics.getMetricsName(allocator);
+            const metrics_name = try metrics.getMetricsName(allocator);
             defer allocator.free(metrics_name);
 
             var it = tab_o.selected_metrics.iterator();
@@ -142,10 +139,10 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
 
                 const name = try std.fmt.bufPrintZ(&buf, "{s}/{s}", .{ metric_last_category.?, metric_name });
 
-                if (_metrics.getMetricValues(allocator, v.key_ptr.*)) |values| {
-                    _coreui.plotLineValuesF64(name, .{
+                if (metrics.getMetricValues(allocator, v.key_ptr.*)) |values| {
+                    coreui.plotLineValuesF64(name, .{
                         .v = values,
-                        .offset = @intCast(_metrics.getMetricOffset(v.key_ptr.*).?),
+                        .offset = @intCast(metrics.getMetricOffset(v.key_ptr.*).?),
                     });
                 }
             }
@@ -156,18 +153,18 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
     pub fn menu(inst: *editor_tabs.TabO) !void {
         const tab_o: *MetricsTab = @ptrCast(@alignCast(inst));
 
-        const allocator = try _tempalloc.create();
-        defer _tempalloc.destroy(allocator);
+        const allocator = try tempalloc.create();
+        defer tempalloc.destroy(allocator);
 
         var buf: [256]u8 = undefined;
 
         // Add metric
-        if (_coreui.beginMenu(_allocator, coreui.Icons.Add, true, null)) {
-            defer _coreui.endMenu();
+        if (coreui.beginMenu(_allocator, coreui.Icons.Add, true, null)) {
+            defer coreui.endMenu();
 
-            tab_o.filter = _coreui.uiFilter(&tab_o.filter_buff, tab_o.filter);
+            tab_o.filter = coreui.uiFilter(&tab_o.filter_buff, tab_o.filter);
 
-            const metrics_name = try _metrics.getMetricsName(allocator);
+            const metrics_name = try metrics.getMetricsName(allocator);
             defer allocator.free(metrics_name);
 
             if (tab_o.filter == null) {
@@ -185,14 +182,14 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
                     while (it) |word| : (it = split.next()) {
                         const lbl = try std.fmt.bufPrintZ(&buf, "{s}", .{word});
 
-                        open = _coreui.beginMenu(_allocator, lbl, true, null);
+                        open = coreui.beginMenu(_allocator, lbl, true, null);
                         if (!open) break;
                         count += 1;
                     }
 
                     if (open) {
                         const name = try std.fmt.bufPrintZ(&buf, "{s}###{s}", .{ mname, metric_name });
-                        if (_coreui.menuItem(_allocator, name, .{ .selected = tab_o.selected_metrics.contains(metric_name) }, null)) {
+                        if (coreui.menuItem(_allocator, name, .{ .selected = tab_o.selected_metrics.contains(metric_name) }, null)) {
                             if (tab_o.selected_metrics.contains(metric_name)) {
                                 _ = tab_o.selected_metrics.remove(metric_name);
                             } else {
@@ -202,13 +199,13 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
                     }
 
                     for (0..count) |_| {
-                        _coreui.endMenu();
+                        coreui.endMenu();
                     }
                 }
             } else {
                 for (metrics_name) |metric_name| {
                     const name = try std.fmt.bufPrintZ(&buf, "{s}###{s}", .{ metric_name, metric_name });
-                    if (_coreui.menuItem(_allocator, name, .{ .selected = tab_o.selected_metrics.contains(metric_name) }, tab_o.filter)) {
+                    if (coreui.menuItem(_allocator, name, .{ .selected = tab_o.selected_metrics.contains(metric_name) }, tab_o.filter)) {
                         if (tab_o.selected_metrics.contains(metric_name)) {
                             _ = tab_o.selected_metrics.remove(metric_name);
                         } else {
@@ -220,13 +217,13 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
         }
 
         // Remove
-        if (_coreui.beginMenu(_allocator, coreui.Icons.Remove, true, null)) {
-            defer _coreui.endMenu();
+        if (coreui.beginMenu(_allocator, coreui.Icons.Remove, true, null)) {
+            defer coreui.endMenu();
 
             var it = tab_o.selected_metrics.iterator();
             while (it.next()) |v| {
                 const name = try std.fmt.bufPrintZ(&buf, "{s}###{s}", .{ v.key_ptr.*, v.key_ptr.* });
-                if (_coreui.menuItem(_allocator, name, .{}, null)) {
+                if (coreui.menuItem(_allocator, name, .{}, null)) {
                     _ = tab_o.selected_metrics.remove(v.key_ptr.*);
                     break;
                 }
@@ -241,17 +238,15 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(module_name, coreui.CoreUIApi).?;
-    _metrics = apidb.getZigApi(module_name, metrics.MetricsAPI).?;
-    _tempalloc = apidb.getZigApi(module_name, tempalloc.TempAllocApi).?;
 
-    _apidb = apidb;
+    try cdb.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
+    try metrics.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
@@ -266,6 +261,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_metrics(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_editor_metrics(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

@@ -4,8 +4,8 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
 const math = cetech1.math;
-
 const gpu = cetech1.gpu;
+const apidb = cetech1.apidb;
 
 const render_viewport = @import("render_viewport");
 
@@ -36,17 +36,17 @@ pub const GpuVec2fCdb = cdb.CdbTypeDecl(
         Y,
     },
     struct {
-        pub fn toSlice(api: *const cdb.CdbAPI, obj: cdb.ObjId) math.Vec2f {
-            const r = api.readObj(obj) orelse return .{};
+        pub fn toSlice(obj: cdb.ObjId) math.Vec2f {
+            const r = cdb.readObj(obj) orelse return .{};
             return .{
-                .x = GpuVec2fCdb.readValue(f32, api, r, .X),
-                .y = GpuVec2fCdb.readValue(f32, api, r, .Y),
+                .x = GpuVec2fCdb.readValue(f32, r, .X),
+                .y = GpuVec2fCdb.readValue(f32, r, .Y),
             };
         }
 
-        pub fn fromSlice(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: math.Vec2f) void {
-            GpuVec2fCdb.setValue(f32, api, obj_w, .X, value[0]);
-            GpuVec2fCdb.setValue(f32, api, obj_w, .Y, value[1]);
+        pub fn fromSlice(obj_w: *cdb.Obj, value: math.Vec2f) void {
+            GpuVec2fCdb.setValue(f32, obj_w, .X, value[0]);
+            GpuVec2fCdb.setValue(f32, obj_w, .Y, value[1]);
         }
     },
 );
@@ -59,19 +59,19 @@ pub const GpuVec3fCdb = cdb.CdbTypeDecl(
         Z,
     },
     struct {
-        pub fn toSlice(api: *const cdb.CdbAPI, obj: cdb.ObjId) math.Vec3f {
-            const r = api.readObj(obj) orelse return .{};
+        pub fn toSlice(obj: cdb.ObjId) math.Vec3f {
+            const r = cdb.readObj(obj) orelse return .{};
             return .{
-                .x = cdb_types.Vec3fCdb.readValue(f32, api, r, .X),
-                .y = cdb_types.Vec3fCdb.readValue(f32, api, r, .Y),
-                .z = cdb_types.Vec3fCdb.readValue(f32, api, r, .Z),
+                .x = cdb_types.Vec3fCdb.readValue(f32, r, .X),
+                .y = cdb_types.Vec3fCdb.readValue(f32, r, .Y),
+                .z = cdb_types.Vec3fCdb.readValue(f32, r, .Z),
             };
         }
 
-        pub fn fromSlice(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: math.Vec3f) void {
-            cdb_types.Vec3fCdb.setValue(f32, api, obj_w, .X, value.x);
-            cdb_types.Vec3fCdb.setValue(f32, api, obj_w, .Y, value.y);
-            cdb_types.Vec3fCdb.setValue(f32, api, obj_w, .Z, value.z);
+        pub fn fromSlice(obj_w: *cdb.Obj, value: math.Vec3f) void {
+            cdb_types.Vec3fCdb.setValue(f32, obj_w, .X, value.x);
+            cdb_types.Vec3fCdb.setValue(f32, obj_w, .Y, value.y);
+            cdb_types.Vec3fCdb.setValue(f32, obj_w, .Z, value.z);
         }
     },
 );
@@ -85,21 +85,21 @@ pub const GpuVec4fCdb = cdb.CdbTypeDecl(
         W,
     },
     struct {
-        pub fn toSlice(api: *const cdb.CdbAPI, obj: cdb.ObjId) math.Vec4f {
-            const r = api.readObj(obj) orelse return .{};
+        pub fn toSlice(obj: cdb.ObjId) math.Vec4f {
+            const r = cdb.readObj(obj) orelse return .{};
             return .{
-                .x = GpuVec4fCdb.readValue(f32, api, r, .X),
-                .y = GpuVec4fCdb.readValue(f32, api, r, .Y),
-                .z = GpuVec4fCdb.readValue(f32, api, r, .Z),
-                .w = GpuVec4fCdb.readValue(f32, api, r, .W),
+                .x = GpuVec4fCdb.readValue(f32, r, .X),
+                .y = GpuVec4fCdb.readValue(f32, r, .Y),
+                .z = GpuVec4fCdb.readValue(f32, r, .Z),
+                .w = GpuVec4fCdb.readValue(f32, r, .W),
             };
         }
 
-        pub fn fromSlice(api: *const cdb.CdbAPI, obj_w: *cdb.Obj, value: math.Vec4f) void {
-            GpuVec4fCdb.setValue(f32, api, obj_w, .X, value.x);
-            GpuVec4fCdb.setValue(f32, api, obj_w, .Y, value.y);
-            GpuVec4fCdb.setValue(f32, api, obj_w, .Z, value.z);
-            GpuVec4fCdb.setValue(f32, api, obj_w, .W, value.w);
+        pub fn fromSlice(obj_w: *cdb.Obj, value: math.Vec4f) void {
+            GpuVec4fCdb.setValue(f32, obj_w, .X, value.x);
+            GpuVec4fCdb.setValue(f32, obj_w, .Y, value.y);
+            GpuVec4fCdb.setValue(f32, obj_w, .Z, value.z);
+            GpuVec4fCdb.setValue(f32, obj_w, .W, value.w);
         }
     },
 );
@@ -353,10 +353,6 @@ pub const SystemContext = struct {
         ) void,
 
         pub fn implement(comptime T: type) VTable {
-            if (!std.meta.hasFn(T, "addSystem")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "bind")) @compileError("implement me");
-            if (!std.meta.hasFn(T, "getSystem")) @compileError("implement me");
-
             return VTable{
                 .addSystem = &T.addSystem,
                 .bind = &T.bind,
@@ -412,7 +408,8 @@ pub const ConstNodeResultType = enum {
     vec2,
     vec3,
     vec4,
-    color,
+    color3,
+    color4,
     float,
 };
 
@@ -521,42 +518,100 @@ pub const UpdateResourceItem = struct {
     value: UpdateResourceValue,
 };
 
+pub fn addShaderDefiniton(name: []const u8, definition: ShaderDefinition) anyerror!void {
+    return api.addShaderDefiniton(name, definition);
+}
+pub fn addSystemDefiniton(name: []const u8, definition: ShaderDefinition) anyerror!void {
+    return api.addSystemDefiniton(name, definition);
+}
+pub fn compileShader(allocator: std.mem.Allocator, use_definitions: []const cetech1.StrId32, definition: ?ShaderDefinition, name: ?[:0]const u8) anyerror!?Shader {
+    return api.compileShader(allocator, use_definitions, definition, name);
+}
+pub fn destroyShader(shader: Shader) void {
+    return api.destroyShader(shader);
+}
+pub fn selectShaderVariant(allocator: std.mem.Allocator, shader: Shader, context: []const cetech1.StrId32, system_context: *const SystemContext) anyerror![]*const ShaderVariant {
+    return api.selectShaderVariant(allocator, shader, context, system_context);
+}
+pub fn createSystemContext() anyerror!SystemContext {
+    return api.createSystemContext();
+}
+pub fn cloneSystemContext(context: SystemContext) anyerror!SystemContext {
+    return api.cloneSystemContext(context);
+}
+pub fn destroySystemContext(context: SystemContext) void {
+    return api.destroySystemContext(context);
+}
+pub fn getShaderIO(shader: Shader) ShaderIO {
+    return api.getShaderIO(shader);
+}
+pub fn getSystemIO(system: System) ShaderIO {
+    return api.getSystemIO(system);
+}
+pub fn findShaderByName(name: cetech1.StrId32) ?Shader {
+    return api.findShaderByName(name);
+}
+pub fn findSystemByName(name: cetech1.StrId32) ?System {
+    return api.findSystemByName(name);
+}
+pub fn createUniformBuffer(shader_io: ShaderIO) anyerror!?UniformBufferInstance {
+    return api.createUniformBuffer(shader_io);
+}
+pub fn destroyUniformBuffer(shader_io: ShaderIO, buffer: UniformBufferInstance) void {
+    return api.destroyUniformBuffer(shader_io, buffer);
+}
+pub fn createResourceBuffer(shader_io: ShaderIO) anyerror!?ResourceBufferInstance {
+    return api.createResourceBuffer(shader_io);
+}
+pub fn destroyResourceBuffer(shader_io: ShaderIO, buffer: ResourceBufferInstance) void {
+    return api.destroyResourceBuffer(shader_io, buffer);
+}
+pub fn updateUniforms(shader: ShaderIO, uniform_buffer: UniformBufferInstance, items: []const UpdateUniformItem) anyerror!void {
+    return api.updateUniforms(shader, uniform_buffer, items);
+}
+pub fn updateResources(shader: ShaderIO, resource_buffer: ResourceBufferInstance, items: []const UpdateResourceItem) anyerror!void {
+    return api.updateResources(shader, resource_buffer, items);
+}
+pub fn bindConstant(shader_io: ShaderIO, uniform_buffer: UniformBufferInstance, encoder: gpu.GpuEncoder) void {
+    return api.bindConstant(shader_io, uniform_buffer, encoder);
+}
+pub fn bindSystemConstant(shader_io: ShaderIO, system: System, uniform_buffer: UniformBufferInstance, encoder: gpu.GpuEncoder) void {
+    return api.bindSystemConstant(shader_io, system, uniform_buffer, encoder);
+}
+pub fn bindResource(shader_io: ShaderIO, resource_buffer: ResourceBufferInstance, encoder: gpu.GpuEncoder) void {
+    return api.bindResource(shader_io, resource_buffer, encoder);
+}
+pub fn bindSystemResource(shader_io: ShaderIO, system: System, resource_buffer: ResourceBufferInstance, encoder: gpu.GpuEncoder) void {
+    return api.bindSystemResource(shader_io, system, resource_buffer, encoder);
+}
+
 pub const ShaderSystemAPI = struct {
     addShaderDefiniton: *const fn (name: []const u8, definition: ShaderDefinition) anyerror!void,
     addSystemDefiniton: *const fn (name: []const u8, definition: ShaderDefinition) anyerror!void,
-
     compileShader: *const fn (allocator: std.mem.Allocator, use_definitions: []const cetech1.StrId32, definition: ?ShaderDefinition, name: ?[:0]const u8) anyerror!?Shader,
     destroyShader: *const fn (shader: Shader) void,
-
-    selectShaderVariant: *const fn (
-        allocator: std.mem.Allocator,
-        shader: Shader,
-        context: []const cetech1.StrId32,
-        system_context: *const SystemContext,
-    ) anyerror![]*const ShaderVariant,
-
+    selectShaderVariant: *const fn (allocator: std.mem.Allocator, shader: Shader, context: []const cetech1.StrId32, system_context: *const SystemContext) anyerror![]*const ShaderVariant,
     createSystemContext: *const fn () anyerror!SystemContext,
     cloneSystemContext: *const fn (context: SystemContext) anyerror!SystemContext,
     destroySystemContext: *const fn (context: SystemContext) void,
-
     getShaderIO: *const fn (shader: Shader) ShaderIO,
     getSystemIO: *const fn (system: System) ShaderIO,
-
     findShaderByName: *const fn (name: cetech1.StrId32) ?Shader,
     findSystemByName: *const fn (name: cetech1.StrId32) ?System,
-
     createUniformBuffer: *const fn (shader_io: ShaderIO) anyerror!?UniformBufferInstance,
     destroyUniformBuffer: *const fn (shader_io: ShaderIO, buffer: UniformBufferInstance) void,
-
     createResourceBuffer: *const fn (shader_io: ShaderIO) anyerror!?ResourceBufferInstance,
     destroyResourceBuffer: *const fn (shader_io: ShaderIO, buffer: ResourceBufferInstance) void,
-
     updateUniforms: *const fn (shader: ShaderIO, uniform_buffer: UniformBufferInstance, items: []const UpdateUniformItem) anyerror!void,
     updateResources: *const fn (shader: ShaderIO, resource_buffer: ResourceBufferInstance, items: []const UpdateResourceItem) anyerror!void,
-
     bindConstant: *const fn (shader_io: ShaderIO, uniform_buffer: UniformBufferInstance, encoder: gpu.GpuEncoder) void,
     bindSystemConstant: *const fn (shader_io: ShaderIO, system: System, uniform_buffer: UniformBufferInstance, encoder: gpu.GpuEncoder) void,
-
     bindResource: *const fn (shader_io: ShaderIO, resource_buffer: ResourceBufferInstance, encoder: gpu.GpuEncoder) void,
     bindSystemResource: *const fn (shader_io: ShaderIO, system: System, resource_buffer: ResourceBufferInstance, encoder: gpu.GpuEncoder) void,
 };
+
+pub var api: *const ShaderSystemAPI = undefined;
+
+pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+    api = apidb.getZigApi(module, ShaderSystemAPI).?;
+}

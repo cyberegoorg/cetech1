@@ -83,12 +83,11 @@
             "settings": {
               "__type_name": "ct_gpu_const_node_settings",
               "__uuid": "01999163-4ec7-76d8-a2b6-a53ad84eee8d",
-              "result_type": "color",
+              "result_type": "color3",
               "value": {
-                "__type_name": "ct_color_4f",
-                "__uuid": "019ab0d2-96de-737a-bc55-cc6ad8d96064",
-                "g": 1,
-                "a": 1
+                "__type_name": "ct_color_3f",
+                "__uuid": "019d2521-f432-71f5-97fa-853e8de3629a",
+                "g": 1
               }
             },
             "pos_x": -1069,

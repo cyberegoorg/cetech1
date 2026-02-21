@@ -1,8 +1,7 @@
 const std = @import("std");
+
 const cetech1 = @import("cetech1");
-
 const cdb = cetech1.cdb;
-
 const ecs = cetech1.ecs;
 
 pub const AssetPreviewAspectI = struct {
@@ -24,7 +23,6 @@ pub const AssetPreviewAspectI = struct {
         const has_create_ent = std.meta.hasFn(T, "createPreviewEntity");
         const has_ui = std.meta.hasFn(T, "uiPreview");
 
-        if (!has_create_ent and !has_ui) @compileError("implement me");
         return AssetPreviewAspectI{
             .create_preview_entity = if (has_create_ent) T.createPreviewEntity else null,
             .ui_preview = if (has_ui) T.uiPreview else null,

@@ -2,14 +2,13 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 const math = cetech1.math;
-
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
 
+const apidb = cetech1.apidb;
 const shader_system = @import("shader_system");
 const transform = @import("transform");
 const light_component = @import("light_component");
@@ -24,21 +23,18 @@ const module_name = .light_system;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _task: *const cetech1.task.TaskAPI = undefined;
 
-var _dd: *const gpu.GpuDDApi = undefined;
+const tempalloc = cetech1.tempalloc;
+const profiler = cetech1.profiler;
+const task = cetech1.task;
+
 var _shader_system: *const shader_system.ShaderSystemAPI = undefined;
 
 const MAX_LIGHTS = 1_024; // TODO
@@ -122,7 +118,7 @@ const LightCusterDef = struct {
 };
 
 fn clusterByLightsType(allocator: std.mem.Allocator, sorted_instances: []*light_component.Light, max_cluster: usize) ![]LightCusterDef {
-    var zone2_ctx = _profiler.ZoneN(@src(), "clusterByLightsType");
+    var zone2_ctx = profiler.ZoneN(@src(), "clusterByLightsType");
     defer zone2_ctx.End();
 
     var clusters = try cetech1.ArrayList(LightCusterDef).initCapacity(allocator, max_cluster);
@@ -150,168 +146,279 @@ fn clusterByLightsType(allocator: std.mem.Allocator, sorted_instances: []*light_
     return clusters.toOwnedSlice(allocator);
 }
 
-const light_system_shaderable = render_viewport.ShaderableComponentI.implement(light_component.Light, struct {
-    pub fn orderByCallback(e1: ecs.EntityId, c1: *const anyopaque, e2: ecs.EntityId, c2: *const anyopaque) callconv(.c) i32 {
-        const ci1: *const light_component.Light = @ptrCast(@alignCast(c1));
-        const ci2: *const light_component.Light = @ptrCast(@alignCast(c2));
-        _ = e1;
-        _ = e2;
+const light_system_shaderable = render_viewport.ShaderableComponentI.implement(
+    light_component.Light,
+    struct {
+        pub fn orderByCallback(e1: ecs.EntityId, c1: *const anyopaque, e2: ecs.EntityId, c2: *const anyopaque) callconv(.c) i32 {
+            const ci1: *const light_component.Light = @ptrCast(@alignCast(c1));
+            const ci2: *const light_component.Light = @ptrCast(@alignCast(c2));
+            _ = e1;
+            _ = e2;
 
-        return @as(i32, @intFromEnum(ci1.type)) - @as(i32, @intFromEnum(ci2.type));
-    }
+            return @as(i32, @intFromEnum(ci1.type)) - @as(i32, @intFromEnum(ci2.type));
+        }
 
-    pub fn init(
-        allocator: std.mem.Allocator,
-        data: []*anyopaque,
-    ) !void {
-        _ = allocator;
-        _ = data;
-        var zz = _profiler.ZoneN(@src(), "Light system - Init callback");
-        defer zz.End();
-    }
+        pub fn init(
+            allocator: std.mem.Allocator,
+            data: []*anyopaque,
+        ) !void {
+            _ = allocator;
+            _ = data;
+            var zz = profiler.ZoneN(@src(), "Light system - Init callback");
+            defer zz.End();
+        }
 
-    pub fn fillBoundingVolumes(
-        allocator: std.mem.Allocator,
-        entites_idx: ?[]const usize,
-        transforms: []const transform.WorldTransformComponent,
-        data: []*anyopaque,
-        volume_type: render_viewport.BoundingVolumeType,
-        volumes: []u8,
-    ) !void {
-        var zz = _profiler.ZoneN(@src(), "Light system - Culling callback");
-        defer zz.End();
+        pub fn fillBoundingVolumes(
+            allocator: std.mem.Allocator,
+            entites_idx: ?[]const usize,
+            transforms: []const transform.WorldTransformComponent,
+            data: []*anyopaque,
+            volume_type: render_viewport.BoundingVolumeType,
+            volumes: []u8,
+        ) !void {
+            var zz = profiler.ZoneN(@src(), "Light system - Culling callback");
+            defer zz.End();
 
-        var lights = try cetech1.ArrayList(*light_component.Light).initCapacity(allocator, transforms.len);
-        defer lights.deinit(allocator);
-        try lights.resize(allocator, if (entites_idx) |eidxs| eidxs.len else transforms.len);
+            var lights = try cetech1.ArrayList(*light_component.Light).initCapacity(allocator, transforms.len);
+            defer lights.deinit(allocator);
+            try lights.resize(allocator, if (entites_idx) |eidxs| eidxs.len else transforms.len);
 
-        if (entites_idx) |idxs| {
-            for (idxs, 0..) |ent_idx, idx| {
-                const gi: *light_component.Light = @ptrCast(@alignCast(data[ent_idx]));
-                lights.items[idx] = gi;
+            if (entites_idx) |idxs| {
+                for (idxs, 0..) |ent_idx, idx| {
+                    const gi: *light_component.Light = @ptrCast(@alignCast(data[ent_idx]));
+                    lights.items[idx] = gi;
+                }
+            } else {
+                for (data, 0..) |d, idx| {
+                    const gi: *light_component.Light = @ptrCast(@alignCast(d));
+                    lights.items[idx] = gi;
+                }
             }
-        } else {
-            for (data, 0..) |d, idx| {
-                const gi: *light_component.Light = @ptrCast(@alignCast(d));
-                lights.items[idx] = gi;
+
+            switch (volume_type) {
+                .sphere => {
+                    var sphere_out_volumes = std.mem.bytesAsSlice(render_viewport.SphereBoudingVolume, volumes);
+
+                    for (lights.items, 0..) |l, idx| {
+                        var dc_visibility_flags = visibility_flags.VisibilityFlags.initEmpty();
+                        dc_visibility_flags.set(0); // TODO:
+
+                        const tidx = if (entites_idx) |idxs| idxs[idx] else idx;
+
+                        const wt = transforms[tidx].world;
+
+                        const position = transforms[tidx].world.position;
+
+                        switch (l.type) {
+                            .Point => {
+                                sphere_out_volumes[idx] = .{
+                                    .sphere = .{ .center = position, .radius = l.radius },
+                                    .visibility_mask = dc_visibility_flags,
+                                };
+                            },
+                            .Spot => {
+                                const forward = wt.getAxisZ();
+
+                                sphere_out_volumes[idx] = .{
+                                    .sphere = .calcBoundingSphereForCone(
+                                        position,
+                                        forward,
+                                        l.radius / std.math.cos(std.math.degreesToRadians(l.angle_outer)),
+                                        std.math.degreesToRadians(l.angle_outer),
+                                    ),
+                                    .visibility_mask = dc_visibility_flags,
+                                };
+                            },
+                            .Direction => {
+                                sphere_out_volumes[idx] = .{
+                                    .skip_culling = true,
+                                    .visibility_mask = dc_visibility_flags,
+                                };
+                            },
+                        }
+                    }
+                },
+
+                .box => {
+                    var box_out_volumes = std.mem.bytesAsSlice(render_viewport.BoxBoudingVolume, volumes);
+
+                    for (lights.items, 0..) |l, idx| {
+                        var dc_visibility_flags = visibility_flags.VisibilityFlags.initEmpty();
+                        dc_visibility_flags.set(0); // TODO:
+
+                        const tidx = if (entites_idx) |idxs| idxs[idx] else idx;
+                        const t = transforms[tidx];
+
+                        switch (l.type) {
+                            .Point => {
+                                box_out_volumes[idx] = .{
+                                    .skip_culling = true,
+                                    .visibility_mask = dc_visibility_flags,
+                                };
+                            },
+                            .Spot => {
+                                const r = l.radius * std.math.tan(std.math.degreesToRadians(l.angle_outer));
+                                box_out_volumes[idx] = .{
+                                    .t = t.world,
+                                    .min = .{ .x = -r, .y = -r },
+                                    .max = .{ .x = r, .y = r, .z = l.radius },
+                                    .visibility_mask = dc_visibility_flags,
+                                };
+                            },
+                            .Direction => {
+                                box_out_volumes[idx] = .{
+                                    .skip_culling = true,
+                                    .visibility_mask = dc_visibility_flags,
+                                };
+                            },
+                        }
+                    }
+                },
+
+                else => |v| {
+                    log.err("Invalid bounding volume {d}", .{v});
+                },
             }
         }
 
-        switch (volume_type) {
-            .sphere => {
-                var sphere_out_volumes = std.mem.bytesAsSlice(render_viewport.SphereBoudingVolume, volumes);
+        pub fn update(
+            allocator: std.mem.Allocator,
+            gpu_backend: gpu.GpuBackend,
+            builder: render_graph.GraphBuilder,
+            world: ecs.World,
+            viewport: render_viewport.Viewport,
+            pipeline: render_pipeline.RenderPipeline,
+            viewers: []const render_graph.Viewer,
+            system_context: *const shader_system.SystemContext,
+            entites_idx: []const usize,
+            transforms: []transform.WorldTransformComponent,
+            render_components: []*anyopaque,
+            visibility: []const render_viewport.VisibilityBitField,
+        ) !void {
+            var zz = profiler.ZoneN(@src(), "Light system - Render callback");
+            defer zz.End();
 
-                for (lights.items, 0..) |l, idx| {
-                    var dc_visibility_flags = visibility_flags.VisibilityFlags.initEmpty();
-                    dc_visibility_flags.set(0); // TODO:
+            _ = world;
+            _ = viewport;
+            _ = builder;
+            _ = viewers;
 
-                    const tidx = if (entites_idx) |idxs| idxs[idx] else idx;
+            _ = visibility;
+            _ = system_context;
 
-                    const wt = transforms[tidx].world;
+            const light_system_inst = pipeline.getGlobalSystem(public.LightSystem, .fromStr("light_system")).?;
+            const light_system_io = _shader_system.getSystemIO(light_system_inst.system);
 
-                    const position = transforms[tidx].world.position;
+            if (entites_idx.len == 0) {
+                try _shader_system.updateUniforms(
+                    light_system_io,
+                    light_system_inst.uniforms.?,
+                    &.{
+                        .{
+                            .name = light_system_header_strid,
+                            .value = std.mem.asBytes(&[4]f32{
+                                0,
+                                0,
+                                0,
+                                0,
+                            }),
+                        },
+                    },
+                );
+                return;
+            }
+
+            var lights = try cetech1.ArrayList(*light_component.Light).initCapacity(allocator, entites_idx.len);
+            defer lights.deinit(allocator);
+            try lights.resize(allocator, entites_idx.len);
+
+            for (entites_idx, 0..) |ent_idx, idx| {
+                const gi: *light_component.Light = @ptrCast(@alignCast(render_components[ent_idx]));
+                lights.items[idx] = gi;
+            }
+
+            // const dup_ent_idx = try allocator.dupe(usize, entites_idx);
+            // defer allocator.free(dup_ent_idx);
+
+            // var sort_context = SortLightContext{
+            //     .lights = lights.items,
+            //     .ent_idx = dup_ent_idx,
+            // };
+            // std.sort.insertionContext(0, lights.items.len, &sort_context);
+
+            const clusters = try clusterByLightsType(allocator, lights.items, @intFromEnum(light_component.LightType.Direction) + 1);
+            defer allocator.free(clusters);
+
+            var point_count: u32 = 0;
+            var spot_count: u32 = 0;
+            var direction_count: u32 = 0;
+            for (clusters) |cluster| {
+                const light_count: u32 = @truncate(cluster.lights.len);
+                switch (cluster.lights[0].type) {
+                    .Point => point_count += 1 * light_count,
+                    .Spot => spot_count += 1 * light_count,
+                    .Direction => direction_count += 1 * light_count,
+                }
+            }
+
+            // Buffer is vec4
+            const light_buffer_size = (point_count * 2) + (spot_count * 3) + (direction_count * 3);
+            var gpu_point_lights = try cetech1.ArrayList([4]f32).initCapacity(allocator, light_buffer_size);
+            defer gpu_point_lights.deinit(allocator);
+
+            for (clusters) |cluster| {
+                for (cluster.lights, 0..) |l, idx| {
+                    const t = transforms[entites_idx[cluster.first_idx + idx]];
 
                     switch (l.type) {
                         .Point => {
-                            sphere_out_volumes[idx] = .{
-                                .sphere = .{ .center = position, .radius = l.radius },
-                                .visibility_mask = dc_visibility_flags,
-                            };
+                            // l.power unit is lumen
+                            const power = math.Vec3f.mul(l.color.toVec3f(), .splat(l.power / (4 * std.math.pi)));
+
+                            gpu_point_lights.appendSliceAssumeCapacity(&.{
+                                .{ t.world.position.x, t.world.position.y, t.world.position.z, l.radius },
+                                .{ power.x, power.y, power.z, 0 },
+                            });
                         },
                         .Spot => {
-                            const forward = wt.getAxisZ();
+                            // l.power unit is lumen
+                            const power = math.Vec3f.mul(l.color.toVec3f(), .splat(l.power / (std.math.pi)));
 
-                            sphere_out_volumes[idx] = .{
-                                .sphere = .calcBoundingSphereForCone(
-                                    position,
-                                    forward,
-                                    l.radius / std.math.cos(std.math.degreesToRadians(l.angle_outer)),
-                                    std.math.degreesToRadians(l.angle_outer),
-                                ),
-                                .visibility_mask = dc_visibility_flags,
-                            };
+                            const dir = t.world.getAxisZ();
+                            const cos_inner = std.math.cos(std.math.degreesToRadians(l.angle_inner));
+                            const cos_outer = std.math.cos(std.math.degreesToRadians(l.angle_outer));
+
+                            const angle_scale = 1 / @max(0.001, cos_inner - cos_outer);
+                            const angle_offset = -cos_outer * angle_scale;
+
+                            gpu_point_lights.appendSliceAssumeCapacity(&.{
+                                .{ t.world.position.x, t.world.position.y, t.world.position.z, l.radius / std.math.cos(std.math.degreesToRadians(l.angle_outer)) },
+                                .{ power.x, power.y, power.z, angle_scale },
+                                .{ dir.x, dir.y, dir.z, angle_offset },
+                            });
                         },
                         .Direction => {
-                            sphere_out_volumes[idx] = .{
-                                .skip_culling = true,
-                                .visibility_mask = dc_visibility_flags,
-                            };
+                            const power = math.Vec3f.mul(l.color.toVec3f(), .splat(l.power));
+
+                            const dir = t.world.getAxisZ();
+                            gpu_point_lights.appendSliceAssumeCapacity(&.{
+                                .{ t.world.position.x, t.world.position.y, t.world.position.z, l.radius },
+                                .{ power.x, power.y, power.z, 0 },
+                                .{ dir.x, dir.y, dir.z, 0 },
+                            });
                         },
                     }
                 }
-            },
+            }
 
-            .box => {
-                var box_out_volumes = std.mem.bytesAsSlice(render_viewport.BoxBoudingVolume, volumes);
+            if (gpu_point_lights.items.len > 0) {
+                gpu_backend.updateDynamicVertexBuffer(
+                    light_system_inst.light_buffer,
+                    0,
+                    gpu_backend.copy(gpu_point_lights.items.ptr, @truncate(@sizeOf([4]f32) * gpu_point_lights.items.len)),
+                );
+            }
 
-                for (lights.items, 0..) |l, idx| {
-                    var dc_visibility_flags = visibility_flags.VisibilityFlags.initEmpty();
-                    dc_visibility_flags.set(0); // TODO:
-
-                    const tidx = if (entites_idx) |idxs| idxs[idx] else idx;
-                    const t = transforms[tidx];
-
-                    switch (l.type) {
-                        .Point => {
-                            box_out_volumes[idx] = .{
-                                .skip_culling = true,
-                                .visibility_mask = dc_visibility_flags,
-                            };
-                        },
-                        .Spot => {
-                            const r = l.radius * std.math.tan(std.math.degreesToRadians(l.angle_outer));
-                            box_out_volumes[idx] = .{
-                                .t = t.world,
-                                .min = .{ .x = -r, .y = -r },
-                                .max = .{ .x = r, .y = r, .z = l.radius },
-                                .visibility_mask = dc_visibility_flags,
-                            };
-                        },
-                        .Direction => {
-                            box_out_volumes[idx] = .{
-                                .skip_culling = true,
-                                .visibility_mask = dc_visibility_flags,
-                            };
-                        },
-                    }
-                }
-            },
-
-            else => |v| {
-                log.err("Invalid bounding volume {d}", .{v});
-            },
-        }
-    }
-
-    pub fn update(
-        allocator: std.mem.Allocator,
-        gpu_backend: gpu.GpuBackend,
-        builder: render_graph.GraphBuilder,
-        world: ecs.World,
-        viewport: render_viewport.Viewport,
-        pipeline: render_pipeline.RenderPipeline,
-        viewers: []const render_graph.Viewer,
-        system_context: *const shader_system.SystemContext,
-        entites_idx: []const usize,
-        transforms: []transform.WorldTransformComponent,
-        render_components: []*anyopaque,
-        visibility: []const render_viewport.VisibilityBitField,
-    ) !void {
-        var zz = _profiler.ZoneN(@src(), "Light system - Render callback");
-        defer zz.End();
-
-        _ = world;
-        _ = viewport;
-        _ = builder;
-        _ = viewers;
-
-        _ = visibility;
-        _ = system_context;
-
-        const light_system_inst = pipeline.getGlobalSystem(public.LightSystem, .fromStr("light_system")).?;
-        const light_system_io = _shader_system.getSystemIO(light_system_inst.system);
-
-        if (entites_idx.len == 0) {
             try _shader_system.updateUniforms(
                 light_system_io,
                 light_system_inst.uniforms.?,
@@ -319,125 +426,17 @@ const light_system_shaderable = render_viewport.ShaderableComponentI.implement(l
                     .{
                         .name = light_system_header_strid,
                         .value = std.mem.asBytes(&[4]f32{
-                            0,
-                            0,
-                            0,
+                            @bitCast(point_count),
+                            @bitCast(spot_count),
+                            @bitCast(direction_count),
                             0,
                         }),
                     },
                 },
             );
-            return;
         }
-
-        var lights = try cetech1.ArrayList(*light_component.Light).initCapacity(allocator, entites_idx.len);
-        defer lights.deinit(allocator);
-        try lights.resize(allocator, entites_idx.len);
-
-        for (entites_idx, 0..) |ent_idx, idx| {
-            const gi: *light_component.Light = @ptrCast(@alignCast(render_components[ent_idx]));
-            lights.items[idx] = gi;
-        }
-
-        // const dup_ent_idx = try allocator.dupe(usize, entites_idx);
-        // defer allocator.free(dup_ent_idx);
-
-        // var sort_context = SortLightContext{
-        //     .lights = lights.items,
-        //     .ent_idx = dup_ent_idx,
-        // };
-        // std.sort.insertionContext(0, lights.items.len, &sort_context);
-
-        const clusters = try clusterByLightsType(allocator, lights.items, @intFromEnum(light_component.LightType.Direction) + 1);
-        defer allocator.free(clusters);
-
-        var point_count: u32 = 0;
-        var spot_count: u32 = 0;
-        var direction_count: u32 = 0;
-        for (clusters) |cluster| {
-            const light_count: u32 = @truncate(cluster.lights.len);
-            switch (cluster.lights[0].type) {
-                .Point => point_count += 1 * light_count,
-                .Spot => spot_count += 1 * light_count,
-                .Direction => direction_count += 1 * light_count,
-            }
-        }
-
-        // Buffer is vec4
-        const light_buffer_size = (point_count * 2) + (spot_count * 3) + (direction_count * 3);
-        var gpu_point_lights = try cetech1.ArrayList([4]f32).initCapacity(allocator, light_buffer_size);
-        defer gpu_point_lights.deinit(allocator);
-
-        for (clusters) |cluster| {
-            for (cluster.lights, 0..) |l, idx| {
-                const t = transforms[entites_idx[cluster.first_idx + idx]];
-
-                switch (l.type) {
-                    .Point => {
-                        // l.power unit is lumen
-                        const power = math.Vec3f.mul(l.color.toVec3f(), .splat(l.power / (4 * std.math.pi)));
-
-                        gpu_point_lights.appendSliceAssumeCapacity(&.{
-                            .{ t.world.position.x, t.world.position.y, t.world.position.z, l.radius },
-                            .{ power.x, power.y, power.z, 0 },
-                        });
-                    },
-                    .Spot => {
-                        // l.power unit is lumen
-                        const power = math.Vec3f.mul(l.color.toVec3f(), .splat(l.power / (std.math.pi)));
-
-                        const dir = t.world.getAxisZ();
-                        const cos_inner = std.math.cos(std.math.degreesToRadians(l.angle_inner));
-                        const cos_outer = std.math.cos(std.math.degreesToRadians(l.angle_outer));
-
-                        const angle_scale = 1 / @max(0.001, cos_inner - cos_outer);
-                        const angle_offset = -cos_outer * angle_scale;
-
-                        gpu_point_lights.appendSliceAssumeCapacity(&.{
-                            .{ t.world.position.x, t.world.position.y, t.world.position.z, l.radius / std.math.cos(std.math.degreesToRadians(l.angle_outer)) },
-                            .{ power.x, power.y, power.z, angle_scale },
-                            .{ dir.x, dir.y, dir.z, angle_offset },
-                        });
-                    },
-                    .Direction => {
-                        const power = math.Vec3f.mul(l.color.toVec3f(), .splat(l.power));
-
-                        const dir = t.world.getAxisZ();
-                        gpu_point_lights.appendSliceAssumeCapacity(&.{
-                            .{ t.world.position.x, t.world.position.y, t.world.position.z, l.radius },
-                            .{ power.x, power.y, power.z, 0 },
-                            .{ dir.x, dir.y, dir.z, 0 },
-                        });
-                    },
-                }
-            }
-        }
-
-        if (gpu_point_lights.items.len > 0) {
-            gpu_backend.updateDynamicVertexBuffer(
-                light_system_inst.light_buffer,
-                0,
-                gpu_backend.copy(gpu_point_lights.items.ptr, @truncate(@sizeOf([4]f32) * gpu_point_lights.items.len)),
-            );
-        }
-
-        try _shader_system.updateUniforms(
-            light_system_io,
-            light_system_inst.uniforms.?,
-            &.{
-                .{
-                    .name = light_system_header_strid,
-                    .value = std.mem.asBytes(&[4]f32{
-                        @bitCast(point_count),
-                        @bitCast(spot_count),
-                        @bitCast(direction_count),
-                        0,
-                    }),
-                },
-            },
-        );
-    }
-});
+    },
+);
 
 var kernel_task = cetech1.kernel.KernelTaskI.implement(
     "LightSystem",
@@ -476,25 +475,24 @@ var update_task = cetech1.kernel.KernelTaskUpdateI.implment(
             _ = kernel_tick;
             _ = dt;
 
-            // const alloc = try _tmpalloc.create();
-            // defer _tmpalloc.destroy(alloc);
+            // const alloc = try tempalloc.create();
+            // defer tempalloc.destroy(alloc);
         }
     },
 );
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
-    _task = apidb.getZigApi(module_name, cetech1.task.TaskAPI).?;
+    public.api = &api;
 
-    _dd = apidb.getZigApi(module_name, gpu.GpuDDApi).?;
+    try cdb.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
+    try task.loadAPI(module_name);
+
     _shader_system = apidb.getZigApi(module_name, shader_system.ShaderSystemAPI).?;
 
     try apidb.setOrRemoveZigApi(module_name, public.LightSystemApi, &api, load);
@@ -512,6 +510,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_light_system(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_light_system(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

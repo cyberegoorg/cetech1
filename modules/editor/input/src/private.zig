@@ -16,7 +16,7 @@ const module_name = .editor_input;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
@@ -25,15 +25,12 @@ const TAB_NAME = "ct_editor_linput";
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _coreui: *const coreui.CoreUIApi = undefined;
-var _editor: *const editor.EditorAPI = undefined;
-var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
+const apidb = cetech1.apidb;
+
+const tempalloc = cetech1.tempalloc;
 
 const LogEntry = struct {
-    level: cetech1.log.LogAPI.Level,
+    level: cetech1.log.Level,
     scope: [:0]const u8,
     msg: [:0]const u8,
 };
@@ -60,13 +57,13 @@ var input_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
 
     // Return name for menu /Tabs/
     pub fn menuName() ![:0]const u8 {
-        return Icons.FA_GAMEPAD ++ "  " ++ "Input";
+        return coreui.Icons.Gamepad ++ "  " ++ "Input";
     }
 
     // Return tab title
     pub fn title(inst: *editor_tabs.TabO) ![:0]const u8 {
         _ = inst;
-        return Icons.FA_GAMEPAD ++ "  " ++ "Input";
+        return coreui.Icons.Gamepad ++ "  " ++ "Input";
     }
 
     // Create new tab instantce
@@ -92,39 +89,39 @@ var input_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
 
     // Draw tab content
     pub fn ui(inst: *editor_tabs.TabO, kernel_tick: u64, dt: f32) !void {
-        _ = kernel_tick; // autofix
-        _ = dt; // autofix
+        _ = kernel_tick;
+        _ = dt;
         const tab_o: *InputTab = @ptrCast(@alignCast(inst));
         _ = tab_o;
 
-        const allocator = try _tempalloc.create();
-        defer _tempalloc.destroy(allocator);
+        const allocator = try tempalloc.create();
+        defer tempalloc.destroy(allocator);
 
         var label_buff: [128]u8 = undefined;
 
-        if (_coreui.beginTabBar("input_sources", .{})) {
-            defer _coreui.endTabBar();
+        if (coreui.beginTabBar("input_sources", .{})) {
+            defer coreui.endTabBar();
 
-            const impls = try _apidb.getImpl(allocator, input.InputSourceI);
+            const impls = try apidb.getImpl(allocator, input.InputSourceI);
             defer allocator.free(impls);
             for (impls) |iface| {
-                if (_coreui.beginTabItem(iface.name, .{})) {
-                    defer _coreui.endTabItem();
+                if (coreui.beginTabItem(iface.name, .{})) {
+                    defer coreui.endTabItem();
 
-                    if (_coreui.beginTabBar("controllers", .{})) {
-                        defer _coreui.endTabBar();
+                    if (coreui.beginTabBar("controllers", .{})) {
+                        defer coreui.endTabBar();
                         const controlers = try iface.getControllers(allocator);
                         defer allocator.free(controlers);
 
                         for (controlers) |controler_idx| {
-                            _coreui.pushIntId(@truncate(controler_idx));
-                            defer _coreui.popId();
+                            coreui.pushIntId(@truncate(controler_idx));
+                            defer coreui.popId();
 
                             const label = try std.fmt.bufPrintZ(&label_buff, "{d}", .{controler_idx});
-                            if (_coreui.beginTabItem(label, .{})) {
-                                defer _coreui.endTabItem();
+                            if (coreui.beginTabItem(label, .{})) {
+                                defer coreui.endTabItem();
 
-                                if (_coreui.beginTable("source_items", .{
+                                if (coreui.beginTable("source_items", .{
                                     .column = 2,
                                     .flags = .{
                                         //.sizing = .stretch_prop,
@@ -132,19 +129,19 @@ var input_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
                                         .row_bg = true,
                                     },
                                 })) {
-                                    defer _coreui.endTable();
+                                    defer coreui.endTable();
 
                                     for (iface.getItems()) |item| {
-                                        _coreui.tableNextColumn();
-                                        _coreui.text(item.name);
+                                        _ = coreui.tableNextColumn();
+                                        coreui.text(item.name);
 
-                                        _coreui.tableNextColumn();
+                                        _ = coreui.tableNextColumn();
                                         const value = iface.getState(controler_idx, item.id).?;
                                         switch (value) {
-                                            .action => |v| _coreui.text(@tagName(v)),
+                                            .action => |v| coreui.text(@tagName(v)),
                                             .f => |v| {
                                                 const l = try std.fmt.bufPrintZ(&label_buff, "{d}", .{v});
-                                                _coreui.text(l);
+                                                coreui.text(l);
                                             },
                                         }
                                     }
@@ -159,17 +156,16 @@ var input_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
 
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(module_name, coreui.CoreUIApi).?;
-    _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
-    _tempalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _apidb = apidb;
+
+    try cdb.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
+    try editor.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
@@ -184,6 +180,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_input(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_editor_input(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

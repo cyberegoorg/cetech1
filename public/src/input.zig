@@ -1,7 +1,9 @@
 const std = @import("std");
 
 const strid = @import("string.zig");
+const cetech1 = @import("root.zig");
 
+const apidb = cetech1.apidb;
 pub const KEYBOARD_TYPE = strid.strId32("keyboard");
 pub const MOUSE_TYPE = strid.strId32("mouse");
 pub const GAMEPAD_TYPE = strid.strId32("gamepad");
@@ -220,28 +222,43 @@ pub const InputSourceI = struct {
     name: [:0]const u8,
     input_type: strid.StrId32,
 
-    getItems: *const fn () []const InputItem,
-    getControllers: *const fn (allocator: std.mem.Allocator) anyerror![]ControlerId,
+    get_items: *const fn () []const InputItem,
+    get_controllers: *const fn (allocator: std.mem.Allocator) anyerror![]ControlerId,
+    get_state: *const fn (controler_id: ControlerId, item_type: ItemId) ?ItemData,
 
-    getState: *const fn (controler_id: ControlerId, item_type: ItemId) ?ItemData,
+    pub fn getItems(self: *const InputSourceI) []const InputItem {
+        return self.get_items();
+    }
+    pub fn getControllers(self: *const InputSourceI, allocator: std.mem.Allocator) anyerror![]ControlerId {
+        return self.get_controllers(allocator);
+    }
+    pub fn getState(self: *const InputSourceI, controler_id: ControlerId, item_type: ItemId) ?ItemData {
+        return self.get_state(controler_id, item_type);
+    }
 
     pub inline fn implment(name: [:0]const u8, input_type: strid.StrId32, comptime T: type) InputSourceI {
-        if (!std.meta.hasFn(T, "getItems")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "getControllers")) @compileError("implement me");
-        if (!std.meta.hasFn(T, "getState")) @compileError("implement me");
-
         return InputSourceI{
             .name = name,
             .input_type = input_type,
 
-            .getItems = T.getItems,
-            .getControllers = T.getControllers,
+            .get_items = T.getItems,
+            .get_controllers = T.getControllers,
 
-            .getState = T.getState,
+            .get_state = T.getState,
         };
     }
 };
 
+pub fn getSourceByType(allocator: std.mem.Allocator, input_type: strid.StrId32) ?*const InputSourceI {
+    return api.getSourceByType(allocator, input_type);
+}
+
 pub const InputApi = struct {
     getSourceByType: *const fn (allocator: std.mem.Allocator, input_type: strid.StrId32) ?*const InputSourceI,
 };
+
+pub var api: *const InputApi = undefined;
+
+pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+    api = apidb.getZigApi(module, InputApi).?;
+}

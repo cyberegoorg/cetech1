@@ -16,7 +16,7 @@ const module_name = .editor_log;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
@@ -25,14 +25,10 @@ const TAB_NAME = "ct_editor_log";
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _coreui: *const coreui.CoreUIApi = undefined;
-var _editor: *const editor.EditorAPI = undefined;
+const apidb = cetech1.apidb;
 
 const LogEntry = struct {
-    level: cetech1.log.LogAPI.Level,
+    level: cetech1.log.Level,
     scope: [:0]const u8,
     msg: [:0]const u8,
 };
@@ -63,7 +59,7 @@ const LogTab = struct {
         debug: bool = true,
         info: bool = true,
 
-        pub fn pass(enabled_levels: @This(), level: cetech1.log.LogAPI.Level) bool {
+        pub fn pass(enabled_levels: @This(), level: cetech1.log.Level) bool {
             return switch (level) {
                 .Err => enabled_levels.err,
                 .Warn => enabled_levels.warn,
@@ -75,24 +71,24 @@ const LogTab = struct {
     } = .{},
 };
 
-pub fn levelIcon(level: cetech1.log.LogAPI.Level) [:0]const u8 {
+pub fn levelIcon(level: cetech1.log.Level) [:0]const u8 {
     return switch (level) {
-        .Err => Icons.FA_RADIATION,
-        .Warn => Icons.FA_TRIANGLE_EXCLAMATION,
-        .Info => Icons.FA_CIRCLE_INFO,
-        .Debug => Icons.FA_BUG,
+        .Err => coreui.Icons.Error,
+        .Warn => coreui.Icons.Warning,
+        .Info => coreui.Icons.Info,
+        .Debug => coreui.Icons.Debug,
         else => "SHIT",
     };
 }
 
-pub fn levelColor(level: cetech1.log.LogAPI.Level) math.Color4f {
-    if (!_editor.isColorsEnabled()) return _coreui.getStyle().getColor(.text);
+pub fn levelColor(level: cetech1.log.Level) math.Color4f {
+    if (editor.isColorsEnabled()) return coreui.getStyle().getColor(.text);
     const one = 0.80;
     return switch (level) {
         .Err => .{ .r = one, .a = 1.0 },
         .Warn => .{ .r = one, .g = one, .a = 1.0 },
         .Debug => .{ .g = one, .a = 1.0 },
-        else => _coreui.getStyle().getColor(.text),
+        else => coreui.getStyle().getColor(.text),
     };
 }
 
@@ -106,13 +102,13 @@ var log_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
 
     // Return name for menu /Tabs/
     pub fn menuName() ![:0]const u8 {
-        return Icons.FA_SCROLL ++ "  " ++ "Log";
+        return coreui.Icons.Logs ++ "  " ++ "Log";
     }
 
     // Return tab title
     pub fn title(inst: *editor_tabs.TabO) ![:0]const u8 {
         _ = inst;
-        return Icons.FA_SCROLL ++ "  " ++ " Log";
+        return coreui.Icons.Logs ++ "  " ++ " Log";
     }
 
     // Create new tab instantce
@@ -138,51 +134,51 @@ var log_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
 
     // Draw tab content
     pub fn ui(inst: *editor_tabs.TabO, kernel_tick: u64, dt: f32) !void {
-        _ = kernel_tick; // autofix
-        _ = dt; // autofix
+        _ = kernel_tick;
+        _ = dt;
         const tab_o: *LogTab = @ptrCast(@alignCast(inst));
         var scrollBotom = false;
 
-        _ = _coreui.checkbox("###Autoscroll", .{ .v = &tab_o.autoscroll });
+        _ = coreui.checkbox("###Autoscroll", .{ .v = &tab_o.autoscroll });
 
-        _coreui.sameLine(.{});
-        if (_coreui.button(Icons.FA_ANGLES_DOWN ++ "###ScrollBotom", .{})) {
+        coreui.sameLine(.{});
+        if (coreui.button(coreui.Icons.ScrollDown ++ "###ScrollBotom", .{})) {
             scrollBotom = true;
         }
 
         {
-            _coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.Err) });
-            defer _coreui.popStyleColor(.{ .count = 1 });
+            coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.Err) });
+            defer coreui.popStyleColor(.{ .count = 1 });
 
-            _coreui.sameLine(.{});
-            if (_coreui.toggleButton(levelIcon(.Err), &tab_o.enabled_levels.err)) {}
+            coreui.sameLine(.{});
+            if (coreui.toggleButton(levelIcon(.Err), &tab_o.enabled_levels.err)) {}
         }
         {
-            _coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.Debug) });
-            defer _coreui.popStyleColor(.{ .count = 1 });
+            coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.Debug) });
+            defer coreui.popStyleColor(.{ .count = 1 });
 
-            _coreui.sameLine(.{});
-            if (_coreui.toggleButton(levelIcon(.Debug), &tab_o.enabled_levels.debug)) {}
+            coreui.sameLine(.{});
+            if (coreui.toggleButton(levelIcon(.Debug), &tab_o.enabled_levels.debug)) {}
         }
         {
-            _coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.Warn) });
-            defer _coreui.popStyleColor(.{ .count = 1 });
+            coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.Warn) });
+            defer coreui.popStyleColor(.{ .count = 1 });
 
-            _coreui.sameLine(.{});
-            if (_coreui.toggleButton(levelIcon(.Warn), &tab_o.enabled_levels.warn)) {}
+            coreui.sameLine(.{});
+            if (coreui.toggleButton(levelIcon(.Warn), &tab_o.enabled_levels.warn)) {}
         }
         {
-            _coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.Info) });
-            defer _coreui.popStyleColor(.{ .count = 1 });
+            coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.Info) });
+            defer coreui.popStyleColor(.{ .count = 1 });
 
-            _coreui.sameLine(.{});
-            if (_coreui.toggleButton(levelIcon(.Info), &tab_o.enabled_levels.info)) {}
+            coreui.sameLine(.{});
+            if (coreui.toggleButton(levelIcon(.Info), &tab_o.enabled_levels.info)) {}
         }
 
-        _coreui.sameLine(.{});
-        tab_o.filter = _coreui.uiFilter(&tab_o.filter_buff, tab_o.filter);
+        coreui.sameLine(.{});
+        tab_o.filter = coreui.uiFilter(&tab_o.filter_buff, tab_o.filter);
 
-        if (_coreui.beginTable("###LogTable", .{
+        if (coreui.beginTable("###LogTable", .{
             .column = 3,
             .flags = .{
                 .no_saved_settings = true,
@@ -192,8 +188,8 @@ var log_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
                 .resizable = true,
             },
         })) {
-            defer _coreui.endTable();
-            //_coreui.tableSetupScrollFreeze(2, 0);
+            defer coreui.endTable();
+            //coreui.tableSetupScrollFreeze(2, 0);
 
             if (_g.log_buffer) |buffer| {
                 _g.log_buffer_lock.lock();
@@ -203,24 +199,24 @@ var log_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
                     if (!tab_o.enabled_levels.pass(entry.level)) continue;
 
                     if (tab_o.filter) |f| {
-                        if (null == _coreui.uiFilterPass(_allocator, f, entry.scope, false) and null == _coreui.uiFilterPass(_allocator, f, entry.msg, false)) continue;
+                        if (null == coreui.uiFilterPass(_allocator, f, entry.scope, false) and null == coreui.uiFilterPass(_allocator, f, entry.msg, false)) continue;
                     }
 
-                    _coreui.tableNextColumn();
-                    _coreui.textColored(levelColor(entry.level), levelIcon(entry.level));
+                    _ = coreui.tableNextColumn();
+                    coreui.textColored(levelColor(entry.level), levelIcon(entry.level));
 
-                    _coreui.tableNextColumn();
-                    _coreui.text(entry.scope);
+                    _ = coreui.tableNextColumn();
+                    coreui.text(entry.scope);
 
-                    _coreui.tableNextColumn();
-                    _coreui.text(entry.msg);
+                    _ = coreui.tableNextColumn();
+                    coreui.text(entry.msg);
                 }
             }
 
-            const scroll_y = _coreui.getScrollY();
-            const max_scroll_y = _coreui.getScrollMaxY();
+            const scroll_y = coreui.getScrollY();
+            const max_scroll_y = coreui.getScrollMaxY();
             if (scrollBotom or (tab_o.autoscroll and scroll_y >= max_scroll_y)) {
-                _coreui.setScrollHereY(.{ .center_y_ratio = 1.0 });
+                coreui.setScrollHereY(.{ .center_y_ratio = 1.0 });
             }
         }
     }
@@ -228,12 +224,12 @@ var log_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
     // Draw tab menu
     // pub fn menu(inst: *editor_tabs.TabO) !void {
     //     const tab_o: *LogTab = @alignCast(@ptrCast(inst));
-    //     _ = tab_o; // autofix
+    //     _ = tab_o;
     // }
 });
 
 var handler = cetech1.log.LogHandlerI.implement(struct {
-    pub fn logFn(level: cetech1.log.LogAPI.Level, scope: [:0]const u8, log_msg: [:0]const u8) !void {
+    pub fn logFn(level: cetech1.log.Level, scope: [:0]const u8, log_msg: [:0]const u8) !void {
         _g.log_buffer_lock.lock();
         defer _g.log_buffer_lock.unlock();
 
@@ -244,15 +240,14 @@ var handler = cetech1.log.LogHandlerI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
 
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(module_name, coreui.CoreUIApi).?;
-    _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
-    _apidb = apidb;
+
+    try cdb.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
+    try editor.loadAPI(module_name);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
@@ -282,6 +277,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_log(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_editor_log(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

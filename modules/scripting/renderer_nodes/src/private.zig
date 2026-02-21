@@ -2,54 +2,42 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 const math = cetech1.math;
-
 const gpu = cetech1.gpu;
 const dag = cetech1.dag;
 const coreui = cetech1.coreui;
-
-const public = @import("renderer_nodes.zig");
+const kernel = cetech1.kernel;
+const metrics = cetech1.metrics;
 
 const graphvm = @import("graphvm");
-
 const shader_system = @import("shader_system");
-
 const render_viewport = @import("render_viewport");
 const vertex_system = @import("vertex_system");
 const visibility_flags = @import("visibility_flags");
+
+const public = @import("renderer_nodes.zig");
 
 const module_name = .renderer_nodes;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
+const apidb = cetech1.apidb;
 
-var _ecs: *const ecs.EcsAPI = undefined;
+const tempalloc = cetech1.tempalloc;
 
-var _dd: *const gpu.GpuDDApi = undefined;
-var _metrics: *const cetech1.metrics.MetricsAPI = undefined;
-var _task: *const cetech1.task.TaskAPI = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
+const task = cetech1.task;
+const profiler = cetech1.profiler;
 
-var _shader: *const shader_system.ShaderSystemAPI = undefined;
 var _viewport: *const render_viewport.RenderViewportApi = undefined;
-var _vertex_system: *const vertex_system.VertexSystemApi = undefined;
-var _visibility_flags: *const visibility_flags.VisibilityFlagsApi = undefined;
 
 // Global state
 const G = struct {
@@ -80,7 +68,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
     &[_]cetech1.StrId64{.fromStr("VertexSystem")},
     struct {
         pub fn init() !void {
-            const gpu_backend = _kernel.getGpuBackend().?;
+            const gpu_backend = kernel.getGpuBackend().?;
 
             _vertex_pos_layout = PosVertex.layoutInit(gpu_backend);
             _vertex_col_layout = ColorVertex.layoutInit(gpu_backend);
@@ -117,7 +105,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             _g.cube_vb.channels[vertex_system.VertexChannelsNames.Normal0].offset = @offsetOf(ColorNormalVertex, "x");
             _g.cube_vb.channels[vertex_system.VertexChannelsNames.Normal0].stride = @sizeOf(ColorNormalVertex);
 
-            _g.cube_geometry = try _vertex_system.createVertexSystemFromVertexBuffer(_allocator, _g.cube_vb);
+            _g.cube_geometry = try vertex_system.createVertexSystemFromVertexBuffer(_allocator, _g.cube_vb);
 
             _g.cube_ib = gpu_backend.createIndexBuffer(
                 // gpu_backend.makeRef(&cube_tri_strip, cube_tri_strip.len * @sizeOf(u16)),
@@ -150,7 +138,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
             _g.bunny_vb.channels[vertex_system.VertexChannelsNames.Color0].buffer = .{ .vb = _g.bunny_col_vb };
             _g.bunny_vb.channels[vertex_system.VertexChannelsNames.Color0].stride = @sizeOf(ColorVertex);
 
-            _g.bunny_geometry = try _vertex_system.createVertexSystemFromVertexBuffer(_allocator, _g.bunny_vb);
+            _g.bunny_geometry = try vertex_system.createVertexSystemFromVertexBuffer(_allocator, _g.bunny_vb);
 
             _g.bunny_ib = gpu_backend.createIndexBuffer(
                 gpu_backend.makeRef(&bunny_tri_list, bunny_tri_list.len * @sizeOf(u16)),
@@ -166,14 +154,14 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                 .{ .compute_access = .read },
             );
 
-            _g.plane_vb.num_vertices = bunny_position.len;
+            _g.plane_vb.num_vertices = plan_positions.len;
             _g.plane_vb.num_sets = 1;
 
             _g.plane_vb.active_channels.set(vertex_system.VertexChannelsNames.Position);
             _g.plane_vb.channels[vertex_system.VertexChannelsNames.Position].buffer = .{ .vb = _g.plane_pos_vb };
             _g.plane_vb.channels[vertex_system.VertexChannelsNames.Position].stride = @sizeOf(PosVertex);
 
-            _g.plane_geometry = try _vertex_system.createVertexSystemFromVertexBuffer(_allocator, _g.plane_vb);
+            _g.plane_geometry = try vertex_system.createVertexSystemFromVertexBuffer(_allocator, _g.plane_vb);
 
             _g.plane_ib = gpu_backend.createIndexBuffer(
                 gpu_backend.makeRef(&plane_tri_list, plane_tri_list.len * @sizeOf(u16)),
@@ -182,23 +170,30 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
         }
 
         pub fn shutdown() !void {
-            const gpu_backend = _kernel.getGpuBackend().?;
+            const gpu_backend = kernel.getGpuBackend().?;
 
             gpu_backend.destroyIndexBuffer(_g.cube_ib);
             gpu_backend.destroyVertexBuffer(_g.cube_pos_vb);
             gpu_backend.destroyVertexBuffer(_g.cube_col_vb);
 
-            const cube_io = _shader.getSystemIO(_g.cube_geometry.system);
-            if (_g.cube_geometry.uniforms) |u| _shader.destroyUniformBuffer(cube_io, u);
-            if (_g.cube_geometry.resources) |r| _shader.destroyResourceBuffer(cube_io, r);
-
-            const bunny_io = _shader.getSystemIO(_g.bunny_geometry.system);
-            if (_g.bunny_geometry.uniforms) |u| _shader.destroyUniformBuffer(bunny_io, u);
-            if (_g.bunny_geometry.resources) |r| _shader.destroyResourceBuffer(bunny_io, r);
+            const cube_io = shader_system.getSystemIO(_g.cube_geometry.system);
+            if (_g.cube_geometry.uniforms) |u| shader_system.destroyUniformBuffer(cube_io, u);
+            if (_g.cube_geometry.resources) |r| shader_system.destroyResourceBuffer(cube_io, r);
 
             gpu_backend.destroyVertexBuffer(_g.bunny_pos_vb);
             gpu_backend.destroyVertexBuffer(_g.bunny_col_vb);
             gpu_backend.destroyIndexBuffer(_g.bunny_ib);
+
+            const bunny_io = shader_system.getSystemIO(_g.bunny_geometry.system);
+            if (_g.bunny_geometry.uniforms) |u| shader_system.destroyUniformBuffer(bunny_io, u);
+            if (_g.bunny_geometry.resources) |r| shader_system.destroyResourceBuffer(bunny_io, r);
+
+            gpu_backend.destroyVertexBuffer(_g.plane_pos_vb);
+            gpu_backend.destroyIndexBuffer(_g.plane_ib);
+
+            const plane_io = shader_system.getSystemIO(_g.plane_geometry.system);
+            if (_g.plane_geometry.uniforms) |u| shader_system.destroyUniformBuffer(plane_io, u);
+            if (_g.plane_geometry.resources) |r| shader_system.destroyResourceBuffer(plane_io, r);
         }
     },
 );
@@ -212,8 +207,8 @@ const gpu_geometry_value_type_i = graphvm.GraphValueTypeI.implement(
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            _ = allocator; // autofix
-            _ = obj; // autofix
+            _ = allocator;
+            _ = obj;
             const v: vertex_system.GPUGeometry = .{};
 
             @memcpy(value, std.mem.asBytes(&v));
@@ -238,8 +233,8 @@ const gpu_index_buffer_value_type_i = graphvm.GraphValueTypeI.implement(
     },
     struct {
         pub fn valueFromCdb(allocator: std.mem.Allocator, obj: cdb.ObjId, value: []u8) !void {
-            _ = allocator; // autofix
-            const v = public.GPUIndexBufferCdb.readValue(u32, _cdb, _cdb.readObj(obj).?, .Handle);
+            _ = allocator;
+            const v = public.GPUIndexBufferCdb.readValue(u32, cdb.readObj(obj).?, .Handle);
             @memcpy(value, std.mem.asBytes(&v));
         }
 
@@ -267,9 +262,9 @@ const culling_volume_node_i = graphvm.NodeI.implement(
         const Self = @This();
 
         pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
+            _ = self;
+            _ = node_obj;
+            _ = graph_obj;
             return .{
                 .in = try allocator.dupe(graphvm.NodePin, &.{
                     graphvm.NodePin.init("Radius", graphvm.NodePin.pinHash("radius", false), graphvm.PinTypes.F32, null),
@@ -281,17 +276,17 @@ const culling_volume_node_i = graphvm.NodeI.implement(
         }
 
         pub fn create(self: *const graphvm.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {
-            _ = self; // autofix
-            _ = transpile_state; // autofix
-            _ = reload; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = transpile_state;
+            _ = reload;
+            _ = allocator;
+            _ = node_obj;
             const real_state: *public.CullingVolume = @ptrCast(@alignCast(state));
             real_state.* = .{};
         }
 
         pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = self; // autofix
+            _ = self;
             _ = out_pins;
             var state = args.getState(public.CullingVolume).?;
             _, const radius = in_pins.read(f32, 0) orelse .{ 0, 0 };
@@ -309,9 +304,9 @@ const culling_volume_node_i = graphvm.NodeI.implement(
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
             return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Bounding});
         }
@@ -331,14 +326,14 @@ const draw_call_node_i = graphvm.NodeI.implement(
         const Self = @This();
 
         pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
+            _ = self;
+            _ = node_obj;
+            _ = graph_obj;
             return .{
                 .in = try allocator.dupe(graphvm.NodePin, &.{
-                    graphvm.NodePin.init("GPU shader", graphvm.NodePin.pinHash("gpu_shader", false), shader_system.PinTypes.GPU_SHADER, null),
-                    graphvm.NodePin.init("GPU geometry", graphvm.NodePin.pinHash("gpu_geometry", false), public.PinTypes.GPU_GEOMETRY, null),
-                    graphvm.NodePin.init("GPU index buffer", graphvm.NodePin.pinHash("gpu_index_buffer", false), public.PinTypes.GPU_INDEX_BUFFER, null),
+                    graphvm.NodePin.init("Shader", graphvm.NodePin.pinHash("gpu_shader", false), shader_system.PinTypes.GPU_SHADER, null),
+                    graphvm.NodePin.init("Geometry", graphvm.NodePin.pinHash("gpu_geometry", false), public.PinTypes.GPU_GEOMETRY, null),
+                    graphvm.NodePin.init("Index buffer", graphvm.NodePin.pinHash("gpu_index_buffer", false), public.PinTypes.GPU_INDEX_BUFFER, null),
                     graphvm.NodePin.init("Vertex count", graphvm.NodePin.pinHash("vertex_count", false), graphvm.PinTypes.U32, null),
                     graphvm.NodePin.init("Index count", graphvm.NodePin.pinHash("index_count", false), graphvm.PinTypes.U32, null),
                 }),
@@ -347,21 +342,21 @@ const draw_call_node_i = graphvm.NodeI.implement(
         }
 
         pub fn create(self: *const graphvm.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool, transpile_state: ?[]u8) !void {
-            _ = self; // autofix
-            _ = transpile_state; // autofix
-            _ = reload; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = transpile_state;
+            _ = reload;
+            _ = allocator;
+            _ = node_obj;
             const real_state: *public.DrawCall = @ptrCast(@alignCast(state));
 
             real_state.* = .{
                 .shader = .{},
-                .visibility_mask = _visibility_flags.createFlags(&.{}).?,
+                .visibility_mask = visibility_flags.createFlags(&.{}).?,
             };
         }
 
         pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = self; // autofix
+            _ = self;
             _ = out_pins;
             var state = args.getState(public.DrawCall).?;
 
@@ -371,23 +366,23 @@ const draw_call_node_i = graphvm.NodeI.implement(
             _, const vertex_count = in_pins.read(u32, 3) orelse .{ 0, 0 };
             _, const index_count = in_pins.read(u32, 4) orelse .{ 0, 0 };
 
-            const settings_r = public.DrawCallNodeSettingsCdb.read(_cdb, args.settings.?).?;
-            const flags_obj = public.DrawCallNodeSettingsCdb.readSubObj(_cdb, settings_r, .VisibilityFlags).?;
-            const flags_obj_r = visibility_flags.VisibilityFlagsCdb.read(_cdb, flags_obj).?;
+            const settings_r = public.DrawCallNodeSettingsCdb.read(args.settings.?).?;
+            const flags_obj = public.DrawCallNodeSettingsCdb.readSubObj(settings_r, .VisibilityFlags).?;
+            const flags_obj_r = visibility_flags.VisibilityFlagsCdb.read(flags_obj).?;
 
-            if (try visibility_flags.VisibilityFlagsCdb.readSubObjSet(_cdb, flags_obj_r, .Flags, args.allocator)) |flags| {
+            if (try visibility_flags.VisibilityFlagsCdb.readSubObjSet(flags_obj_r, .Flags, args.allocator)) |flags| {
                 defer args.allocator.free(flags);
 
                 var uuids = try cetech1.ArrayList(u32).initCapacity(args.allocator, visibility_flags.MAX_FLAGS);
                 defer uuids.deinit(args.allocator);
 
                 for (flags) |flag_obj| {
-                    const flag_r = visibility_flags.VisibilityFlagCdb.read(_cdb, flag_obj).?;
-                    const uuid = visibility_flags.VisibilityFlagCdb.readValue(u32, _cdb, flag_r, .UUID);
+                    const flag_r = visibility_flags.VisibilityFlagCdb.read(flag_obj).?;
+                    const uuid = visibility_flags.VisibilityFlagCdb.readValue(u32, flag_r, .UUID);
                     uuids.appendAssumeCapacity(uuid);
                 }
 
-                state.visibility_mask = _visibility_flags.createFlagsFromUuids(uuids.items).?;
+                state.visibility_mask = visibility_flags.createFlagsFromUuids(uuids.items).?;
             }
 
             state.shader = shader.shader;
@@ -408,9 +403,9 @@ const draw_call_node_i = graphvm.NodeI.implement(
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
             return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Draw});
         }
@@ -430,14 +425,14 @@ const simple_mesh_node_i = graphvm.NodeI.implement(
         const Self = @This();
 
         pub fn getPinsDef(self: *const graphvm.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !graphvm.NodePinDef {
-            _ = self; // autofix
-            _ = node_obj; // autofix
-            _ = graph_obj; // autofix
+            _ = self;
+            _ = node_obj;
+            _ = graph_obj;
             return .{
                 .in = try allocator.dupe(graphvm.NodePin, &.{}),
                 .out = try allocator.dupe(graphvm.NodePin, &.{
-                    graphvm.NodePin.init("GPU geometry", graphvm.NodePin.pinHash("gpu_geometry", true), public.PinTypes.GPU_GEOMETRY, null),
-                    graphvm.NodePin.init("GPU index buffer", graphvm.NodePin.pinHash("gpu_index_buffer", true), public.PinTypes.GPU_INDEX_BUFFER, null),
+                    graphvm.NodePin.init("Geometry", graphvm.NodePin.pinHash("gpu_geometry", true), public.PinTypes.GPU_GEOMETRY, null),
+                    graphvm.NodePin.init("Index buffer", graphvm.NodePin.pinHash("gpu_index_buffer", true), public.PinTypes.GPU_INDEX_BUFFER, null),
                     graphvm.NodePin.init("Vertex count", graphvm.NodePin.pinHash("vertex_count", true), graphvm.PinTypes.U32, null),
                     graphvm.NodePin.init("Index count", graphvm.NodePin.pinHash("index_count", true), graphvm.PinTypes.U32, null),
                 }),
@@ -445,22 +440,20 @@ const simple_mesh_node_i = graphvm.NodeI.implement(
         }
 
         pub fn create(self: *const graphvm.NodeI, allocator: std.mem.Allocator, state: *anyopaque, node_obj: cdb.ObjId, reload: bool) !void {
-            _ = self; // autofix
-            _ = state; // autofix
-            _ = reload; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = state;
+            _ = reload;
+            _ = allocator;
+            _ = node_obj;
         }
 
         pub fn execute(self: *const graphvm.NodeI, args: graphvm.ExecuteArgs, in_pins: graphvm.InPins, out_pins: *graphvm.OutPins) !void {
-            _ = self; // autofix
-            _ = in_pins; // autofix
+            _ = self;
+            _ = in_pins;
 
-            const settings_r = public.SimpleMeshNodeSettingsCdb.read(_cdb, args.settings.?).?;
+            const settings_r = public.SimpleMeshNodeSettingsCdb.read(args.settings.?).?;
 
-            const type_str = public.SimpleMeshNodeSettingsCdb.readStr(_cdb, settings_r, .Type) orelse "";
-            const type_enum = std.meta.stringToEnum(public.SimpleMeshNodeType, type_str) orelse .Cube;
-
+            const type_enum = public.SimpleMeshNodeSettingsCdb.readStrEnum(public.SimpleMeshNodeType, settings_r, .Type, .Cube);
             switch (type_enum) {
                 .Cube => {
                     try out_pins.writeTyped(vertex_system.GPUGeometry, 0, try gpu_geometry_value_type_i.calcValidityHash(&std.mem.toBytes(_g.cube_geometry)), _g.cube_geometry);
@@ -491,11 +484,11 @@ const simple_mesh_node_i = graphvm.NodeI.implement(
             allocator: std.mem.Allocator,
             node_obj: cdb.ObjId,
         ) ![:0]u8 {
-            _ = self; // autofix
-            _ = allocator; // autofix
-            _ = node_obj; // autofix
+            _ = self;
+            _ = allocator;
+            _ = node_obj;
 
-            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.CoreIcons.FA_POO});
+            return std.fmt.bufPrintZ(buff, "{s}", .{cetech1.coreui.Icons.Poo});
         }
     },
 );
@@ -605,7 +598,7 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
     pub fn createTypes(db: cdb.DbId) !void {
         // GPUGeometryCdb
         {
-            const type_idx = try _cdb.addType(
+            const type_idx = try cdb.addType(
                 db,
                 public.GPUGeometryCdb.name,
                 &[_]cdb.PropDef{
@@ -631,12 +624,12 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
                     // },
                 },
             );
-            _ = type_idx; // autofix
+            _ = type_idx;
         }
 
         // GPUIndexBufferCdb
         {
-            const type_idx = try _cdb.addType(
+            const type_idx = try cdb.addType(
                 db,
                 public.GPUIndexBufferCdb.name,
                 &[_]cdb.PropDef{
@@ -647,12 +640,12 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
                     },
                 },
             );
-            _ = type_idx; // autofix
+            _ = type_idx;
         }
 
         // ConstNodeSettings
         {
-            const type_idx = try _cdb.addType(
+            const type_idx = try cdb.addType(
                 db,
                 public.SimpleMeshNodeSettingsCdb.name,
                 &[_]cdb.PropDef{
@@ -663,12 +656,12 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
                     },
                 },
             );
-            _ = type_idx; // autofix
+            _ = type_idx;
         }
 
         // DrawCallNodeSettings
         {
-            draw_call_setttings_type_idx = try _cdb.addType(
+            draw_call_setttings_type_idx = try cdb.addType(
                 db,
                 public.DrawCallNodeSettingsCdb.name,
                 &[_]cdb.PropDef{
@@ -687,48 +680,44 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
     pub fn postCreateTypes(db: cdb.DbId) !void {
         // _ = db;
-        const default_settings = try _cdb.createObject(db, draw_call_setttings_type_idx);
-        const default_flags = try _cdb.createObject(db, _cdb.getTypeIdx(db, visibility_flags.VisibilityFlagsCdb.type_hash).?);
+        const default_settings = try cdb.createObject(db, draw_call_setttings_type_idx);
+        const default_flags = try cdb.createObject(db, cdb.getTypeIdx(db, visibility_flags.VisibilityFlagsCdb.type_hash).?);
 
-        const default_settings_w = _cdb.writeObj(default_settings).?;
-        const default_flags_w = _cdb.writeObj(default_flags).?;
+        const default_settings_w = cdb.writeObj(default_settings).?;
+        const default_flags_w = cdb.writeObj(default_flags).?;
 
-        try public.DrawCallNodeSettingsCdb.setSubObj(_cdb, default_settings_w, .VisibilityFlags, default_flags_w);
+        try public.DrawCallNodeSettingsCdb.setSubObj(default_settings_w, .VisibilityFlags, default_flags_w);
 
-        try _cdb.writeCommit(default_flags_w);
-        try _cdb.writeCommit(default_settings_w);
+        try cdb.writeCommit(default_flags_w);
+        try cdb.writeCommit(default_settings_w);
 
-        _cdb.setDefaultObject(default_settings);
+        cdb.setDefaultObject(default_settings);
     }
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _apidb = apidb;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
 
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
+    try cdb.loadAPI(module_name);
 
-    _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
+    try kernel.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+    try ecs.loadAPI(module_name);
+    try metrics.loadAPI(module_name);
+    try task.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
 
-    _dd = apidb.getZigApi(module_name, gpu.GpuDDApi).?;
-    _metrics = apidb.getZigApi(module_name, cetech1.metrics.MetricsAPI).?;
-    _task = apidb.getZigApi(module_name, cetech1.task.TaskAPI).?;
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
-    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
-
-    _shader = apidb.getZigApi(module_name, shader_system.ShaderSystemAPI).?;
+    try shader_system.loadAPI(module_name);
     _viewport = apidb.getZigApi(module_name, render_viewport.RenderViewportApi).?;
-    _vertex_system = apidb.getZigApi(module_name, vertex_system.VertexSystemApi).?;
-    _visibility_flags = apidb.getZigApi(module_name, visibility_flags.VisibilityFlagsApi).?;
+    try vertex_system.loadAPI(module_name);
+    try visibility_flags.loadAPI(module_name);
 
     // create global variable that can survive reload
-    _g = try _apidb.setGlobalVar(G, module_name, "_g", .{});
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
 
     // impl interface
     try apidb.implOrRemove(module_name, cetech1.cdb.CreateTypesI, &create_cdb_types_i, load);
@@ -748,8 +737,8 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_renderer_nodes(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_renderer_nodes(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }
 
 //

@@ -8,22 +8,22 @@
       "__type_name": "ct_graph_node",
       "__uuid": "01905fbf-0e6c-7e5c-bb0b-7c7de16bbd53",
       "node_type": "graph_inputs",
-      "pos_x": 1.42e2,
-      "pos_y": 7.8e1
+      "pos_x": 142,
+      "pos_y": 78
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "01905fbf-0e6c-7f11-b16a-4d7e411d5c63",
       "node_type": "graph_outputs",
-      "pos_x": 8.46e2,
-      "pos_y": 6.2e1
+      "pos_x": 846,
+      "pos_y": 62
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "019140ac-154e-7ae0-8daf-3efbacb04ffc",
       "node_type": "random_f32",
-      "pos_x": 6.1e2,
-      "pos_y": 3e1
+      "pos_x": 610,
+      "pos_y": 30
     },
     {
       "__type_name": "ct_graph_node",
@@ -35,11 +35,11 @@
         "value": {
           "__type_name": "ct_f32",
           "__uuid": "019140ab-e6ab-7e87-be2b-30b41c405b23",
-          "value": 4e0
+          "value": 4
         }
       },
-      "pos_x": 3.86e2,
-      "pos_y": -2e0
+      "pos_x": 386,
+      "pos_y": -2
     },
     {
       "__type_name": "ct_graph_node",
@@ -51,11 +51,11 @@
         "value": {
           "__type_name": "ct_f32",
           "__uuid": "019140ac-00b9-7e7e-86ac-e46d3a95d5ef",
-          "value": 1.8e1
+          "value": 18
         }
       },
-      "pos_x": 3.86e2,
-      "pos_y": 1.26e2
+      "pos_x": 386,
+      "pos_y": 126
     }
   ],
   "connections": [

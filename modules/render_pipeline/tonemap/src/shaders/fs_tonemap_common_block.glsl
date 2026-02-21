@@ -9,7 +9,7 @@ struct ct_tonemap_params {
 };
 
 ct_tonemap_params load_tonemap_params() {
-    ct_tonemap_params params = (ct_tonemap_params)0;
+    ct_tonemap_params params; // = (ct_tonemap_params)(0);
     
     params.tonemap_type = floatBitsToUint(load_params().x);
     params.bloom_enabled = bool(floatBitsToUint(load_params().y));
@@ -56,8 +56,8 @@ ARRAY_END();
 vec3 tonemap_display_range(in vec3 x) {
     // The 5th color in the array (cyan) represents middle gray (18%)
     // Every stop above or below middle gray causes a color shift
-    float v = log2(luma(x) / 0.18);
+    vec3 v = log2(luma(x) / 0.18);
     v = clamp(v + 5.0, 0.0, 15.0);
-    int index = int(floor(v));
+    int index = int(floor(v).x);
     return mix(debugColors[index], debugColors[min(15, index + 1)], fract(v));
 }

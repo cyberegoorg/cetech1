@@ -9,7 +9,9 @@ const math = cetech1.math;
 
 const render_viewport = @import("render_viewport");
 const gpu = cetech1.gpu;
+const gpu_dd = cetech1.gpu_dd;
 const coreui = cetech1.coreui;
+const apidb = cetech1.apidb;
 
 const public = @import("tonemap.zig");
 const editor_inspector = @import("editor_inspector");
@@ -23,26 +25,16 @@ const module_name = .tonemap;
 
 // Need for logging from std.
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 // Log for module
 const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tmpalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _profiler: *const cetech1.profiler.ProfilerAPI = undefined;
-var _ecs: *const ecs.EcsAPI = undefined;
-var _gpu: *const cetech1.gpu.GpuBackendApi = undefined;
-var _dd: *const cetech1.gpu.GpuDDApi = undefined;
 
-var _render_graph: *const render_graph.RenderGraphApi = undefined;
-var _shader: *const shader_system.ShaderSystemAPI = undefined;
-var _inspector: *const editor_inspector.InspectorAPI = undefined;
+const tempalloc = cetech1.tempalloc;
+const profiler = cetech1.profiler;
 
 // Global state that can surive hot-reload
 const G = struct {};
@@ -61,7 +53,7 @@ const tonemap_c = ecs.ComponentI.implement(
     struct {
         pub fn createManager(world: ecs.World) !*anyopaque {
             _ = world;
-            var tonemap_module = try _render_graph.createModule();
+            var tonemap_module = try render_graph.createModule();
 
             const manager = try _allocator.create(TonemapComponentManager);
             manager.* = .{
@@ -78,7 +70,7 @@ const tonemap_c = ecs.ComponentI.implement(
                             const mm: *const TonemapComponentManager = @ptrCast(@alignCast(data));
 
                             if (mm.component) |tonemap_component| {
-                                if (_coreui.comboFromEnum("", &tonemap_component.type)) {}
+                                if (coreui.comboFromEnum("", &tonemap_component.type)) {}
                             }
                         }
                     },
@@ -104,7 +96,7 @@ const tonemap_c = ecs.ComponentI.implement(
 
             const m: *TonemapComponentManager = @ptrCast(@alignCast(manager));
 
-            _render_graph.destroyModule(m.tonemap_module);
+            render_graph.destroyModule(m.tonemap_module);
 
             _allocator.destroy(m);
         }
@@ -131,8 +123,8 @@ const dd_pass = render_graph.PassApi.implement(struct {
         if (gpu_backend.getEncoder()) |e| {
             defer gpu_backend.endEncoder(e);
 
-            const dd = _dd.encoderCreate();
-            defer _dd.encoderDestroy(dd);
+            const dd = gpu_dd.encoderCreate();
+            defer gpu_dd.encoderDestroy(dd);
             {
                 dd.begin(viewid, true, e);
                 defer dd.end();
@@ -144,93 +136,96 @@ const dd_pass = render_graph.PassApi.implement(struct {
     }
 });
 
-const tonemap_shaderable = render_viewport.ShaderableComponentI.implement(public.TonemapComponent, struct {
-    pub fn injectGraphModule(allocator: std.mem.Allocator, manager: ?*anyopaque, module: render_graph.Module) !void {
-        _ = allocator;
+const tonemap_shaderable = render_viewport.ShaderableComponentI.implement(
+    public.TonemapComponent,
+    struct {
+        pub fn injectGraphModule(allocator: std.mem.Allocator, manager: ?*anyopaque, module: render_graph.Module) !void {
+            _ = allocator;
 
-        const m: *TonemapComponentManager = @ptrCast(@alignCast(manager));
+            const m: *TonemapComponentManager = @ptrCast(@alignCast(manager));
 
-        try module.addToExtensionPoint(render_pipeline.extensions.postprocess, m.tonemap_module);
-    }
-
-    pub fn fillBoundingVolumes(
-        allocator: std.mem.Allocator,
-        entites_idx: ?[]const usize,
-        transforms: []const transform.WorldTransformComponent,
-        data: []*anyopaque,
-        volume_type: render_viewport.BoundingVolumeType,
-        volumes: []u8,
-    ) !void {
-        _ = allocator;
-        _ = entites_idx;
-        _ = transforms;
-
-        switch (volume_type) {
-            .sphere => {
-                var sphere_out_volumes = std.mem.bytesAsSlice(render_viewport.SphereBoudingVolume, volumes);
-
-                for (data, 0..) |_, idx| {
-                    var dc_visibility_flags = visibility_flags.VisibilityFlags.initEmpty();
-                    dc_visibility_flags.set(0); // TODO:
-
-                    sphere_out_volumes[idx] = .{
-                        .skip_culling = true,
-                        .visibility_mask = dc_visibility_flags,
-                    };
-                }
-            },
-
-            .box => {
-                var box_out_volumes = std.mem.bytesAsSlice(render_viewport.BoxBoudingVolume, volumes);
-
-                for (data, 0..) |_, idx| {
-                    var dc_visibility_flags = visibility_flags.VisibilityFlags.initEmpty();
-                    dc_visibility_flags.set(0); // TODO:
-
-                    box_out_volumes[idx] = .{
-                        .skip_culling = true,
-                        .visibility_mask = dc_visibility_flags,
-                    };
-                }
-            },
-
-            else => |v| {
-                log.err("Invalid bounding volume {d}", .{v});
-            },
+            try module.addToExtensionPoint(render_pipeline.extensions.postprocess, m.tonemap_module);
         }
-    }
 
-    pub fn update(
-        allocator: std.mem.Allocator,
-        gpu_backend: gpu.GpuBackend,
-        builder: render_graph.GraphBuilder,
-        world: ecs.World,
-        viewport: render_viewport.Viewport,
-        pipeline: render_pipeline.RenderPipeline,
-        viewers: []const render_graph.Viewer,
-        system_context: *const shader_system.SystemContext,
-        entites_idx: []const usize,
-        transforms: []transform.WorldTransformComponent,
-        render_components: []*anyopaque,
-        visibility: []const render_viewport.VisibilityBitField,
-    ) !void {
-        // _ = world;
-        _ = viewport;
-        _ = builder;
-        _ = viewers;
-        _ = transforms;
-        _ = gpu_backend;
-        _ = allocator;
-        _ = pipeline;
-        _ = visibility;
-        _ = system_context;
-        _ = entites_idx;
+        pub fn fillBoundingVolumes(
+            allocator: std.mem.Allocator,
+            entites_idx: ?[]const usize,
+            transforms: []const transform.WorldTransformComponent,
+            data: []*anyopaque,
+            volume_type: render_viewport.BoundingVolumeType,
+            volumes: []u8,
+        ) !void {
+            _ = allocator;
+            _ = entites_idx;
+            _ = transforms;
 
-        var manager = world.getComponentManager(public.TonemapComponent, TonemapComponentManager).?;
-        const tonemap_component: *public.TonemapComponent = @ptrCast(@alignCast(render_components[0]));
-        manager.component = tonemap_component;
-    }
-});
+            switch (volume_type) {
+                .sphere => {
+                    var sphere_out_volumes = std.mem.bytesAsSlice(render_viewport.SphereBoudingVolume, volumes);
+
+                    for (data, 0..) |_, idx| {
+                        var dc_visibility_flags = visibility_flags.VisibilityFlags.initEmpty();
+                        dc_visibility_flags.set(0); // TODO:
+
+                        sphere_out_volumes[idx] = .{
+                            .skip_culling = true,
+                            .visibility_mask = dc_visibility_flags,
+                        };
+                    }
+                },
+
+                .box => {
+                    var box_out_volumes = std.mem.bytesAsSlice(render_viewport.BoxBoudingVolume, volumes);
+
+                    for (data, 0..) |_, idx| {
+                        var dc_visibility_flags = visibility_flags.VisibilityFlags.initEmpty();
+                        dc_visibility_flags.set(0); // TODO:
+
+                        box_out_volumes[idx] = .{
+                            .skip_culling = true,
+                            .visibility_mask = dc_visibility_flags,
+                        };
+                    }
+                },
+
+                else => |v| {
+                    log.err("Invalid bounding volume {d}", .{v});
+                },
+            }
+        }
+
+        pub fn update(
+            allocator: std.mem.Allocator,
+            gpu_backend: gpu.GpuBackend,
+            builder: render_graph.GraphBuilder,
+            world: ecs.World,
+            viewport: render_viewport.Viewport,
+            pipeline: render_pipeline.RenderPipeline,
+            viewers: []const render_graph.Viewer,
+            system_context: *const shader_system.SystemContext,
+            entites_idx: []const usize,
+            transforms: []transform.WorldTransformComponent,
+            render_components: []*anyopaque,
+            visibility: []const render_viewport.VisibilityBitField,
+        ) !void {
+            // _ = world;
+            _ = viewport;
+            _ = builder;
+            _ = viewers;
+            _ = transforms;
+            _ = gpu_backend;
+            _ = allocator;
+            _ = pipeline;
+            _ = visibility;
+            _ = system_context;
+            _ = entites_idx;
+
+            var manager = world.getComponentManager(public.TonemapComponent, TonemapComponentManager).?;
+            const tonemap_component: *public.TonemapComponent = @ptrCast(@alignCast(render_components[0]));
+            manager.component = tonemap_component;
+        }
+    },
+);
 
 const TonemapParams = struct {
     manager: *TonemapComponentManager,
@@ -259,25 +254,25 @@ const tonemap_pass_api = render_graph.PassApi.implement(struct {
         if (gpu_backend.getEncoder()) |e| {
             defer gpu_backend.endEncoder(e);
 
-            var shader_constext = try _shader.createSystemContext();
-            defer _shader.destroySystemContext(shader_constext);
+            var shader_constext = try shader_system.createSystemContext();
+            defer shader_system.destroySystemContext(shader_constext);
 
             // TODO:
             //e.setVertexCount(3);
 
             const hdr_texture = builder.getTexture("hdr").?;
 
-            const shader = _shader.findShaderByName(.fromStr("tonemaping")).?;
+            const shader = shader_system.findShaderByName(.fromStr("tonemaping")).?;
 
-            const shader_io = _shader.getShaderIO(shader);
+            const shader_io = shader_system.getShaderIO(shader);
 
-            const ub = (try _shader.createUniformBuffer(shader_io)).?;
-            defer _shader.destroyUniformBuffer(shader_io, ub);
+            const ub = (try shader_system.createUniformBuffer(shader_io)).?;
+            defer shader_system.destroyUniformBuffer(shader_io, ub);
 
-            const rb = (try _shader.createResourceBuffer(shader_io)).?;
-            defer _shader.destroyResourceBuffer(shader_io, rb);
+            const rb = (try shader_system.createResourceBuffer(shader_io)).?;
+            defer shader_system.destroyResourceBuffer(shader_io, rb);
 
-            try _shader.updateResources(
+            try shader_system.updateResources(
                 shader_io,
                 rb,
                 &.{
@@ -287,7 +282,7 @@ const tonemap_pass_api = render_graph.PassApi.implement(struct {
             const bloom_texture_name = builder.readBlackboardValue(.fromStr("bloom_texture"));
             if (bloom_texture_name) |name| {
                 const bloom_texture = builder.getTexture(name.str).?;
-                try _shader.updateResources(
+                try shader_system.updateResources(
                     shader_io,
                     rb,
                     &.{
@@ -298,7 +293,7 @@ const tonemap_pass_api = render_graph.PassApi.implement(struct {
 
             const tonemap_type = if (params.manager.component) |c| c.type else .aces;
 
-            try _shader.updateUniforms(
+            try shader_system.updateUniforms(
                 shader_io,
                 ub,
                 &.{.{ .name = .fromStr("params"), .value = std.mem.asBytes(
@@ -311,13 +306,13 @@ const tonemap_pass_api = render_graph.PassApi.implement(struct {
                 ) }},
             );
 
-            _shader.bindConstant(shader_io, ub, e);
-            _shader.bindResource(shader_io, rb, e);
+            shader_system.bindConstant(shader_io, ub, e);
+            shader_system.bindResource(shader_io, rb, e);
 
-            var allocator = try _tmpalloc.create();
-            defer _tmpalloc.destroy(allocator);
+            var allocator = try tempalloc.create();
+            defer tempalloc.destroy(allocator);
 
-            const variants = try _shader.selectShaderVariant(
+            const variants = try shader_system.selectShaderVariant(
                 allocator,
                 shader,
                 &.{.fromStr("viewport")},
@@ -337,7 +332,7 @@ const tonemap_pass_api = render_graph.PassApi.implement(struct {
             ).toArray();
             gpu_backend.setViewTransform(viewid, null, &projMtx);
 
-            _render_graph.screenSpaceQuad(gpu_backend, e, false, 1, 1);
+            render_graph.screenSpaceQuad(gpu_backend, e, 1, 1);
 
             e.setState(variant.state, variant.rgba);
             e.submit(viewid, variant.prg.?, 0, .all);
@@ -351,7 +346,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
     struct {
         pub fn init() !void {
             // "tonemaping"
-            try _shader.addShaderDefiniton("tonemaping", .{
+            try shader_system.addShaderDefiniton("tonemaping", .{
                 .color_state = .rgba,
 
                 .depth_stencil_state = .{
@@ -368,11 +363,8 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
                         .position,
                     },
                     .import_semantic = &.{.vertex_id},
-                    .exports = &.{
-                        .{ .name = "color0", .type = .vec4 },
-                    },
                     .code =
-                    \\  output.position = mul(u_modelViewProj, vec4(a_position, 1.0));
+                    \\  outputs.position = mul(u_modelViewProj, vec4(a_position, 1.0));
                     ,
                 },
                 .fragment_block = .{
@@ -414,23 +406,22 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
-    _ = reload; // autofix
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tmpalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _gpu = apidb.getZigApi(module_name, cetech1.gpu.GpuBackendApi).?;
-    _dd = apidb.getZigApi(module_name, cetech1.gpu.GpuDDApi).?;
-    _ecs = apidb.getZigApi(module_name, ecs.EcsAPI).?;
-    _profiler = apidb.getZigApi(module_name, cetech1.profiler.ProfilerAPI).?;
 
-    _render_graph = apidb.getZigApi(module_name, render_graph.RenderGraphApi).?;
-    _shader = apidb.getZigApi(module_name, shader_system.ShaderSystemAPI).?;
-    _inspector = apidb.getZigApi(module_name, editor_inspector.InspectorAPI).?;
+    try cdb.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
+    // try kernel.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+    try ecs.loadAPI(module_name);
+    try gpu_dd.loadAPI(module_name);
+    try profiler.loadAPI(module_name);
+
+    try render_graph.loadAPI(module_name);
+    try shader_system.loadAPI(module_name);
+    try editor_inspector.loadAPI(module_name);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
@@ -447,6 +438,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_tonemap(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_tonemap(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

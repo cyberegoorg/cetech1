@@ -3,6 +3,7 @@ const std = @import("std");
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const gpu = cetech1.gpu;
+const apidb = cetech1.apidb;
 
 const shader_system = @import("shader_system");
 
@@ -50,6 +51,15 @@ pub const GPUGeometry = struct {
     resources: ?shader_system.ResourceBufferInstance = null,
 };
 
+pub fn createVertexSystemFromVertexBuffer(allocator: std.mem.Allocator, vertex_buffer: VertexBuffer) anyerror!GPUGeometry {
+    return api.createVertexSystemFromVertexBuffer(allocator, vertex_buffer);
+}
 pub const VertexSystemApi = struct {
     createVertexSystemFromVertexBuffer: *const fn (allocator: std.mem.Allocator, vertex_buffer: VertexBuffer) anyerror!GPUGeometry,
 };
+
+pub var api: *const VertexSystemApi = undefined;
+
+pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+    api = apidb.getZigApi(module, VertexSystemApi).?;
+}

@@ -8,15 +8,15 @@
       "__type_name": "ct_graph_node",
       "__uuid": "0190a236-6b65-77ed-a735-76adb888c4ac",
       "node_type": "event_init",
-      "pos_x": 3.69e2,
-      "pos_y": 3e1
+      "pos_x": 369,
+      "pos_y": 30
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "0190a236-6b65-7be9-92c7-d0648629f0b8",
       "node_type": "print",
-      "pos_x": 9.11e2,
-      "pos_y": 2.18e2
+      "pos_x": 909,
+      "pos_y": 298
     },
     {
       "__type_name": "ct_graph_node",
@@ -31,36 +31,36 @@
           "value": 6
         }
       },
-      "pos_x": 6.9e2,
-      "pos_y": 2.86e2
+      "pos_x": 690,
+      "pos_y": 318
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "01911e80-2967-7665-8bf9-2ec0363f34c7",
       "node_type": "event_tick",
-      "pos_x": 3.69e2,
-      "pos_y": 9.4e1
+      "pos_x": 369,
+      "pos_y": 94
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "01911e80-2967-76da-9762-eed04d5357a1",
       "node_type": "event_shutdown",
-      "pos_x": 3.69e2,
-      "pos_y": 1.74e2
+      "pos_x": 369,
+      "pos_y": 174
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "01955339-858f-71f5-826f-0ca60e1f9612",
       "node_type": "get_entity",
-      "pos_x": 7.06e2,
-      "pos_y": 7.8e1
+      "pos_x": 706,
+      "pos_y": 78
     },
     {
       "__type_name": "ct_graph_node",
       "__uuid": "01955339-91b5-7b25-a1aa-fc3b78419a38",
       "node_type": "transform_set_position",
-      "pos_x": 9.09e2,
-      "pos_y": 3e1
+      "pos_x": 909,
+      "pos_y": 30
     }
   ],
   "groups": [
@@ -71,14 +71,14 @@
       "color": {
         "__type_name": "ct_color_4f",
         "__uuid": "0190a2e0-8f8c-7969-91f0-bb7410574729",
-        "r": 1e0,
-        "g": 8.588235378265381e-1,
-        "a": 1e0
+        "r": 1,
+        "g": 0.8588235378265381,
+        "a": 1
       },
-      "pos_x": 3.52e2,
-      "pos_y": -1.6e1,
-      "size_x": 7.52e2,
-      "size_y": 3.96e2
+      "pos_x": 352,
+      "pos_y": -16,
+      "size_x": 752,
+      "size_y": 396
     }
   ],
   "connections": [

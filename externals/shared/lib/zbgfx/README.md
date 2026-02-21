@@ -9,25 +9,21 @@ When [zig](https://codeberg.org/ziglang/zig) meets [bgfx](https://github.com/bka
 - [x] Zig api.
 - [x] Compile as standard zig library.
 - [x] `shaderc` as build artifact.
-- [x] Shader compile in `build.zig` to `*.bin.h`.
-- [x] Shader compile in `build.zig` and embed as zig module. (this is zig equivalent of `*.bin.h`)
 - [x] Shader compile from runtime via `shaderc` as child process.
+- [x] Shader compile in `build.zig` and embed as zig module.
 - [x] Binding for [DebugDraw API](https://github.com/bkaradzic/bgfx/tree/master/examples/common/debugdraw)
 - [x] `imgui` render backend. Use build option `imgui_include` to enable. ex. for
   zgui: `.imgui_include = zgui.path("libs").getPath(b),`
 - [ ] Zig based allocator.
 
-> [!IMPORTANT]  
+> [!IMPORTANT]
+>
 > - This is only zig binding. For BGFX stuff goto [bgfx](https://github.com/bkaradzic/bgfx).
 > - Github repository is only mirror. Development continues [here](https://codeberg.org/cyberegoorg/zbgfx)
 
 > [!WARNING]
+>
 > - `shaderc` need some time to compile.
-
-> [!NOTE]
-> - If you build shaders/app and see something like `run shaderc (shader.bin.h) stderr`.
-    This is not "true" error (build success), but only in debug build shader print some stuff to stderr and zig
-    build catch it.
 
 ## License
 
@@ -42,9 +38,9 @@ Minimal is `0.15.1`. But you know try your version and believe.
 
 ## Bgfx version
 
-- [BX](https://github.com/bkaradzic/bx//compare/ce31b1445475ecd4b090471144c4c30a1cbdd871...master)
-- [BImg](https://github.com/bkaradzic/bimg/compare/bf10ffbb3df1f9f12ad7a9105e5e96e11a9c5a0c...master)
-- [BGFX](https://github.com/bkaradzic/bgfx/compare/56eb016280731451c3b7f18433dc114df035d52a...master)
+- [BX](https://github.com/bkaradzic/bx/compare/cac72f6cfa0893393ea12692ebfacb4495f8c826...master)
+- [BImg](https://github.com/bkaradzic/bimg/compare/9114b47f532ce59cd0c6c9f8932df2c48888d4c1...master)
+- [BGFX](https://github.com/bkaradzic/bgfx/compare/8532b2c45d2f4332a9ac9734b85c2ea2253cb8d5...master)
 
 ## Getting started
 
@@ -59,16 +55,15 @@ or use `zig fetch --save ...` way.
 Then in your `build.zig` add:
 
 ```zig
+const zbgfx = @import("zbgfx");
+
 pub fn build(b: *std.Build) void {
     const exe = b.addExecutable(.{ ... });
 
-    const zbgfx = b.dependency("zbgfx", .{});
-    exe.root_module.addImport("zbgfx", zbgfx.module("zbgfx"));
+    const zbgfx_dep = b.dependency("zbgfx", .{});
+    exe.root_module.addImport("zbgfx", zbgfx_dep.module("zbgfx"));
     exe.linkLibrary(zbgfx.artifact("bgfx"));
-
-    // This install shaderc to install dir
-    // For shader build in build =D check examples
-    // b.installArtifact(zbgfx.artifact("shaderc"));
+    _ = try zbgfx.build_step.installShaderc(b, zbgfx_dep);
 }
 ```
 
@@ -93,12 +88,12 @@ cd examples
 zig build
 ```
 
-### [00-Minimal](examples/00-minimal/)
+### [Minimal GLFW](examples/minimal-glfw/)
 
 Minimal setup with GLFW for window and input.
 
 ```sh
-examples/zig-out/bin/00-minimal
+examples/zig-out/bin/minimal-glfw
 ```
 
 | Key | Description  |
@@ -106,12 +101,12 @@ examples/zig-out/bin/00-minimal
 | `v` | Vsync on/off |
 | `d` | Debug on/off |
 
-### [01-ZGui](examples/01-zgui/)
+### [Shader embed](examples/shader-embed/)
 
-Minimal setup for zgui/ImGui.
+Basic usage of shaders compiled in build and embed to zig module.
 
 ```sh
-examples/zig-out/bin/01-zgui
+examples/zig-out/bin/shader-embed
 ```
 
 | Key | Description  |
@@ -119,13 +114,13 @@ examples/zig-out/bin/01-zgui
 | `v` | Vsync on/off |
 | `d` | Debug on/off |
 
-### [02-Runtime shaderc](examples/02-runtime-shaderc/)
+### [Shader runtime](examples/shader-runtime/)
 
 Basic usage of shader compile in runtime.
 Try edit shaders in `zig-out/bin/shaders` and hit `r` to recompile.
 
 ```sh
-examples/zig-out/bin/02-runtime-shaderc
+examples/zig-out/bin/shader-runtime
 ```
 
 | Key | Description                 |
@@ -134,12 +129,25 @@ examples/zig-out/bin/02-runtime-shaderc
 | `d` | Debug on/off                |
 | `r` | Recompile shaders form file |
 
-### [03-debugdraw](examples/03-debugdraw/)
+### [ZGui](examples/zgui/)
+
+Minimal setup for zgui/ImGui.
+
+```sh
+examples/zig-out/bin/zgui
+```
+
+| Key | Description  |
+|-----|--------------|
+| `v` | Vsync on/off |
+| `d` | Debug on/off |
+
+### [debugdraw](examples/debugdraw/)
 
 DebugDraw api usage example.
 
 ```sh
-examples/zig-out/bin/03-debugdraw
+examples/zig-out/bin/debugdraw
 ```
 
 | Key | Description  |

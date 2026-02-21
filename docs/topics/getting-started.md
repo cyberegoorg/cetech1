@@ -46,12 +46,10 @@ Get ZIG `0.15.1`.
     </tab>
 </tabs>
 
-## VSCode
+## NVim
 
-> Repository contain recommended extension.
-
-> add `-Dno_zls` to disable zls path change (For example if you are install zls via vscode plugin).
-> {style="note"}
+> This generate `vscode/{launch.json,tasks.json,settings.json}`
+> that can read pluggins in NVim (ex.: overseer, nvim-dap, ..)
 
 1. Create vscode configs.
     <code-block lang="bash">
@@ -59,8 +57,7 @@ Get ZIG `0.15.1`.
         # create or update settings.json
         # and set zls path to locally builded
         zig build gen-ide -Dide=VSCode
-    </code-block>
-2. Install extension `ziglang.vscode-zig` (or install all recommended)
+    </code-block> 
 
 ## Idea
 
@@ -72,6 +69,19 @@ Need [zigbrains](https://plugins.jetbrains.com/plugin/22456-zigbrains)
         # and set zls path to locally builded
         zig build gen-ide -Dide=IDEA
     </code-block>
+
+## VSCode
+
+> Repository contain recommended extension.
+
+1. Create vscode configs.
+    <code-block lang="bash">
+        # This generate vscode launch.json with predefined cases
+        # create or update settings.json
+        # and set zls path to locally builded
+        zig build gen-ide -Dide=VSCode
+    </code-block>
+2. Install extension `ziglang.vscode-zig` (or install all recommended)
 
 ## Build
 
@@ -131,27 +141,6 @@ Need [zigbrains](https://plugins.jetbrains.com/plugin/22456-zigbrains)
 | `--test-ui-filter`       | `str`                                                 | `all`           | Run only ui tests that pass this filter.    |
 | `--test-ui-speed`        | `fast`, `normal`,  `cinematic`                        | `fast`          | UI test speed.                              |
 | `--test-ui-junit`        | `str`                                                 | `null`          | UI test JUnit result filename.              |
-
-## ZLS
-
-CETech provide ZLS as submodule, but you must build it.
-
-<tabs>
-    <tab title="MacOS/Linux">
-        <code-block lang="bash">
-            git submodule update --init externals/shared/repo/zls
-            cd externals/shared/repo/zls
-            zig build -Doptimize=ReleaseFast
-        </code-block>
-    </tab>
-    <tab title="Windows">
-        <code-block lang="bash">
-            git submodule update --init externals/shared/repo/zls
-            cd externals/shared/repo/zls
-            zig.exe build -Doptimize=ReleaseFast
-        </code-block>
-    </tab>
-</tabs>
 
 ## Tracy profiler
 

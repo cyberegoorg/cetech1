@@ -39,6 +39,10 @@ pub fn Color4(comptime T: type) type {
         pub const red: Self = .{ .r = 1, .a = 1 };
         pub const one_alpha: Self = .{ .a = 1 };
 
+        pub fn toArray(self: Self) [4]T {
+            return @bitCast(self);
+        }
+
         pub fn toVec4f(self: Self) Vec4f {
             return @bitCast(self);
         }
@@ -47,7 +51,7 @@ pub fn Color4(comptime T: type) type {
             return .{ .r = self.r, .g = self.g, .b = self.b };
         }
 
-        pub fn fromColor4f(v: Color3f, a: T) Self {
+        pub fn fromColor3f(v: Color3f, a: T) Self {
             return .{ .r = v.r, .g = v.g, .b = v.b, .a = a };
         }
     };

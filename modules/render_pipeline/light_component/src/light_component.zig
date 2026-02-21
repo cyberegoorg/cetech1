@@ -12,7 +12,7 @@ pub const LightType = enum(u8) {
     Direction = 2,
 };
 
-pub const Light = struct {
+pub const Light = extern struct {
     type: LightType = .Point,
     color: math.Color3f = .white,
     power: f32 = 1000,
@@ -33,5 +33,3 @@ pub const LightCdb = cdb.CdbTypeDecl(
     },
     struct {},
 );
-
-pub const LightAPI = struct {};

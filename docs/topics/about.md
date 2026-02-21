@@ -32,9 +32,3 @@ posts.
 - Actions (HL concept for Input)
 - Localization for UI/Editor
 
-## Credits/Licenses For Fonts Included In Repository
-
-Some fonts files are available in the `src/embed/fonts/` folder:
-
-- **[Roboto-Medium.ttf](https://fonts.google.com/specimen/Roboto)** - Apache License 2.0
-- **[fa-regular-400.ttf](https://fontawesome.com)** - SIL OFL 1.1 License

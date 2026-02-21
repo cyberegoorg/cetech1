@@ -1,5 +1,7 @@
 const std = @import("std");
+const cetech1 = @import("root.zig");
 
+const apidb = cetech1.apidb;
 /// UUID types
 pub const Uuid = struct {
     bytes: [16]u8 = .{0} ** 16,
@@ -16,28 +18,30 @@ pub const Uuid = struct {
     }
 };
 
+/// Create new UUIDv7
+pub inline fn newUUID7() Uuid {
+    return api.newUuid7();
+}
+
+/// Create new UUID from int
+pub inline fn fromInt(int: u128) Uuid {
+    return api.fromInt(int);
+}
+
+/// Create new UUID from str
+pub inline fn fromStr(str: []const u8) ?Uuid {
+    return api.fromStr(str);
+}
+
 /// Main UUID API
 pub const UuidAPI = struct {
-    const Self = @This();
-
-    /// Create new UUIDv7
-    pub inline fn newUUID7(self: Self) Uuid {
-        return self.newUUID7Fn();
-    }
-
-    /// Create new UUID from int
-    pub inline fn fromInt(self: Self, int: u128) Uuid {
-        return self.fromIntFn(int);
-    }
-
-    /// Create new UUID from str
-    pub inline fn fromStr(self: Self, str: []const u8) ?Uuid {
-        return self.fromStrFn(str);
-    }
-
-    //#region Pointers to implementation
-    newUUID7Fn: *const fn () Uuid,
-    fromIntFn: *const fn (int: u128) Uuid,
-    fromStrFn: *const fn (str: []const u8) ?Uuid,
-    //#endregion
+    newUuid7: *const fn () Uuid,
+    fromInt: *const fn (int: u128) Uuid,
+    fromStr: *const fn (str: []const u8) ?Uuid,
 };
+
+pub var api: *const UuidAPI = undefined;
+
+pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+    api = apidb.getZigApi(module, UuidAPI).?;
+}

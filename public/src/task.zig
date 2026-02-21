@@ -2,6 +2,7 @@ const std = @import("std");
 const profiler = @import("profiler.zig");
 const cetech1 = @import("root.zig");
 
+const apidb = cetech1.apidb;
 pub const TaskIdList = cetech1.ArrayList(TaskID);
 
 // ID for tasks
@@ -52,16 +53,13 @@ pub const TaskStub = struct {
     const Data = [128 - 8]u8;
     const Main = *const fn (*Data) anyerror!void;
     data: Data = undefined,
-    task_fn: Main,
+    task: Main,
 };
 
 pub const default_batch_size = 32;
 
 pub const BatchWorkloadArgs = struct {
     allocator: std.mem.Allocator,
-    task_api: *const TaskAPI,
-    profiler_api: *const profiler.ProfilerAPI,
-
     batch_size: usize = default_batch_size,
     count: usize,
 };
@@ -71,7 +69,7 @@ pub fn batchWorkloadTask(
     create_args: anytype,
     comptime CREATE_TASK_FCE: type,
 ) !?TaskID {
-    var zone_ctx = args.profiler_api.ZoneN(@src(), "batchWorkloadTask");
+    var zone_ctx = profiler.ZoneN(@src(), "batchWorkloadTask");
     defer zone_ctx.End();
 
     if (args.count == 0) return null;
@@ -85,7 +83,7 @@ pub fn batchWorkloadTask(
         a.batch_size = a.count;
 
         const t = CREATE_TASK_FCE.createTask(create_args, 0, a, args.count);
-        return try args.task_api.schedule(
+        return try schedule(
             .none,
             t,
             .{},
@@ -104,7 +102,7 @@ pub fn batchWorkloadTask(
     for (0..batch_count) |batch_id| {
         if (batch_rest > 0 and (batch_id == batch_count - 1)) {
             const task = CREATE_TASK_FCE.createTask(create_args, batch_id, aargs, batch_size + batch_rest);
-            const task_id = try args.task_api.schedule(
+            const task_id = try schedule(
                 TaskID.none,
                 task,
                 .{},
@@ -112,7 +110,7 @@ pub fn batchWorkloadTask(
             tasks.appendAssumeCapacity(task_id);
         } else {
             const task = CREATE_TASK_FCE.createTask(create_args, batch_id, aargs, batch_size);
-            const task_id = try args.task_api.schedule(
+            const task_id = try schedule(
                 TaskID.none,
                 task,
                 .{},
@@ -121,73 +119,75 @@ pub fn batchWorkloadTask(
         }
     }
 
-    return if (tasks.items.len == 0) null else try args.task_api.combine(tasks.items);
+    return if (tasks.items.len == 0) null else try combine(tasks.items);
 }
 
 pub const ScheduleConfig = struct {
     affinity: ?u32 = null,
 };
 
+/// Schedule given work and return its TaskID.
+pub fn schedule(prereq: TaskID, task: anytype, config: ScheduleConfig) !TaskID {
+    const T = @TypeOf(task);
+
+    const exec: *const fn (*T) anyerror!void = &@field(T, "exec");
+    const true_exec = @as(TaskStub.Main, @ptrCast(exec));
+    var t = TaskStub{ .task = true_exec };
+
+    @memset(&t.data, 0);
+    std.mem.copyForwards(u8, &t.data, std.mem.asBytes(&task));
+
+    return try api.schedule(prereq, t, config);
+}
+
+/// Wait for given task
+pub inline fn wait(prereq: TaskID) void {
+    api.wait(prereq);
+}
+
+/// Wait for given task
+pub inline fn waitMany(prereq: []const TaskID) void {
+    api.waitMany(prereq);
+}
+
+/// Combine given TaskIds to one.
+pub inline fn combine(prereq: []const TaskID) !TaskID {
+    return api.combine(prereq);
+}
+
+/// Get worker thread count.
+pub inline fn getThreadNum() u64 {
+    return api.getThreadNum();
+}
+
+/// Get worker id 0..N.
+/// 0 == main thread.
+pub inline fn getWorkerId() usize {
+    return api.getWorkerId();
+}
+
+pub inline fn isDone(task: TaskID) bool {
+    return api.isDone(task);
+}
+
+pub inline fn doOneTask(only_prio: bool) void {
+    api.doOneTask(only_prio);
+}
+
 /// Main task API
 pub const TaskAPI = struct {
-    const Self = @This();
-
-    /// Schedule given work and return its TaskID.
-    pub fn schedule(self: Self, prereq: TaskID, task: anytype, config: ScheduleConfig) !TaskID {
-        const T = @TypeOf(task);
-
-        const exec: *const fn (*T) anyerror!void = &@field(T, "exec");
-        const true_exec = @as(TaskStub.Main, @ptrCast(exec));
-        var t = TaskStub{ .task_fn = true_exec };
-
-        @memset(&t.data, 0);
-        std.mem.copyForwards(u8, &t.data, std.mem.asBytes(&task));
-
-        return try self.scheduleFn(prereq, t, config);
-    }
-
-    /// Wait for given task
-    pub inline fn wait(self: Self, prereq: TaskID) void {
-        self.waitFn(prereq);
-    }
-
-    /// Wait for given task
-    pub inline fn waitMany(self: Self, prereq: []const TaskID) void {
-        self.waitManyFn(prereq);
-    }
-
-    /// Combine given TaskIds to one.
-    pub inline fn combine(self: Self, prereq: []const TaskID) !TaskID {
-        return self.combineFn(prereq);
-    }
-
-    /// Get worker thread count.
-    pub inline fn getThreadNum(self: Self) u64 {
-        return self.getThreadNumFn();
-    }
-
-    /// Get worker id 0..N.
-    /// 0 == main thread.
-    pub inline fn getWorkerId(self: Self) usize {
-        return self.getWorkerIdFn();
-    }
-
-    pub inline fn isDone(self: Self, task: TaskID) bool {
-        return self.isDoneFn(task);
-    }
-
-    pub inline fn doOneTask(self: Self, only_prio: bool) void {
-        self.doOneTaskFn(only_prio);
-    }
-
-    //#region Pointers to implementation
-    scheduleFn: *const fn (prereq: TaskID, task: TaskStub, config: ScheduleConfig) anyerror!TaskID,
-    waitManyFn: *const fn (task: []const TaskID) void,
-    waitFn: *const fn (task: TaskID) void,
-    isDoneFn: *const fn (task: TaskID) bool,
-    combineFn: *const fn (tasks: []const TaskID) anyerror!TaskID,
-    getThreadNumFn: *const fn () u64,
-    getWorkerIdFn: *const fn () usize,
-    doOneTaskFn: *const fn (only_prio: bool) void,
-    //#endregions
+    schedule: *const fn (prereq: TaskID, task: TaskStub, config: ScheduleConfig) anyerror!TaskID,
+    waitMany: *const fn (task: []const TaskID) void,
+    wait: *const fn (task: TaskID) void,
+    isDone: *const fn (task: TaskID) bool,
+    combine: *const fn (tasks: []const TaskID) anyerror!TaskID,
+    getThreadNum: *const fn () u64,
+    getWorkerId: *const fn () usize,
+    doOneTask: *const fn (only_prio: bool) void,
 };
+
+pub var api: *const TaskAPI = undefined;
+
+pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+    api = apidb.getZigApi(module, TaskAPI).?;
+}

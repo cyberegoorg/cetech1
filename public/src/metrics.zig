@@ -1,5 +1,7 @@
 const std = @import("std");
+const cetech1 = @import("root.zig");
 
+const apidb = cetech1.apidb;
 pub const MetricScopedDuration = struct {
     start: std.time.Instant,
     counter: *f64,
@@ -19,34 +21,40 @@ pub const MetricScopedDuration = struct {
     }
 };
 
+pub inline fn getCounter(name: []const u8) !*f64 {
+    return api.getCounter(name);
+}
+
+pub inline fn pushFrames() !void {
+    return api.pushFrames();
+}
+
+pub inline fn getMetricsName(allocator: std.mem.Allocator) ![][]const u8 {
+    return api.getMetricsName(allocator);
+}
+
+pub inline fn getMetricValues(allocator: std.mem.Allocator, name: []const u8) ?[]f64 {
+    return api.getMetricValues(allocator, name);
+}
+
+pub inline fn getMetricOffset(name: []const u8) ?usize {
+    return api.getMetricOffset(name);
+}
+
 pub const MetricsAPI = struct {
     const Self = @This();
 
-    pub inline fn getCounter(self: Self, name: []const u8) !*f64 {
-        return self.getCounterFn(name);
-    }
-
-    pub inline fn pushFrames(self: Self) !void {
-        return self.pushFramesFn();
-    }
-
-    pub inline fn getMetricsName(self: Self, allocator: std.mem.Allocator) ![][]const u8 {
-        return self.getMetricsNameFn(allocator);
-    }
-
-    pub inline fn getMetricValues(self: Self, allocator: std.mem.Allocator, name: []const u8) ?[]f64 {
-        return self.getMetricValuesFn(allocator, name);
-    }
-
-    pub inline fn getMetricOffset(self: Self, name: []const u8) ?usize {
-        return self.getMetricOffsetFn(name);
-    }
-
     //#region Pointers to implementation
-    getCounterFn: *const fn (name: []const u8) anyerror!*f64,
-    pushFramesFn: *const fn () anyerror!void,
-    getMetricsNameFn: *const fn (allocator: std.mem.Allocator) anyerror![][]const u8,
-    getMetricValuesFn: *const fn (allocator: std.mem.Allocator, name: []const u8) ?[]f64,
-    getMetricOffsetFn: *const fn (name: []const u8) ?usize,
+    getCounter: *const fn (name: []const u8) anyerror!*f64,
+    pushFrames: *const fn () anyerror!void,
+    getMetricsName: *const fn (allocator: std.mem.Allocator) anyerror![][]const u8,
+    getMetricValues: *const fn (allocator: std.mem.Allocator, name: []const u8) ?[]f64,
+    getMetricOffset: *const fn (name: []const u8) ?usize,
     //#endregion
 };
+
+pub var api: *const MetricsAPI = undefined;
+
+pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+    api = apidb.getZigApi(module, MetricsAPI).?;
+}

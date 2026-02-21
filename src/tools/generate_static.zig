@@ -39,7 +39,7 @@ pub fn main() !void {
 
     for (modules.items) |m| {
         if (m.len == 0) continue;
-        try w.print("extern fn ct_load_module_{s}(apidb: *const cetech1.apidb.ApiDbAPI, _allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool;\n", .{m});
+        try w.print("extern fn ct_load_module_{s}(apidb_: *const cetech1.apidb.ApiDbAPI, _allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool;\n", .{m});
     }
 
     try w.print("\npub const descs = [_]cetech1.modules.ModuleDesc{{\n", .{});

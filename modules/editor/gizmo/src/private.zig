@@ -17,40 +17,37 @@ const public = @import("gizmo.zig");
 const module_name = .editor_gizmo;
 
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 const log = std.log.scoped(module_name);
 
 var _allocator: Allocator = undefined;
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
+const apidb = cetech1.apidb;
+
 var _assetdb: *const assetdb.AssetDBAPI = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _ecs: *const cetech1.ecs.EcsAPI = undefined;
+
+const tempalloc = cetech1.tempalloc;
 
 // Global state
 const G = struct {};
 var _g: *G = undefined;
 
-var api = public.EditorGizmoApi{
+const api = public.EditorGizmoApi{
     .ecsGizmoMenu = ecsGizmoMenu,
     .ecsGizmo = ecsGizmo,
     .ecsGizmoSupported = ecsGizmoSupported,
 };
 
 fn lessThanGizmoPriority(_: void, lhs: cdb.ObjId, rhs: cdb.ObjId) bool {
-    const db = _cdb.getDbFromObjid(lhs);
+    const db = cdb.getDbFromObjid(lhs);
 
     const l_order = blk: {
-        const component = _cdb.getAspect(editor.EditorComponentAspect, db, lhs.type_idx) orelse break :blk std.math.inf(f32);
+        const component = cdb.getAspect(editor.EditorComponentAspect, db, lhs.type_idx) orelse break :blk std.math.inf(f32);
         break :blk component.gizmoPriority;
     };
 
     const r_order = blk: {
-        const component = _cdb.getAspect(editor.EditorComponentAspect, db, rhs.type_idx) orelse break :blk std.math.inf(f32);
+        const component = cdb.getAspect(editor.EditorComponentAspect, db, rhs.type_idx) orelse break :blk std.math.inf(f32);
         break :blk component.gizmoPriority;
     };
 
@@ -58,7 +55,7 @@ fn lessThanGizmoPriority(_: void, lhs: cdb.ObjId, rhs: cdb.ObjId) bool {
 }
 
 fn ecsGizmoMenu(allocator: std.mem.Allocator, world: ecs.World, entity: ecs.EntityId, entity_obj: cdb.ObjId, component_obj: ?cdb.ObjId, options: *editor.GizmoOptions) !void {
-    const db = _cdb.getDbFromObjid(entity_obj);
+    const db = cdb.getDbFromObjid(entity_obj);
 
     if (!try ecsGizmoSupported(
         allocator,
@@ -69,20 +66,20 @@ fn ecsGizmoMenu(allocator: std.mem.Allocator, world: ecs.World, entity: ecs.Enti
 
     var component_gizmo_options: editor.GizmoOptions = .{};
     if (component_obj) |c_obj| {
-        if (_cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
+        if (cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
             if (aspect.gizmoGetOperation) |gizmoGetOperation| {
                 component_gizmo_options = try gizmoGetOperation(world, entity, entity_obj, c_obj);
             }
         }
     } else {
-        const top_level_obj_r = ecs.EntityCdb.read(_cdb, entity_obj).?;
-        if (try ecs.EntityCdb.readSubObjSet(_cdb, top_level_obj_r, .Components, allocator)) |components| {
+        const top_level_obj_r = ecs.EntityCdb.read(entity_obj).?;
+        if (try ecs.EntityCdb.readSubObjSet(top_level_obj_r, .Components, allocator)) |components| {
             defer allocator.free(components);
 
             std.sort.insertion(cdb.ObjId, components, {}, lessThanGizmoPriority);
 
             for (components) |c_obj| {
-                if (_cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
+                if (cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
                     if (aspect.gizmoGetOperation) |gizmoGetOperation| {
                         component_gizmo_options = try gizmoGetOperation(world, entity, entity_obj, c_obj);
                         break;
@@ -101,25 +98,25 @@ fn ecsGizmoMenu(allocator: std.mem.Allocator, world: ecs.World, entity: ecs.Enti
     }
 
     {
-        if (_coreui.beginMenu(allocator, Icons.Gizmo, true, null)) {
-            defer _coreui.endMenu();
+        if (coreui.beginMenu(allocator, Icons.Gizmo, true, null)) {
+            defer coreui.endMenu();
 
             var local_mode = options.mode == .Local;
             var world_mode = options.mode == .World;
 
-            if (_coreui.menuItemPtr(allocator, Icons.WorldMode ++ "  " ++ "World", .{ .selected = &world_mode }, null)) {
+            if (coreui.menuItemPtr(allocator, Icons.WorldMode ++ "  " ++ "World", .{ .selected = &world_mode }, null)) {
                 options.mode = if (world_mode) .World else .Local;
             }
-            if (_coreui.menuItemPtr(allocator, Icons.LocalMode ++ "  " ++ "Local", .{ .selected = &local_mode }, null)) {
+            if (coreui.menuItemPtr(allocator, Icons.LocalMode ++ "  " ++ "Local", .{ .selected = &local_mode }, null)) {
                 options.mode = if (local_mode) .Local else .World;
             }
 
-            _coreui.separator();
-            _coreui.text(Icons.Snap ++ "  " ++ "Snap");
-            _coreui.sameLine(.{});
+            coreui.separator();
+            coreui.text(Icons.Snap ++ "  " ++ "Snap");
+            coreui.sameLine(.{});
             var snap = options.snap.x;
-            _coreui.setNextItemWidth(4.0 * _coreui.getStyle().font_size_base);
-            if (_coreui.dragF32("", .{
+            coreui.setNextItemWidth(4.0 * coreui.getStyle().font_size_base);
+            if (coreui.dragF32("", .{
                 .v = &snap,
                 .min = 0,
                 .max = 100,
@@ -130,14 +127,14 @@ fn ecsGizmoMenu(allocator: std.mem.Allocator, world: ecs.World, entity: ecs.Enti
     }
 
     {
-        if (_coreui.toggleButton(Icons.Snap, &options.snap_enabled)) {}
+        if (coreui.toggleButton(Icons.Snap, &options.snap_enabled)) {}
     }
 
     {
-        _coreui.beginDisabled(.{ .disabled = !(component_gizmo_options.translate_x or component_gizmo_options.translate_y or component_gizmo_options.translate_z) });
-        _coreui.endDisabled();
+        coreui.beginDisabled(.{ .disabled = !(component_gizmo_options.translate_x or component_gizmo_options.translate_y or component_gizmo_options.translate_z) });
+        coreui.endDisabled();
         var enabled = (options.translate_x or options.translate_y or options.translate_z);
-        if (_coreui.toggleButton(Icons.Position, &enabled)) {
+        if (coreui.toggleButton(Icons.Position, &enabled)) {
             options.translate_x = enabled;
             options.translate_y = enabled;
             options.translate_z = enabled;
@@ -145,10 +142,10 @@ fn ecsGizmoMenu(allocator: std.mem.Allocator, world: ecs.World, entity: ecs.Enti
     }
 
     {
-        _coreui.beginDisabled(.{ .disabled = !(component_gizmo_options.rotate_x or component_gizmo_options.rotate_y or component_gizmo_options.rotate_z) });
-        _coreui.endDisabled();
+        coreui.beginDisabled(.{ .disabled = !(component_gizmo_options.rotate_x or component_gizmo_options.rotate_y or component_gizmo_options.rotate_z) });
+        coreui.endDisabled();
         var enabled = (options.rotate_x or options.rotate_y or options.rotate_z);
-        if (_coreui.toggleButton(Icons.Rotation, &enabled)) {
+        if (coreui.toggleButton(Icons.Rotation, &enabled)) {
             options.rotate_x = enabled;
             options.rotate_y = enabled;
             options.rotate_z = enabled;
@@ -156,10 +153,10 @@ fn ecsGizmoMenu(allocator: std.mem.Allocator, world: ecs.World, entity: ecs.Enti
     }
 
     {
-        _coreui.beginDisabled(.{ .disabled = !(component_gizmo_options.scale_x or component_gizmo_options.scale_y or component_gizmo_options.scale_z) });
-        _coreui.endDisabled();
+        coreui.beginDisabled(.{ .disabled = !(component_gizmo_options.scale_x or component_gizmo_options.scale_y or component_gizmo_options.scale_z) });
+        coreui.endDisabled();
         var enabled = (options.scale_x or options.scale_y or options.scale_z);
-        if (_coreui.toggleButton(Icons.Scale, &enabled)) {
+        if (coreui.toggleButton(Icons.Scale, &enabled)) {
             options.scale_x = enabled;
             options.scale_y = enabled;
             options.scale_z = enabled;
@@ -179,21 +176,21 @@ fn ecsGizmoSupported(
     if (component_obj) |c_obj| {
         gizmo_component_obj = c_obj;
 
-        if (_cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
+        if (cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
             if (aspect.gizmoGetMatrix) |gizmoGetMatrix| {
                 _ = gizmoGetMatrix;
                 component_i = aspect;
             }
         }
     } else {
-        const top_level_obj_r = ecs.EntityCdb.read(_cdb, entity_obj) orelse return false;
-        if (try ecs.EntityCdb.readSubObjSet(_cdb, top_level_obj_r, .Components, allocator)) |components| {
+        const top_level_obj_r = ecs.EntityCdb.read(entity_obj) orelse return false;
+        if (try ecs.EntityCdb.readSubObjSet(top_level_obj_r, .Components, allocator)) |components| {
             defer allocator.free(components);
 
             std.sort.insertion(cdb.ObjId, components, {}, lessThanGizmoPriority);
 
             for (components) |c_obj| {
-                if (_cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
+                if (cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
                     if (aspect.gizmoGetMatrix) |gizmoGetMatrix| {
                         _ = gizmoGetMatrix;
                         component_i = aspect;
@@ -230,21 +227,21 @@ fn ecsGizmo(
     if (component_obj) |c_obj| {
         gizmo_component_obj = c_obj;
 
-        if (_cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
+        if (cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
             if (aspect.gizmoGetMatrix) |gizmoGetMatrix| {
                 _ = gizmoGetMatrix;
                 component_i = aspect;
             }
         }
     } else {
-        const top_level_obj_r = ecs.EntityCdb.read(_cdb, entity_obj).?;
-        if (try ecs.EntityCdb.readSubObjSet(_cdb, top_level_obj_r, .Components, allocator)) |components| {
+        const top_level_obj_r = ecs.EntityCdb.read(entity_obj).?;
+        if (try ecs.EntityCdb.readSubObjSet(top_level_obj_r, .Components, allocator)) |components| {
             defer allocator.free(components);
 
             std.sort.insertion(cdb.ObjId, components, {}, lessThanGizmoPriority);
 
             for (components) |c_obj| {
-                if (_cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
+                if (cdb.getAspect(editor.EditorComponentAspect, db, c_obj.type_idx)) |aspect| {
                     if (aspect.gizmoGetMatrix) |gizmoGetMatrix| {
                         _ = gizmoGetMatrix;
                         component_i = aspect;
@@ -269,14 +266,14 @@ fn ecsGizmo(
             &local_mtx,
         );
 
-        _coreui.gizmoSetAlternativeWindow(_coreui.getCurrentWindow());
-        _coreui.gizmoSetDrawList(_coreui.getWindowDrawList());
-        _coreui.gizmoSetRect(origin.x, origin.y, size.x, size.y);
+        coreui.gizmoSetAlternativeWindow(coreui.getCurrentWindow());
+        coreui.gizmoSetDrawList(coreui.getWindowDrawList());
+        coreui.gizmoSetRect(origin.x, origin.y, size.x, size.y);
 
         const gizmo_options = try ci.gizmoGetOperation.?(world, entity, entity_obj, gizmo_component_obj.?);
         var delta_mtx = math.Mat44f{};
 
-        gizmo_manipulate = _coreui.gizmoManipulate(
+        gizmo_manipulate = coreui.gizmoManipulate(
             view,
             projection,
             .{
@@ -302,7 +299,7 @@ fn ecsGizmo(
                 .delta_matrix = &delta_mtx,
             },
         );
-        gizmo_using = _coreui.gizmoIsOver() or _coreui.gizmoIsUsing();
+        gizmo_using = coreui.gizmoIsOver() or coreui.gizmoIsUsing();
 
         if (gizmo_manipulate) {
             if (ci.gizmoSetMatrix) |gizmoSetMatrix| {
@@ -321,18 +318,16 @@ fn ecsGizmo(
 }
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _apidb = apidb;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
-    _assetdb = apidb.getZigApi(module_name, assetdb.AssetDBAPI).?;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _tempalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _ecs = apidb.getZigApi(module_name, cetech1.ecs.EcsAPI).?;
+    public.api = &api;
+
+    try cdb.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
+    try assetdb.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
@@ -344,6 +339,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_gizmo(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_editor_gizmo(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }

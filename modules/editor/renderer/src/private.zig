@@ -15,46 +15,40 @@ const Icons = cetech1.coreui.CoreIcons;
 const module_name = .editor_renderer;
 
 pub const std_options: std.Options = .{
-    .logFn = cetech1.log.zigLogFnGen(&_log),
+    .logFn = cetech1.log.zigLogFnGen(),
 };
 const log = std.log.scoped(module_name);
 
 var _allocator: Allocator = undefined;
-var _apidb: *const cetech1.apidb.ApiDbAPI = undefined;
-var _log: *const cetech1.log.LogAPI = undefined;
-var _cdb: *const cdb.CdbAPI = undefined;
-var _editor: *const editor.EditorAPI = undefined;
-var _kernel: *const cetech1.kernel.KernelApi = undefined;
-var _coreui: *const cetech1.coreui.CoreUIApi = undefined;
-var _tempalloc: *const cetech1.tempalloc.TempAllocApi = undefined;
-var _inspector: *const editor_inspector.InspectorAPI = undefined;
+const apidb = cetech1.apidb;
+
+const tempalloc = cetech1.tempalloc;
 
 // Global state
 const G = struct {
-    test_geometry_type_aspec: *editor_inspector.UiPropertyAspect = undefined,
+    test_geometry_type_aspec: *editor_inspector.UiInspectorPropertyValueAspect = undefined,
 };
 var _g: *G = undefined;
 
-const test_geometry_type_aspec = editor_inspector.UiPropertyAspect.implement(struct {
+const test_geometry_type_aspec = editor_inspector.UiInspectorPropertyValueAspect.implement(struct {
     pub fn ui(
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
         prop_idx: u32,
-        args: editor_inspector.cdbPropertiesViewArgs,
+        args: editor_inspector.InspectorViewArgs,
     ) !void {
-        _ = allocator; // autofix
-        _ = args; // autofix
-        const r = renderer_nodes.SimpleMeshNodeSettingsCdb.read(_cdb, obj).?;
-        const type_str = renderer_nodes.SimpleMeshNodeSettingsCdb.readStr(_cdb, r, .Type) orelse "";
-        var type_enum = std.meta.stringToEnum(renderer_nodes.SimpleMeshNodeType, type_str) orelse .Cube;
+        _ = prop_idx;
+        _ = allocator;
+        _ = args;
+        const r = renderer_nodes.SimpleMeshNodeSettingsCdb.read(obj).?;
 
-        try _inspector.uiPropInputBegin(obj, prop_idx, true);
-        defer _inspector.uiPropInputEnd();
+        var type_enum = renderer_nodes.SimpleMeshNodeSettingsCdb.readStrEnum(renderer_nodes.SimpleMeshNodeType, r, .Type, .Cube);
 
-        if (_coreui.comboFromEnum("", &type_enum)) {
-            const w = renderer_nodes.SimpleMeshNodeSettingsCdb.write(_cdb, obj).?;
-            try renderer_nodes.SimpleMeshNodeSettingsCdb.setStr(_cdb, w, .Type, @tagName(type_enum));
-            try renderer_nodes.SimpleMeshNodeSettingsCdb.commit(_cdb, w);
+        coreui.setNextItemWidth(-1.0);
+        if (coreui.comboFromEnum("", &type_enum)) {
+            const w = renderer_nodes.SimpleMeshNodeSettingsCdb.write(obj).?;
+            try renderer_nodes.SimpleMeshNodeSettingsCdb.setStr(w, .Type, @tagName(type_enum));
+            try renderer_nodes.SimpleMeshNodeSettingsCdb.commit(w);
         }
     }
 });
@@ -69,8 +63,8 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
     pub fn postCreateTypes(db: cdb.DbId) !void {
         try renderer_nodes.SimpleMeshNodeSettingsCdb.addPropertyAspect(
-            editor_inspector.UiPropertyAspect,
-            _cdb,
+            editor_inspector.UiInspectorPropertyValueAspect,
+
             db,
             .Type,
             _g.test_geometry_type_aspec,
@@ -79,23 +73,21 @@ const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocator, log_api: *const cetech1.log.LogAPI, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
     // basic
     _allocator = allocator;
-    _log = log_api;
-    _apidb = apidb;
-    _kernel = apidb.getZigApi(module_name, cetech1.kernel.KernelApi).?;
-    _cdb = apidb.getZigApi(module_name, cdb.CdbAPI).?;
-    _tempalloc = apidb.getZigApi(module_name, cetech1.tempalloc.TempAllocApi).?;
-    _coreui = apidb.getZigApi(module_name, cetech1.coreui.CoreUIApi).?;
 
-    _editor = apidb.getZigApi(module_name, editor.EditorAPI).?;
-    _inspector = apidb.getZigApi(module_name, editor_inspector.InspectorAPI).?;
+    try cdb.loadAPI(module_name);
+    try tempalloc.loadAPI(module_name);
+    try coreui.loadAPI(module_name);
+
+    try editor.loadAPI(module_name);
+    try editor_inspector.loadAPI(module_name);
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
-    _g.test_geometry_type_aspec = try apidb.setGlobalVarValue(editor_inspector.UiPropertyAspect, module_name, "ct_test_geometry_type_aspec", test_geometry_type_aspec);
+    _g.test_geometry_type_aspec = try apidb.setGlobalVarValue(editor_inspector.UiInspectorPropertyValueAspect, module_name, "ct_test_geometry_type_aspec", test_geometry_type_aspec);
 
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, load);
     try apidb.implOrRemove(module_name, cdb.PostCreateTypesI, &post_create_types_i, load);
@@ -104,6 +96,6 @@ pub fn load_module_zig(apidb: *const cetech1.apidb.ApiDbAPI, allocator: Allocato
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_renderer(apidb: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb, allocator, load, reload);
+pub export fn ct_load_module_editor_renderer(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
 }
