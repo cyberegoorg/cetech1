@@ -20,5 +20,5 @@ pub const cetech1_options = @import("cetech1_options");
 pub const static_module = @import("static_module");
 
 test {
-    std.testing.refAllDeclsRecursive(@This());
+    std.testing.refAllDecls(@This());
 }

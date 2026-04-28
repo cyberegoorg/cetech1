@@ -73,7 +73,7 @@ pub fn InternWithLock(comptime T: type) type {
 
         allocator: std.mem.Allocator,
         storage: Storage,
-        lck: std.Thread.Mutex = .{},
+        lck: std.Io.Mutex = .init,
 
         pub fn init(allocator: std.mem.Allocator) Self {
             return Self{
@@ -90,9 +90,9 @@ pub fn InternWithLock(comptime T: type) type {
             self.storage.deinit();
         }
 
-        pub fn intern(self: *Self, string: T) !T {
-            self.lck.lock();
-            defer self.lck.unlock();
+        pub fn intern(self: *Self, io: std.Io, string: T) !T {
+            self.lck.lockUncancelable(io);
+            defer self.lck.unlock(io);
             const hash = strId64(string);
 
             const intern_str_result = try self.storage.getOrPut(hash);
@@ -103,11 +103,11 @@ pub fn InternWithLock(comptime T: type) type {
             return intern_str_result.value_ptr.*;
         }
 
-        pub fn internToHash(self: *Self, string: T) !InternId {
+        pub fn internToHash(self: *Self, io: std.Io, string: T) !InternId {
             const hash = strId64(string);
 
-            self.lck.lock();
-            defer self.lck.unlock();
+            self.lck.lockUncancelable(io);
+            defer self.lck.unlock(io);
             const intern_str_result = try self.storage.getOrPut(hash);
             if (intern_str_result.found_existing) return hash;
 
@@ -116,9 +116,9 @@ pub fn InternWithLock(comptime T: type) type {
             return hash;
         }
 
-        pub fn findById(self: *Self, id: InternId) ?[:0]const u8 {
-            self.lck.lock();
-            defer self.lck.unlock();
+        pub fn findById(self: *Self, io: std.Io, id: InternId) ?[:0]const u8 {
+            self.lck.lockUncancelable(io);
+            defer self.lck.unlock(io);
             return self.storage.get(id);
         }
     };

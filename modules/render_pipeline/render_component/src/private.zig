@@ -148,10 +148,10 @@ const init_render_component_system_i = ecs.SystemI.implement(
             const alloc = try tempalloc.create();
             defer tempalloc.destroy(alloc);
 
-            var all_instances = cetech1.ArrayList(graphvm.GraphInstance){};
+            var all_instances = cetech1.ArrayList(graphvm.GraphInstance).empty;
             defer all_instances.deinit(alloc);
 
-            var all_ents = cetech1.ArrayList(ecs.EntityId){};
+            var all_ents = cetech1.ArrayList(ecs.EntityId).empty;
             defer all_ents.deinit(alloc);
 
             while (it.next()) {
@@ -227,7 +227,7 @@ const update_render_component_system_i = ecs.SystemI.implement(
             const alloc = try tempalloc.create();
             defer tempalloc.destroy(alloc);
 
-            var all_instances = cetech1.ArrayList(graphvm.GraphInstance){};
+            var all_instances = cetech1.ArrayList(graphvm.GraphInstance).empty;
             defer all_instances.deinit(alloc);
 
             while (it.next()) {
@@ -815,8 +815,9 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
+    _ = io;
     // basic
     _allocator = allocator;
 
@@ -857,6 +858,6 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_render_component(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
+pub export fn ct_load_module_render_component(io: *const std.Io, apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, apidb_, allocator, load, reload);
 }

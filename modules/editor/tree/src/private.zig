@@ -129,8 +129,7 @@ fn formatedPropNameToBuff(buf: []u8, prop_name: [:0]const u8) ![]u8 {
     var split = std.mem.splitAny(u8, prop_name, "_");
     const first = split.first();
 
-    var buff_stream = std.io.fixedBufferStream(buf);
-    var writer = buff_stream.writer();
+    var writer: std.Io.Writer = .fixed(buf);
 
     var tmp_buf: [128]u8 = undefined;
 
@@ -146,8 +145,8 @@ fn formatedPropNameToBuff(buf: []u8, prop_name: [:0]const u8) ![]u8 {
         _ = try writer.write(" ");
     }
 
-    var writen = buff_stream.getWritten();
-    return writen[0 .. writen.len - 1];
+    const writen = writer.end;
+    return buf[0 .. writen - 1];
 }
 
 fn isLeaf(db: cdb.DbId, obj: cdb.ObjId) bool {
@@ -508,8 +507,9 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
+    _ = io;
     // basic
     _allocator = allocator;
     public.api = &api;
@@ -531,8 +531,8 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_tree(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
+pub export fn ct_load_module_editor_tree(io: *const std.Io, apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, apidb_, allocator, load, reload);
 }
 
 // Assert C api == C api in zig.

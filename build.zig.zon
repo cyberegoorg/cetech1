@@ -1,7 +1,7 @@
 .{
     .name = .cetech1_kernel,
     .version = "0.1.0",
-    .minimum_zig_version = "0.15.2",
+    .minimum_zig_version = "0.16.0",
     .fingerprint = 0x999557f3ebfaa97a,
     .paths = .{
         "docs",
@@ -99,7 +99,6 @@
         // Externals
         //
         .zf = .{ .path = "externals/shared/lib/zf" },
-        .uuid = .{ .path = "externals/shared/lib/zig-uuid/" },
         .znfde = .{ .path = "externals/shared/lib/znfde" },
         .zbgfx = .{ .path = "externals/shared/lib/zbgfx" },
 

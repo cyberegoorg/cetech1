@@ -16,9 +16,6 @@
 [submodule "externals/shared/repo/zgui"]
 	path = externals/shared/repo/zgui
 	url = https://github.com/cyberegoorg/zgui.git
-[submodule "externals/shared/repo/zig-uuid"]
-	path = externals/shared/repo/zig-uuid
-	url = https://github.com/cyberegoorg/zig-uuid.git
 [submodule "externals/shared/repo/ziglang-set"]
 	path = externals/shared/repo/ziglang-set
 	url = https://github.com/cyberegoorg/ziglang-set.git

@@ -8,36 +8,36 @@ pub const InterfaceVersion = u64;
 pub const lang_zig = "zig";
 
 /// Crete variable that can survive reload.
-pub inline fn setGlobalVar(comptime T: type, comptime module: @Type(.enum_literal), var_name: []const u8, default: T) !*T {
-    const ptr: *T = @ptrFromInt(@intFromPtr(try api.setGlobalVar(@tagName(module), var_name, @sizeOf(T), &std.mem.toBytes(default))));
+pub inline fn setGlobalVar(comptime T: type, comptime module: @EnumLiteral(), var_name: []const u8, default: T) !*T {
+    const ptr: *T = @ptrCast(@alignCast(try api.setGlobalVar(@tagName(module), var_name, @sizeOf(T), &std.mem.toBytes(default))));
     return ptr;
 }
 
 /// Crete variable that can survive reload + always set value
-pub inline fn setGlobalVarValue(comptime T: type, comptime module: @Type(.enum_literal), var_name: []const u8, value: T) !*T {
-    const ptr: *T = @ptrFromInt(@intFromPtr(try api.setGlobalVar(@tagName(module), var_name, @sizeOf(T), &.{})));
+pub inline fn setGlobalVarValue(comptime T: type, comptime module: @EnumLiteral(), var_name: []const u8, value: T) !*T {
+    const ptr: *T = @ptrCast(@alignCast(try api.setGlobalVar(@tagName(module), var_name, @sizeOf(T), &.{})));
     ptr.* = value;
     return ptr;
 }
 
 /// Register api for given language and api name.
-pub inline fn setApi(comptime module: @Type(.enum_literal), comptime T: type, language: []const u8, api_name: []const u8, api_ptr: *const T) !void {
+pub inline fn setApi(comptime module: @EnumLiteral(), comptime T: type, language: []const u8, api_name: []const u8, api_ptr: *const T) !void {
     return try api.setApiOpaqueue(@tagName(module), language, api_name, api_ptr, @sizeOf(T));
 }
 
 /// Unregister api for given language and api name.
-pub inline fn removeApi(comptime module: @Type(.enum_literal), language: []const u8, api_name: []const u8) void {
+pub inline fn removeApi(comptime module: @EnumLiteral(), language: []const u8, api_name: []const u8) void {
     return api.removeApi(@tagName(module), language, api_name);
 }
 
 /// Get api for given language.
 /// If api not exist create place holder with zeroed values and return it. (setApi fill the valid pointers)
-pub inline fn getApi(comptime module: @Type(.enum_literal), comptime T: type, language: []const u8, api_name: []const u8) ?*const T {
-    return @ptrFromInt(@intFromPtr(api.getApiOpaaque(@tagName(module), language, api_name, @sizeOf(T))));
+pub inline fn getApi(comptime module: @EnumLiteral(), comptime T: type, language: []const u8, api_name: []const u8) ?*const T {
+    return @ptrCast(@alignCast(api.getApiOpaaque(@tagName(module), language, api_name, @sizeOf(T))));
 }
 
 /// Set or remove API for given language and api name
-pub inline fn setOrRemoveApi(comptime module: @Type(.enum_literal), comptime T: type, language: []const u8, api_name: []const u8, api_ptr: *const T, load: bool) !void {
+pub inline fn setOrRemoveApi(comptime module: @EnumLiteral(), comptime T: type, language: []const u8, api_name: []const u8, api_ptr: *const T, load: bool) !void {
     if (load) {
         return setApi(module, T, language, api_name, api_ptr);
     } else {
@@ -46,7 +46,7 @@ pub inline fn setOrRemoveApi(comptime module: @Type(.enum_literal), comptime T: 
 }
 
 /// Set or remove Zig API
-pub inline fn setOrRemoveZigApi(comptime module: @Type(.enum_literal), comptime T: type, api_ptr: *const T, load: bool) !void {
+pub inline fn setOrRemoveZigApi(comptime module: @EnumLiteral(), comptime T: type, api_ptr: *const T, load: bool) !void {
     if (load) {
         return setZigApi(module, T, api_ptr);
     } else {
@@ -55,7 +55,7 @@ pub inline fn setOrRemoveZigApi(comptime module: @Type(.enum_literal), comptime 
 }
 
 /// Implement or remove interface
-pub inline fn implOrRemove(comptime module: @Type(.enum_literal), comptime T: type, impl_ptr: *const T, load: bool) !void {
+pub inline fn implOrRemove(comptime module: @EnumLiteral(), comptime T: type, impl_ptr: *const T, load: bool) !void {
     if (load) {
         return implInterface(module, T, impl_ptr);
     } else {
@@ -64,25 +64,25 @@ pub inline fn implOrRemove(comptime module: @Type(.enum_literal), comptime T: ty
 }
 
 /// Set zig api
-pub inline fn setZigApi(comptime module: @Type(.enum_literal), comptime T: type, api_ptr: *const T) !void {
+pub inline fn setZigApi(comptime module: @EnumLiteral(), comptime T: type, api_ptr: *const T) !void {
     var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
     return try api.setApiOpaqueue(@tagName(module), lang_zig, name_iter.first(), api_ptr, @sizeOf(T));
 }
 
 /// Get zig api
-pub inline fn getZigApi(comptime module: @Type(.enum_literal), comptime T: type) ?*const T {
+pub inline fn getZigApi(comptime module: @EnumLiteral(), comptime T: type) ?*const T {
     var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
-    return @ptrFromInt(@intFromPtr(api.getApiOpaaque(@tagName(module), lang_zig, name_iter.first(), @sizeOf(T))));
+    return @ptrCast(@alignCast(api.getApiOpaaque(@tagName(module), lang_zig, name_iter.first(), @sizeOf(T))));
 }
 
 /// Remove zig api
-pub inline fn removeZigApi(comptime module: @Type(.enum_literal), comptime T: type) void {
+pub inline fn removeZigApi(comptime module: @EnumLiteral(), comptime T: type) void {
     var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
     api.removeApi(@tagName(module), lang_zig, name_iter.first());
 }
 
 /// Implement interface
-pub inline fn implInterface(comptime module: @Type(.enum_literal), comptime T: type, impl_ptr: *const T) !void {
+pub inline fn implInterface(comptime module: @EnumLiteral(), comptime T: type, impl_ptr: *const T) !void {
     return api.implInterface(@tagName(module), T.name_hash, impl_ptr);
 }
 
@@ -96,7 +96,7 @@ pub inline fn getImpl(allocator: std.mem.Allocator, comptime T: type) ![]*const 
 }
 
 /// Remove interface
-pub inline fn removeImpl(comptime module: @Type(.enum_literal), comptime T: type, impl_ptr: *const T) void {
+pub inline fn removeImpl(comptime module: @EnumLiteral(), comptime T: type, impl_ptr: *const T) void {
     api.removeImpl(@tagName(module), T.name_hash, impl_ptr);
 }
 

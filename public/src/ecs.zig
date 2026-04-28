@@ -764,7 +764,7 @@ pub const EcsAPI = struct {
 
 pub var api: *const EcsAPI = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     api = apidb.getZigApi(module, EcsAPI).?;
 }
 

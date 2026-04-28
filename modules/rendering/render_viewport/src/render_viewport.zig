@@ -232,6 +232,6 @@ pub const RenderViewportApi = struct {
 
 pub var api: *const RenderViewportApi = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     api = apidb.getZigApi(module, RenderViewportApi).?;
 }

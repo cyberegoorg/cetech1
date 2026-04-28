@@ -77,7 +77,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
         pub const max_job_size = queue_config.max_job_size;
 
         const Data = [max_job_size]u8;
-        const Main = *const fn (*Data) void;
+        const Main = *const fn (*Data) anyerror!void;
 
         data: Data align(cache_line_size) = undefined,
         exec: Main align(cache_line_size) = undefined,
@@ -116,7 +116,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
             const job_bytes = std.mem.asBytes(job);
             @memcpy(self.data[0..job_bytes.len], job_bytes);
 
-            const exec: *const fn (*Job) void = &@field(Job, "exec");
+            const exec: *const fn (*Job) anyerror!void = &@field(Job, "exec");
             const id = jobId(@truncate(index), new_cycle);
 
             self.exec = @as(Main, @ptrCast(exec));
@@ -135,7 +135,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
             const new_cycle: u16 = old_cycle +% 1;
             std.debug.assert(isFreeCycle(new_cycle));
 
-            self.exec(&self.data);
+            self.exec(&self.data) catch undefined;
 
             const old_id2 = @atomicLoad(public.TaskID, &self.id, .acquire);
             std.debug.assert(old_id2 == id);
@@ -169,7 +169,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
         tasks: [queue_config.max_jobs]Slot align(cache_line_size) = @splat(.{}),
         free_tasks: FreeQueue = undefined,
 
-        job_signal: std.Thread.Semaphore = .{},
+        job_signal: std.Io.Semaphore = .{},
 
         pub fn init(allocator: std.mem.Allocator) !Self {
             var self = Self{
@@ -267,7 +267,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
                 var w = self.getWorker();
                 w.pushJob(id);
             }
-            self.job_signal.post();
+            self.job_signal.post(_io);
             return id;
         }
 
@@ -280,7 +280,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
             std.debug.assert(b);
         }
 
-        fn threadMain(self: *Self, thread_index: usize) void {
+        fn threadMain(self: *Self, thread_index: usize) !void {
             THREAD_IDX = @intCast(thread_index);
 
             log.debug("Worker thread {d} spawned", .{self.getWokerId()});
@@ -303,7 +303,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
                     //self.job_signal.timedWait(queue_config.idle_sleep_ns) catch undefined;
                     // self.job_signal.wait();
                     //std.Thread.yield() catch undefined;
-                    std.Thread.sleep(queue_config.idle_sleep_ns);
+                    try std.Io.sleep(_io, .fromNanoseconds(queue_config.idle_sleep_ns), .awake);
                 }
             }
         }
@@ -311,7 +311,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
         fn nameThread(t: std.Thread, comptime fmt: []const u8, args: anytype) void {
             var buf: [std.Thread.max_name_len]u8 = undefined;
             if (std.fmt.bufPrint(&buf, fmt, args)) |name| {
-                t.setName(name) catch |err| ignore(err);
+                t.setName(_io, name) catch |err| ignore(err);
             } else |err| {
                 ignore(err);
             }
@@ -444,7 +444,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
             return null;
         }
 
-        pub fn waitForManyTask(self: *Self, tasks: []const public.TaskID) void {
+        pub fn waitForManyTask(self: *Self, io: std.Io, tasks: []const public.TaskID) !void {
             // var zone_ctx = profiler.ztracy.Zone(@src());
             // defer zone_ctx.End();
             for (tasks) |task| {
@@ -463,19 +463,19 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
                         // self.job_signal.timedWait(queue_config.idle_sleep_ns) catch undefined;
                         // self.job_signal.wait();
                     }
-                    std.Thread.sleep(queue_config.idle_sleep_ns);
+                    try std.Io.sleep(io, .fromNanoseconds(queue_config.idle_sleep_ns), .awake);
                 }
             }
         }
 
-        pub fn doOneTask(self: *Self, only_prio: bool) void {
+        pub fn doOneTask(self: *Self, io: std.Io, only_prio: bool) !void {
             if (self.getWorkToDo(only_prio)) |t| {
                 var task_slot = &self.tasks[t.index()];
                 if (task_slot.executeJob(t)) {
                     self.freeTaskIdx(t.index());
                 }
             }
-            std.Thread.sleep(queue_config.idle_sleep_ns);
+            try std.Io.sleep(io, .fromNanoseconds(queue_config.idle_sleep_ns), .awake);
         }
 
         pub fn isDone(self: *Self, task: public.TaskID) bool {
@@ -496,7 +496,7 @@ pub fn JobSystem(comptime queue_config: QueueConfig) type {
             jobs: *Self,
             prereqs: [max_prereqs]public.TaskID = @splat(public.TaskID.none),
 
-            pub fn exec(_: *@This()) void {}
+            pub fn exec(_: *@This()) !void {}
         };
         pub fn combine(self: *Self, prereqs: []const public.TaskID) !public.TaskID {
             if (prereqs.len == 0) return public.TaskID.none;
@@ -547,20 +547,22 @@ fn getWorkerId() usize {
 }
 
 fn doOneTask(only_prio: bool) void {
-    _job_system.doOneTask(only_prio);
+    _job_system.doOneTask(_io, only_prio) catch undefined;
 }
 
 const JobSystemImpl = JobSystem(.{
     .idle_sleep_ns = 50,
     .max_job_size = 128,
-    .max_jobs = 1024 * 4,
+    .max_jobs = 1024 * 2,
 });
 
 var _allocator: std.mem.Allocator = undefined;
+var _io: std.Io = undefined;
 var _job_system: JobSystemImpl = undefined;
-pub fn init(allocator: std.mem.Allocator) !void {
+pub fn init(io: std.Io, allocator: std.mem.Allocator) !void {
     public.api = &api;
     _allocator = allocator;
+    _io = io;
     _job_system = try JobSystemImpl.init(allocator);
 }
 
@@ -583,7 +585,7 @@ pub fn registerToApi() !void {
 fn schedule(prereq: public.TaskID, task: public.TaskStub, config: public.ScheduleConfig) !public.TaskID {
     const Job = struct {
         t: public.TaskStub,
-        pub fn exec(self: *@This()) void {
+        pub fn exec(self: *@This()) !void {
             self.t.task(&self.t.data) catch |err| {
                 log.err("Task failed: {}", .{err});
                 _ = 1;
@@ -603,7 +605,7 @@ fn schedule(prereq: public.TaskID, task: public.TaskStub, config: public.Schedul
 fn wait(prereq: public.TaskID) void {
     var zone_ctx = profiler.ztracy.Zone(@src());
     defer zone_ctx.End();
-    _job_system.waitForManyTask(&.{prereq});
+    _job_system.waitForManyTask(_io, &.{prereq}) catch undefined;
 }
 
 fn isDone(task: public.TaskID) bool {
@@ -613,7 +615,7 @@ fn isDone(task: public.TaskID) bool {
 fn waitMany(prereq: []const public.TaskID) void {
     var zone_ctx = profiler.ztracy.Zone(@src());
     defer zone_ctx.End();
-    _job_system.waitForManyTask(prereq);
+    _job_system.waitForManyTask(_io, prereq) catch undefined;
 }
 
 fn combine(prereq: []const public.TaskID) !public.TaskID {
@@ -651,21 +653,21 @@ test "task: basic test" {
 
     const TaskA = struct {
         job: *Queue,
-        pub fn exec(self: *@This()) void {
+        pub fn exec(self: *@This()) !void {
             log.debug("Task A {}", .{self.job.getWokerId()});
         }
     };
 
     const TaskB = struct {
         job: *Queue,
-        pub fn exec(self: *@This()) void {
+        pub fn exec(self: *@This()) !void {
             log.debug("Task B {}", .{self.job.getWokerId()});
         }
     };
 
     const TaskC = struct {
         job: *Queue,
-        pub fn exec(self: *@This()) void {
+        pub fn exec(self: *@This()) !void {
             log.debug("Task C {}", .{self.job.getWokerId()});
         }
     };
@@ -673,7 +675,7 @@ test "task: basic test" {
     const t1 = try job_system.schedule(.none, TaskA{ .job = &job_system }, false, .{});
     const t2 = try job_system.schedule(t1, TaskB{ .job = &job_system }, false, .{});
     const t3 = try job_system.schedule(t2, TaskC{ .job = &job_system }, false, .{});
-    job_system.waitForManyTask(&.{t3});
+    try job_system.waitForManyTask(std.testing.io, &.{t3});
 
     try std.testing.expect(job_system.isDone(t1));
     try std.testing.expect(job_system.isDone(t2));
@@ -702,7 +704,7 @@ test "task: basic test" {
     };
 
     const batch_task = try job_system.combine(&batch);
-    job_system.waitForManyTask(&.{batch_task});
+    try job_system.waitForManyTask(std.testing.io, &.{batch_task});
 
     for (batch) |value| {
         try std.testing.expect(job_system.isDone(value));
@@ -722,20 +724,22 @@ test "task: spawn task from task" {
     // log.err("dasdasdasda", .{});
 
     const TaskDep1 = struct {
-        pub fn exec(self: *@This()) void {
+        pub fn exec(self: *@This()) !void {
             _ = self;
-            std.Thread.sleep(std.time.ns_per_ms * 5);
+
+            try std.Io.sleep(_io, .fromNanoseconds(std.time.ns_per_ms * 5), .awake);
         }
     };
 
     const TaskDep2 = struct {
         job: *Queue,
-        pub fn exec(self: *@This()) void {
+        pub fn exec(self: *@This()) !void {
             const td1 = try self.job.schedule(.none, TaskDep1{}, false, .{});
             const td2 = try self.job.schedule(.none, TaskDep1{}, false, .{});
             const td3 = try self.job.schedule(.none, TaskDep1{}, false, .{});
 
-            self.job.waitForManyTask(
+            try self.job.waitForManyTask(
+                std.testing.io,
                 &.{
                     try self.job.combine(
                         &.{
@@ -749,7 +753,8 @@ test "task: spawn task from task" {
         }
     };
 
-    job_system.waitForManyTask(
+    try job_system.waitForManyTask(
+        std.testing.io,
         &.{
             try job_system.combine(
                 &.{

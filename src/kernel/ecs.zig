@@ -47,7 +47,7 @@ const World = struct {
     simulate_do_step: bool = false,
 
     id_map: IdMap = .{},
-    simulated_systems: SimulatedSystemsList = .{},
+    simulated_systems: SimulatedSystemsList = .empty,
     observer_map: ObserverMaps = .{},
 
     IsFromCdb: zflecs.entity_t = undefined,
@@ -298,10 +298,10 @@ const World = struct {
     }
 
     pub fn setSimulate(self: *World, simulate: bool) void {
-        for (self.simulated_systems.items) |value| {
-            zflecs.enable(self.w, value, simulate);
-        }
         self.simulate = simulate;
+        for (self.simulated_systems.items) |value| {
+            zflecs.enable(self.w, value, self.simulate);
+        }
     }
 
     pub fn enableObserver(self: *World, id: cetech1.StrId32, enable: bool) void {
@@ -455,23 +455,25 @@ extern fn ecs_run_worker(
 ) zflecs.entity_t;
 
 var _allocator: std.mem.Allocator = undefined;
+var _io: std.Io = undefined;
 var _zflecs_os_impl: os.api_t = undefined;
 
 var _world_data: WorldSet = undefined;
-var _world_data_lck: std.Thread.Mutex = .{};
+var _world_data_lck: std.Io.Mutex = .init;
 
-pub fn init(allocator: std.mem.Allocator) !void {
+pub fn init(io: std.Io, allocator: std.mem.Allocator) !void {
     _ = @alignOf(public.TermId);
     public.api = &api;
 
     _allocator = allocator;
+    _io = io;
     FlecsAllocator.allocator = allocator;
 
     _component_version = .{};
 
-    _world_data_lck = .{};
+    _world_data_lck = .init;
 
-    _world_data = .init();
+    _world_data = .empty;
     try _world_data.ensureTotalCapacity(allocator, 128);
 
     _world_pool = try WorldPool.init(allocator, 128);
@@ -546,10 +548,10 @@ var sync_changes_from_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
             const alloc = try tempalloc.create();
             defer tempalloc.destroy(alloc);
 
-            var processed_obj = ChangedObjsSet.init();
+            var processed_obj = ChangedObjsSet.empty;
             defer processed_obj.deinit(alloc);
 
-            var deleted_ent_obj = ChangedObjsSet.init();
+            var deleted_ent_obj = ChangedObjsSet.empty;
             defer deleted_ent_obj.deinit(alloc);
 
             const db = assetdb_private.getDb();
@@ -1211,8 +1213,8 @@ pub fn createWorld() !public.World {
         zflecs.set_task_threads(world, @intCast(task.getThreadNum() - 1));
     }
 
-    _world_data_lck.lock();
-    defer _world_data_lck.unlock();
+    _world_data_lck.lockUncancelable(_io);
+    defer _world_data_lck.unlock(_io);
 
     var w = _world_pool.create(null);
     w.* = try World.init(_allocator, world);
@@ -1480,8 +1482,8 @@ pub fn destroyWorld(world: public.World) void {
     const w: *World = @ptrCast(@alignCast(world.ptr));
     w.deinit();
 
-    _world_data_lck.lock();
-    defer _world_data_lck.unlock();
+    _world_data_lck.lockUncancelable(_io);
+    defer _world_data_lck.unlock(_io);
     _ = _world_data.remove(@ptrCast(@alignCast(world.ptr)));
 }
 

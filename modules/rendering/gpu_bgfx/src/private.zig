@@ -3,10 +3,8 @@ const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-
 const zbgfx = @import("zbgfx");
 const bgfx = zbgfx.bgfx;
-
 const profiler = cetech1.profiler;
 const task = cetech1.task;
 const tempalloc = cetech1.tempalloc;
@@ -14,8 +12,11 @@ const math = cetech1.math;
 const host = cetech1.host;
 const gpu_dd = cetech1.gpu_dd;
 const metrics = cetech1.metrics;
+const apidb = cetech1.apidb;
+const kernel = cetech1.kernel;
 
 const public = cetech1.gpu;
+
 const core_shader = @import("shaders.zig").core_shader;
 
 const module_name = .gpu_bgfx;
@@ -29,7 +30,7 @@ const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-const apidb = cetech1.apidb;
+var _io: std.Io = undefined;
 
 // Global state
 const G = struct {};
@@ -513,7 +514,7 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
                 .{ .affinity = 1 },
             ) catch undefined;
             while (!task.isDone(task_id)) {
-                std.Thread.sleep(1 * std.time.ns_per_ms);
+                std.Io.sleep(_io, .fromNanoseconds(1 * std.time.ns_per_ms), .awake) catch undefined;
                 _ = bgfx.renderFrame(0);
             }
         }
@@ -569,10 +570,14 @@ pub const backend_api = public.GpuBackendApi.implement(struct {
         _ = self;
         log.debug("Compile {s} shader", .{@tagName(options.shaderType)});
 
-        const exe = try zbgfx.shaderc.shadercFromExePath(allocator);
+        const exe = try zbgfx.shaderc.shadercFromExePath(_io, allocator);
         defer allocator.free(exe);
+
+        const tmp_dir_path = try std.fs.path.join(allocator, &.{ cetech1.kernel.getTmpPath(), "shaderc" });
+        defer allocator.free(tmp_dir_path);
+
         const opts: zbgfx.shaderc.ShadercOptions = std.mem.bytesToValue(zbgfx.shaderc.ShadercOptions, std.mem.asBytes(&options));
-        return zbgfx.shaderc.compileShader(allocator, exe, varying, shader, opts);
+        return zbgfx.shaderc.compileShader(_io, allocator, exe, varying, shader, tmp_dir_path, opts);
     }
     pub fn createDefaultOptionsForRenderer(self: *anyopaque) public.ShadercOptions {
         const context: *BgfxBackend = @ptrCast(@alignCast(self));
@@ -1206,8 +1211,8 @@ const BgfxBackend = struct {
 
     float_buffer_layout: public.VertexLayout = undefined,
 
-    encoders: EncoderArray = .{},
-    pallet_map: PalletColorMap = .{},
+    encoders: EncoderArray = .empty,
+    pallet_map: PalletColorMap = .empty,
 
     coreui_program: public.ProgramHandle = .{},
 };
@@ -1356,7 +1361,7 @@ fn createBgfxBackend(
         .{ .affinity = 1 },
     );
     while (!task.isDone(task_id)) {
-        std.Thread.sleep(1 * std.time.ns_per_ms);
+        try std.Io.sleep(_io, .fromNanoseconds(1 * std.time.ns_per_ms), .awake);
         _ = bgfx.renderFrame(0);
     }
 
@@ -1722,14 +1727,15 @@ pub fn destroyDDEncoder(encoder: gpu_dd.Encoder) void {
 }
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
 
     // basic
     _allocator = allocator;
+    _io = io;
 
     try host.loadAPI(module_name);
-    // try kernel.loadAPI(module_name);
+    try kernel.loadAPI(module_name);
     try tempalloc.loadAPI(module_name);
 
     try metrics.loadAPI(module_name);
@@ -1753,6 +1759,6 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_gpu_bgfx(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
+pub export fn ct_load_module_gpu_bgfx(io: *const std.Io, apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, apidb_, allocator, load, reload);
 }

@@ -1,6 +1,6 @@
 /// Open Source Initiative OSI - The MIT License (MIT):Licensing
 /// The MIT License (MIT)
-/// Copyright (c) 2025 Ralph Caraveo (deckarep@gmail.com)
+/// Copyright (c) 2026 Ralph Caraveo (deckarep@gmail.com)
 /// Permission is hereby granted, free of charge, to any person obtaining a copy of
 /// this software and associated documentation files (the "Software"), to deal in
 /// the Software without restriction, including without limitation the rights to
@@ -39,17 +39,17 @@ fn selectMapWithContext(comptime E: type, comptime Context: type, comptime max_l
     return std.HashMapUnmanaged(E, void, Context, max_load_percentage);
 }
 
-/// HashSetUnmanaged is an implementation of a Set where there is no internal
+/// HashSet is an implementation of a Set where there is no internal
 /// allocator and all allocating methods require a first argument allocator.
-/// This is a more compact Set built on top of the the HashMapUnmanaged
+/// This is a more compact Set built on top of the the HashMap
 /// datastructure.
 /// Note that max_load_percentage defaults to undefined, because the underlying
 /// std.AutoHashMap/std.StringHashMap defaults are used.
-pub fn HashSetUnmanaged(comptime E: type) type {
-    return HashSetUnmanagedWithContext(E, void, undefined);
+pub fn HashSet(comptime E: type) type {
+    return HashSetWithContext(E, void, undefined);
 }
 
-/// HashSetUnmanagedWithContext creates a set based on element type E with custom hashing behavior.
+/// HashSetWithContext creates a set based on element type E with custom hashing behavior.
 /// This variant allows specifying:
 /// - A Context type that implements hash() and eql() functions for custom element hashing
 /// - A max_load_percentage (1-100) that controls hash table resizing
@@ -58,7 +58,7 @@ pub fn HashSetUnmanaged(comptime E: type) type {
 /// The Context type must provide:
 ///   fn hash(self: Context, key: K) u64
 ///   fn eql(self: Context, a: K, b: K) bool
-pub fn HashSetUnmanagedWithContext(comptime E: type, comptime Context: type, comptime max_load_percentage: u8) type {
+pub fn HashSetWithContext(comptime E: type, comptime Context: type, comptime max_load_percentage: u8) type {
     return struct {
         /// The type of the internal hash map
         pub const Map = if (Context == void) selectMap(E) else selectMapWithContext(E, Context, max_load_percentage);
@@ -73,14 +73,20 @@ pub fn HashSetUnmanagedWithContext(comptime E: type, comptime Context: type, com
 
         const Self = @This();
 
-        /// Initialize a default set without context
-        pub fn init() Self {
-            return .{
-                .unmanaged = Map{},
-                .context = if (Context == void) {} else undefined,
-                .max_load_percentage = if (Context == void) {} else max_load_percentage,
-            };
-        }
+        pub const empty: Self = if (@sizeOf(Context) == 0) .{
+            .unmanaged = Map{},
+            .context = if (Context == void) {} else undefined,
+            .max_load_percentage = if (Context == void) {} else max_load_percentage,
+        } else @compileError("Cannot init as empty if context was non void");
+
+        // /// Initialize a default set without context
+        // pub fn init() Self {
+        //     return .{
+        //         .unmanaged = Map{},
+        //         .context = if (Context == void) {} else undefined,
+        //         .max_load_percentage = if (Context == void) {} else max_load_percentage,
+        //     };
+        // }
 
         /// Initialize with a custom context
         pub fn initContext(context: Context) Self {
@@ -93,12 +99,14 @@ pub fn HashSetUnmanagedWithContext(comptime E: type, comptime Context: type, com
 
         /// Initialzies a Set using a capacity hint, with the given Allocator
         pub fn initCapacity(allocator: Allocator, num: Size) Allocator.Error!Self {
-            var self = Self.init();
+            var self: Self = .empty;
             try self.unmanaged.ensureTotalCapacity(allocator, num);
             return self;
         }
 
         /// Destroys the unmanaged Set.
+        /// TODO: zig has still not changed the HashMap in 0.16, so we need to pass
+        /// the allocator here. It needs to be removed.
         pub fn deinit(self: *Self, allocator: Allocator) void {
             self.unmanaged.deinit(allocator);
             self.* = undefined;
@@ -228,7 +236,7 @@ pub fn HashSetUnmanagedWithContext(comptime E: type, comptime Context: type, com
         ///
         /// Caller owns the newly allocated/returned set.
         pub fn differenceOf(self: Self, allocator: Allocator, other: Self) Allocator.Error!Self {
-            var diffSet = Self.init();
+            var diffSet: Self = .empty;
 
             var iter = self.unmanaged.iterator();
             while (iter.next()) |entry| {
@@ -242,22 +250,12 @@ pub fn HashSetUnmanagedWithContext(comptime E: type, comptime Context: type, com
         /// differenceUpdate does an in-place mutation of this set
         /// and other. This set will contain all elements of this set that are not
         /// also elements of other.
-        pub fn differenceUpdate(self: *Self, allocator: Allocator, other: Self) Allocator.Error!void {
-            // In-place mutation invalidates iterators therefore a temp set is needed.
-            // So instead of a temp set, just invoke the regular full function which
-            // allocates and returns a set then swap out the map internally.
+        pub fn differenceUpdate(self: *Self, other: Self) Allocator.Error!void {
+            var iter = other.iterator();
 
-            // Also, this saves a step of not having to possibly discard many elements
-            // from the self set.
-
-            // Just get a new set with the normal method.
-            const diffSet = try self.differenceOf(allocator, other);
-
-            // Destroy the internal map.
-            self.unmanaged.deinit(allocator);
-
-            // Swap it out with the new set.
-            self.unmanaged = diffSet.unmanaged;
+            while (iter.next()) |key_ptr| {
+                _ = self.remove(key_ptr.*);
+            }
         }
 
         fn dump(self: Self) void {
@@ -309,7 +307,7 @@ pub fn HashSetUnmanagedWithContext(comptime E: type, comptime Context: type, com
         ///
         /// Caller owns the newly allocated/returned set.
         pub fn intersectionOf(self: Self, allocator: Allocator, other: Self) Allocator.Error!Self {
-            var interSet = Self.init();
+            var interSet: Self = .empty;
 
             // Optimization: iterate over whichever set is smaller.
             // Matters when disparity in cardinality is large.
@@ -334,21 +332,19 @@ pub fn HashSetUnmanagedWithContext(comptime E: type, comptime Context: type, com
         /// to the current set from the other set keeping only
         /// elements found in this Set and the other Set.
         pub fn intersectionUpdate(self: *Self, allocator: Allocator, other: Self) Allocator.Error!void {
-            // In-place mutation invalidates iterators therefore a temp set is needed.
-            // So instead of a temp set, just invoke the regular full function which
-            // allocates and returns a set then swap out the map internally.
+            var to_remove: std.ArrayList(E) = .empty;
+            defer to_remove.deinit(allocator);
 
-            // Also, this saves a step of not having to possibly discard many elements
-            // from the self set.
+            var iter = self.iterator();
+            while (iter.next()) |key_ptr| {
+                if (!other.contains(key_ptr.*)) {
+                    try to_remove.append(allocator, key_ptr.*);
+                }
+            }
 
-            // Just get a new set with the normal method.
-            const interSet = try self.intersectionOf(allocator, other);
-
-            // Destroy the internal map.
-            self.unmanaged.deinit(allocator);
-
-            // Swap it out with the new set.
-            self.unmanaged = interSet.unmanaged;
+            for (to_remove.items) |item| {
+                _ = self.remove(item);
+            }
         }
 
         /// isDisjoint returns true if the intersection between two sets is the null set.
@@ -461,7 +457,7 @@ pub fn HashSetUnmanagedWithContext(comptime E: type, comptime Context: type, com
         ///
         /// The caller owns the newly allocated/returned Set.
         pub fn symmetricDifferenceOf(self: Self, allocator: Allocator, other: Self) Allocator.Error!Self {
-            var sdSet = Self.init();
+            var sdSet: Self = .empty;
 
             var iter = self.unmanaged.iterator();
             while (iter.next()) |entry| {
@@ -483,21 +479,16 @@ pub fn HashSetUnmanagedWithContext(comptime E: type, comptime Context: type, com
         /// symmetricDifferenceUpdate does an in-place mutation with all elements
         /// which are in either this set or the other set but not in both.
         pub fn symmetricDifferenceUpdate(self: *Self, allocator: Allocator, other: Self) Allocator.Error!void {
-            // In-place mutation invalidates iterators therefore a temp set is needed.
-            // So instead of a temp set, just invoke the regular full function which
-            // allocates and returns a set then swap out the map internally.
+            var iter = other.iterator();
+            while (iter.next()) |key_ptr| {
+                const element = key_ptr.*;
 
-            // Also, this saves a step of not having to possibly discard many elements
-            // from the self set.
-
-            // Just get a new set with the normal method.
-            const sd = try self.symmetricDifferenceOf(allocator, other);
-
-            // Destroy the internal map.
-            self.unmanaged.deinit(allocator);
-
-            // Swap it out with the new set.
-            self.unmanaged = sd.unmanaged;
+                if (self.contains(element)) {
+                    _ = self.remove(element);
+                } else {
+                    _ = try self.add(allocator, element);
+                }
+            }
         }
 
         /// union returns a new set with all elements in both sets.
@@ -544,7 +535,7 @@ const expectEqual = std.testing.expectEqual;
 
 test "example usage" {
     // Create a set of u32s called A
-    var A = HashSetUnmanaged(u32).init();
+    var A: HashSet(u32) = .empty;
     defer A.deinit(testing.allocator);
 
     // Add some data
@@ -556,7 +547,7 @@ test "example usage" {
     _ = try A.appendSlice(testing.allocator, &.{ 5, 3, 0, 9 });
 
     // Create another set called B
-    var B = HashSetUnmanaged(u32).init();
+    var B: HashSet(u32) = .empty;
     defer B.deinit(testing.allocator);
 
     // Add data to B
@@ -576,10 +567,10 @@ test "example usage" {
 }
 
 test "string usage" {
-    var A = HashSetUnmanaged([]const u8).init();
+    var A: HashSet([]const u8) = .empty;
     defer A.deinit(testing.allocator);
 
-    var B = HashSetUnmanaged([]const u8).init();
+    var B: HashSet([]const u8) = .empty;
     defer B.deinit(testing.allocator);
 
     _ = try A.add(testing.allocator, "Hello");
@@ -592,7 +583,7 @@ test "string usage" {
 }
 
 test "comprehensive usage" {
-    var set = HashSetUnmanaged(u32).init();
+    var set: HashSet(u32) = .empty;
     defer set.deinit(testing.allocator);
 
     try expect(set.isEmpty());
@@ -616,7 +607,7 @@ test "comprehensive usage" {
 
     try expectEqual(set.cardinality(), 7);
 
-    var other = HashSetUnmanaged(u32).init();
+    var other: HashSet(u32) = .empty;
     defer other.deinit(testing.allocator);
 
     try expect(other.isEmpty());
@@ -675,11 +666,11 @@ test "comprehensive usage" {
 }
 
 test "isDisjoint" {
-    var a = HashSetUnmanaged(u32).init();
+    var a: HashSet(u32) = .empty;
     defer a.deinit(testing.allocator);
     _ = try a.appendSlice(testing.allocator, &.{ 20, 30, 40 });
 
-    var b = HashSetUnmanaged(u32).init();
+    var b: HashSet(u32) = .empty;
     defer b.deinit(testing.allocator);
     _ = try b.appendSlice(testing.allocator, &.{ 202, 303, 403 });
 
@@ -688,7 +679,7 @@ test "isDisjoint" {
     try expect(b.isDisjoint(a));
 
     // Test the false case.
-    var c = HashSetUnmanaged(u32).init();
+    var c: HashSet(u32) = .empty;
     defer c.deinit(testing.allocator);
     _ = try c.appendSlice(testing.allocator, &.{ 20, 30, 400 });
 
@@ -699,7 +690,7 @@ test "isDisjoint" {
 test "clone" {
 
     // clone
-    var a = HashSetUnmanaged(u32).init();
+    var a: HashSet(u32) = .empty;
     defer a.deinit(testing.allocator);
     _ = try a.appendSlice(testing.allocator, &.{ 20, 30, 40 });
 
@@ -710,14 +701,14 @@ test "clone" {
 }
 
 test "clear/capacity" {
-    var a = HashSetUnmanaged(u32).init();
+    var a: HashSet(u32) = .empty;
     defer a.deinit(testing.allocator);
 
     try expectEqual(0, a.cardinality());
     try expectEqual(0, a.capacity());
 
     const cap = 99;
-    var b = try HashSetUnmanaged(u32).initCapacity(testing.allocator, cap);
+    var b = try HashSet(u32).initCapacity(testing.allocator, cap);
     defer b.deinit(testing.allocator);
 
     try expectEqual(0, b.cardinality());
@@ -742,7 +733,7 @@ test "clear/capacity" {
 }
 
 test "iterator" {
-    var a = HashSetUnmanaged(u32).init();
+    var a: HashSet(u32) = .empty;
     defer a.deinit(testing.allocator);
     _ = try a.appendSlice(testing.allocator, &.{ 20, 30, 40 });
 
@@ -759,7 +750,7 @@ test "iterator" {
 }
 
 test "pop" {
-    var a = HashSetUnmanaged(u32).init();
+    var a: HashSet(u32) = .empty;
     defer a.deinit(testing.allocator);
     _ = try a.appendSlice(testing.allocator, &.{ 20, 30, 40 });
 
@@ -778,11 +769,11 @@ test "pop" {
 
 test "in-place methods" {
     // intersectionUpdate
-    var a = HashSetUnmanaged(u32).init();
+    var a: HashSet(u32) = .empty;
     defer a.deinit(testing.allocator);
     _ = try a.appendSlice(testing.allocator, &.{ 10, 20, 30, 40 });
 
-    var b = HashSetUnmanaged(u32).init();
+    var b: HashSet(u32) = .empty;
     defer b.deinit(testing.allocator);
     _ = try b.appendSlice(testing.allocator, &.{ 44, 20, 30, 66 });
 
@@ -791,11 +782,11 @@ test "in-place methods" {
     try expect(a.containsAllSlice(&.{ 20, 30 }));
 
     // unionUpdate
-    var c = HashSetUnmanaged(u32).init();
+    var c: HashSet(u32) = .empty;
     defer c.deinit(testing.allocator);
     _ = try c.appendSlice(testing.allocator, &.{ 10, 20, 30, 40 });
 
-    var d = HashSetUnmanaged(u32).init();
+    var d: HashSet(u32) = .empty;
     defer d.deinit(testing.allocator);
     _ = try d.appendSlice(testing.allocator, &.{ 44, 20, 30, 66 });
 
@@ -804,25 +795,25 @@ test "in-place methods" {
     try expect(c.containsAllSlice(&.{ 10, 20, 30, 40, 66 }));
 
     // differenceUpdate
-    var e = HashSetUnmanaged(u32).init();
+    var e: HashSet(u32) = .empty;
     defer e.deinit(testing.allocator);
     _ = try e.appendSlice(testing.allocator, &.{ 1, 11, 111, 1111, 11111 });
 
-    var f = HashSetUnmanaged(u32).init();
+    var f: HashSet(u32) = .empty;
     defer f.deinit(testing.allocator);
     _ = try f.appendSlice(testing.allocator, &.{ 1, 11, 111, 222, 2222, 1111 });
 
-    try e.differenceUpdate(testing.allocator, f);
+    try e.differenceUpdate(f);
 
     try expectEqual(1, e.cardinality());
     try expect(e.contains(11111));
 
     // symmetricDifferenceUpdate
-    var g = HashSetUnmanaged(u32).init();
+    var g: HashSet(u32) = .empty;
     defer g.deinit(testing.allocator);
     _ = try g.appendSlice(testing.allocator, &.{ 2, 22, 222, 2222, 22222 });
 
-    var h = HashSetUnmanaged(u32).init();
+    var h: HashSet(u32) = .empty;
     defer h.deinit(testing.allocator);
     _ = try h.appendSlice(testing.allocator, &.{ 1, 11, 111, 333, 3333, 2222, 1111 });
 
@@ -837,7 +828,7 @@ test "sizeOf matches" {
     // "What's good Miley!?!?""
     const expectedByteSize = 24;
     const autoHashMapSize = @sizeOf(std.hash_map.AutoHashMapUnmanaged(u32, void));
-    const hashSetSize = @sizeOf(HashSetUnmanaged(u32));
+    const hashSetSize = @sizeOf(HashSet(u32));
     try expectEqual(expectedByteSize, autoHashMapSize);
     try expectEqual(expectedByteSize, hashSetSize);
 
@@ -845,8 +836,8 @@ test "sizeOf matches" {
     // The unmanaged with context must be larger by the size of the empty Context struct,
     // due to the added Context and alignment padding.
     const expectedContextDiff = 8;
-    const hashSetWithVoidContextSize = @sizeOf(HashSetUnmanagedWithContext(u32, void, undefined));
-    const hashSetWithContextSize = @sizeOf(HashSetUnmanagedWithContext(u32, TestContext, 75));
+    const hashSetWithVoidContextSize = @sizeOf(HashSetWithContext(u32, void, undefined));
+    const hashSetWithContextSize = @sizeOf(HashSetWithContext(u32, TestContext, 75));
     try expectEqual(0, hashSetWithVoidContextSize - hashSetSize);
     try expectEqual(expectedContextDiff, hashSetWithContextSize - hashSetSize);
 }
@@ -863,7 +854,7 @@ const TestContext = struct {
 
 test "custom hash function comprehensive" {
     const context = TestContext{};
-    var set = HashSetUnmanagedWithContext(u32, TestContext, 75).initContext(context);
+    var set = HashSetWithContext(u32, TestContext, 75).initContext(context);
     defer set.deinit(testing.allocator);
 
     // Test basic operations
@@ -881,7 +872,7 @@ test "custom hash function comprehensive" {
     try expect(set.eql(cloned));
 
     // Test set operations with custom context
-    var other = HashSetUnmanagedWithContext(u32, TestContext, 75).initContext(context);
+    var other = HashSetWithContext(u32, TestContext, 75).initContext(context);
     defer other.deinit(testing.allocator);
     _ = try other.add(testing.allocator, 456);
     _ = try other.add(testing.allocator, 789);
@@ -920,11 +911,11 @@ test "custom hash function with different load factors" {
     const context = TestContext{};
 
     // Test with low load factor
-    var low_load = HashSetUnmanagedWithContext(u32, TestContext, 25).initContext(context);
+    var low_load = HashSetWithContext(u32, TestContext, 25).initContext(context);
     defer low_load.deinit(testing.allocator);
 
     // Test with high load factor
-    var high_load = HashSetUnmanagedWithContext(u32, TestContext, 90).initContext(context);
+    var high_load = HashSetWithContext(u32, TestContext, 90).initContext(context);
     defer high_load.deinit(testing.allocator);
 
     // Add same elements to both
@@ -946,7 +937,7 @@ test "custom hash function with different load factors" {
 
 test "custom hash function error cases" {
     const context = TestContext{};
-    var set = HashSetUnmanagedWithContext(u32, TestContext, 75).initContext(context);
+    var set = HashSetWithContext(u32, TestContext, 75).initContext(context);
     defer set.deinit(testing.allocator);
 
     // Test allocation failures
@@ -974,10 +965,10 @@ const StringContext = struct {
 
 test "custom hash function string usage" {
     const context = StringContext{};
-    var A = HashSetUnmanagedWithContext([]const u8, StringContext, 75).initContext(context);
+    var A = HashSetWithContext([]const u8, StringContext, 75).initContext(context);
     defer A.deinit(testing.allocator);
 
-    var B = HashSetUnmanagedWithContext([]const u8, StringContext, 75).initContext(context);
+    var B = HashSetWithContext([]const u8, StringContext, 75).initContext(context);
     defer B.deinit(testing.allocator);
 
     _ = try A.add(testing.allocator, "Hello");

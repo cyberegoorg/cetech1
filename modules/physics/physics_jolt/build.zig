@@ -19,7 +19,7 @@ pub fn build(b: *std.Build) !void {
         .enable_debug_renderer = true,
         .enable_cross_platform_determinism = true,
     });
-    lib.linkLibrary(zphysics.artifact("joltc"));
+    lib.root_module.linkLibrary(zphysics.artifact("joltc"));
 
     lib.root_module.addImport("cetech1", cetech1_module);
     lib.root_module.addImport("transform", b.dependency("transform", .{}).module("transform"));

@@ -192,7 +192,7 @@ pub var window_api: *const WindowApi = undefined;
 pub var system_api: *const SystemApi = undefined;
 pub var dialogs_api: *const DialogsApi = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     platform_api = apidb.getZigApi(module, PlatformApi).?;
     monitor_api = apidb.getZigApi(module, MonitorApi).?;
     window_api = apidb.getZigApi(module, WindowApi).?;

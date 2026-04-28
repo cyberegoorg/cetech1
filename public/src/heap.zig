@@ -13,47 +13,50 @@ pub fn PoolWithLock(comptime T: type) type {
         const Self = @This();
 
         pool: std.heap.MemoryPool(T),
-        lock: std.Thread.Mutex,
+        lock: std.Io.Mutex,
+        allocator: std.mem.Allocator,
 
         pub fn init(allocator: std.mem.Allocator) Self {
             return .{
-                .pool = std.heap.MemoryPool(T).init(allocator),
-                .lock = std.Thread.Mutex{},
+                .pool = std.heap.MemoryPool(T).empty,
+                .lock = std.Io.Mutex.init,
+                .allocator = allocator,
             };
         }
 
         pub fn initPreheated(allocator: std.mem.Allocator, initial_size: usize) !Self {
             return .{
-                .pool = try std.heap.MemoryPool(T).initPreheated(allocator, initial_size),
-                .lock = std.Thread.Mutex{},
+                .allocator = allocator,
+                .pool = try std.heap.MemoryPool(T).initCapacity(allocator, initial_size),
+                .lock = std.Io.Mutex.init,
             };
         }
 
         pub fn deinit(self: *Self) void {
-            self.pool.deinit();
+            self.pool.deinit(self.allocator);
         }
 
-        pub fn create(self: *Self) !*T {
-            self.lock.lock();
-            defer self.lock.unlock();
-            return try self.pool.create();
+        pub fn create(self: *Self, io: std.Io) !*T {
+            self.lock.lockUncancelable(io);
+            defer self.lock.unlock(io);
+            return try self.pool.create(self.allocator);
         }
 
-        pub fn clear(self: *Self) void {
-            self.lock.lock();
-            defer self.lock.unlock();
+        pub fn clear(self: *Self, io: std.Io) !void {
+            self.lock.lockUncancelable(io);
+            defer self.lock.unlock(io);
             _ = self.pool.reset(.retain_capacity);
         }
 
-        pub fn createMany(self: *Self, output: []*T, count: usize) !void {
-            self.lock.lock();
-            defer self.lock.unlock();
+        pub fn createMany(self: *Self, io: std.Io, output: []*T, count: usize) !void {
+            self.lock.lockUncancelable(io);
+            defer self.lock.unlock(io);
             for (0..count) |idx| output[idx] = try self.pool.create();
         }
 
-        pub fn destroy(self: *Self, item: *T) void {
-            self.lock.lock();
-            defer self.lock.unlock();
+        pub fn destroy(self: *Self, io: std.Io, item: *T) void {
+            self.lock.lockUncancelable(io);
+            defer self.lock.unlock(io);
             self.pool.destroy(@alignCast(item));
         }
     };
@@ -80,10 +83,10 @@ pub fn IdPool(comptime T: type) type {
             self.free_id_node_pool.deinit();
         }
 
-        pub fn create(self: *Self, is_new: ?*bool) T {
-            if (self.free_id.pop()) |free_idx_node| {
+        pub fn create(self: *Self, io: std.Io, is_new: ?*bool) T {
+            if (self.free_id.pop(io)) |free_idx_node| {
                 const new_obj_id = free_idx_node.data;
-                self.free_id_node_pool.destroy(free_idx_node);
+                self.free_id_node_pool.destroy(io, free_idx_node);
 
                 if (is_new != null) is_new.?.* = false;
                 return new_obj_id;
@@ -93,10 +96,10 @@ pub fn IdPool(comptime T: type) type {
             }
         }
 
-        pub fn destroy(self: *Self, id: T) !void {
-            const new_node = try self.free_id_node_pool.create();
+        pub fn destroy(self: *Self, io: std.Io, id: T) !void {
+            const new_node = try self.free_id_node_pool.create(io);
             new_node.* = FreeIdQueue.Node{ .data = id };
-            self.free_id.put(new_node);
+            try self.free_id.put(io, new_node);
         }
     };
 }
@@ -121,20 +124,25 @@ pub fn VirtualArray(comptime T: type) type {
             if (max_items != 0) {
                 switch (builtin.os.tag) {
                     .windows => {
-                        new.reservation.ptr = @ptrCast(@alignCast(try windows.VirtualAlloc(
-                            null,
-                            max_size,
-                            windows.MEM_RESERVE | windows.MEM_COMMIT, // TODO: SHIT we need commit on page level
-                            windows.PAGE_READWRITE,
-                        )));
+                        var base_addr: ?*anyopaque = null;
+                        var size: usize = max_items;
+                        const status = windows.ntdll.NtAllocateVirtualMemory(
+                            windows.current_process,
+                            @ptrCast(&base_addr),
+                            0,
+                            &size,
+                            .{ .RESERVE = true, .COMMIT = true }, // TODO: SHIT we need commit on page level
+                            .{ .READWRITE = true },
+                        );
+                        if (status != windows.NTSTATUS.SUCCESS) return error.OutOfMemory;
+                        new.reservation.ptr = @ptrCast(base_addr);
                         new.reservation.len = max_size;
                     },
                     else => {
-                        const PROT = std.posix.PROT;
                         new.reservation = try std.posix.mmap(
                             null,
                             max_size,
-                            PROT.READ | PROT.WRITE,
+                            .{ .READ = true, .WRITE = true },
                             .{ .TYPE = .PRIVATE, .ANONYMOUS = true, .NORESERVE = true },
                             -1,
                             0,
@@ -155,7 +163,9 @@ pub fn VirtualArray(comptime T: type) type {
             if (self.reservation.len > 0) {
                 switch (builtin.os.tag) {
                     .windows => {
-                        std.os.windows.VirtualFree(self.reservation.ptr, 0, windows.MEM_RELEASE);
+                        var base_addr: ?*anyopaque = self.reservation.ptr;
+                        var size: usize = 0;
+                        std.os.windows.ntdll.NtFreeVirtualMemory(windows.current_process, @ptrCast(&base_addr), &size, .{ .FREE = true });
                     },
                     else => {
                         std.posix.munmap(self.reservation);
@@ -196,7 +206,7 @@ pub fn VirtualPool(comptime T: type) type {
 
         mem: VirtualArray(Item),
 
-        //lock: std.Thread.Mutex = .{},
+        //lock: std.Io.Mutex = .init,
 
         pub fn init(allocator: std.mem.Allocator, max_items: usize) !Self {
             _ = allocator;

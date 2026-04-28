@@ -788,7 +788,7 @@ const get_entity_node_i = graphvm.NodeI.implement(
 );
 
 pub fn addOrRemove(
-    comptime module_name: @Type(.enum_literal),
+    comptime module_name: @EnumLiteral(),
     load: bool,
 ) !void {
     try apidb.implOrRemove(module_name, graphvm.GraphValueTypeI, &flow_value_type_i, load);

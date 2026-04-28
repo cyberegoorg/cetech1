@@ -24,7 +24,7 @@ pub const ObjIdList = cetech1.ArrayList(ObjId);
 pub const TypeIdx = packed struct(u16) {
     idx: u16 = 0,
 
-    pub fn isEmpty(self: *const TypeIdx) bool {
+    pub fn isEmpty(self: TypeIdx) bool {
         return self.idx == 0;
     }
 
@@ -37,7 +37,7 @@ pub const TypeIdx = packed struct(u16) {
 pub const DbId = packed struct(u16) {
     idx: u16 = 0,
 
-    pub fn isEmpty(self: *const DbId) bool {
+    pub fn isEmpty(self: DbId) bool {
         return self.idx == 0;
     }
 
@@ -55,7 +55,7 @@ pub const ObjId = packed struct(u64) {
     type_idx: TypeIdx = .{},
     db: DbId = .{},
 
-    pub fn isEmpty(self: *const ObjId) bool {
+    pub fn isEmpty(self: ObjId) bool {
         return self.id == 0 and self.gen == 0 and self.type_idx.isEmpty();
     }
 
@@ -804,7 +804,7 @@ pub const CdbAPI = struct {
 
 pub var api: *const CdbAPI = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     api = apidb.getZigApi(module, CdbAPI).?;
 }
 

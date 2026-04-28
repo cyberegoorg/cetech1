@@ -2,8 +2,6 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const apidb = cetech1.apidb;
-const profiler = @import("profiler.zig");
-const kernel = @import("kernel.zig");
 
 const cetech1 = @import("cetech1");
 const cetech1_options = @import("cetech1_options");
@@ -18,12 +16,18 @@ pub const system_api = public.SystemApi{
     .openIn = openIn,
 };
 
+var _io: std.Io = undefined;
+
+pub fn init(io: std.Io) !void {
+    _io = io;
+}
+
 pub fn registerToApi() !void {
     try apidb.setZigApi(module_name, public.SystemApi, &system_api);
 }
 
 fn openIn(allocator: std.mem.Allocator, open_type: public.OpenInType, url: []const u8) !void {
-    var args = cetech1.ArrayList([]const u8){};
+    var args = cetech1.ArrayList([]const u8).empty;
     defer args.deinit(allocator);
 
     switch (builtin.os.tag) {
@@ -63,6 +67,6 @@ fn openIn(allocator: std.mem.Allocator, open_type: public.OpenInType, url: []con
         },
     }
 
-    var child = std.process.Child.init(args.items, allocator);
-    _ = try child.spawnAndWait();
+    var child = try std.process.spawn(_io, .{ .argv = args.items });
+    _ = try child.wait(_io);
 }

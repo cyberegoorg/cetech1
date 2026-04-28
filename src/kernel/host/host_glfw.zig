@@ -4,8 +4,6 @@ const builtin = @import("builtin");
 const zglfw = @import("zglfw");
 
 const apidb = cetech1.apidb;
-const kernel = @import("kernel.zig");
-const host_private = @import("host.zig");
 
 const cetech1 = @import("cetech1");
 const host = cetech1.host;
@@ -58,6 +56,7 @@ pub const monitor_api = host.MonitorApi{
 };
 
 var _allocator: std.mem.Allocator = undefined;
+var _io: std.Io = undefined;
 
 var _window_pool: WindowPool = undefined;
 var _window_set: WindowSet = undefined;
@@ -67,11 +66,11 @@ var _gamepad_state: [MAX_GAMEPADS]GamepadState = @splat(.{});
 var _mouse_button_state: [@intFromEnum(input.MouseButton.count)]input.Action = @splat(.release);
 var _scroll_state: [2]f64 = @splat(0);
 
-pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
+pub fn init(io: std.Io, allocator: std.mem.Allocator, headless: bool) !void {
     _allocator = allocator;
-
+    _io = io;
     _window_pool = WindowPool.init(allocator);
-    _window_set = .init();
+    _window_set = .empty;
 
     _keyboard_state = @splat(.release);
 
@@ -512,7 +511,7 @@ pub fn createWindow(width: i32, height: i32, title: [:0]const u8, monitor: ?host
     const m: ?*zglfw.Monitor = if (monitor) |m| @ptrCast(m.ptr) else null;
     w = try zglfw.Window.create(width, height, title, m, null);
 
-    const new_w = try _window_pool.create();
+    const new_w = try _window_pool.create(_io);
     new_w.* = Window.init(w);
     _ = try _window_set.add(_allocator, new_w);
 
@@ -537,7 +536,7 @@ pub fn destroyWindow(window: host.Window) void {
     const true_w: *Window = @ptrCast(@alignCast(window.ptr));
 
     _ = _window_set.remove(true_w);
-    _window_pool.destroy(true_w);
+    _window_pool.destroy(_io, true_w);
 
     zglfw.Window.destroy(@ptrCast(true_w.window));
 }

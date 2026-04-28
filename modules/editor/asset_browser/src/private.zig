@@ -68,7 +68,7 @@ const AssetBrowserTab = struct {
     filter_buff: [256:0]u8 = std.mem.zeroes([256:0]u8),
     filter: ?[:0]const u8 = null,
     tags: cdb.ObjId,
-    type_filter: TypeFilter = .init(),
+    type_filter: TypeFilter = .empty,
     type: BrowserType = .Horizontal,
     horizontal_state: AssetBrowserState,
 };
@@ -846,10 +846,10 @@ fn uiAssetBrowser(
 
                         // Show clasic tree view
                     } else {
-                        var folders = cetech1.cdb.ObjIdList{};
+                        var folders = cetech1.cdb.ObjIdList.empty;
                         defer folders.deinit(allocator);
 
-                        var assets = cetech1.cdb.ObjIdList{};
+                        var assets = cetech1.cdb.ObjIdList.empty;
                         defer assets.deinit(allocator);
 
                         const folder_obj = assetdb.getObjForAsset(state.selected_folder.?).?;
@@ -1006,8 +1006,9 @@ const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
+    _ = io;
 
     // basic
     _allocator = allocator;
@@ -1041,6 +1042,6 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_asset_browser(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
+pub export fn ct_load_module_editor_asset_browser(io: *const std.Io, apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, apidb_, allocator, load, reload);
 }

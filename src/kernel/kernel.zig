@@ -55,7 +55,7 @@ const Phase = struct {
 
     name: [:0]const u8,
     update_dag: cetech1.dag.StrId64DAG,
-    update_chain: UpdateArray = .{},
+    update_chain: UpdateArray = .empty,
 
     pub fn init(allocator: std.mem.Allocator, name: [:0]const u8) Self {
         return .{
@@ -102,7 +102,7 @@ var _task_chain: KernelTaskArray = undefined;
 var _phase_map: PhaseMap = undefined;
 var _phases_dag: cetech1.dag.StrId64DAG = undefined;
 
-var _args: [][:0]u8 = undefined;
+var _args: []const [:0]const u8 = undefined;
 var _args_map: std.StringArrayHashMapUnmanaged([]const u8) = undefined;
 
 var _tmp_depend_array: cetech1.task.TaskIdList = undefined;
@@ -139,6 +139,7 @@ const api = cetech1.kernel.KernelApi{
     .getAuthors = getAuthors,
     .getStrArgs = getStrArgs,
     .getIntArgs = getIntArgs,
+    .getTmpPath = getTmpPath,
 };
 
 fn getExternalsCredit() [:0]const u8 {
@@ -191,9 +192,9 @@ fn setCanQuit(can_quit: *const fn () bool) void {
     _can_quit_handler = can_quit;
 }
 
-pub fn init(allocator: std.mem.Allocator, headless: bool, boot_args: BootArgs) !void {
+pub fn init(io: std.Io, allocator: std.mem.Allocator, headless: bool, boot_args: BootArgs) !void {
     public.api = &api;
-    try log_private.init();
+    try log_private.init(io);
     _root_allocator = allocator;
     _main_profiler_allocator = profiler.AllocatorProfiler.init(allocator, null);
     _kernel_allocator = _main_profiler_allocator.allocator();
@@ -220,25 +221,25 @@ pub fn init(allocator: std.mem.Allocator, headless: bool, boot_args: BootArgs) !
     _phase_map = .{};
 
     _task_dag = cetech1.dag.StrId64DAG.init(_kernel_allocator);
-    _task_chain = .{};
+    _task_chain = .empty;
 
-    _tmp_depend_array = .{};
-    _tmp_taskid_map = .{};
+    _tmp_depend_array = .empty;
+    _tmp_taskid_map = .empty;
 
-    _iface_map = .{};
+    _iface_map = .empty;
 
-    try uuid_private.init();
-    try task_private.init(_task_allocator.allocator());
+    try uuid_private.init(io);
+    try task_private.init(io, _task_allocator.allocator());
     try tempalloc_private.init(_tmp_alocator_pool_allocator.allocator(), 256);
 
     try apidb_private.init(_apidb_allocator.allocator());
     try modules_private.init(_modules_allocator.allocator(), boot_args.ignored_modules, boot_args.ignored_modules_prefix);
     try metrics.init(_metrics_allocator.allocator());
-    try cdb_private.init(_cdb_allocator.allocator());
-    try host_private.init(_host_allocator.allocator(), headless);
+    try cdb_private.init(io, _cdb_allocator.allocator());
+    try host_private.init(io, _host_allocator.allocator(), headless);
     try input_private.init(_input_allocator.allocator());
     try gpu_privat.init(_gpu_allocator.allocator());
-    try coreui_private.init(_coreui_allocator.allocator());
+    try coreui_private.init(io, _coreui_allocator.allocator());
 
     try apidb.setZigApi(module_name, cetech1.kernel.KernelApi, &api);
 
@@ -270,12 +271,12 @@ pub fn init(allocator: std.mem.Allocator, headless: bool, boot_args: BootArgs) !
     log.info("version: {f}", .{cetech1_options.version});
 }
 
-pub fn deinit(allocator: std.mem.Allocator) !void {
+pub fn deinit(io: std.Io, allocator: std.mem.Allocator) !void {
     try shutdownKernelTasks();
 
     // Before modules deinit because ImGUI test engine need test love for export result.xml
     coreui_private.deinit();
-    try modules_private.unloadAll();
+    try modules_private.unloadAll(io);
 
     ecs_private.deinit();
     if (_gpu_backend) |ctx| cetech1.gpu.destroyBackend(ctx);
@@ -314,8 +315,13 @@ pub fn deinit(allocator: std.mem.Allocator) !void {
     profiler_private.deinit();
 }
 
-fn initProgramArgs(allocator: std.mem.Allocator) !void {
-    _args = try std.process.argsAlloc(allocator);
+var _tmp_path: []u8 = undefined;
+pub fn getTmpPath() []const u8 {
+    return _tmp_path;
+}
+
+fn initProgramArgs(ini: std.process.Init, allocator: std.mem.Allocator) !void {
+    _args = try ini.minimal.args.toSlice(ini.arena.allocator());
     _args_map = .{};
 
     var args_idx: u32 = 1; // Skip program name
@@ -340,7 +346,6 @@ fn initProgramArgs(allocator: std.mem.Allocator) !void {
 }
 
 fn deinitArgs(allocator: std.mem.Allocator) void {
-    std.process.argsFree(allocator, _args);
     _args_map.deinit(allocator);
 }
 
@@ -358,27 +363,27 @@ pub fn getStrArgs(arg_name: []const u8) ?[]const u8 {
     return v;
 }
 
-pub fn bigInit(static_modules: []const cetech1.modules.ModuleDesc, load_dynamic: bool) !void {
+pub fn bigInit(io: std.Io, static_modules: []const cetech1.modules.ModuleDesc, load_dynamic: bool) !void {
     if (static_modules.len != 0) {
         try modules_private.addModules(static_modules);
     }
 
     if (load_dynamic) {
-        modules_private.loadDynModules() catch |err| {
+        modules_private.loadDynModules(io) catch |err| {
             log.err("Could not load dynamic modules {}", .{err});
         };
     }
 
-    try modules_private.loadAll();
+    try modules_private.loadAll(io);
 
     modules_private.dumpModules();
 
     const worker_count = getIntArgs("--worker-count");
     try task_private.start(worker_count);
 
-    try ecs_private.init(_ecs_allocator.allocator());
+    try ecs_private.init(io, _ecs_allocator.allocator());
 
-    try assetdb_private.init(_assetdb_allocator.allocator());
+    try assetdb_private.init(io, _assetdb_allocator.allocator());
 
     try generateKernelTaskChain(_kernel_allocator);
 
@@ -395,7 +400,7 @@ pub fn quit() void {
 }
 var _can_quit_one = false;
 
-fn sigQuitHandler(signum: c_int) callconv(.c) void {
+fn sigQuitHandler(signum: std.posix.SIG) callconv(.c) void {
     _ = signum;
 
     if (!_can_quit_one) {
@@ -422,27 +427,66 @@ fn registerSignals() !void {
 }
 
 var _headless = false;
+// https://github.com/liyu1981/tmpfile.zig/blob/master/src/tmpfile.zig#L11
+pub fn getSysTmpDir(a: std.mem.Allocator, env_map: *const std.process.Environ.Map) ![]u8 {
+    const Impl = switch (builtin.os.tag) {
+        .linux, .macos => struct {
+            pub fn get(allocator: std.mem.Allocator, env_map_: *const std.process.Environ.Map) ![]u8 {
+                // cpp17's temp_directory_path gives good reference
+                // https://en.cppreference.com/w/cpp/filesystem/temp_directory_path
+                // POSIX standard, https://en.wikipedia.org/wiki/TMPDIR
+                return allocator.dupe(
+                    u8,
+                    env_map_.get("TMPDIR") orelse
+                        env_map_.get("TMP") orelse
+                        env_map_.get("TEMP") orelse
+                        env_map_.get("TEMPDIR") orelse
+                        "/tmp",
+                );
+            }
+        },
+        .windows => struct {
+            const DWORD = std.os.windows.DWORD;
+            const LPWSTR = std.os.windows.LPWSTR;
+            const MAX_PATH = std.os.windows.MAX_PATH;
+            const WCHAR = std.os.windows.WCHAR;
 
-pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootArgs) !void {
+            pub extern "C" fn GetTempPath2W(BufferLength: DWORD, Buffer: LPWSTR) DWORD;
+
+            pub fn get(allocator: std.mem.Allocator, env_map_: *const std.process.Environ.Map) ![]const u8 {
+                _ = env_map_;
+
+                // use GetTempPathW2, https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-gettemppathw
+                var wchar_buf: [MAX_PATH + 2:0]WCHAR = undefined;
+                wchar_buf[MAX_PATH + 1] = 0;
+                const ret = GetTempPath2W(MAX_PATH + 1, &wchar_buf);
+                if (ret != 0) {
+                    const path = wchar_buf[0..ret];
+                    return std.unicode.utf16LeToUtf8Alloc(allocator, path);
+                } else {
+                    return error.GetTempPath2WFailed;
+                }
+            }
+        },
+        else => {
+            @panic(@tagName(std.builtin.os.tag) ++ " is not support");
+        },
+    };
+
+    return Impl.get(a, env_map);
+}
+pub fn boot(process_init: std.process.Init, static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootArgs) !void {
     while (_restart) {
         _restart = false;
+        const is_debug = builtin.mode == .Debug;
 
         // Main Allocator
-        var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 15 }) = .init;
-        const gpa_allocator, const is_debug = gpa: {
-            if (builtin.os.tag == .wasi) break :gpa .{ std.heap.wasm_allocator, false };
-            break :gpa switch (builtin.mode) {
-                .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
-                .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
-            };
-        };
-        defer if (is_debug) {
-            if (debug_allocator.deinit() == .leak) {
-                log.err("Memory LEAK!!!", .{});
-            }
-        };
+        const gpa_allocator = process_init.gpa;
 
-        try initProgramArgs(gpa_allocator);
+        _tmp_path = try getSysTmpDir(gpa_allocator, process_init.environ_map);
+        defer gpa_allocator.free(_tmp_path);
+
+        try initProgramArgs(process_init, gpa_allocator);
 
         // Boot ARGS aka. command line args
         const max_kernel_tick = getIntArgs("--max-kernel-tick") orelse boot_args.max_kernel_tick;
@@ -460,8 +504,8 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         const renderer_profile = 1 == getIntArgs("--renderer-profile") orelse @intFromBool(is_debug);
 
         // Init Kernel
-        try init(gpa_allocator, _headless, boot_args);
-        defer deinit(gpa_allocator) catch undefined;
+        try init(process_init.io, gpa_allocator, _headless, boot_args);
+        defer deinit(process_init.io, gpa_allocator) catch undefined;
 
         // Test args
         const test_ui = 1 == getIntArgs("--test-ui") orelse 0;
@@ -469,20 +513,17 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         const fast_mode = std.mem.eql(u8, test_ui_speed_value, "fast");
 
         // Init modules
-        try bigInit(static_modules, load_dynamic);
+        try bigInit(process_init.io, static_modules, load_dynamic);
         defer bigDeinit() catch unreachable;
 
         var kernel_tick: u64 = 1;
-        var tick_last_call = std.time.milliTimestamp();
+        var tick_last_call = std.Io.Timestamp.now(process_init.io, .awake);
 
         // Build phase graph
         try _phases_dag.build_all();
 
         _running = true;
         _quit = false;
-
-        // Register OS signals
-        try registerSignals();
 
         // If asset root is set open it.
         if (asset_root.len != 0 or _next_asset_root != null) {
@@ -499,11 +540,11 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
         if (try assetdb_private.getTmpPath(&buf)) |path| {
             const apidb_graph_md = try std.fs.path.join(_kernel_allocator, &.{ path, "apidb_graph.md" });
             defer _kernel_allocator.free(apidb_graph_md);
-            try apidb_private.writeApiGraphMD(apidb_graph_md);
+            try apidb_private.writeApiGraphMD(process_init.io, apidb_graph_md);
         }
 
         // Create update graph.
-        try generateTaskUpdateChain(_kernel_allocator);
+        try generateTaskUpdateChain(process_init.io, _kernel_allocator);
         var kernel_task_update_gen = apidb.getInterafcesVersion(public.KernelTaskUpdateI);
         var kernel_task_gen: cetech1.apidb.InterfaceVersion = 0;
 
@@ -546,12 +587,15 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
 
         try initKernelTasks();
 
+        // Register OS signals
+        try registerSignals();
+
         var checkfs_timer: i64 = 0;
         const dt_couter = try metrics.getCounter("kernel/dt");
         const tick_duration_counter = try metrics.getCounter("kernel/tick_duration");
 
         var last_game_tick_task: cetech1.task.TaskID = .none;
-        var game_tick_last_call = std.time.milliTimestamp();
+        var game_tick_last_call = std.Io.Timestamp.now(process_init.io, .awake);
 
         var game_tick: usize = 0;
 
@@ -565,11 +609,11 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             // var update_zone_ctx = profiler.ZoneN(@src(), "kernelUpdate");
             // defer update_zone_ctx.End();
 
-            const tick_duration = cetech1.metrics.MetricScopedDuration.begin(tick_duration_counter);
-            defer tick_duration.end();
+            const tick_duration = cetech1.metrics.MetricScopedDuration.begin(process_init.io, tick_duration_counter);
+            defer tick_duration.end(process_init.io);
 
-            const now = std.time.milliTimestamp();
-            const kernel_dt_ms = now - tick_last_call;
+            const now = std.Io.Timestamp.now(process_init.io, .awake);
+            const kernel_dt_ms = tick_last_call.durationTo(now).toMilliseconds();
             tick_last_call = now;
 
             dt_couter.* = @floatFromInt(kernel_dt_ms);
@@ -584,7 +628,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             if (checkfs_timer >= (10 * std.time.ms_per_s)) {
                 checkfs_timer = 0;
 
-                const reloaded_modules = try modules_private.reloadAllIfNeeded(tmp_frame_alloc);
+                const reloaded_modules = try modules_private.reloadAllIfNeeded(process_init.io, tmp_frame_alloc);
                 if (reloaded_modules) {}
             }
 
@@ -598,7 +642,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
             // Any public.KernelTaskUpdateI iface changed? (add/remove)?
             const new_kernel_update_gen = apidb.getInterafcesVersion(public.KernelTaskUpdateI);
             if (new_kernel_update_gen != kernel_task_update_gen) {
-                try generateTaskUpdateChain(tmp_frame_alloc);
+                try generateTaskUpdateChain(process_init.io, tmp_frame_alloc);
                 kernel_task_update_gen = new_kernel_update_gen;
             }
 
@@ -608,14 +652,13 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                 kernel_tick: u64,
                 dt_s: f32,
                 fast_mode: bool,
+                io: *const std.Io,
 
                 pub fn exec(self: *@This()) !void {
                     profiler.frameMark();
 
                     var task_zone_ctx = profiler.ZoneN(@src(), "GameTick");
                     defer task_zone_ctx.End();
-
-                    const noww = std.time.milliTimestamp();
 
                     const allocator = try tempalloc.create();
                     defer tempalloc.destroy(allocator);
@@ -629,7 +672,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                     try metrics.pushFrames();
 
                     if (!(isTestigMode() and self.fast_mode)) {
-                        const t = try sleepIfNeed(allocator, noww, _max_tick_rate, task.getThreadNum() - 1);
+                        const t = try sleepIfNeed(self.io, allocator, .now(self.io.*, .awake), _max_tick_rate, task.getThreadNum() - 1);
                         task.wait(t);
                     }
                 }
@@ -643,8 +686,8 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                     );
                     _next_asset_root = null;
                 } else {
-                    const noww = std.time.milliTimestamp();
-                    const game_dt_ms = noww - game_tick_last_call;
+                    const noww = std.Io.Timestamp.now(process_init.io, .awake);
+                    const game_dt_ms = game_tick_last_call.durationTo(noww).toMilliseconds();
                     const game_dt_s: f32 = @as(f32, @floatFromInt(game_dt_ms)) / std.time.ms_per_s;
                     game_tick_last_call = noww;
 
@@ -654,6 +697,7 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
                             .dt_s = game_dt_s,
                             .kernel_tick = kernel_tick,
                             .fast_mode = fast_mode,
+                            .io = &process_init.io,
                         },
                         .{},
                     );
@@ -734,10 +778,10 @@ pub fn boot(static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootA
     }
 }
 
-fn sleepIfNeed(allocator: std.mem.Allocator, last_call: i64, max_rate: u32, worker_n: u64) !cetech1.task.TaskID {
+fn sleepIfNeed(io: *const std.Io, allocator: std.mem.Allocator, last_call: std.Io.Timestamp, max_rate: u32, worker_n: u64) !cetech1.task.TaskID {
     const frame_limit_time: f32 = (1.0 / @as(f32, @floatFromInt(max_rate)) * std.time.ms_per_s);
 
-    const dt: f32 = @floatFromInt(std.time.milliTimestamp() - last_call);
+    const dt: f32 = @floatFromInt(last_call.durationTo(.now(io.*, .awake)).toMilliseconds());
     if (dt < frame_limit_time) {
         const sleep_time: u64 = @intFromFloat((frame_limit_time - dt) * 0.62 * std.time.ns_per_ms);
 
@@ -748,15 +792,16 @@ fn sleepIfNeed(allocator: std.mem.Allocator, last_call: i64, max_rate: u32, work
         for (0..n) |idx| {
             const SleepTask = struct {
                 sleep_time: u64,
+                io: *const std.Io,
                 pub fn exec(self: *@This()) !void {
                     var task_zone_ctx = profiler.ZoneN(@src(), "ShityFrameLimitSleeper");
                     defer task_zone_ctx.End();
-                    std.Thread.sleep(self.sleep_time);
+                    try std.Io.sleep(self.io.*, .fromNanoseconds(self.sleep_time), .awake);
                 }
             };
             const t = try task.schedule(
                 .none,
-                SleepTask{ .sleep_time = sleep_time },
+                SleepTask{ .sleep_time = sleep_time, .io = io },
                 .{ .affinity = @intCast(idx + 1) },
             );
             wait_tasks.appendAssumeCapacity(t);
@@ -782,7 +827,7 @@ fn generateKernelTaskChain(alloctor: std.mem.Allocator) !void {
     try _task_dag.reset();
     _task_chain.clearRetainingCapacity();
 
-    var iface_map = cetech1.AutoArrayHashMap(cetech1.StrId64, *const public.KernelTaskI){};
+    var iface_map = cetech1.AutoArrayHashMap(cetech1.StrId64, *const public.KernelTaskI).empty;
     defer iface_map.deinit(_kernel_allocator);
 
     const impls = try apidb.getImpl(alloctor, public.KernelTaskI);
@@ -805,7 +850,7 @@ fn generateKernelTaskChain(alloctor: std.mem.Allocator) !void {
     dumpKernelTask();
 }
 
-fn generateTaskUpdateChain(allocator: std.mem.Allocator) !void {
+fn generateTaskUpdateChain(io: std.Io, allocator: std.mem.Allocator) !void {
     var zone_ctx = profiler.Zone(@src());
     defer zone_ctx.End();
 
@@ -842,7 +887,7 @@ fn generateTaskUpdateChain(allocator: std.mem.Allocator) !void {
         }
     }
 
-    try dumpKernelUpdatePhaseTree();
+    try dumpKernelUpdatePhaseTree(io);
 }
 
 const UpdateFrameName = "UpdateFrame";
@@ -924,8 +969,8 @@ fn doKernelUpdateTasks(kernel_tick: u64, dt: f32) !void {
     _tmp_taskid_map.clearRetainingCapacity();
 }
 
-fn dumpKernelUpdatePhaseTree() !void {
-    try dumpKernelUpdatePhaseTreeMD();
+fn dumpKernelUpdatePhaseTree(io: std.Io) !void {
+    try dumpKernelUpdatePhaseTreeMD(io);
 
     log.info("Kernel update phase:", .{});
     for (_phases_dag.output.keys(), 0..) |phase_hash, idx| {
@@ -966,7 +1011,7 @@ fn dumpKernelUpdatePhaseTree() !void {
     }
 }
 
-fn dumpKernelUpdatePhaseTreeMD() !void {
+fn dumpKernelUpdatePhaseTreeMD(io: std.Io) !void {
     var path_buff: [1024]u8 = undefined;
     var file_path_buff: [1024]u8 = undefined;
     // only if asset root is set.
@@ -974,11 +1019,11 @@ fn dumpKernelUpdatePhaseTreeMD() !void {
     if (path == null) return;
     path = try std.fmt.bufPrint(&file_path_buff, "{s}/" ++ "kernel_task_graph.md", .{path.?});
 
-    var dot_file = try std.fs.createFileAbsolute(path.?, .{});
-    defer dot_file.close();
+    var dot_file = try std.Io.Dir.createFileAbsolute(io, path.?, .{});
+    defer dot_file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var bw = dot_file.writer(&buffer);
+    var bw = dot_file.writer(io, &buffer);
     const writer = &bw.interface;
     defer writer.flush() catch undefined;
 
@@ -1021,10 +1066,12 @@ fn dumpKernelUpdatePhaseTreeMD() !void {
     try writer.print("```\n", .{});
 }
 
+var _kernel_task_initialised: bool = false;
 fn initKernelTasks() !void {
     for (_task_chain.items) |iface| {
         try iface.init();
     }
+    _kernel_task_initialised = true;
 }
 
 fn dumpKernelTask() void {
@@ -1035,10 +1082,13 @@ fn dumpKernelTask() void {
 }
 
 fn shutdownKernelTasks() !void {
-    for (0.._task_chain.items.len) |idx| {
-        const iface = _task_chain.items[_task_chain.items.len - 1 - idx];
-        try iface.shutdown();
+    if (_kernel_task_initialised) {
+        for (0.._task_chain.items.len) |idx| {
+            const iface = _task_chain.items[_task_chain.items.len - 1 - idx];
+            try iface.shutdown();
+        }
     }
+    _kernel_task_initialised = false;
 }
 
 // test "Can boot kernel" {

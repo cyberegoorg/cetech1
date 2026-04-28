@@ -7,10 +7,11 @@ const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const coreui = cetech1.coreui;
 const math = cetech1.math;
+const apidb = cetech1.apidb;
+const Icons = coreui.CoreIcons;
 
 const editor = @import("editor");
 const editor_tabs = @import("editor_tabs");
-const Icons = coreui.CoreIcons;
 
 const module_name = .editor_log;
 
@@ -25,7 +26,7 @@ const TAB_NAME = "ct_editor_log";
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-const apidb = cetech1.apidb;
+var _io: std.Io = undefined;
 
 const LogEntry = struct {
     level: cetech1.log.Level,
@@ -40,7 +41,7 @@ const G = struct {
     log_tab_vt_ptr: *editor_tabs.TabTypeI = undefined,
 
     log_buffer: ?LogBuffer = null,
-    log_buffer_lock: std.Thread.Mutex = .{},
+    log_buffer_lock: std.Io.Mutex = .init,
 };
 var _g: *G = undefined;
 
@@ -82,7 +83,7 @@ pub fn levelIcon(level: cetech1.log.Level) [:0]const u8 {
 }
 
 pub fn levelColor(level: cetech1.log.Level) math.Color4f {
-    if (editor.isColorsEnabled()) return coreui.getStyle().getColor(.text);
+    if (!editor.isColorsEnabled()) return coreui.getStyle().getColor(.text);
     const one = 0.80;
     return switch (level) {
         .Err => .{ .r = one, .a = 1.0 },
@@ -192,8 +193,8 @@ var log_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
             //coreui.tableSetupScrollFreeze(2, 0);
 
             if (_g.log_buffer) |buffer| {
-                _g.log_buffer_lock.lock();
-                defer _g.log_buffer_lock.unlock();
+                _g.log_buffer_lock.lockUncancelable(_io);
+                defer _g.log_buffer_lock.unlock(_io);
 
                 for (buffer.items) |entry| {
                     if (!tab_o.enabled_levels.pass(entry.level)) continue;
@@ -230,8 +231,8 @@ var log_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
 
 var handler = cetech1.log.LogHandlerI.implement(struct {
     pub fn logFn(level: cetech1.log.Level, scope: [:0]const u8, log_msg: [:0]const u8) !void {
-        _g.log_buffer_lock.lock();
-        defer _g.log_buffer_lock.unlock();
+        _g.log_buffer_lock.lockUncancelable(_io);
+        defer _g.log_buffer_lock.unlock(_io);
 
         if (_g.log_buffer) |*buffer| {
             try buffer.append(_allocator, .{ .level = level, .scope = try _allocator.dupeZ(u8, scope), .msg = try _allocator.dupeZ(u8, log_msg) });
@@ -240,9 +241,9 @@ var handler = cetech1.log.LogHandlerI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
-
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     // basic
+    _io = io;
     _allocator = allocator;
 
     try cdb.loadAPI(module_name);
@@ -251,7 +252,7 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 
     // create global variable that can survive reload
     _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
-    if (_g.log_buffer == null) _g.log_buffer = .{};
+    if (_g.log_buffer == null) _g.log_buffer = .empty;
 
     // Alocate memory for VT of tab.
     // Need for hot reload becasue vtable is shared we need strong pointer adress.
@@ -261,8 +262,8 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
     try apidb.implOrRemove(module_name, cetech1.log.LogHandlerI, &handler, load);
 
     if (!reload and !load) {
-        _g.log_buffer_lock.lock();
-        defer _g.log_buffer_lock.unlock();
+        _g.log_buffer_lock.lockUncancelable(_io);
+        defer _g.log_buffer_lock.unlock(_io);
 
         for (_g.log_buffer.?.items) |entry| {
             _allocator.free(entry.msg);
@@ -277,6 +278,6 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_log(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
+pub export fn ct_load_module_editor_log(io: *const std.Io, apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, apidb_, allocator, load, reload);
 }

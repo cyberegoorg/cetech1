@@ -13,25 +13,25 @@ pub fn useSystemSDK(b: *std.Build, target: std.Build.ResolvedTarget, e: *std.Bui
             if (target.result.cpu.arch.isX86()) {
                 if (target.result.abi.isGnu() or target.result.abi.isMusl()) {
                     if (b.lazyDependency("system_sdk", .{})) |system_sdk| {
-                        e.addLibraryPath(system_sdk.path("windows/lib/x86_64-windows-gnu"));
+                        e.root_module.addLibraryPath(system_sdk.path("windows/lib/x86_64-windows-gnu"));
                     }
                 }
             }
         },
         .macos => {
             if (b.lazyDependency("system_sdk", .{})) |system_sdk| {
-                e.addLibraryPath(system_sdk.path("macos12/usr/lib"));
-                e.addFrameworkPath(system_sdk.path("macos12/System/Library/Frameworks"));
+                e.root_module.addLibraryPath(system_sdk.path("macos12/usr/lib"));
+                e.root_module.addFrameworkPath(system_sdk.path("macos12/System/Library/Frameworks"));
             }
         },
         .linux => {
             if (target.result.cpu.arch.isX86()) {
                 if (b.lazyDependency("system_sdk", .{})) |system_sdk| {
-                    e.addLibraryPath(system_sdk.path("linux/lib/x86_64-linux-gnu"));
+                    e.root_module.addLibraryPath(system_sdk.path("linux/lib/x86_64-linux-gnu"));
                 }
             } else if (target.result.cpu.arch == .aarch64) {
                 if (b.lazyDependency("system_sdk", .{})) |system_sdk| {
-                    e.addLibraryPath(system_sdk.path("linux/lib/aarch64-linux-gnu"));
+                    e.root_module.addLibraryPath(system_sdk.path("linux/lib/aarch64-linux-gnu"));
                 }
             }
         },
@@ -147,7 +147,7 @@ pub fn createKernelExe(
     });
     exe.root_module.link_libc = true;
     exe.root_module.addImport("kernel", cetech1_kernel);
-    exe.linkLibrary(cetech1_kernel_lib);
+    exe.root_module.linkLibrary(cetech1_kernel_lib);
     b.installArtifact(exe);
     useSystemSDK(b, target, exe);
     createRunStep(b, exe, run_name, run_description);
@@ -273,13 +273,6 @@ pub fn build(b: *std.Build) !void {
     //
     // Extrnals
     //
-    const uuid = b.dependency(
-        "uuid",
-        .{
-            .target = target,
-            .optimize = options.externals_optimize,
-        },
-    );
 
     // ZF
     const zf = b.dependency(
@@ -395,7 +388,7 @@ pub fn build(b: *std.Build) !void {
     // Modules
     const ModulesSet = std.StringArrayHashMapUnmanaged(void);
 
-    var internal_modules = std.ArrayListUnmanaged([]const u8){};
+    var internal_modules = std.ArrayListUnmanaged([]const u8).empty;
     defer internal_modules.deinit(b.allocator);
 
     var module_set = ModulesSet{};
@@ -404,7 +397,7 @@ pub fn build(b: *std.Build) !void {
         try module_set.put(b.allocator, module, {});
     }
 
-    var enabled_modules = std.ArrayListUnmanaged([]const u8){};
+    var enabled_modules = std.ArrayListUnmanaged([]const u8).empty;
     defer enabled_modules.deinit(b.allocator);
 
     if (options.modules) |modules| {
@@ -557,7 +550,6 @@ pub fn build(b: *std.Build) !void {
         .{ .name = "zgui", .module = zgui.module("root") },
         .{ .name = "zflecs", .module = zflecs.module("root") },
         .{ .name = "zf", .module = zf.module("zf") },
-        .{ .name = "Uuid", .module = uuid.module("Uuid") },
         .{ .name = "znfde", .module = znfde.module("root") },
 
         // Generated stuff
@@ -599,14 +591,14 @@ pub fn build(b: *std.Build) !void {
     useSystemSDK(b, target, kernel_lib);
     b.installArtifact(kernel_lib);
     kernel_lib.root_module.link_libc = true;
-    kernel_lib.linkLibrary(ztracy.artifact("tracy"));
-    kernel_lib.linkLibrary(zglfw.artifact("glfw"));
-    kernel_lib.linkLibrary(zgui.artifact("imgui"));
-    kernel_lib.linkLibrary(zflecs.artifact("flecs"));
+    kernel_lib.root_module.linkLibrary(ztracy.artifact("tracy"));
+    kernel_lib.root_module.linkLibrary(zglfw.artifact("glfw"));
+    kernel_lib.root_module.linkLibrary(zgui.artifact("imgui"));
+    kernel_lib.root_module.linkLibrary(zflecs.artifact("flecs"));
 
     if (options.with_nfd) {
         kernel_lib.root_module.addImport("znfde", znfde.module("root"));
-        kernel_lib.linkLibrary(znfde.artifact("nfde"));
+        kernel_lib.root_module.linkLibrary(znfde.artifact("nfde"));
     }
 
     const kernel_module = b.addModule("kernel", .{
@@ -664,7 +656,7 @@ pub fn build(b: *std.Build) !void {
     b.installArtifact(tests);
     try linkStaticModules(b, tests, target, optimize, static_modules.keys());
     tests.root_module.link_libc = true;
-    tests.linkLibrary(kernel_lib);
+    tests.root_module.linkLibrary(kernel_lib);
     tests.step.dependOn(&generated_files.step);
 
     const run_unit_tests = b.addRunArtifact(tests);
@@ -690,7 +682,7 @@ fn linkStaticModules(
 
     for (static_modules) |m| {
         const artifact_name = try std.fmt.bufPrintZ(&buff, "ct_{s}", .{m});
-        e.linkLibrary(b.lazyDependency(m, .{
+        e.root_module.linkLibrary(b.lazyDependency(m, .{
             .target = target,
             .optimize = optimize,
             .link_mode = .static,

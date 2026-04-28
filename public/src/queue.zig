@@ -86,7 +86,7 @@ pub fn MPMCBoundedQueue(comptime T: type, comptime size: usize) type {
 pub fn QueueWithLock(comptime T: type) type {
     return struct {
         ll: std.SinglyLinkedList,
-        mutex: std.Thread.Mutex,
+        mutex: std.Io.Mutex,
 
         pub const Self = @This();
         pub const Node = struct {
@@ -97,22 +97,22 @@ pub fn QueueWithLock(comptime T: type) type {
         pub fn init() Self {
             return Self{
                 .ll = .{},
-                .mutex = std.Thread.Mutex{},
+                .mutex = std.Io.Mutex.init,
             };
         }
 
-        pub fn pop(self: *Self) ?*Node {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+        pub fn pop(self: *Self, io: std.Io) ?*Node {
+            self.mutex.lockUncancelable(io);
+            defer self.mutex.unlock(io);
             if (self.ll.popFirst()) |n| {
                 return @fieldParentPtr("node", n);
             }
             return null;
         }
 
-        pub fn put(self: *Self, new_node: *Node) void {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+        pub fn put(self: *Self, io: std.Io, new_node: *Node) !void {
+            self.mutex.lockUncancelable(io);
+            defer self.mutex.unlock(io);
             self.ll.prepend(&new_node.node);
         }
     };

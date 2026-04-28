@@ -5,14 +5,17 @@ const Allocator = std.mem.Allocator;
 const cetech1 = @import("cetech1");
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
-
 const math = cetech1.math;
 const gpu = cetech1.gpu;
 const dag = cetech1.dag;
 const coreui = cetech1.coreui;
-
+const apidb = cetech1.apidb;
+const tempalloc = cetech1.tempalloc;
+const task = cetech1.task;
+const profiler = cetech1.profiler;
 const metrics = cetech1.metrics;
 const kernel = cetech1.kernel;
+
 const public = @import("render_graph.zig");
 
 const module_name = .render_graph;
@@ -26,12 +29,7 @@ const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-const apidb = cetech1.apidb;
-
-const tempalloc = cetech1.tempalloc;
-
-const task = cetech1.task;
-const profiler = cetech1.profiler;
+var _io: std.Io = undefined;
 
 // Global state
 const G = struct {
@@ -177,7 +175,7 @@ const GraphBuilder = struct {
     layer_map: LayerMap = .{},
     resource_info: ResourceInfoMap = .{},
     created_texture: CreatedTextureMap = .{},
-    viewers: public.ViewersList = .{},
+    viewers: public.ViewersList = .empty,
     blackboard: Blackboard = .{},
 
     pub fn init(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend) !GraphBuilder {
@@ -358,7 +356,7 @@ const GraphBuilder = struct {
             }
         }
 
-        var depends = cetech1.ArrayList(*public.Pass){};
+        var depends = cetech1.ArrayList(*public.Pass).empty;
         defer depends.deinit(allocator);
 
         // Then fill pass
@@ -443,7 +441,7 @@ const GraphBuilder = struct {
 
         try self.viewers.appendSlice(self.allocator, viewers);
 
-        var textures = cetech1.ArrayList(gpu.TextureHandle){};
+        var textures = cetech1.ArrayList(gpu.TextureHandle).empty;
         defer textures.deinit(allocator);
 
         const builder = public.GraphBuilder{ .ptr = self, .vtable = &builder_vt };
@@ -646,7 +644,7 @@ const ExtensionPointMap = cetech1.AutoArrayHashMap(cetech1.StrId32, usize);
 
 const Module = struct {
     allocator: std.mem.Allocator,
-    passes: ModuleOrPassList = .{},
+    passes: ModuleOrPassList = .empty,
     extension_map: ExtensionPointMap = .{},
     data_arena: std.heap.ArenaAllocator,
     editor_menu_ui: ?public.EditorMenuUII = null,
@@ -740,7 +738,7 @@ const ModulePool = cetech1.heap.PoolWithLock(Module);
 const BuilderPool = cetech1.heap.PoolWithLock(GraphBuilder);
 
 pub fn createModule() !public.Module {
-    const new_module = try _g.module_pool.create();
+    const new_module = try _g.module_pool.create(_io);
     new_module.* = Module.init(_allocator);
     return public.Module{
         .ptr = new_module,
@@ -751,11 +749,11 @@ pub fn createModule() !public.Module {
 pub fn destroyModule(module: public.Module) void {
     var real_module: *Module = @ptrCast(@alignCast(module.ptr));
     real_module.deinit();
-    _g.module_pool.destroy(real_module);
+    _g.module_pool.destroy(_io, real_module);
 }
 
 pub fn createBuilder(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend) !public.GraphBuilder {
-    const new_builder = try _g.builder_pool.create();
+    const new_builder = try _g.builder_pool.create(_io);
     new_builder.* = try GraphBuilder.init(allocator, gpu_backend);
     return .{ .ptr = new_builder, .vtable = &builder_vt };
 }
@@ -763,7 +761,7 @@ pub fn createBuilder(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend) 
 pub fn destroyBuilder(builder: public.GraphBuilder) void {
     const true_builder: *GraphBuilder = @ptrCast(@alignCast(builder.ptr));
     true_builder.deinit();
-    _g.builder_pool.destroy(true_builder);
+    _g.builder_pool.destroy(_io, true_builder);
 }
 
 const PalletColorMap = cetech1.AutoArrayHashMap(u32, u8);
@@ -896,10 +894,11 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
 );
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
     // basic
     _allocator = allocator;
+    _io = io;
     public.api = &api;
 
     try cdb.loadAPI(module_name);
@@ -925,6 +924,6 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_render_graph(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
+pub export fn ct_load_module_render_graph(io: *const std.Io, apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, apidb_, allocator, load, reload);
 }

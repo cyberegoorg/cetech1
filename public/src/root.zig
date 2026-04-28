@@ -29,10 +29,10 @@ pub const coreui_node_editor = @import("coreui_node_editor.zig");
 
 // BitSet
 pub const StaticBitSet = std.StaticBitSet;
-pub const DynamicBitSet = std.DynamicBitSetUnmanaged;
+pub const DynamicBitSet = std.DynamicBitSet;
 
 // List
-pub const ArrayList = std.ArrayListUnmanaged;
+pub const ArrayList = std.ArrayList;
 pub const ByteList = ArrayList(u8);
 
 // HashMap
@@ -42,8 +42,8 @@ pub const StringHashMap = std.StringHashMapUnmanaged;
 
 // Sets
 const ziglangSet = @import("ziglangSet");
-pub const ArraySet = ziglangSet.ArraySetUnmanaged;
-pub const HashSet = ziglangSet.HashSetUnmanaged;
+pub const ArraySet = ziglangSet.ArraySet;
+pub const HashSet = ziglangSet.HashSet;
 
 // Queues
 const queues = @import("queue.zig");

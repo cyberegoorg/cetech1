@@ -9,14 +9,18 @@ const profiler = cetech1.profiler;
 const task = cetech1.task;
 const apidb = cetech1.apidb;
 
+const public = cetech1.log;
+
 pub const api = cetech1.log.LogAPI{
     .logFn = logFn,
 };
 
 const module_name = .log;
 
-pub fn init() !void {
+var _io: std.Io = undefined;
+pub fn init(io: std.Io) !void {
     cetech1.log.api = &api;
+    _io = io;
 }
 
 pub fn registerToApi() !void {
@@ -28,34 +32,34 @@ pub const zigLogFn = cetech1.log.zigLogFnGen();
 const MAX_HANDLERS = 8;
 
 pub fn logFn(level: cetech1.log.Level, scope: [:0]const u8, msg: [:0]const u8) void {
-    const thread_id = task.getWorkerId();
+    // const thread_id = task.getWorkerId();
     //const thread_name = task.getThreadName(thread_id);
-    var buffer: [4096]u8 = undefined;
+    var buffer: [public.MAX_LOG_ENTRY_SIZE]u8 = undefined;
 
-    {
-        const LOG_FORMAT = "[{s}|{d}|{s}]\t{s}";
-        const args = .{ level.asText(), thread_id, scope, msg };
-
-        var stderr_w = std.fs.File.stderr().writer(&buffer);
-        var stderr = &stderr_w.interface;
-        std.debug.lockStdErr();
-        defer std.debug.unlockStdErr();
-
-        defer stderr.flush() catch undefined;
-
-        const color: std.io.tty.Color = switch (level) {
-            .Info => .reset,
-            .Debug => .green,
-            .Warn => .yellow,
-            .Err => .red,
-            else => .reset,
-        };
-
-        const cfg = std.io.tty.detectConfig(std.fs.File.stderr());
-        cfg.setColor(stderr, color) catch return;
-        nosuspend stderr.print(LOG_FORMAT ++ "\n", args) catch return;
-        cfg.setColor(stderr, .reset) catch return;
-    }
+    // {
+    //     const LOG_FORMAT = "[{s}|{d}|{s}]\t{s}";
+    //     const args = .{ level.asText(), thread_id, scope, msg };
+    //
+    //     var stderr_w = std.Io.File.stderr().writer(_io, &buffer);
+    //     var stderr = &stderr_w.interface;
+    //     _ = std.Io.lockStderr(_io, &buffer, null) catch undefined;
+    //     defer std.Io.unlockStderr(_io);
+    //
+    //     defer stderr.flush() catch undefined;
+    //
+    //     // FIXME: COLORSSSSSSS
+    //     // const color: std.process.io.tty.Color = switch (level) {
+    //     //     .Info => .reset,
+    //     //     .Debug => .green,
+    //     //     .Warn => .yellow,
+    //     //     .Err => .red,
+    //     //     else => .reset,
+    //     // };
+    //     // const cfg = std.io.tty.detectConfig(std.fs.File.stderr());
+    //     // cfg.setColor(stderr, color) catch return;
+    //     nosuspend stderr.print(LOG_FORMAT ++ "\n", args) catch return;
+    //     // cfg.setColor(stderr, .reset) catch return;
+    // }
 
     if (profiler.profiler_enabled) {
         const LOG_FORMAT_TRACY = "{s}: {s}";
@@ -86,6 +90,7 @@ pub fn logFn(level: cetech1.log.Level, scope: [:0]const u8, msg: [:0]const u8) v
 }
 
 test "log: should log messge" {
+    try init(std.testing.io);
     try apidb_private.init(std.testing.allocator);
     defer apidb_private.deinit();
     profiler_private.init(std.testing.allocator);

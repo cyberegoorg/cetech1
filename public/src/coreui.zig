@@ -41,7 +41,7 @@ pub const Selection = struct {
     const Item = SelectedObj;
     const SetImpl = ArraySet(Item);
 
-    storage: SetImpl = .init(),
+    storage: SetImpl = .empty,
 
     allocator: std.mem.Allocator,
 
@@ -1231,7 +1231,7 @@ pub const CoreUIApi = struct {
 
 pub var api: *const CoreUIApi = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     api = apidb.getZigApi(module, CoreUIApi).?;
 }
 
@@ -3317,6 +3317,11 @@ pub const Payload = extern struct {
     data_type: [32:0]c_char,
     preview: bool = false,
     delivery: bool = false,
+
+    pub fn toValue(self: Payload, comptime T: type) T {
+        const v: *T = @ptrCast(@alignCast(self.data));
+        return v.*;
+    }
 };
 
 pub const Condition = enum(c_int) {

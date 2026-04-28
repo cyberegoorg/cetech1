@@ -2,7 +2,6 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const cetech1 = @import("cetech1");
-
 const cdb = cetech1.cdb;
 const ecs = cetech1.ecs;
 const gpu = cetech1.gpu;
@@ -10,6 +9,8 @@ const gpu_dd = cetech1.gpu_dd;
 const coreui = cetech1.coreui;
 const math = cetech1.math;
 const apidb = cetech1.apidb;
+const tempalloc = cetech1.tempalloc;
+const profiler = cetech1.profiler;
 
 const transform = @import("transform");
 const zphy = @import("zphysics");
@@ -26,9 +27,7 @@ const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-
-const tempalloc = cetech1.tempalloc;
-const profiler = cetech1.profiler;
+var _io: std.Io = undefined;
 
 // Global state that can surive hot-reload
 const G = struct {};
@@ -42,7 +41,7 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
     &[_]cetech1.StrId64{},
     struct {
         pub fn init() !void {
-            try zphy.init(_allocator, .{});
+            try zphy.init(_allocator, _io, .{});
 
             if (debug_renderer_enabled) try zphy.DebugRenderer.createSingleton(&my_debug_renderer);
         }
@@ -307,7 +306,7 @@ const init_physics_body_system_i = ecs.SystemI.implement(
             const alloc = try tempalloc.create();
             defer tempalloc.destroy(alloc);
 
-            var body_ids = cetech1.ArrayList(zphy.BodyId){};
+            var body_ids = cetech1.ArrayList(zphy.BodyId).empty;
             defer body_ids.deinit(alloc);
 
             // TODO: =(
@@ -415,7 +414,7 @@ const simulate_system_i = ecs.SystemI.implement(
                     defer tempalloc.destroy(alloc);
 
                     const all_bodies = system.getBodiesUnsafe();
-                    var active_bodies = std.ArrayList(zphy.BodyId){};
+                    var active_bodies = std.ArrayList(zphy.BodyId).empty;
                     defer active_bodies.deinit(alloc);
 
                     // TODO: make unsafe. simulation is done.
@@ -495,7 +494,7 @@ const deleted_body_observer_i = ecs.ObserverI.implement(
             const alloc = try tempalloc.create();
             defer tempalloc.destroy(alloc);
 
-            var body_ids = cetech1.ArrayList(zphy.BodyId){};
+            var body_ids = cetech1.ArrayList(zphy.BodyId).empty;
             defer body_ids.deinit(alloc);
 
             // TODO: =(
@@ -984,10 +983,11 @@ const DebugRenderer = if (!debug_renderer_enabled) void else extern struct {
 };
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
 
     // basic
+    _io = io;
     _allocator = allocator;
 
     try cdb.loadAPI(module_name);
@@ -1029,6 +1029,6 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_physics_jolt(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
+pub export fn ct_load_module_physics_jolt(io: *const std.Io, apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, apidb_, allocator, load, reload);
 }

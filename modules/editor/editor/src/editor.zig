@@ -286,6 +286,6 @@ pub const EditorAPI = struct {
 
 pub var api: *const EditorAPI = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     api = apidb.getZigApi(module, EditorAPI).?;
 }

@@ -107,7 +107,7 @@ var tag_prop_aspect = editor_inspector.UiInspectorPropertyValueAspect.implement(
 
 fn getTagColor(db: cdb.DbId, tag_r: *cdb.Obj) math.Color4f {
     _ = db;
-    if (editor.isColorsEnabled()) return .white;
+    if (!editor.isColorsEnabled()) return .white;
 
     const tag_color_obj = Tag.readSubObj(tag_r, .Color);
     var color: math.Color4f = .white;
@@ -941,10 +941,10 @@ var asset_ui_tree_aspect = editor_tree.UiTreeAspect.implement(struct {
             defer coreui.treePop();
 
             if (is_folder) {
-                var folders = cetech1.cdb.ObjIdList{};
+                var folders = cetech1.cdb.ObjIdList.empty;
                 defer folders.deinit(allocator);
 
-                var assets = cetech1.cdb.ObjIdList{};
+                var assets = cetech1.cdb.ObjIdList.empty;
                 defer assets.deinit(allocator);
 
                 const set = try cdb.getReferencerSet(allocator, asset_obj);
@@ -1459,8 +1459,9 @@ const api = public.EditorAssetDBAPI{
 };
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
+    _ = io;
 
     // basic
     _allocator = allocator;
@@ -1506,6 +1507,6 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_assetdb(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
+pub export fn ct_load_module_editor_assetdb(io: *const std.Io, apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, apidb_, allocator, load, reload);
 }

@@ -787,12 +787,17 @@ test "zmath.maxFast" {
 }
 
 pub inline fn min(v0: anytype, v1: anytype) @TypeOf(v0, v1) {
-    // This will handle inf & nan
-    return @min(v0, v1); // minps, cmpunordps, andps, andnps, orps
+    const T = @TypeOf(v0, v1);
+    const Child = std.meta.Child(T);
+    // v != v is true only when v is NaN
+    const nan0 = v0 != v0;
+    const nan1 = v1 != v1;
+    // if v0 is NaN, pick v1
+    // else if v1 is NaN, pick v0
+    // else pick normal @min
+    return @select(Child, nan0, v1, @select(Child, nan1, v0, @min(v0, v1)));
 }
 test "zmath.min" {
-    // Calling math.inf causes test to fail!
-    if (builtin.target.os.tag == .macos and builtin.target.cpu.arch == .aarch64) return error.SkipZigTest;
     {
         const v0 = f32x4(1.0, 3.0, 2.0, 7.0);
         const v1 = f32x4(2.0, 1.0, 4.0, math.inf(f32));
@@ -831,12 +836,17 @@ test "zmath.min" {
 }
 
 pub inline fn max(v0: anytype, v1: anytype) @TypeOf(v0, v1) {
-    // This will handle inf & nan
-    return @max(v0, v1); // maxps, cmpunordps, andps, andnps, orps
+    const T = @TypeOf(v0, v1);
+    const Child = std.meta.Child(T);
+    // v != v is true only when v is NaN
+    const nan0 = v0 != v0;
+    const nan1 = v1 != v1;
+    // if v0 is NaN, pick v1
+    // else if v1 is NaN, pick v0
+    // else pick normal @max
+    return @select(Child, nan0, v1, @select(Child, nan1, v0, @max(v0, v1)));
 }
 test "zmath.max" {
-    // Calling math.inf causes test to fail!
-    if (builtin.target.os.tag == .macos and builtin.target.cpu.arch == .aarch64) return error.SkipZigTest;
     {
         const v0 = f32x4(1.0, 3.0, 2.0, 7.0);
         const v1 = f32x4(2.0, 1.0, 4.0, math.inf(f32));
@@ -1249,8 +1259,6 @@ pub inline fn clamp(v: anytype, vmin: anytype, vmax: anytype) @TypeOf(v, vmin, v
     return result;
 }
 test "zmath.clamp" {
-    // Calling math.inf causes test to fail!
-    if (builtin.target.os.tag == .macos and builtin.target.cpu.arch == .aarch64) return error.SkipZigTest;
     {
         const v0 = f32x4(-1.0, 0.2, 1.1, -0.3);
         const v = clamp(v0, splat(F32x4, -0.5), splat(F32x4, 0.5));
@@ -1293,8 +1301,6 @@ pub inline fn saturate(v: anytype) @TypeOf(v) {
     return result;
 }
 test "zmath.saturate" {
-    // Calling math.inf causes test to fail!
-    if (builtin.target.os.tag == .macos and builtin.target.cpu.arch == .aarch64) return error.SkipZigTest;
     {
         const v0 = f32x4(-1.0, 0.2, 1.1, -0.3);
         const v = saturate(v0);
@@ -4122,7 +4128,8 @@ test "zmath.fftN" {
             -77.254834, 0.000000, -105.489863, 0.000000, -160.874864, 0.000000, -324.901452, 0.000000,
         };
         for (expected, 0..) |e, ie| {
-            try expect(std.math.approxEqAbs(f32, e, im[(ie / 4)][ie % 4], epsilon));
+            const v: [4]f32 = im[ie / 4];
+            try expect(std.math.approxEqAbs(f32, e, v[ie % 4], epsilon));
         }
     }
 
@@ -4185,7 +4192,8 @@ test "zmath.fftN" {
             -321.749727, 0.000000, 0.000000, 0.000000, -649.802905, 0.000000, 0.000000, 0.000000,
         };
         for (expected, 0..) |e, ie| {
-            try expect(std.math.approxEqAbs(f32, e, im[(ie / 4)][ie % 4], epsilon));
+            const v: [4]f32 = im[ie / 4];
+            try expect(std.math.approxEqAbs(f32, e, v[ie % 4], epsilon));
         }
     }
 }

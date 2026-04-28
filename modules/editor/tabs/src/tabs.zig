@@ -119,6 +119,6 @@ pub const TabsAPI = struct {
 
 pub var api: *const TabsAPI = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     api = apidb.getZigApi(module, TabsAPI).?;
 }

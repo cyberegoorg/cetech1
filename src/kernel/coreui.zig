@@ -114,7 +114,7 @@ const kernel_testing = cetech1.kernel.KernelTestingI.implment(struct {
     }
 });
 
-pub fn init(allocator: std.mem.Allocator) !void {
+pub fn init(io: std.Io, allocator: std.mem.Allocator) !void {
     public.api = &api;
     node_editor.api = &node_editor_api;
 
@@ -127,16 +127,16 @@ pub fn init(allocator: std.mem.Allocator) !void {
     _junit_filename = null;
 
     //TODO: TEMP SHIT
-    _ = std.fs.cwd().statFile("imgui.ini") catch |err| {
+    _ = std.Io.Dir.cwd().statFile(io, "imgui.ini", .{}) catch |err| {
         if (err == error.FileNotFound) {
-            const f = try std.fs.cwd().createFile("imgui.ini", .{});
-            defer f.close();
-            try f.writeAll(DEFAULT_IMGUI_INI);
+            const f = try std.Io.Dir.cwd().createFile(io, "imgui.ini", .{});
+            defer f.close(io);
+            try f.writeStreamingAll(io, DEFAULT_IMGUI_INI);
         }
     };
     //
 
-    zgui.init(_allocator);
+    zgui.init(io, _allocator);
     zgui.plot.init();
 
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &ui_being_task, true);
@@ -1662,7 +1662,7 @@ fn pushObjUUID(obj: cdb.ObjId) void {
 
 fn uiFilterPass(allocator: std.mem.Allocator, filter: [:0]const u8, value: [:0]const u8, is_path: bool) ?f64 {
     // Collect token for filter
-    var tokens = cetech1.ArrayList([]u8){};
+    var tokens = cetech1.ArrayList([]u8).empty;
     defer {
         for (tokens.items) |v| {
             allocator.free(v);

@@ -101,9 +101,10 @@ pub const AssetIOI = struct {
 
     ///Crete import asset task.
     import_asset: ?*const fn (
+        io: std.Io,
         db: cdb.DbId,
         prereq: task.TaskID,
-        dir: std.fs.Dir,
+        dir: std.Io.Dir,
         folder: cdb.ObjId,
         filename: []const u8,
         reimport_to: ?cdb.ObjId,
@@ -111,6 +112,7 @@ pub const AssetIOI = struct {
 
     /// Crete export asset task.
     export_asset: ?*const fn (
+        io: std.Io,
         db: cdb.DbId,
         root_path: []const u8,
         sub_path: []const u8,
@@ -345,7 +347,7 @@ pub const AssetDBAPI = struct {
 
 pub var api: *const AssetDBAPI = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     api = apidb.getZigApi(module, AssetDBAPI).?;
 }
 

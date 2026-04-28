@@ -13,7 +13,7 @@ const Walking = struct {};
 const Direction = enum { north, south, east, west };
 
 test {
-    std.testing.refAllDeclsRecursive(@This());
+    std.testing.refAllDecls(@This());
 }
 
 test "extern struct ABI compatibility" {
@@ -477,7 +477,7 @@ test "zflecs.struct-dtor-hook" {
     defer _ = ecs.fini(world);
 
     const Chat = struct {
-        messages: std.ArrayList([]const u8) = .{},
+        messages: std.ArrayList([]const u8) = .empty,
         pub fn dtor(self: *@This()) void {
             self.messages.deinit(std.testing.allocator);
         }

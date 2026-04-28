@@ -50,28 +50,29 @@ pub fn genLddbScriptPath(allocator: std.mem.Allocator, base_path: []const u8, is
 }
 
 pub fn generateEditorConfigs(
+    io: std.Io,
     allocator: std.mem.Allocator,
     editor_type: EditorType,
-    project_dir: std.fs.Dir,
+    project_dir: std.Io.Dir,
     args: ParseArgsResult,
     launch_cmds: []const LaunchCmd,
     task_cmds: []const TaskCmd,
 ) !void {
     switch (editor_type) {
-        .NVim => try NVim.generateEditorConfigs(allocator, project_dir, args, launch_cmds, task_cmds),
-        .IDEA => try IDEA.generateEditorConfigs(allocator, project_dir, args, launch_cmds, task_cmds),
-        .VSCode => try VSCode.generateEditorConfigs(allocator, project_dir, args, launch_cmds, task_cmds),
+        .NVim => try NVim.generateEditorConfigs(io, allocator, project_dir, args, launch_cmds, task_cmds),
+        .IDEA => try IDEA.generateEditorConfigs(io, allocator, project_dir, args, launch_cmds, task_cmds),
+        .VSCode => try VSCode.generateEditorConfigs(io, allocator, project_dir, args, launch_cmds, task_cmds),
     }
 }
 
-pub fn createLauchCmdForFixtures(allocator: std.mem.Allocator, dir_path: []const u8) ![]LaunchCmd {
-    var cmd_list = CmdList{};
+pub fn createLauchCmdForFixtures(io: std.Io, allocator: std.mem.Allocator, dir_path: []const u8) ![]LaunchCmd {
+    var cmd_list = CmdList.empty;
 
-    var dir = try std.fs.openDirAbsolute(dir_path, .{ .iterate = true });
-    defer dir.close();
+    var dir = try std.Io.Dir.openDirAbsolute(io, dir_path, .{ .iterate = true });
+    defer dir.close(io);
 
     var iterator = dir.iterate();
-    while (try iterator.next()) |path| {
+    while (try iterator.next(io)) |path| {
         if (path.kind != .directory) continue;
 
         const basename = std.fs.path.basename(path.name);
@@ -113,11 +114,11 @@ const ParseArgsResult = struct {
     }
 };
 
-fn parseArgs(allocator: std.mem.Allocator) !ParseArgsResult {
+fn parseArgs(allocator: std.mem.Allocator, init: std.process.Init) !ParseArgsResult {
     var result: ParseArgsResult = .{};
     errdefer result.deinit(allocator);
 
-    var args_it: std.process.ArgIterator = try .initWithAllocator(allocator);
+    var args_it = try init.minimal.args.iterateAllocator(allocator);
     defer args_it.deinit();
 
     const exe_path = args_it.next() orelse "";
@@ -168,33 +169,30 @@ fn parseArgs(allocator: std.mem.Allocator) !ParseArgsResult {
 
     return result;
 }
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    const arguments = try parseArgs(allocator);
+    const arguments = try parseArgs(allocator, init);
     defer arguments.deinit(allocator);
 
-    var project_dir = try std.fs.openDirAbsolute(arguments.project_path, .{});
-    defer project_dir.close();
+    var project_dir = try std.Io.Dir.openDirAbsolute(init.io, arguments.project_path, .{});
+    defer project_dir.close(init.io);
 
-    var cmd_list = CmdList{};
+    var cmd_list = CmdList.empty;
     defer cmd_list.deinit(allocator);
 
-    var config_file = try std.fs.openFileAbsolute(arguments.config, .{});
-    defer config_file.close();
-    const config_file_size = try config_file.getEndPos();
+    var config_file = try std.Io.Dir.openFileAbsolute(init.io, arguments.config, .{});
+    defer config_file.close(init.io);
+    const config_file_size = try config_file.length(init.io);
 
-    var config_file_data = std.ArrayList(u8){};
+    var config_file_data = std.ArrayList(u8).empty;
     defer config_file_data.deinit(allocator);
     try config_file_data.resize(allocator, config_file_size);
-    var config_file_data_reader = config_file.reader(&.{});
+    var config_file_data_reader = config_file.reader(init.io, &.{});
     try config_file_data_reader.interface.readSliceAll(config_file_data.items);
     try config_file_data.append(allocator, 0);
 
-    const config = try std.zon.parse.fromSlice(
+    const config = try std.zon.parse.fromSliceAlloc(
         LaunchConfig,
         allocator,
         config_file_data.items[0..config_file_size :0],
@@ -212,11 +210,11 @@ pub fn main() !void {
     defer tmp_arena.deinit();
 
     if (arguments.fixtures_path) |fixtures_path| {
-        const fixtures_cmds = try createLauchCmdForFixtures(tmp_arena.allocator(), fixtures_path);
+        const fixtures_cmds = try createLauchCmdForFixtures(init.io, tmp_arena.allocator(), fixtures_path);
         try cmd_list.appendSlice(allocator, fixtures_cmds);
     }
 
-    try generateEditorConfigs(allocator, arguments.gen_type, project_dir, arguments, cmd_list.items, config.tasks);
+    try generateEditorConfigs(init.io, allocator, arguments.gen_type, project_dir, arguments, cmd_list.items, config.tasks);
 }
 
 pub fn fatal(comptime format: []const u8, args: anytype) noreturn {
@@ -230,15 +228,16 @@ pub fn fatal(comptime format: []const u8, args: anytype) noreturn {
 
 const NVim = struct {
     pub fn generateEditorConfigs(
+        io: std.Io,
         allocator: std.mem.Allocator,
-        project_dir: std.fs.Dir,
+        project_dir: std.Io.Dir,
         args: ParseArgsResult,
         launch_cmds: []const LaunchCmd,
         task_cmds: []const TaskCmd,
     ) !void {
-        try VSCode.createOrUpdateSettingsJson(allocator, project_dir, args);
-        try VSCode.createLaunchers(allocator, project_dir, args, launch_cmds, "codelldb");
-        try VSCode.createTasks(allocator, project_dir, args, task_cmds);
+        try VSCode.createOrUpdateSettingsJson(io, allocator, project_dir, args);
+        try VSCode.createLaunchers(io, allocator, project_dir, args, launch_cmds, "codelldb");
+        try VSCode.createTasks(io, allocator, project_dir, args, task_cmds);
     }
 };
 
@@ -279,19 +278,20 @@ pub const VSCodeTaskList = std.ArrayListUnmanaged(VSCodeTaskCmd);
 
 const VSCode = struct {
     pub fn generateEditorConfigs(
+        io: std.Io,
         allocator: std.mem.Allocator,
-        project_dir: std.fs.Dir,
+        project_dir: std.Io.Dir,
         args: ParseArgsResult,
         launch_cmds: []const LaunchCmd,
         task_cmds: []const TaskCmd,
     ) !void {
-        try VSCode.createOrUpdateSettingsJson(allocator, project_dir, args);
-        try VSCode.createLaunchers(allocator, project_dir, args, launch_cmds, osBasedTypeVScode());
-        try VSCode.createTasks(allocator, project_dir, args, task_cmds);
+        try VSCode.createOrUpdateSettingsJson(io, allocator, project_dir, args);
+        try VSCode.createLaunchers(io, allocator, project_dir, args, launch_cmds, osBasedTypeVScode());
+        try VSCode.createTasks(io, allocator, project_dir, args, task_cmds);
     }
 
-    pub fn createLaunchers(allocator: std.mem.Allocator, project_dir: std.fs.Dir, args: ParseArgsResult, launch_cmds: []const LaunchCmd, cmd_type: []const u8) !void {
-        var cmd_list = VSCodeCmdList{};
+    pub fn createLaunchers(io: std.Io, allocator: std.mem.Allocator, project_dir: std.Io.Dir, args: ParseArgsResult, launch_cmds: []const LaunchCmd, cmd_type: []const u8) !void {
+        var cmd_list = VSCodeCmdList.empty;
         defer cmd_list.deinit(allocator);
 
         var tmp_arena = std.heap.ArenaAllocator.init(allocator);
@@ -314,25 +314,25 @@ const VSCode = struct {
             });
         }
 
-        var vscode_dir = try project_dir.makeOpenPath(".vscode", .{});
-        defer vscode_dir.close();
+        var vscode_dir = try project_dir.createDirPathOpen(io, ".vscode", .{});
+        defer vscode_dir.close(io);
 
-        var obj_file = try vscode_dir.createFile("launch.json", .{});
-        defer obj_file.close();
+        var obj_file = try vscode_dir.createFile(io, "launch.json", .{});
+        defer obj_file.close(io);
 
         var buffer: [4096]u8 = undefined;
 
-        var bw = obj_file.writer(&buffer);
+        var bw = obj_file.writer(io, &buffer);
         defer bw.interface.flush() catch undefined;
 
         var ws = std.json.Stringify{ .writer = &bw.interface, .options = .{ .whitespace = .indent_tab } };
         try ws.write(VSCodeLaunchConfig{ .configurations = cmd_list.items });
     }
 
-    pub fn createTasks(allocator: std.mem.Allocator, project_dir: std.fs.Dir, args: ParseArgsResult, task_cmds: []const TaskCmd) !void {
+    pub fn createTasks(io: std.Io, allocator: std.mem.Allocator, project_dir: std.Io.Dir, args: ParseArgsResult, task_cmds: []const TaskCmd) !void {
         _ = args;
 
-        var task_list = VSCodeTaskList{};
+        var task_list = VSCodeTaskList.empty;
         defer task_list.deinit(allocator);
 
         for (task_cmds) |cmd| {
@@ -344,36 +344,37 @@ const VSCode = struct {
             });
         }
 
-        var vscode_dir = try project_dir.makeOpenPath(".vscode", .{});
-        defer vscode_dir.close();
+        var vscode_dir = try project_dir.createDirPathOpen(io, ".vscode", .{});
+        defer vscode_dir.close(io);
 
-        var obj_file = try vscode_dir.createFile("tasks.json", .{});
-        defer obj_file.close();
+        var obj_file = try vscode_dir.createFile(io, "tasks.json", .{});
+        defer obj_file.close(io);
 
         var buffer: [4096]u8 = undefined;
 
-        var bw = obj_file.writer(&buffer);
+        var bw = obj_file.writer(io, &buffer);
         defer bw.interface.flush() catch undefined;
 
         var ws = std.json.Stringify{ .writer = &bw.interface, .options = .{ .whitespace = .indent_tab } };
         try ws.write(VSCodeTaskConfig{ .tasks = task_list.items });
     }
-    pub fn createOrUpdateSettingsJson(allocator: std.mem.Allocator, project_dir: std.fs.Dir, args: ParseArgsResult) !void {
-        var vscode_dir = try project_dir.makeOpenPath(".vscode", .{});
-        defer vscode_dir.close();
+    pub fn createOrUpdateSettingsJson(io: std.Io, allocator: std.mem.Allocator, project_dir: std.Io.Dir, args: ParseArgsResult) !void {
+        var vscode_dir = try project_dir.createDirPathOpen(io, ".vscode", .{});
+        defer vscode_dir.close(io);
 
         var buffer: [4096]u8 = undefined;
 
         // Read or create
         var parsed = blk: {
-            var obj_file = vscode_dir.openFile("settings.json", .{ .mode = .read_only }) catch |err| {
+            var obj_file = vscode_dir.openFile(io, "settings.json", .{ .mode = .read_only }) catch |err| {
                 if (err == error.FileNotFound) {
                     break :blk try std.json.parseFromSlice(std.json.Value, allocator, "{}", .{});
                 }
                 return err;
             };
-            defer obj_file.close();
-            var rb = obj_file.reader(&buffer);
+            defer obj_file.close(io);
+
+            var rb = obj_file.reader(io, &buffer);
             var json_reader = std.json.Reader.init(allocator, &rb.interface);
             defer json_reader.deinit();
 
@@ -388,20 +389,20 @@ const VSCode = struct {
             try args_array.array.append(.{ .string = "zig-out" });
             try args_array.array.append(.{ .string = "zig-cache" });
             try args_array.array.append(.{ .string = "externals" });
-            try parsed.value.object.put("todo-tree.filtering.excludeGlobs", args_array);
+            try parsed.value.object.put(parsed.arena.allocator(), "todo-tree.filtering.excludeGlobs", args_array);
         }
 
         // files.associations
         {
-            var files_map = std.json.Value{ .object = std.json.ObjectMap.init(parsed.arena.allocator()) };
-            try files_map.object.put("*.sc", std.json.Value{ .string = "glsl" });
-            try files_map.object.put("bgfx_*.sh", std.json.Value{ .string = "glsl" });
-            try files_map.object.put("shaderlib.sh", std.json.Value{ .string = "glsl" });
+            var files_map = std.json.Value{ .object = try std.json.ObjectMap.init(parsed.arena.allocator(), &.{}, &.{}) };
+            try files_map.object.put(parsed.arena.allocator(), "*.sc", std.json.Value{ .string = "glsl" });
+            try files_map.object.put(parsed.arena.allocator(), "bgfx_*.sh", std.json.Value{ .string = "glsl" });
+            try files_map.object.put(parsed.arena.allocator(), "shaderlib.sh", std.json.Value{ .string = "glsl" });
 
-            try parsed.value.object.put("files.associations", files_map);
+            try parsed.value.object.put(parsed.arena.allocator(), "files.associations", files_map);
         }
 
-        const base_path = try project_dir.realpathAlloc(allocator, ".");
+        const base_path = try project_dir.realPathFileAlloc(io, ".", allocator);
         defer allocator.free(base_path);
 
         // // Zig
@@ -422,13 +423,13 @@ const VSCode = struct {
             try array.array.append(std.json.Value{ .string = "type category enable zig.lang" });
             try array.array.append(std.json.Value{ .string = "type category enable zig.std" });
 
-            try parsed.value.object.put("lldb.launch.initCommands", array);
+            try parsed.value.object.put(parsed.arena.allocator(), "lldb.launch.initCommands", array);
         }
 
         // Write back
-        var obj_file = try vscode_dir.createFile("settings.json", .{});
-        defer obj_file.close();
-        var bw = obj_file.writer(&buffer);
+        var obj_file = try vscode_dir.createFile(io, "settings.json", .{});
+        defer obj_file.close(io);
+        var bw = obj_file.writer(io, &buffer);
         defer bw.interface.flush() catch undefined;
 
         // writeStream(writer, .{ .whitespace = .indent_tab });
@@ -443,27 +444,28 @@ const VSCode = struct {
 
 const IDEA = struct {
     pub fn generateEditorConfigs(
+        io: std.Io,
         allocator: std.mem.Allocator,
-        project_dir: std.fs.Dir,
+        project_dir: std.Io.Dir,
         args: ParseArgsResult,
         launch_cmds: []const LaunchCmd,
         task_cmds: []const TaskCmd,
     ) !void {
         _ = task_cmds;
-        try IDEA.createLaunchers(allocator, project_dir, args, launch_cmds);
-        try IDEA.createProject(allocator, project_dir, args);
+        try IDEA.createLaunchers(io, allocator, project_dir, args, launch_cmds);
+        try IDEA.createProject(io, allocator, project_dir, args);
     }
 
-    pub fn createLaunchers(allocator: std.mem.Allocator, project_dir: std.fs.Dir, args: ParseArgsResult, launch_cmds: []const LaunchCmd) !void {
+    pub fn createLaunchers(io: std.Io, allocator: std.mem.Allocator, project_dir: std.Io.Dir, args: ParseArgsResult, launch_cmds: []const LaunchCmd) !void {
         var tmp_arena = std.heap.ArenaAllocator.init(allocator);
         defer tmp_arena.deinit();
         const tmp_alloc = tmp_arena.allocator();
 
-        var vscode_dir = try project_dir.makeOpenPath(".idea", .{});
-        defer vscode_dir.close();
+        var vscode_dir = try project_dir.createDirPathOpen(io, ".idea", .{});
+        defer vscode_dir.close(io);
 
-        var run_config_dir = try vscode_dir.makeOpenPath("runConfigurations", .{});
-        defer run_config_dir.close();
+        var run_config_dir = try vscode_dir.createDirPathOpen(io, "runConfigurations", .{});
+        defer run_config_dir.close(io);
 
         var buffer: [4096]u8 = undefined;
 
@@ -478,10 +480,10 @@ const IDEA = struct {
 
             const launcher_path = try std.fmt.allocPrint(tmp_alloc, "{s}.xml", .{cmd_name});
 
-            var obj_file = try run_config_dir.createFile(launcher_path, .{});
-            defer obj_file.close();
+            var obj_file = try run_config_dir.createFile(io, launcher_path, .{});
+            defer obj_file.close(io);
 
-            var bw = obj_file.writer(&buffer);
+            var bw = obj_file.writer(io, &buffer);
             defer bw.interface.flush() catch undefined;
 
             const program = switch (cmd.program) {
@@ -526,21 +528,21 @@ const IDEA = struct {
         }
     }
 
-    pub fn createProject(allocator: std.mem.Allocator, project_dir: std.fs.Dir, args: ParseArgsResult) !void {
+    pub fn createProject(io: std.Io, allocator: std.mem.Allocator, project_dir: std.Io.Dir, args: ParseArgsResult) !void {
         _ = args;
-        var idea_dir = try project_dir.makeOpenPath(".idea", .{});
-        defer idea_dir.close();
+        var idea_dir = try project_dir.createDirPathOpen(io, ".idea", .{});
+        defer idea_dir.close(io);
 
-        const base_path = try project_dir.realpathAlloc(allocator, ".");
+        const base_path = try project_dir.realPathFileAlloc(io, ".", allocator);
         defer allocator.free(base_path);
 
         var buffer: [4096]u8 = undefined;
 
         // cetech1.iml
         {
-            var obj_file = try idea_dir.createFile("cetech1.iml", .{});
-            defer obj_file.close();
-            var bw = obj_file.writer(&buffer);
+            var obj_file = try idea_dir.createFile(io, "cetech1.iml", .{});
+            defer obj_file.close(io);
+            var bw = obj_file.writer(io, &buffer);
             defer bw.interface.flush() catch undefined;
 
             try bw.interface.print(
@@ -557,9 +559,9 @@ const IDEA = struct {
 
         // modules.xml
         {
-            var obj_file = try idea_dir.createFile("modules.xml", .{});
-            defer obj_file.close();
-            var bw = obj_file.writer(&buffer);
+            var obj_file = try idea_dir.createFile(io, "modules.xml", .{});
+            defer obj_file.close(io);
+            var bw = obj_file.writer(io, &buffer);
             defer bw.interface.flush() catch undefined;
 
             try bw.interface.print(
@@ -576,9 +578,9 @@ const IDEA = struct {
 
         // .gitignore
         {
-            var obj_file = try idea_dir.createFile(".gitignore", .{});
-            defer obj_file.close();
-            var bw = obj_file.writer(&buffer);
+            var obj_file = try idea_dir.createFile(io, ".gitignore", .{});
+            defer obj_file.close(io);
+            var bw = obj_file.writer(io, &buffer);
             defer bw.interface.flush() catch undefined;
 
             try bw.interface.print(

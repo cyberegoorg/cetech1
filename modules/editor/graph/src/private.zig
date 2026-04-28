@@ -65,7 +65,7 @@ const PinId = packed struct(u64) {
         };
     }
     pub fn toU64(self: *const PinId) u64 {
-        const ptr: *u64 = @ptrFromInt(@intFromPtr(self));
+        const ptr: *const u64 = @ptrCast(@alignCast(self));
         return ptr.*;
     }
 
@@ -78,7 +78,7 @@ const PinId = packed struct(u64) {
     }
 
     pub fn fromU64(value: u64) PinId {
-        const ptr: *PinId = @ptrFromInt(@intFromPtr(&value));
+        const ptr: *const PinId = @ptrCast(@alignCast(&value));
         return ptr.*;
     }
 };
@@ -113,7 +113,7 @@ const GraphEditorTab = struct {
     pintype_map: PinValueTypeMap = .{},
     resolved_pintype_map: PinValueTypeMap = .{},
 
-    breadcrumb: cdb.ObjIdList = .{},
+    breadcrumb: cdb.ObjIdList = .empty,
 };
 
 const SaveJson = struct { group_size: struct { x: f32, y: f32 } };
@@ -371,7 +371,7 @@ var graph_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
                 var to_from_map = ToFromConMap{};
                 defer to_from_map.deinit(allocator);
 
-                var depends = cetech1.ArrayList(u64){};
+                var depends = cetech1.ArrayList(u64).empty;
                 defer depends.deinit(allocator);
 
                 tab_o.resolved_pintype_map.clearRetainingCapacity();
@@ -819,7 +819,7 @@ var graph_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
                     const impls = try apidb.getImpl(allocator, graphvm.NodeI);
                     defer allocator.free(impls);
 
-                    var node_without_category = cetech1.ArrayList(*const graphvm.NodeI){};
+                    var node_without_category = cetech1.ArrayList(*const graphvm.NodeI).empty;
                     defer node_without_category.deinit(allocator);
 
                     std.sort.insertion(*const graphvm.NodeI, impls, allocator, lessThanNodePath);
@@ -1958,8 +1958,9 @@ const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
+    _ = io;
     // basic
     _allocator = allocator;
 
@@ -2004,6 +2005,6 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_graph(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
+pub export fn ct_load_module_editor_graph(io: *const std.Io, apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, apidb_, allocator, load, reload);
 }

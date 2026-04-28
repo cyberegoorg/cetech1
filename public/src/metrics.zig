@@ -3,19 +3,19 @@ const cetech1 = @import("root.zig");
 
 const apidb = cetech1.apidb;
 pub const MetricScopedDuration = struct {
-    start: std.time.Instant,
+    start: std.Io.Timestamp,
     counter: *f64,
 
-    pub fn begin(counter: *f64) MetricScopedDuration {
+    pub fn begin(io: std.Io, counter: *f64) MetricScopedDuration {
         return .{
             .counter = counter,
-            .start = std.time.Instant.now() catch undefined,
+            .start = std.Io.Timestamp.now(io, .awake),
         };
     }
 
-    pub fn end(self: MetricScopedDuration) void {
-        const end_time = std.time.Instant.now() catch return;
-        const duration: f64 = @floatFromInt(end_time.since(self.start));
+    pub fn end(self: MetricScopedDuration, io: std.Io) void {
+        const end_time = self.start.durationTo(.now(io, .awake));
+        const duration: f64 = @floatFromInt(end_time.toNanoseconds());
         const duration_ms = duration / std.time.ns_per_ms;
         self.counter.* = duration_ms;
     }
@@ -55,6 +55,6 @@ pub const MetricsAPI = struct {
 
 pub var api: *const MetricsAPI = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     api = apidb.getZigApi(module, MetricsAPI).?;
 }

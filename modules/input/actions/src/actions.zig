@@ -99,6 +99,6 @@ pub const ActionsAPI = struct {
 
 pub var api: *const ActionsAPI = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     api = apidb.getZigApi(module, ActionsAPI).?;
 }

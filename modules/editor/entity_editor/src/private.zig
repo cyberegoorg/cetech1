@@ -192,7 +192,7 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
             if (coreui.beginDragDropTarget()) {
                 defer coreui.endDragDropTarget();
                 if (coreui.acceptDragDropPayload("obj", .{ .source_allow_null_id = true })) |payload| {
-                    const drag_obj: cdb.ObjId = std.mem.bytesToValue(cdb.ObjId, payload.data.?);
+                    const drag_obj: cdb.ObjId = payload.toValue(cdb.ObjId);
 
                     if (drag_obj.type_idx.eql(assetdb.AssetCdb.typeIdx(tab_o.db))) {
                         const asset_entity_obj = assetdb.getObjForAsset(drag_obj).?;
@@ -488,8 +488,9 @@ const entity_value_type_i = graphvm.GraphValueTypeI.implement(
 );
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
+    _ = io;
 
     // basic
     _allocator = allocator;
@@ -528,6 +529,6 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_entity(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
+pub export fn ct_load_module_editor_entity(io: *const std.Io, apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, apidb_, allocator, load, reload);
 }

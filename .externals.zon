@@ -19,7 +19,6 @@
 
         .{ .name = "SDL_GameControllerDB", .license = "externals/shared/lib/SDL_GameControllerDB/LICENSE" },
         .{ .name = "zf", .license = "externals/shared/lib/zf/LICENSE" },
-        .{ .name = "zig-uuid", .license = "externals/shared/lib/zig-uuid/LICENSE" },
         .{ .name = "nativefiledialog-extended", .license = "externals/shared/lib/znfde/nativefiledialog/LICENSE" },
 
         .{ .name = "ziglang-set", .license = "externals/shared/lib/ziglang-set/LICENSE" },

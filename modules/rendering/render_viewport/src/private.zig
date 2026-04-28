@@ -10,6 +10,10 @@ const gpu = cetech1.gpu;
 const dag = cetech1.dag;
 const coreui = cetech1.coreui;
 const metrics = cetech1.metrics;
+const apidb = cetech1.apidb;
+const tempalloc = cetech1.tempalloc;
+const task = cetech1.task;
+const profiler = cetech1.profiler;
 
 const kernel = cetech1.kernel;
 const culling = @import("culling.zig");
@@ -34,10 +38,7 @@ const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-const apidb = cetech1.apidb;
-const tempalloc = cetech1.tempalloc;
-const task = cetech1.task;
-const profiler = cetech1.profiler;
+var _io: std.Io = undefined;
 
 // Global state
 const G = struct {
@@ -135,7 +136,7 @@ const Viewport = struct {
 
             .viewports_count = try metrics.getCounter(try std.fmt.bufPrint(&buf, "renderer/viewports/{s}/viewports_count", .{dupe_name})),
 
-            .enabled_dd_set = EnabledDebugDrawSet.init(),
+            .enabled_dd_set = EnabledDebugDrawSet.empty,
             .gpu = gpu_backend,
             .output_to_backbuffer = output_to_backbuffer,
             .query_map = .{},
@@ -236,7 +237,7 @@ var viewport_visibility_flag_i = visibility_flags.VisibilityFlagI.implement(.{
 });
 
 fn createViewport(name: [:0]const u8, gpu_backend: gpu.GpuBackend, pipeline: render_pipeline.RenderPipeline, world: ?ecs.World, output_to_backbuffer: bool) !public.Viewport {
-    const new_viewport = try _g.viewport_pool.create();
+    const new_viewport = try _g.viewport_pool.create(_io);
     new_viewport.* = try .init(name, gpu_backend, pipeline, world, output_to_backbuffer);
 
     const allocator = try tempalloc.create();
@@ -262,7 +263,7 @@ fn destroyViewport(viewport: public.Viewport) void {
     const true_viewport: *Viewport = @ptrCast(@alignCast(viewport.ptr));
     _ = _g.viewport_set.swapRemove(true_viewport);
     true_viewport.deinit();
-    _g.viewport_pool.destroy(true_viewport);
+    _g.viewport_pool.destroy(_io, true_viewport);
 }
 
 fn uiDebugMenuItems(allocator: std.mem.Allocator, viewport: public.Viewport) !void {
@@ -442,8 +443,8 @@ const RenderViewportTask = struct {
     gpu: gpu.GpuBackend,
     now_s: f32,
     pub fn exec(self: *@This()) !void {
-        const complete_counter = cetech1.metrics.MetricScopedDuration.begin(self.viewport.complete_render_duration);
-        defer complete_counter.end();
+        const complete_counter = cetech1.metrics.MetricScopedDuration.begin(_io, self.viewport.complete_render_duration);
+        defer complete_counter.end(_io);
 
         var zone = profiler.ZoneN(@src(), "RenderViewport");
         defer zone.End();
@@ -467,10 +468,10 @@ const RenderViewportTask = struct {
             var system_context = try shader_system.createSystemContext();
             defer shader_system.destroySystemContext(system_context);
 
-            var culling_viewers = culling.ViewersList{};
+            var culling_viewers = culling.ViewersList.empty;
             defer culling_viewers.deinit(allocator);
 
-            var viewers = render_graph.ViewersList{};
+            var viewers = render_graph.ViewersList.empty;
             defer viewers.deinit(allocator);
 
             try viewport.render_pipeline.begin(&system_context, self.now_s);
@@ -547,7 +548,7 @@ const RenderViewportTask = struct {
             const graph_builder = self.viewport.graph_builder;
             try graph_builder.clear();
 
-            var shaderables = cetech1.AutoArrayHashMap(ecs.IdStrId, *const public.ShaderableComponentI){};
+            var shaderables = cetech1.AutoArrayHashMap(ecs.IdStrId, *const public.ShaderableComponentI).empty;
             defer shaderables.deinit(allocator);
             // Inject main render graph module for shaderables and prepare culling
             {
@@ -565,6 +566,7 @@ const RenderViewportTask = struct {
                     const c = q.count();
 
                     const rq = try viewport.shaderables_culling.getNewRequest(
+                        _io,
                         shaderable.component_id,
                         @intCast(c.entities),
                         ci.size,
@@ -617,8 +619,8 @@ const RenderViewportTask = struct {
                 var z = profiler.ZoneN(@src(), "Render viewport - Shaderables culling phase");
                 defer z.End();
 
-                const counter = cetech1.metrics.MetricScopedDuration.begin(viewport.shaderable_culling_duration);
-                defer counter.end();
+                const counter = cetech1.metrics.MetricScopedDuration.begin(_io, viewport.shaderable_culling_duration);
+                defer counter.end(_io);
 
                 // First culling phase
                 _ = try viewport.shaderables_culling.doCullingSpheres(
@@ -658,8 +660,8 @@ const RenderViewportTask = struct {
                 var z = profiler.ZoneN(@src(), "Render viewport - Shaderable update phase");
                 defer z.End();
 
-                const counter = cetech1.metrics.MetricScopedDuration.begin(viewport.shaderable_update_duration);
-                defer counter.end();
+                const counter = cetech1.metrics.MetricScopedDuration.begin(_io, viewport.shaderable_update_duration);
+                defer counter.end(_io);
 
                 for (shaderables.keys(), shaderables.values()) |renderable_id, shaderable| {
                     var zz = profiler.ZoneN(@src(), "Render viewport - Shaderable update callback");
@@ -718,7 +720,7 @@ const RenderViewportTask = struct {
             }
 
             // Render renderables
-            var renderables = cetech1.AutoArrayHashMap(ecs.IdStrId, *const public.RendereableComponentI){};
+            var renderables = cetech1.AutoArrayHashMap(ecs.IdStrId, *const public.RendereableComponentI).empty;
             defer renderables.deinit(allocator);
 
             {
@@ -730,8 +732,8 @@ const RenderViewportTask = struct {
                     var z = profiler.ZoneN(@src(), "Render viewport - Culling init phase");
                     defer z.End();
 
-                    const counter = cetech1.metrics.MetricScopedDuration.begin(viewport.culling_collect_duration);
-                    defer counter.end();
+                    const counter = cetech1.metrics.MetricScopedDuration.begin(_io, viewport.culling_collect_duration);
+                    defer counter.end(_io);
 
                     const impls = try apidb.getImpl(allocator, public.RendereableComponentI);
                     defer allocator.free(impls);
@@ -744,6 +746,7 @@ const RenderViewportTask = struct {
                         const c = q.count();
 
                         const rq = try viewport.renderables_culling.getNewRequest(
+                            _io,
                             renderable.component_id,
                             @intCast(c.entities),
                             ci.size,
@@ -793,8 +796,8 @@ const RenderViewportTask = struct {
                     var z = profiler.ZoneN(@src(), "Render viewport - Culling phase");
                     defer z.End();
 
-                    const counter = cetech1.metrics.MetricScopedDuration.begin(viewport.renderable_culling_duration);
-                    defer counter.end();
+                    const counter = cetech1.metrics.MetricScopedDuration.begin(_io, viewport.renderable_culling_duration);
+                    defer counter.end(_io);
 
                     // First culling phase
                     const passed_spheres = try viewport.renderables_culling.doCullingSpheres(
@@ -836,8 +839,8 @@ const RenderViewportTask = struct {
                 var z = profiler.ZoneN(@src(), "Render viewport - Render phase");
                 defer z.End();
 
-                const counter = cetech1.metrics.MetricScopedDuration.begin(viewport.render_duration);
-                defer counter.end();
+                const counter = cetech1.metrics.MetricScopedDuration.begin(_io, viewport.render_duration);
+                defer counter.end(_io);
 
                 for (renderables.keys(), renderables.values()) |renderable_id, renderable| {
                     var zz = profiler.ZoneN(@src(), "Render viewport - Render callback");
@@ -942,7 +945,7 @@ fn renderAllViewports(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend,
     var zone_ctx = profiler.ZoneN(@src(), "RenderAllViewports");
     defer zone_ctx.End();
 
-    var tasks = cetech1.task.TaskIdList{};
+    var tasks = cetech1.task.TaskIdList.empty;
     defer tasks.deinit(allocator);
 
     for (_g.viewport_set.keys()) |viewport| {
@@ -1185,9 +1188,10 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
 const renderer_ecs_category_i = ecs.ComponentCategoryI.implement(.{ .name = "Renderer", .order = 20 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
     // basic
+    _io = io;
     _allocator = allocator;
     public.api = &api;
 
@@ -1223,6 +1227,6 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_render_viewport(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
+pub export fn ct_load_module_render_viewport(io: *const std.Io, apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, apidb_, allocator, load, reload);
 }

@@ -1,8 +1,8 @@
 .{
     .name = .znfde,
     .fingerprint = 0xdeaa03a53e34a0ca,
-    .version = "0.2.0",
-    .min_zig_version = "0.15.1",
+    .version = "0.3.0",
+    .min_zig_version = "0.16.0",
     .dependencies = .{},
     .paths = .{
         "includes",

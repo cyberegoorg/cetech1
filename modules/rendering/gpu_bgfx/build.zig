@@ -26,14 +26,14 @@ pub fn build(b: *std.Build) !void {
 
     switch (target.result.os.tag) {
         .windows => {
-            lib.linkSystemLibrary("gdi32");
-            lib.linkSystemLibrary("user32");
-            lib.linkSystemLibrary("shell32");
+            lib.root_module.linkSystemLibrary("gdi32", .{ .needed = true });
+            lib.root_module.linkSystemLibrary("user32", .{ .needed = true });
+            lib.root_module.linkSystemLibrary("shell32", .{ .needed = true });
         },
         else => {},
     }
 
     lib.root_module.link_libc = true;
-    lib.linkLibrary(zbgfx.artifact("bgfx"));
+    lib.root_module.linkLibrary(zbgfx.artifact("bgfx"));
     lib.root_module.addImport("zbgfx", zbgfx.module("zbgfx"));
 }

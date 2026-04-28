@@ -8,8 +8,11 @@ const cdb = cetech1.cdb;
 const math = cetech1.math;
 const task = cetech1.task;
 const host = cetech1.host;
-
+const apidb = cetech1.apidb;
+const tempalloc = cetech1.tempalloc;
+const profiler = cetech1.profiler;
 const kernel = cetech1.kernel;
+
 const editor_tabs = @import("editor_tabs");
 
 const public = @import("editor.zig");
@@ -24,11 +27,7 @@ pub const std_options: std.Options = .{
 const log = std.log.scoped(module_name);
 
 var _allocator: Allocator = undefined;
-const apidb = cetech1.apidb;
-
-var _assetdb: *const assetdb.AssetDBAPI = undefined;
-const tempalloc = cetech1.tempalloc;
-const profiler = cetech1.profiler;
+var _io: std.Io = undefined;
 
 const TabsSelectedObject = cetech1.AutoArrayHashMap(*public.TabI, coreui.SelectedObj);
 const TabsMap = cetech1.AutoArrayHashMap(*anyopaque, *public.TabI);
@@ -242,8 +241,7 @@ fn uiAssetDragDropTarget(allocator: std.mem.Allocator, tab: *editor_tabs.TabO, o
     if (coreui.beginDragDropTarget()) {
         defer coreui.endDragDropTarget();
         if (coreui.acceptDragDropPayload("obj", .{ .source_allow_null_id = true })) |payload| {
-            const drag_obj: cdb.ObjId = std.mem.bytesToValue(cdb.ObjId, payload.data.?);
-
+            const drag_obj: cdb.ObjId = payload.toValue(cdb.ObjId);
             if (!drag_obj.eql(obj)) {
                 if (cdb.getAspect(public.UiDropObj, db, obj.type_idx)) |aspect| {
                     try aspect.ui_drop_obj(allocator, tab, obj, prop_idx, drag_obj);
@@ -389,7 +387,7 @@ fn showObjContextMenu(
 
         // Obj based context
     } else {
-        var context_counter = cetech1.AutoArrayHashMap(cetech1.StrId64, cetech1.ArrayList(*const public.ObjContextMenuI)){};
+        var context_counter = cetech1.AutoArrayHashMap(cetech1.StrId64, cetech1.ArrayList(*const public.ObjContextMenuI)).empty;
         defer {
             for (context_counter.values()) |*v| {
                 v.deinit(allocator);
@@ -410,7 +408,7 @@ fn showObjContextMenu(
                         _g.filter,
                     ) catch false) {
                         if (!context_counter.contains(context)) {
-                            try context_counter.put(allocator, context, .{});
+                            try context_counter.put(allocator, context, .empty);
                         }
                         var array = context_counter.getPtr(context).?;
                         try array.append(allocator, iface);
@@ -510,19 +508,18 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
             if (coreui.menuItem(allocator, coreui.Icons.OpenProject ++ "  " ++ "Open project", .{ .enabled = host.supportFileDialog() }, null)) {
                 const Task = struct {
                     pub fn exec(_: *@This()) !void {
-                        var buf: [256:0]u8 = undefined;
-                        const str = try std.fs.cwd().realpath(".", &buf);
-                        buf[str.len] = 0;
-
-                        const a = tempalloc.create() catch undefined;
+                        const a = try tempalloc.create();
                         defer tempalloc.destroy(a);
+
+                        const cwd_path = try std.Io.Dir.cwd().realPathFileAlloc(_io, ".", a);
+                        defer a.free(cwd_path);
 
                         if (try host.openFileDialog(
                             a,
                             &.{
                                 .{ .name = "Project file", .spec = assetdb.ProjectCdb.name ++ ".json" },
                             },
-                            @ptrCast(&buf),
+                            cwd_path,
                         )) |path| {
                             defer a.free(path);
 
@@ -544,10 +541,10 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
             }
 
             if (coreui.menuItem(allocator, coreui.Icons.SaveAll ++ "  " ++ "Save project as", .{ .enabled = host.supportFileDialog() }, null)) {
-                var buf: [256:0]u8 = undefined;
-                const str = try std.fs.cwd().realpath(".", &buf);
-                buf[str.len] = 0;
-                if (try host.openFolderDialog(allocator, @ptrCast(&buf))) |path| {
+                const cwd_path = try std.Io.Dir.cwd().realPathFileAlloc(_io, ".", allocator);
+                defer allocator.free(cwd_path);
+
+                if (try host.openFolderDialog(allocator, cwd_path)) |path| {
                     defer allocator.free(path);
                     try assetdb.saveAsAllAssets(allocator, path);
                     kernel.openAssetRoot(path);
@@ -747,9 +744,10 @@ const post_create_types_i = cdb.PostCreateTypesI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
     // basic
+    _io = io;
     _allocator = allocator;
     public.api = &api;
 
@@ -778,8 +776,8 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor(__apidb: *const cetech1.apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, __apidb, __allocator, __load, __reload);
+pub export fn ct_load_module_editor(io: *const std.Io, __apidb: *const cetech1.apidb.ApiDbAPI, __allocator: *const std.mem.Allocator, __load: bool, __reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, __apidb, __allocator, __load, __reload);
 }
 
 // Assert C api == C api in zig.

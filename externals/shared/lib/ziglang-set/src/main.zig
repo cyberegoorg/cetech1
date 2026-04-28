@@ -18,18 +18,33 @@
 /// SOFTWARE.
 ///
 ///
-/// Set is just a short convenient "default" alias. If you don't know
-/// which to pick, just use Set.
-pub const Set = HashSet;
+const std = @import("std");
+const set = @import("root.zig");
 
-/// This Hash-based is optmized for lookups.
-pub const HashSet = @import("hash_set.zig").HashSet;
-pub const HashSetContext = @import("hash_set.zig").HashSetWithContext;
+const HashSet = set.HashSet;
+const ArraySet = set.ArraySet;
 
-/// This is a bit more specialized and optimized for heavy iteration.
-pub const ArraySet = @import("array_hash_set.zig").ArraySet;
+const SimpleHasher = struct {
+    const Self = @This();
+    pub fn hash(_: Self, key: u32) u64 {
+        return @as(u64, key) *% 0x517cc1b727220a95;
+    }
+    pub fn eql(_: Self, a: u32, b: u32) bool {
+        return a == b;
+    }
+};
 
-test "tests" {
-    _ = @import("hash_set.zig");
-    _ = @import("array_hash_set.zig");
+pub fn main(init: std.process.Init) void {
+    const gpa = init.gpa;
+
+    // now we can initialize a HashSet with empty if no context is provided
+    var A: HashSet(u32) = .empty;
+    defer A.deinit(gpa);
+
+    var B: ArraySet(u32) = .empty;
+    defer B.deinit(gpa);
+
+    const ctx = SimpleHasher{};
+    var C: set.HashSetContext(u32, SimpleHasher, 75) = .initContext(ctx);
+    defer C.deinit(gpa);
 }

@@ -86,6 +86,6 @@ pub const RenderPipelineApi = struct {
 
 pub var api: *const RenderPipelineApi = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     api = apidb.getZigApi(module, RenderPipelineApi).?;
 }

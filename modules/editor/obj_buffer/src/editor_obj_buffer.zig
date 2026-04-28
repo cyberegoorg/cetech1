@@ -17,6 +17,6 @@ pub const EditorObjBufferAPI = struct {
 
 pub var api: *const EditorObjBufferAPI = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     api = apidb.getZigApi(module, EditorObjBufferAPI).?;
 }

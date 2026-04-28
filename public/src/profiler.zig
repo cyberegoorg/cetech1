@@ -112,7 +112,7 @@ pub const AllocatorProfiler = struct {
 };
 
 pub const ZoneCtx = struct {
-    _zone: _tracy_c_zone_context = undefined,
+    _zone: _tracy_c_zone_context = .{},
 
     pub inline fn End(self: *ZoneCtx) void {
         api.emitZoneEnd(&self._zone);
@@ -247,7 +247,6 @@ pub const ProfilerAPI = struct {
     frameMark: *const fn () void,
     plotU64: *const fn (name: [*:0]const u8, val: u64) void,
     plotF64: *const fn (name: [*:0]const u8, val: f64) void,
-
     emitZoneBegin: *const fn (srcloc: *_tracy_source_location_data, active: c_int) _tracy_c_zone_context,
     emitZoneEnd: *const fn (zone: *_tracy_c_zone_context) void,
     emitZoneName: *const fn (zone: *_tracy_c_zone_context, name: []const u8) void,
@@ -255,7 +254,7 @@ pub const ProfilerAPI = struct {
 
 pub var api: *const ProfilerAPI = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     api = apidb.getZigApi(module, ProfilerAPI).?;
 }
 

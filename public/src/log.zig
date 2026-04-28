@@ -54,19 +54,30 @@ pub const Level = enum {
     }
 };
 
+pub const MAX_LOG_ENTRY_SIZE = 128;
+
 pub fn log(
     comptime level: std.log.Level,
     comptime scope: @TypeOf(.enum_literal),
     comptime format: []const u8,
     args: anytype,
 ) void {
-    // const msg2: [std.fmt.count(format, args)]u8 = undefined; //TODO: WHY?
-    // _ = msg2;
+    // TODO: For now we send full log to standard zig log.
+    // And max MAX_LOG_ENTRY_SIZE to cetech log that dont print to stdout, but
+    // only send to profiler and handlers.
+    std.log.defaultLog(level, scope, format, args);
 
-    var msg: [MAX_LOG_ENTRY_SIZE]u8 = undefined; // TODO: SHIIIIIIIIIIIIITTTTTTTT
-    const formated_msg = std.fmt.bufPrintZ(&msg, format, args) catch |e| {
-        std.debug.print("caught err writing to buffer {any}\n", .{e});
-        return;
+    // We write max MAX_LOG_ENTRY_SIZE and send it to cetech1 log.
+    var msg: [MAX_LOG_ENTRY_SIZE]u8 = undefined;
+    const formated_msg = blk: {
+        break :blk std.fmt.bufPrintZ(&msg, format, args) catch |e| {
+            switch (e) {
+                error.NoSpaceLeft => {
+                    msg[msg.len - 1] = 0;
+                    break :blk msg[0 .. msg.len - 1 :0];
+                },
+            }
+        };
     };
 
     var message: [:0]u8 = formated_msg;
@@ -85,10 +96,10 @@ pub const LogAPI = struct {
 
 pub var api: *const LogAPI = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     api = apidb.getZigApi(module, LogAPI).?;
 }
-pub const MAX_LOG_ENTRY_SIZE = 1024 * 6;
+
 pub fn zigLogFnGen() LogFn {
     return log;
 }

@@ -22,10 +22,10 @@ const metrics_private = @import("metrics.zig");
 const _cdb = cdb;
 
 pub fn testInit() !void {
-    try task_private.init(std.testing.allocator);
+    try task_private.init(std.testing.io, std.testing.allocator);
     try apidb_private.init(std.testing.allocator);
     try metrics_private.init(std.testing.allocator);
-    try cdb_private.init(std.testing.allocator);
+    try cdb_private.init(std.testing.io, std.testing.allocator);
     try task_private.start(null);
 }
 

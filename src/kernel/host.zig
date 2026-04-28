@@ -2,8 +2,6 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const apidb = cetech1.apidb;
-const profiler = @import("profiler.zig");
-const kernel = @import("kernel.zig");
 
 const cetech1 = @import("cetech1");
 const cetech1_options = @import("cetech1_options");
@@ -15,9 +13,9 @@ const module_name = .host;
 const log = std.log.scoped(module_name);
 
 // TODO: by options
-const system_backend = @import("host_system.zig");
-const host_backend = @import("host_glfw.zig");
-const dialogs_backend = @import("host_dialogs_znfde.zig");
+const system_backend = @import("host/host_system.zig");
+const host_backend = @import("host/host_glfw.zig");
+const dialogs_backend = @import("host/host_dialogs_znfde.zig");
 
 pub const system_api = system_backend.system_api;
 pub const monitor_api = host_backend.monitor_api;
@@ -30,8 +28,10 @@ pub var platform_api = public.PlatformApi{
 
 var _allocator: std.mem.Allocator = undefined;
 
-pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
+pub fn init(io: std.Io, allocator: std.mem.Allocator, headless: bool) !void {
     _allocator = allocator;
+
+    try system_backend.init(io);
 
     public.platform_api = &platform_api;
     public.system_api = &system_api;
@@ -41,7 +41,7 @@ pub fn init(allocator: std.mem.Allocator, headless: bool) !void {
 
     try dialogs_backend.init();
 
-    host_backend.init(allocator, headless) catch |err| {
+    host_backend.init(io, allocator, headless) catch |err| {
         log.warn("System init error {}", .{err});
         return;
     };

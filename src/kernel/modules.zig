@@ -33,7 +33,7 @@ const DynLibInfo = struct {
     name: [:0]u8,
     dyn_lib: std.DynLib,
     symbol: *public.LoadModuleCABIFn,
-    mtime: i128,
+    mtime: std.Io.Timestamp,
 
     pub fn close(self: *@This()) void {
         self.dyn_lib.close();
@@ -131,7 +131,7 @@ pub fn addDynamicModule(desc: public.ModuleDesc, full_path: ?[:0]u8) !void {
     try _modules_map.put(_allocator, desc.name, .{ .desc = desc, .full_path = full_path });
 }
 
-pub fn loadAll() !void {
+pub fn loadAll(io: std.Io) !void {
     for (_modules_map.values()) |*it| {
         var module_desc = it;
 
@@ -150,17 +150,17 @@ pub fn loadAll() !void {
             alloc_item = _modules_allocator_map.getPtr(module_desc.desc.name);
         }
 
-        if (!module_desc.desc.module_fce(@ptrCast(apidb.api), @ptrCast(@alignCast(&alloc_item.?.*.allocator)), true, false)) {
+        if (!module_desc.desc.module_fce(&io, @ptrCast(apidb.api), @ptrCast(@alignCast(&alloc_item.?.*.allocator)), true, false)) {
             log.err("Problem with load module {s}", .{module_desc.desc.name});
         }
     }
 }
 
-pub fn unloadAll() !void {
+pub fn unloadAll(io: std.Io) !void {
     for (_modules_map.values()) |*it| {
         const alloc_item = _modules_allocator_map.getPtr(it.desc.name).?;
 
-        if (!it.desc.module_fce(@ptrCast(apidb.api), @ptrCast(&alloc_item.*.allocator), false, false)) {
+        if (!it.desc.module_fce(&io, @ptrCast(apidb.api), @ptrCast(&alloc_item.*.allocator), false, false)) {
             log.err("Problem with unload module {s}", .{it.desc.name});
         }
     }
@@ -181,7 +181,7 @@ fn _getModule(name: []const u8) ?*ModuleDesc {
     return _modules_map.getPtr(name);
 }
 
-fn _loadDynLib(path: []const u8) !?DynLibInfo {
+fn _loadDynLib(io: std.Io, path: []const u8) !?DynLibInfo {
     var dll = std.DynLib.open(path) catch |err| {
         log.err("Error load module from {s} with error {any}", .{ path, err });
         return err;
@@ -200,11 +200,11 @@ fn _loadDynLib(path: []const u8) !?DynLibInfo {
         return error.SymbolNotFound;
     }
 
-    const f = try std.fs.cwd().openFile(path, .{ .mode = .read_only });
-    errdefer f.close();
-    const f_stat = try f.stat();
+    const f = try std.Io.Dir.cwd().openFile(io, path, .{ .mode = .read_only });
+    errdefer f.close(io);
+    const f_stat = try f.stat(io);
     const mtime = f_stat.mtime;
-    f.close();
+    f.close(io);
 
     return .{
         .name = try _allocator.dupeZ(u8, name),
@@ -220,33 +220,33 @@ fn lessThanStr(ctx: void, lhs: []const u8, rhs: []const u8) bool {
     return std.ascii.lessThanIgnoreCase(lhs, rhs);
 }
 
-pub fn loadDynModules() !void {
+pub fn loadDynModules(io: std.Io) !void {
     const allocator = _allocator;
 
     // TODO remove this fucking long alloc hell
-    const exe_dir = try std.fs.selfExeDirPathAlloc(allocator);
+    const exe_dir = try std.process.executableDirPathAlloc(io, allocator);
     defer allocator.free(exe_dir);
 
     const module_dir = try std.fs.path.join(allocator, if (builtin.os.tag == .windows) &.{exe_dir} else &.{ exe_dir, "..", "lib" });
     defer allocator.free(module_dir);
 
-    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    const cwd_path = try std.Io.Dir.cwd().realPathFileAlloc(io, ".", allocator);
     defer allocator.free(cwd_path);
 
-    const module_dir_relat = try std.fs.path.relative(allocator, cwd_path, module_dir);
+    const module_dir_relat = try std.fs.path.relative(allocator, ".", null, cwd_path, module_dir);
     defer allocator.free(module_dir_relat);
 
-    var dir = std.fs.cwd().openDir(module_dir, .{ .iterate = true }) catch |err| {
+    var dir = std.Io.Dir.cwd().openDir(io, module_dir, .{ .iterate = true }) catch |err| {
         log.err("Could not open dynamic modules dir {}", .{err});
         return err;
     };
-    defer dir.close();
+    defer dir.close(io);
 
-    var modules = cetech1.ArrayList([:0]const u8){};
+    var modules = cetech1.ArrayList([:0]const u8).empty;
     defer modules.deinit(allocator);
 
     var iterator = dir.iterate();
-    while (try iterator.next()) |path| {
+    while (try iterator.next(io)) |path| {
         const basename = std.fs.path.basename(path.name);
         if (!isDynamicModule(basename)) continue;
 
@@ -259,7 +259,7 @@ pub fn loadDynModules() !void {
 
     for (modules.items) |full_path| {
         defer allocator.free(full_path);
-        if (_loadDynLib(full_path) catch continue) |dyn_lib_info| {
+        if (_loadDynLib(io, full_path) catch continue) |dyn_lib_info| {
             log.warn("Loading dynamic module from {s}", .{full_path});
             try _dyn_modules_map.put(_allocator, dyn_lib_info.full_path, dyn_lib_info);
             try addDynamicModule(.{ .name = dyn_lib_info.name, .module_fce = dyn_lib_info.symbol }, dyn_lib_info.full_path);
@@ -267,14 +267,14 @@ pub fn loadDynModules() !void {
     }
 }
 
-pub fn reloadAllIfNeeded(allocator: std.mem.Allocator) !bool {
+pub fn reloadAllIfNeeded(io: std.Io, allocator: std.mem.Allocator) !bool {
     var zone_ctx = profiler.ZoneN(@src(), "reloadAllIfNeeded");
     defer zone_ctx.End();
 
     const keys = _dyn_modules_map.keys();
     const value = _dyn_modules_map.values();
 
-    var to_reload = cetech1.ArrayList([]const u8){};
+    var to_reload = cetech1.ArrayList([]const u8).empty;
     defer to_reload.deinit(allocator);
 
     const dyn_modules_map_n = _dyn_modules_map.count();
@@ -282,16 +282,16 @@ pub fn reloadAllIfNeeded(allocator: std.mem.Allocator) !bool {
         const k = keys[dyn_modules_map_n - 1 - i];
         const v = value[dyn_modules_map_n - 1 - i];
 
-        const f = std.fs.cwd().openFile(k, .{ .mode = .read_only }) catch |err| switch (err) {
+        const f = std.Io.Dir.cwd().openFile(io, k, .{ .mode = .read_only }) catch |err| switch (err) {
             error.FileNotFound => {
                 continue;
             },
             else => |e| return e,
         };
-        defer f.close();
-        const f_stat = try f.stat();
+        defer f.close(io);
+        const f_stat = try f.stat(io);
 
-        if (f_stat.mtime > v.mtime) {
+        if (f_stat.mtime.nanoseconds > v.mtime.nanoseconds) {
             try to_reload.append(allocator, k);
         }
     }
@@ -311,7 +311,7 @@ pub fn reloadAllIfNeeded(allocator: std.mem.Allocator) !bool {
 
             const alloc_item = _modules_allocator_map.getPtr(old_module_desc.desc.name).?;
 
-            if (!old_module_desc.desc.module_fce(@ptrCast(apidb.api), @ptrCast(&alloc_item.*.allocator), false, true)) {
+            if (!old_module_desc.desc.module_fce(&io, @ptrCast(apidb.api), @ptrCast(&alloc_item.*.allocator), false, true)) {
                 log.err("Problem with unload old module {s}", .{k});
                 continue;
             }
@@ -320,10 +320,10 @@ pub fn reloadAllIfNeeded(allocator: std.mem.Allocator) !bool {
             v_ptr.close();
 
             //load new
-            var new_dyn_lib_info = _loadDynLib(k) catch continue;
+            var new_dyn_lib_info = _loadDynLib(io, k) catch continue;
 
             if (new_dyn_lib_info) |*new_lib_info| {
-                if (!new_lib_info.symbol(@ptrCast(apidb.api), @ptrCast(&alloc_item.*.allocator), true, true)) {
+                if (!new_lib_info.symbol(&io, @ptrCast(apidb.api), @ptrCast(&alloc_item.*.allocator), true, true)) {
                     log.err("Problem with load new module {s}", .{k});
                     continue;
                 }
@@ -376,7 +376,7 @@ test "Can register module" {
 
     var modules = [_]public.ModuleDesc{.{ .name = "module1", .module_fce = @ptrCast(&Module1.load_module) }};
     try addModules(&modules);
-    try loadAll();
+    try loadAll(std.testing.io);
 
     try std.testing.expect(Module1.called);
 }

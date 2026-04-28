@@ -10,6 +10,7 @@
 # ZIG
 *zig-cache
 *zig-out
+*zig-pkg
 
 # VSCode
 

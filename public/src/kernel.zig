@@ -142,6 +142,10 @@ pub fn getGpuBackend() ?gpu.GpuBackend {
     return api.getGpuBackend();
 }
 
+pub fn getTmpPath() []const u8 {
+    return api.getTmpPath();
+}
+
 pub const KernelApi = struct {
     quit: *const fn () void,
     setCanQuit: *const fn (can_quit: *const fn () bool) void,
@@ -155,6 +159,7 @@ pub const KernelApi = struct {
     getAuthors: *const fn () [:0]const u8,
     getStrArgs: *const fn (arg_name: []const u8) ?[]const u8,
     getIntArgs: *const fn (arg_name: []const u8) ?u32,
+    getTmpPath: *const fn () []const u8,
     // TODO : !!!GLOBAL SHIT WARNING !!!
     // Only idiot call this method...
     getDb: *const fn () cdb.DbId,
@@ -165,6 +170,6 @@ pub const KernelApi = struct {
 
 pub var api: *const KernelApi = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     api = apidb.getZigApi(module, KernelApi).?;
 }

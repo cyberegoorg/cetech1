@@ -9,16 +9,17 @@ const cdb = cetech1.cdb;
 const cdb_types = cetech1.cdb_types;
 const ecs = cetech1.ecs;
 const math = cetech1.math;
-
 const gpu = cetech1.gpu;
 const coreui = cetech1.coreui;
-
-const public = @import("shader_system.zig");
+const apidb = cetech1.apidb;
+const tempalloc = cetech1.tempalloc;
+const profiler = cetech1.profiler;
 
 const graphvm = @import("graphvm");
 const editor_inspector = @import("editor_inspector");
-
 const basic_nodes = @import("basic_nodes.zig");
+
+const public = @import("shader_system.zig");
 
 const module_name = .shader_system;
 
@@ -40,10 +41,7 @@ const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
-const apidb = cetech1.apidb;
-
-const tempalloc = cetech1.tempalloc;
-const profiler = cetech1.profiler;
+var _io: std.Io = undefined;
 
 const ShaderMap = cetech1.AutoArrayHashMap(cetech1.StrId32, public.Shader);
 const ShaderDefMap = cetech1.AutoArrayHashMap(cetech1.StrId32, public.ShaderDefinition);
@@ -93,7 +91,7 @@ pub const SystemInstance = struct {
 const UniformBufferInstance = struct {
     arena: std.heap.ArenaAllocator,
     data: cetech1.AutoArrayHashMap(cetech1.StrId32, []u8) = .{},
-    lck: std.Thread.Mutex = .{}, // TODO: SHIT, how without lock?.. all graph instance call setUniform and that casue error.
+    lck: std.Io.Mutex = .init, // TODO: SHIT, how without lock?.. all graph instance call setUniform and that casue error.
 
     pub fn init(count: usize) !UniformBufferInstance {
         var self = UniformBufferInstance{
@@ -114,9 +112,9 @@ const UniformBufferInstance = struct {
         _ = self.arena.reset(.retain_capacity);
     }
 
-    fn setUniforms(self: *UniformBufferInstance, items: []const public.UpdateUniformItem) !void {
-        self.lck.lock();
-        defer self.lck.unlock();
+    fn setUniforms(self: *UniformBufferInstance, io: std.Io, items: []const public.UpdateUniformItem) !void {
+        self.lck.lockUncancelable(io);
+        defer self.lck.unlock(io);
 
         for (items) |item| {
             const get_or_put = self.data.getOrPutAssumeCapacity(item.name);
@@ -379,7 +377,7 @@ const SystemToIdx = cetech1.AutoArrayHashMap(cetech1.StrId32, usize);
 fn setUniform(shader: public.ShaderIO, uniformbuffer: public.UniformBufferInstance, items: []const public.UpdateUniformItem) !void {
     const sh: *ShaderIO = @ptrCast(@alignCast(shader.ptr));
     var true_buffer = sh.uniform_buffer_pool.get(uniformbuffer.idx);
-    try true_buffer.setUniforms(items);
+    try true_buffer.setUniforms(_io, items);
 }
 
 fn setResource(shader: public.ShaderIO, uniformbuffer: public.ResourceBufferInstance, items: []const public.UpdateResourceItem) !void {
@@ -613,8 +611,8 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                         _ = graph_obj;
                         const shader_def = _g.shader_def_map.get(self.type_hash).?;
 
-                        var in_pins = graphvm.NodePinList{};
-                        var out_pins = graphvm.NodePinList{};
+                        var in_pins = graphvm.NodePinList.empty;
+                        var out_pins = graphvm.NodePinList.empty;
 
                         if (shader_def.graph_node.?.inputs) |inputs| {
                             try in_pins.ensureTotalCapacityPrecise(allocator, inputs.len);
@@ -625,7 +623,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                                 in_pins.appendAssumeCapacity(
                                     graphvm.NodePin.init(
                                         if (input.display_name) |dn| dn else input.name,
-                                        try _g.node_str_itern.intern(pin_name),
+                                        try _g.node_str_itern.intern(_io, pin_name),
                                         if (input.type) |t| nodeInputToType(t) else graphvm.PinTypes.GENERIC,
                                         null,
                                     ),
@@ -646,9 +644,9 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                                 out_pins.appendAssumeCapacity(
                                     graphvm.NodePin.init(
                                         if (output.display_name) |dn| dn else output.name,
-                                        try _g.node_str_itern.intern(pin_name),
+                                        try _g.node_str_itern.intern(_io, pin_name),
                                         if (output.type) |t| nodeOutputToType(t) else graphvm.PinTypes.GENERIC,
-                                        if (tof_name) |tof| try _g.node_str_itern.intern(tof) else null,
+                                        if (tof_name) |tof| try _g.node_str_itern.intern(_io, tof) else null,
                                     ),
                                 );
                             }
@@ -671,22 +669,18 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                         const real_state = public.GpuTranspileState.fromBytes(state);
 
                         const shader_def = _g.shader_def_map.get(self.type_hash).?;
-
-                        var fce_name = cetech1.ByteList{};
-                        var fce_name_w = fce_name.writer(args.allocator);
+                        var fce_name = cetech1.ByteList.empty;
                         defer fce_name.deinit(args.allocator);
 
-                        try fce_name_w.writeAll(self.type_name);
+                        try fce_name.print(args.allocator, "{s}", .{self.type_name});
 
-                        var fce_args = cetech1.ByteList{};
-                        var fce_args_w = fce_args.writer(args.allocator);
+                        var fce_args = cetech1.ByteList.empty;
                         defer fce_args.deinit(args.allocator);
 
-                        var fce_out_struct = cetech1.ByteList{};
-                        var fce_out_struct_w = fce_out_struct.writer(args.allocator);
+                        var fce_out_struct = cetech1.ByteList.empty;
                         defer fce_out_struct.deinit(args.allocator);
 
-                        var inputs_vals = cetech1.ArrayList(?public.GpuValue){};
+                        var inputs_vals = cetech1.ArrayList(?public.GpuValue).empty;
                         defer inputs_vals.deinit(args.allocator);
 
                         real_state.var_counter += 1;
@@ -714,10 +708,10 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                                 };
                                 const short_type = nodeInputToTypeShort(tt);
 
-                                try fce_name_w.print("{s}", .{short_type});
+                                try fce_name.print(args.allocator, "{s}", .{short_type});
 
                                 const dot = if (idx == inputs.len - 1) "" else ",";
-                                try fce_args_w.print("in {s} {s}{s} ", .{ @tagName(tt), input.name, dot });
+                                try fce_args.print(args.allocator, "in {s} {s}{s} ", .{ @tagName(tt), input.name, dot });
 
                                 _, const val = in_pins.read(public.GpuValue, idx) orelse .{ 0, public.GpuValue{ .str = "vec4(1,1,1,1)" } };
                                 try inputs_vals.append(args.allocator, val);
@@ -746,7 +740,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                                     break :blk output.type.?;
                                 };
 
-                                try fce_out_struct_w.print("  {s} {s};", .{ @tagName(tt), output.name });
+                                try fce_out_struct.print(args.allocator, "  {s} {s};", .{ @tagName(tt), output.name });
 
                                 const val = public.GpuValue{ .str = try std.fmt.allocPrint(args.allocator, "{s}.{s}", .{ out_var_name, output.name }) };
                                 try out_pins.writeTyped(public.GpuValue, idx, cetech1.strId64(val.str).id, val);
@@ -754,9 +748,9 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                         }
 
                         if (!get_result.found_existing) {
-                            var common_w = real_state.common_code.writer(real_state.allocator);
+
                             // Write fce output struct
-                            try common_w.print(
+                            try real_state.common_code.print(real_state.allocator,
                                 \\struct {s}_out {{
                                 \\  {s}
                                 \\}};
@@ -764,7 +758,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                             , .{ fce_name.items, fce_out_struct.items });
 
                             // Write fce decl
-                            try common_w.print(
+                            try real_state.common_code.print(real_state.allocator,
                                 \\{s}_out {s}({s}) {{
                                 \\  {s}_out outputs;
                                 \\  {s}
@@ -782,16 +776,16 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
 
                         var w = try real_state.getWriter(context.?, stage.?);
 
-                        try w.print("{s}_out {s} = {s}(", .{
+                        try w.print(real_state.allocator, "{s}_out {s} = {s}(", .{
                             fce_name.items,
                             out_var_name,
                             fce_name.items,
                         });
                         for (inputs_vals.items, 0..) |inputs, idx| {
                             const dot = if (idx == inputs_vals.items.len - 1) "" else ",";
-                            try w.print("{s}{s}", .{ inputs.?.str, dot });
+                            try w.print(real_state.allocator, "{s}{s}", .{ inputs.?.str, dot });
                         }
-                        try w.print(");\n", .{});
+                        try w.print(real_state.allocator, ");\n", .{});
                     }
 
                     pub fn icon(
@@ -833,7 +827,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                         _ = node_obj;
                         _ = graph_obj;
                         const shader_def = _g.shader_def_map.get(self.type_hash).?;
-                        var in_pins = graphvm.NodePinList{};
+                        var in_pins = graphvm.NodePinList.empty;
                         if (shader_def.graph_node.?.inputs) |inputs| {
                             try in_pins.ensureTotalCapacityPrecise(allocator, inputs.len);
 
@@ -844,7 +838,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                                 in_pins.appendAssumeCapacity(
                                     graphvm.NodePin.init(
                                         if (input.display_name) |dn| dn else input.name,
-                                        try _g.node_str_itern.intern(pin_name),
+                                        try _g.node_str_itern.intern(_io, pin_name),
                                         if (input.type) |t| nodeInputToType(t) else graphvm.PinTypes.GENERIC,
                                         null,
                                     ),
@@ -920,17 +914,16 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
 
                                         const get_result = try get_ctx_result.value_ptr.getOrPut(real_state.allocator, input.stage.?);
                                         if (!get_result.found_existing) {
-                                            get_result.value_ptr.* = .{};
+                                            get_result.value_ptr.* = .empty;
                                         }
 
-                                        const w = get_result.value_ptr.*.writer(real_state.allocator);
-
+                                        var w = get_result.value_ptr;
                                         if (in_pins.read(public.GpuValue, idx)) |val| {
                                             const define = try std.fmt.allocPrint(args.allocator, "CT_PIN_CONNECTED_{s}", .{input.name});
                                             try real_state.defines.put(real_state.allocator, define, {});
 
                                             _, const v = val;
-                                            try w.print("graph.{s} = {s};\n", .{
+                                            try w.print(real_state.allocator, "graph.{s} = {s};\n", .{
                                                 input.name,
                                                 v.str,
                                             });
@@ -939,19 +932,17 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                                 }
                             }
                         } else {
-                            var vs_common = cetech1.ByteList{};
+                            var vs_common = cetech1.ByteList.empty;
                             defer vs_common.deinit(args.allocator);
-                            const vs_common_w = vs_common.writer(args.allocator);
 
-                            var fs_common = cetech1.ByteList{};
+                            var fs_common = cetech1.ByteList.empty;
                             defer fs_common.deinit(args.allocator);
-                            const fs_common_w = fs_common.writer(args.allocator);
 
-                            var common_writer = real_state.common_code.writer(real_state.allocator);
+                            var common_writer = &real_state.common_code;
 
                             // graph struct
-                            try common_writer.print("struct ct_graph {{\n", .{});
-                            try common_writer.print("ct_vertex_loader_ctx vertex_ctx;\n", .{});
+                            try common_writer.print(real_state.allocator, "struct ct_graph {{\n", .{});
+                            try common_writer.print(real_state.allocator, "ct_vertex_loader_ctx vertex_ctx;\n", .{});
                             if (shader_def.graph_node.?.inputs) |inputs| {
                                 for (inputs, 0..) |input, idx| {
                                     const is_generic = input.type == null;
@@ -972,13 +963,13 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                                         break :blk input.type.?;
                                     };
 
-                                    try common_writer.print("  {s} {s};\n", .{ @tagName(tt), input.name });
+                                    try common_writer.print(real_state.allocator, "  {s} {s};\n", .{ @tagName(tt), input.name });
                                 }
                             }
 
                             if (shader_def.vertex_block) |vb| {
                                 // Graph structure init
-                                try vs_common_w.print(
+                                try vs_common.print(args.allocator,
                                     \\
                                     \\void ct_graph_init(out ct_graph graph, in ct_vertex_loader_ctx vertex_ctx) {{
                                     \\#if BGFX_SHADER_LANGUAGE_HLSL
@@ -992,14 +983,14 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                                 if (vb.exports) |exports| {
                                     for (exports) |ex| {
                                         if (ex.to_node) {
-                                            try common_writer.print("  {s} {s};\n", .{ @tagName(ex.type), ex.name });
+                                            try common_writer.print(real_state.allocator, "  {s} {s};\n", .{ @tagName(ex.type), ex.name });
                                         }
                                     }
                                 }
                             }
                             if (shader_def.fragment_block) |fb| {
                                 // Graph structure init
-                                try fs_common_w.print(
+                                try fs_common.print(args.allocator,
                                     \\
                                     \\void ct_graph_init(out ct_graph graph) {{
                                     \\#if BGFX_SHADER_LANGUAGE_HLSL
@@ -1012,32 +1003,31 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                                 if (fb.exports) |exports| {
                                     for (exports) |ex| {
                                         if (ex.to_node) {
-                                            try common_writer.print("  {s} {s};\n", .{ @tagName(ex.type), ex.name });
+                                            try common_writer.print(real_state.allocator, "  {s} {s};\n", .{ @tagName(ex.type), ex.name });
                                         }
                                     }
                                 }
                             }
-                            try common_writer.print("}};\n", .{});
+                            try common_writer.print(real_state.allocator, "}};\n", .{});
 
                             for (real_state.context_result_map.keys(), real_state.context_result_map.values()) |ctx, v| {
                                 for (v.keys(), v.values()) |stage_id, data| {
-                                    const w = if (stage_id.eql(public.TranspileStages.Fragment)) fs_common_w else vs_common_w;
+                                    var w = if (stage_id.eql(public.TranspileStages.Fragment)) &fs_common else &vs_common;
                                     const is_default = std.mem.eql(u8, ctx, "default");
 
-                                    try w.print("void ct_graph_eval{s}{s}(inout ct_graph graph, in ct_input inputs){{\n", .{
+                                    try w.print(args.allocator, "void ct_graph_eval{s}{s}(inout ct_graph graph, in ct_input inputs){{\n", .{
                                         if (!is_default) "_" else "",
                                         if (!is_default) ctx else "",
                                     });
 
                                     if (real_state.context_map.get(ctx)) |common_ctx| {
                                         if (common_ctx.get(stage_id)) |d| {
-                                            try w.writeAll(d.items);
+                                            try w.print(args.allocator, "{s}", .{d.items});
                                         }
                                     }
 
-                                    try w.writeAll(data.items);
-
-                                    try w.print("}}\n", .{});
+                                    try w.print(args.allocator, "{s}", .{data.items});
+                                    try w.print(args.allocator, "}}\n", .{});
                                 }
                             }
 
@@ -1111,7 +1101,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                         const shader_def = _g.shader_def_map.get(self.type_hash).?;
 
                         if (shader_def.graph_node.?.inputs) |inputs| {
-                            var contexts = std.StringArrayHashMapUnmanaged(cetech1.AutoArrayHashMap(cetech1.StrId32, cetech1.ArrayList(u32))){};
+                            var contexts = std.StringArrayHashMapUnmanaged(cetech1.AutoArrayHashMap(cetech1.StrId32, cetech1.ArrayList(u32))).empty;
                             defer {
                                 for (contexts.values()) |*v| {
                                     for (v.values()) |*vv| {
@@ -1135,7 +1125,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
 
                                     const get_result = try get_ctx_result.value_ptr.getOrPut(allocator, input.stage.?);
                                     if (!get_result.found_existing) {
-                                        get_result.value_ptr.* = .{};
+                                        get_result.value_ptr.* = .empty;
                                     }
 
                                     try get_result.value_ptr.append(allocator, @truncate(idx));
@@ -1180,8 +1170,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                         const state = try allocator.create(public.GpuTranspileState);
                         state.* = public.GpuTranspileState.init(allocator);
 
-                        var common_w = state.common_code.writer(state.allocator);
-                        try common_w.print("#define CT_PIN_CONNECTED(x) defined(CT_PIN_CONNECTED_##x) \n", .{});
+                        try state.common_code.print(allocator, "#define CT_PIN_CONNECTED(x) defined(CT_PIN_CONNECTED_##x) \n", .{});
 
                         return std.mem.asBytes(state);
                     }
@@ -1205,7 +1194,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                 if (vb.exports) |exports| {
                     for (exports) |ex| {
                         if (ex.to_node) {
-                            try createExportedNode(_allocator, graph_node, ex);
+                            try createExportedNode(_io, _allocator, graph_node, ex);
                         }
                     }
                 }
@@ -1214,7 +1203,7 @@ fn addShaderDefiniton(name: []const u8, definition: public.ShaderDefinition) !vo
                 if (fb.exports) |exports| {
                     for (exports) |ex| {
                         if (ex.to_node) {
-                            try createExportedNode(_allocator, graph_node, ex);
+                            try createExportedNode(_io, _allocator, graph_node, ex);
                         }
                     }
                 }
@@ -1279,7 +1268,7 @@ fn systemsToSet(systems: []const cetech1.StrId32) public.SystemSet {
     return set;
 }
 
-fn createExportedNode(alloc: std.mem.Allocator, graph_node: public.DefGraphNode, export_def: public.DefExport) !void {
+fn createExportedNode(io: std.Io, alloc: std.mem.Allocator, graph_node: public.DefGraphNode, export_def: public.DefExport) !void {
     const get_or_put = try _g.exported_node_iface_map.getOrPut(_allocator, .fromStr(export_def.name));
     if (!get_or_put.found_existing) {
         const iface = try _allocator.create(graphvm.NodeI);
@@ -1296,8 +1285,8 @@ fn createExportedNode(alloc: std.mem.Allocator, graph_node: public.DefGraphNode,
 
         iface.* = graphvm.NodeI.implement(
             .{
-                .name = try _g.node_str_itern.intern(display_name),
-                .type_name = try _g.node_str_itern.intern(name),
+                .name = try _g.node_str_itern.intern(io, display_name),
+                .type_name = try _g.node_str_itern.intern(io, name),
                 .category = graph_node.category,
             },
             null,
@@ -1377,7 +1366,7 @@ fn compileShader(allocator: std.mem.Allocator, use_definitions: []const cetech1.
 
     const compile = definition.?.compile.?;
 
-    var config_map = cetech1.AutoArrayHashMap(cetech1.StrId32, public.DefCompileConfiguration){};
+    var config_map = cetech1.AutoArrayHashMap(cetech1.StrId32, public.DefCompileConfiguration).empty;
     defer config_map.deinit(allocator);
     try config_map.ensureTotalCapacity(allocator, compile.configurations.len);
 
@@ -1402,7 +1391,7 @@ fn compileShader(allocator: std.mem.Allocator, use_definitions: []const cetech1.
 
     for (compile.contexts) |context| {
         const context_item = try shader.variants.getOrPut(_allocator, .fromStr(context.name));
-        context_item.value_ptr.* = .{};
+        context_item.value_ptr.* = .empty;
 
         for (context.defs) |def| {
             const cfg = config_map.get(.fromStr(def.config)).?;
@@ -1664,94 +1653,76 @@ fn compileShaderVariant(
     //TODO: BRAINDUMP SHIT DETECTED
     //TODO: merge defs rules
 
-    var var_def = cetech1.ByteList{};
+    var var_def = cetech1.ByteList.empty;
     defer var_def.deinit(allocator);
-    var var_def_w = var_def.writer(allocator);
 
-    var vs_imports = cetech1.ByteList{};
+    var vs_imports = cetech1.ByteList.empty;
     defer vs_imports.deinit(allocator);
-    var vs_imports_w = vs_imports.writer(allocator);
 
-    var vs_exports = cetech1.ByteList{};
+    var vs_exports = cetech1.ByteList.empty;
     defer vs_exports.deinit(allocator);
-    var vs_exports_w = vs_exports.writer(allocator);
 
-    var fs_imports = cetech1.ByteList{};
+    var fs_imports = cetech1.ByteList.empty;
     defer fs_imports.deinit(allocator);
-    var fs_imports_w = fs_imports.writer(allocator);
 
-    var fs_blocks = cetech1.ByteList{};
+    var fs_blocks = cetech1.ByteList.empty;
     defer fs_blocks.deinit(allocator);
-    var fs_blocks_w = fs_blocks.writer(allocator);
 
-    var vs_blocks = cetech1.ByteList{};
+    var vs_blocks = cetech1.ByteList.empty;
     defer vs_blocks.deinit(allocator);
-    var vs_blocks_w = vs_blocks.writer(allocator);
 
-    var cmn_blocks = cetech1.ByteList{};
+    var cmn_blocks = cetech1.ByteList.empty;
     defer cmn_blocks.deinit(allocator);
-    var cmn_blocks_w = cmn_blocks.writer(allocator);
 
-    var vs_cmn_blocks = cetech1.ByteList{};
+    var vs_cmn_blocks = cetech1.ByteList.empty;
     defer vs_cmn_blocks.deinit(allocator);
-    const vs_cmn_blocks_w = vs_cmn_blocks.writer(allocator);
 
-    var fs_cmn_blocks = cetech1.ByteList{};
+    var fs_cmn_blocks = cetech1.ByteList.empty;
     defer fs_cmn_blocks.deinit(allocator);
-    var fs_cmn_blocks_w = fs_cmn_blocks.writer(allocator);
 
-    var main_imports = cetech1.ByteList{};
+    var main_imports = cetech1.ByteList.empty;
     defer main_imports.deinit(allocator);
-    var main_imports_w = main_imports.writer(allocator);
 
-    var vs_imports_set = cetech1.ArraySet(public.DefImportVariableType).init();
+    var vs_imports_set = cetech1.ArraySet(public.DefImportVariableType).empty;
     defer vs_imports_set.deinit(allocator);
 
-    var vs_export_set = cetech1.ArraySet([]const u8).init();
+    var vs_export_set = cetech1.ArraySet([]const u8).empty;
     defer vs_export_set.deinit(allocator);
 
-    var main_imports_set = std.StringArrayHashMapUnmanaged(public.DefImport){};
+    var main_imports_set = std.StringArrayHashMapUnmanaged(public.DefImport).empty;
     defer main_imports_set.deinit(allocator);
 
-    var vs_input_struct = cetech1.ByteList{};
+    var vs_input_struct = cetech1.ByteList.empty;
     defer vs_input_struct.deinit(allocator);
-    var vs_input_struct_w = vs_input_struct.writer(allocator);
 
-    var vs_fill_input_struct = cetech1.ByteList{};
+    var vs_fill_input_struct = cetech1.ByteList.empty;
     defer vs_fill_input_struct.deinit(allocator);
-    var vs_fill_input_struct_w = vs_fill_input_struct.writer(allocator);
 
-    var vs_fill_ouput_struct = cetech1.ByteList{};
+    var vs_fill_ouput_struct = cetech1.ByteList.empty;
     defer vs_fill_ouput_struct.deinit(allocator);
-    var vs_fill_ouput_struct_w = vs_fill_ouput_struct.writer(allocator);
 
-    var vs_output_struct = cetech1.ByteList{};
+    var vs_output_struct = cetech1.ByteList.empty;
     defer vs_output_struct.deinit(allocator);
-    var vs_output_struct_w = vs_output_struct.writer(allocator);
 
-    var fs_input_struct = cetech1.ByteList{};
+    var fs_input_struct = cetech1.ByteList.empty;
     defer fs_input_struct.deinit(allocator);
-    const fs_input_struct_w = fs_input_struct.writer(allocator);
 
-    var fs_fill_input_struct = cetech1.ByteList{};
+    var fs_fill_input_struct = cetech1.ByteList.empty;
     defer fs_fill_input_struct.deinit(allocator);
-    const fs_fill_input_struct_w = fs_fill_input_struct.writer(allocator);
 
-    var fs_output_struct = cetech1.ByteList{};
+    var fs_output_struct = cetech1.ByteList.empty;
     defer fs_output_struct.deinit(allocator);
-    const fs_output_struct_w = fs_output_struct.writer(allocator);
 
-    var fs_fill_ouput_struct = cetech1.ByteList{};
+    var fs_fill_ouput_struct = cetech1.ByteList.empty;
     defer fs_fill_ouput_struct.deinit(allocator);
-    var fs_fill_ouput_struct_w = fs_fill_ouput_struct.writer(allocator);
 
-    var defines = std.StringArrayHashMapUnmanaged(void){};
+    var defines = std.StringArrayHashMapUnmanaged(void).empty;
     defer defines.deinit(allocator);
 
-    var vs_import_semantics = cetech1.AutoArrayHashMap(public.DefVertexImportSemantics, void){};
+    var vs_import_semantics = cetech1.AutoArrayHashMap(public.DefVertexImportSemantics, void).empty;
     defer vs_import_semantics.deinit(allocator);
 
-    var sampler_map = cetech1.AutoArrayHashMap(cetech1.StrId32, gpu.SamplerFlags){};
+    var sampler_map = cetech1.AutoArrayHashMap(cetech1.StrId32, gpu.SamplerFlags).empty;
     defer sampler_map.deinit(allocator);
 
     var raster_state: gpu.RasterState = .{};
@@ -1776,7 +1747,7 @@ fn compileShaderVariant(
     var all_definitions = try cetech1.ArrayList(public.ShaderDefinition).initCapacity(allocator, use_definitions.len + dn + system_count);
     defer all_definitions.deinit(allocator);
 
-    try cmn_blocks_w.print("#define CT_SYSTEM_ACTIVATED(x) defined(CT_SYSTEM_ACTIVATED_##x) \n", .{});
+    try cmn_blocks.print(allocator, "#define CT_SYSTEM_ACTIVATED(x) defined(CT_SYSTEM_ACTIVATED_##x) \n", .{});
     if (systems) |sys| {
         for (sys) |system| {
             const shader_def = _g.shader_def_map.get(.fromStr(system)) orelse @panic("where shader def?");
@@ -1795,11 +1766,11 @@ fn compileShaderVariant(
         all_definitions.appendAssumeCapacity(d);
     }
 
-    try vs_output_struct_w.print("  vec4 position;\n", .{});
-    try vs_fill_ouput_struct_w.print("  gl_Position = outputs.position;\n", .{});
+    try vs_output_struct.print(allocator, "  vec4 position;\n", .{});
+    try vs_fill_ouput_struct.print(allocator, "  gl_Position = outputs.position;\n", .{});
 
-    try fs_output_struct_w.print("  vec4 color0;\n", .{});
-    try fs_fill_ouput_struct_w.print("  gl_FragColor = outputs.color0;\n", .{});
+    try fs_output_struct.print(allocator, "  vec4 color0;\n", .{});
+    try fs_fill_ouput_struct.print(allocator, "  gl_FragColor = outputs.color0;\n", .{});
 
     var vs_export_semantic_counter: usize = 1;
 
@@ -1827,7 +1798,7 @@ fn compileShaderVariant(
         }
 
         if (shader_def.common_block) |cb| {
-            try cmn_blocks_w.print("{s}\n", .{cb});
+            try cmn_blocks.print(allocator, "{s}\n", .{cb});
         }
 
         if (shader_def.defines) |dd| {
@@ -1848,8 +1819,8 @@ fn compileShaderVariant(
                             const get_or_put_idx = try shader.shader_io.samplers.getOrPut(_allocator, .fromStr(import.name));
                             const binding_idx = get_or_put_idx.index;
 
-                            try main_imports_w.print("SAMPLER2D({s},{d});\n", .{ import.name, binding_idx });
-                            try cmn_blocks_w.print("#define get_{s}_sampler() ({s})\n", .{ import.name, import.name });
+                            try main_imports.print(allocator, "SAMPLER2D({s},{d});\n", .{ import.name, binding_idx });
+                            try cmn_blocks.print(allocator, "#define get_{s}_sampler() ({s})\n", .{ import.name, import.name });
                         },
                         .buffer => {
                             const t = switch (import.buffer_type.?) {
@@ -1874,31 +1845,31 @@ fn compileShaderVariant(
                                 }
                             };
 
-                            try main_imports_w.print("BUFFER_{s}({s}, {s}, {d});\n", .{ acces, import.name, t, binding_idx });
-                            try cmn_blocks_w.print("#define get_{s}_buffer() ({s})\n", .{ import.name, import.name });
-                            try cmn_blocks_w.print("#define get_{s}_buffer_data(idx) (({s})[idx])\n", .{ import.name, import.name });
+                            try main_imports.print(allocator, "BUFFER_{s}({s}, {s}, {d});\n", .{ acces, import.name, t, binding_idx });
+                            try cmn_blocks.print(allocator, "#define get_{s}_buffer() ({s})\n", .{ import.name, import.name });
+                            try cmn_blocks.print(allocator, "#define get_{s}_buffer_data(idx) (({s})[idx])\n", .{ import.name, import.name });
                         },
-                        else => |_| {
+                        else => {
                             if (import.count) |count| {
-                                try main_imports_w.print("uniform {s} {s}[{d}];\n", .{ @tagName(import.type), import.name, count });
+                                try main_imports.print(allocator, "uniform {s} {s}[{d}];\n", .{ @tagName(import.type), import.name, count });
 
-                                try main_imports_w.print(
+                                try main_imports.print(allocator,
                                     \\{[val_type]s} load_{[name]s}(in uint idx) {{
                                     \\  return {[name]s}[idx];
                                     \\}}
                                     \\
                                 , .{ .val_type = @tagName(import.type), .name = import.name });
 
-                                try main_imports_w.print(
+                                try main_imports.print(allocator,
                                     \\void load_{[name]s}(out {[val_type]s} outval[{[count]d}]) {{
                                     \\  outval = {[name]s};
                                     \\}}
                                     \\
                                 , .{ .name = import.name, .val_type = @tagName(import.type), .count = count });
                             } else {
-                                try main_imports_w.print("uniform {s} {s};\n", .{ @tagName(import.type), import.name });
+                                try main_imports.print(allocator, "uniform {s} {s};\n", .{ @tagName(import.type), import.name });
 
-                                try main_imports_w.print(
+                                try main_imports.print(allocator,
                                     \\{[val_type]s} load_{[name]s}() {{
                                     \\  return {[name]s};
                                     \\}}
@@ -1922,16 +1893,17 @@ fn compileShaderVariant(
                 for (imports, 0..) |value, idx| {
                     if (!try vs_imports_set.add(allocator, value)) continue;
 
-                    try vs_imports_w.writeAll(vertexInputsToVariableName(value));
+                    try vs_imports.print(allocator, "{s}", .{vertexInputsToVariableName(value)});
 
-                    try vs_input_struct_w.print("  {s} {s};\n", .{
+                    try vs_input_struct.print(allocator, "  {s} {s};\n", .{
                         vertexInputsToVarTypeName(value),
                         vertexInputsToVariableName(value),
                     });
 
-                    try vs_fill_input_struct_w.print("  inputs.{s} = {s};\n", .{ vertexInputsToVariableName(value), vertexInputsToVariableName(value) });
+                    try vs_fill_input_struct.print(allocator, "  inputs.{s} = {s};\n", .{ vertexInputsToVariableName(value), vertexInputsToVariableName(value) });
 
-                    try var_def_w.print(
+                    try var_def.print(
+                        allocator,
                         "{s} {s}  :   {s};\n",
                         .{
                             vertexInputsToVarTypeName(value),
@@ -1941,10 +1913,10 @@ fn compileShaderVariant(
                     );
 
                     if (idx != imports.len - 1) {
-                        try vs_imports_w.writeAll(", ");
+                        try vs_imports.print(allocator, ", ", .{});
                     }
                 }
-                try var_def_w.writeAll("\n");
+                try var_def.print(allocator, "\n", .{});
             }
 
             if (vb.exports) |exports| {
@@ -1956,27 +1928,28 @@ fn compileShaderVariant(
                     const sem: VariableSemantic = @enumFromInt(vs_export_semantic_counter);
                     vs_export_semantic_counter += 1;
 
-                    try vs_output_struct_w.print("  {s} {s};\n", .{
+                    try vs_output_struct.print(allocator, "  {s} {s};\n", .{
                         @tagName(value.type),
                         value.name,
                     });
 
-                    try fs_input_struct_w.print("  {s} {s};\n", .{
+                    try fs_input_struct.print(allocator, "  {s} {s};\n", .{
                         @tagName(value.type),
                         value.name,
                     });
 
-                    try fs_fill_input_struct_w.print("inputs.{s} = v_{s};\n", .{
+                    try fs_fill_input_struct.print(allocator, "inputs.{s} = v_{s};\n", .{
                         value.name,
                         value.name,
                     });
 
-                    try vs_fill_ouput_struct_w.print("  v_{s} = outputs.{s};\n", .{
+                    try vs_fill_ouput_struct.print(allocator, "  v_{s} = outputs.{s};\n", .{
                         value.name,
                         value.name,
                     });
 
-                    try var_def_w.print(
+                    try var_def.print(
+                        allocator,
                         "{s}{s} v_{s}  :   {s};\n",
                         .{
                             if (value.flat) "flat " else "",
@@ -1986,42 +1959,42 @@ fn compileShaderVariant(
                         },
                     );
 
-                    try vs_exports_w.print("v_{s}", .{value.name});
-                    try fs_imports_w.print("v_{s}", .{value.name});
+                    try vs_exports.print(allocator, "v_{s}", .{value.name});
+                    try fs_imports.print(allocator, "v_{s}", .{value.name});
 
                     if (idx != exports.len - 1) {
-                        try vs_exports_w.writeAll(", ");
-                        try fs_imports_w.writeAll(", ");
+                        try vs_exports.print(allocator, ", ", .{});
+                        try fs_imports.print(allocator, ", ", .{});
                     }
                 }
             }
 
             if (vb.common_block) |cb| {
-                try vs_cmn_blocks_w.writeAll(cb);
+                try vs_cmn_blocks.print(allocator, "{s}", .{cb});
             }
 
             if (vb.code) |code| {
-                try vs_blocks_w.writeAll(code);
+                try vs_blocks.print(allocator, "{s}", .{code});
             }
 
-            try vs_blocks_w.writeAll("\n");
+            try vs_blocks.print(allocator, "\n", .{});
         }
 
         if (shader_def.fragment_block) |fb| {
             if (fb.common_block) |cb| {
-                try fs_cmn_blocks_w.writeAll(cb);
+                try fs_cmn_blocks.print(allocator, "{s}", .{cb});
             }
 
             if (fb.code) |code| {
-                try fs_blocks_w.writeAll(code);
+                try fs_blocks.print(allocator, "{s}", .{code});
             }
 
-            try fs_blocks_w.writeAll("\n");
+            try fs_blocks.print(allocator, "\n", .{});
         }
     }
 
     if (!any_export) {
-        try fs_input_struct_w.print("  {s} {s};\n", .{
+        try fs_input_struct.print(allocator, "  {s} {s};\n", .{
             "int",
             "unused",
         });
@@ -2043,18 +2016,18 @@ fn compileShaderVariant(
     for (vs_import_semantics.keys()) |semantic| {
         switch (semantic) {
             .vertex_id => {
-                try vs_input_struct_w.print("  {s} {s};\n", .{
+                try vs_input_struct.print(allocator, "  {s} {s};\n", .{
                     "int",
                     "vertex_id",
                 });
-                try vs_fill_input_struct_w.print("  inputs.{s} = {s};\n", .{ "vertex_id", "gl_VertexID" });
+                try vs_fill_input_struct.print(allocator, "  inputs.{s} = {s};\n", .{ "vertex_id", "gl_VertexID" });
             },
             .instance_id => {
-                try vs_input_struct_w.print("  {s} {s};\n", .{
+                try vs_input_struct.print(allocator, "  {s} {s};\n", .{
                     "int",
                     "instance_id",
                 });
-                try vs_fill_input_struct_w.print("  inputs.{s} = {s};\n", .{ "instance_id", "gl_InstanceID" });
+                try vs_fill_input_struct.print(allocator, "  inputs.{s} = {s};\n", .{ "instance_id", "gl_InstanceID" });
             },
         }
     }
@@ -2284,7 +2257,7 @@ fn selectShaderVariant(
 ) ![]*const public.ShaderVariant {
     const inst = _g.shader_pool.get(shader.idx);
 
-    var result = cetech1.ArrayList(*const public.ShaderVariant){};
+    var result = cetech1.ArrayList(*const public.ShaderVariant).empty;
 
     for (contexts) |context| {
         const variants = inst.variants.get(context) orelse return try result.toOwnedSlice(allocator);
@@ -3658,9 +3631,10 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
     // basic
+    _io = io;
     _allocator = allocator;
     public.api = &api;
 
@@ -3706,6 +3680,6 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_shader_system(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
+pub export fn ct_load_module_shader_system(io: *const std.Io, apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, apidb_, allocator, load, reload);
 }

@@ -35,8 +35,8 @@ const ModuleInfoMap = cetech1.AutoArrayHashMap(cetech1.StrId64, ModuleInfo);
 const ModuleInfo = struct {
     const Self = @This();
     module_name: []const u8,
-    provided_api: cetech1.ArraySet([]const u8) = .init(),
-    need_api: cetech1.ArraySet([]const u8) = .init(),
+    provided_api: cetech1.ArraySet([]const u8) = .empty,
+    need_api: cetech1.ArraySet([]const u8) = .empty,
 
     fn init(module: []const u8) !Self {
         return .{
@@ -101,7 +101,7 @@ pub fn init(a: Allocator) !void {
     _init = true;
     _allocator = a;
     _language_api_map = .{};
-    _api_map_pool = ApiHashMapPool.init(a);
+    _api_map_pool = ApiHashMapPool.empty;
 
     _interafce_gen = .{};
     _interafce_map = .{};
@@ -132,7 +132,7 @@ pub fn deinit() void {
     }
     _global_var_map.deinit(_allocator);
 
-    _api_map_pool.deinit();
+    _api_map_pool.deinit(_allocator);
     _language_api_map.deinit(_allocator);
 
     for (_interafce_map.values()) |*v| {
@@ -152,7 +152,7 @@ pub fn deinit() void {
 }
 
 fn _toBytes(ptr: *const anyopaque, ptr_size: usize) []u8 {
-    var a: [*]u8 = @ptrFromInt(@intFromPtr(ptr));
+    var a: [*]u8 = @ptrFromInt(@intFromPtr(ptr)); // TODO: ???
     return a[0..ptr_size];
 }
 
@@ -186,7 +186,7 @@ fn setApiOpaqueue(module: []const u8, language: []const u8, api_name: []const u8
     const language_hash = cetech1.strId64(language);
 
     if (!_language_api_map.contains(language_hash)) {
-        const api_map = try _api_map_pool.create();
+        const api_map = try _api_map_pool.create(_allocator);
         api_map.* = .{};
         try _language_api_map.put(_allocator, language_hash, api_map);
     }
@@ -214,7 +214,7 @@ fn _getApiOpaque(language: []const u8, api_name: []const u8, api_size: usize) ?*
     const language_hash = cetech1.strId64(language);
 
     if (!_language_api_map.contains(language_hash)) {
-        const api_map = _api_map_pool.create() catch return null;
+        const api_map = _api_map_pool.create(_allocator) catch return null;
         api_map.* = .{};
         _language_api_map.put(_allocator, language_hash, api_map) catch return null;
     }
@@ -286,7 +286,7 @@ pub fn dumpsetGlobalVar() void {
 fn implInterface(module: []const u8, interface_name: cetech1.StrId64, impl_ptr: *const anyopaque) anyerror!void {
     _ = module;
     if (!_interafce_map.contains(interface_name)) {
-        try _interafce_map.put(_allocator, interface_name, .{});
+        try _interafce_map.put(_allocator, interface_name, .empty);
         try _interafce_gen.put(_allocator, interface_name, 0);
     }
 
@@ -331,13 +331,13 @@ pub fn dumpApi() void {
     // }
 }
 
-pub fn writeApiGraphMD(out_path: []const u8) !void {
-    var dot_file = try std.fs.cwd().createFile(out_path, .{});
-    defer dot_file.close();
+pub fn writeApiGraphMD(io: std.Io, out_path: []const u8) !void {
+    var dot_file = try std.Io.Dir.cwd().createFile(io, out_path, .{});
+    defer dot_file.close(io);
 
     var buffer: [4096]u8 = undefined;
 
-    var bw = dot_file.writer(&buffer);
+    var bw = dot_file.writer(io, &buffer);
     const writer = &bw.interface;
     defer writer.flush() catch undefined;
 

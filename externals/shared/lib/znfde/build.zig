@@ -18,7 +18,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const znfde = b.addModule("root", .{
+    _ = b.addModule("root", .{
         .root_source_file = b.path("src/znfde.zig"),
         .imports = &.{
             .{ .name = "cnfde", .module = translate_c.createModule() },
@@ -32,42 +32,41 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .target = target,
             .optimize = optimize,
+            .link_libcpp = target.result.os.tag != .macos,
         }),
     });
 
     const cflags = [_][]const u8{};
 
-    lib.addIncludePath(b.path("nativefiledialog/src/include"));
-    znfde.addIncludePath(b.path("nativefiledialog/src/include"));
+    lib.root_module.addIncludePath(b.path("nativefiledialog/src/include"));
 
-    switch (lib.rootModuleTarget().os.tag) {
+    switch (target.result.os.tag) {
         .windows => {
-            lib.addCSourceFile(.{ .file = b.path("nativefiledialog/src/nfd_win.cpp"), .flags = &cflags });
-            lib.linkSystemLibrary("shell32");
-            lib.linkSystemLibrary("ole32");
-            lib.linkSystemLibrary("uuid");
+            lib.root_module.addCSourceFile(.{ .file = b.path("nativefiledialog/src/nfd_win.cpp"), .flags = &cflags });
+            lib.root_module.linkSystemLibrary("shell32", .{ .needed = true });
+            lib.root_module.linkSystemLibrary("ole32", .{ .needed = true });
+            lib.root_module.linkSystemLibrary("uuid", .{ .needed = true });
         },
         .macos => {
             lib.root_module.addCMacro("NFD_MACOS_ALLOWEDCONTENTTYPES", "1");
-            lib.addCSourceFile(.{ .file = b.path("nativefiledialog/src/nfd_cocoa.m"), .flags = &cflags });
-            lib.linkFramework("AppKit");
-            lib.linkFramework("UniformTypeIdentifiers");
+            lib.root_module.addCSourceFile(.{ .file = b.path("nativefiledialog/src/nfd_cocoa.m"), .flags = &cflags });
+            lib.root_module.linkFramework("AppKit", .{ .needed = true });
+            lib.root_module.linkFramework("UniformTypeIdentifiers", .{ .needed = true });
         },
         else => {
             if (options.with_portal) {
-                lib.addSystemIncludePath(b.path("includes"));
-                znfde.addSystemIncludePath(b.path("includes"));
-                lib.addCSourceFile(.{ .file = b.path("nativefiledialog/src/nfd_portal.cpp"), .flags = &cflags });
-                lib.linkSystemLibrary("dbus-1");
+                lib.root_module.addSystemIncludePath(b.path("includes"));
+                lib.root_module.addSystemIncludePath(b.path("includes"));
+                lib.root_module.addCSourceFile(.{ .file = b.path("nativefiledialog/src/nfd_portal.cpp"), .flags = &cflags });
+                lib.root_module.linkSystemLibrary("dbus-1", .{ .needed = true });
             } else {
-                lib.addCSourceFile(.{ .file = b.path("nativefiledialog/src/nfd_gtk.cpp"), .flags = &cflags });
-                lib.linkSystemLibrary("atk-1.0");
-                lib.linkSystemLibrary("gdk-3");
-                lib.linkSystemLibrary("gtk-3");
-                lib.linkSystemLibrary("glib-2.0");
-                lib.linkSystemLibrary("gobject-2.0");
+                lib.root_module.addCSourceFile(.{ .file = b.path("nativefiledialog/src/nfd_gtk.cpp"), .flags = &cflags });
+                lib.root_module.linkSystemLibrary("atk-1.0", .{ .needed = true });
+                lib.root_module.linkSystemLibrary("gdk-3", .{ .needed = true });
+                lib.root_module.linkSystemLibrary("gtk-3", .{ .needed = true });
+                lib.root_module.linkSystemLibrary("glib-2.0", .{ .needed = true });
+                lib.root_module.linkSystemLibrary("gobject-2.0", .{ .needed = true });
             }
-            lib.linkLibCpp();
         },
     }
 

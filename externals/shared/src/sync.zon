@@ -1,0 +1,158 @@
+.{
+    .repository = .{
+        .{
+            .repo_folder = "SDL_GameControllerDB",
+            .entries = .{
+                "gamecontrollerdb.txt",
+                "LICENSE",
+                "README.md",
+            },
+        },
+
+        // .{
+        //     .repo_folder = "system_sdk",
+        //     .entries = &.{
+        //         "linux",
+        //         "macos12",
+        //         "windows",
+        //         ".gitattributes",
+        //         ".gitignore",
+        //         "build.zig",
+        //         "build.zig.zon",
+        //         "LICENSE",
+        //         "README.md",
+        //     },
+        // },
+
+        .{
+            .repo_folder = "zbgfx",
+            .entries = .{
+                "includes",
+                "libs",
+                "shaders",
+                "src",
+                ".gitattributes",
+                ".gitignore",
+                "build.zig",
+                "build.zig.zon",
+                "LICENSE",
+                "README.md",
+                "AUTHORS.md",
+            },
+        },
+
+        .{
+            .repo_folder = "zf",
+            .entries = .{
+                "src",
+                ".gitignore",
+                "build.zig",
+                "build.zig.zon",
+                "LICENSE",
+                "README.md",
+                "CHANGELOG.md",
+            },
+        },
+
+        .{
+            .repo_folder = "zflecs",
+            .entries = .{
+                "src",
+                "libs",
+                ".gitignore",
+                "build.zig",
+                "build.zig.zon",
+                "LICENSE",
+                "README.md",
+            },
+        },
+
+        .{
+            .repo_folder = "zglfw",
+            .entries = .{
+                "src",
+                "libs",
+                ".gitignore",
+                "build.zig",
+                "build.zig.zon",
+                "LICENSE",
+                "README.md",
+            },
+        },
+
+        .{
+            .repo_folder = "zgui",
+            .entries = .{
+                "src",
+                "libs",
+                ".gitignore",
+                "build.zig",
+                "build.zig.zon",
+                "LICENSE",
+                "README.md",
+            },
+        },
+
+        .{
+            .repo_folder = "ziglang-set",
+            .entries = .{
+                "src",
+                ".gitignore",
+                "build.zig",
+                "build.zig.zon",
+                "LICENSE",
+                "README.md",
+            },
+        },
+
+        .{
+            .repo_folder = "zmath",
+            .entries = .{
+                "src",
+                ".gitignore",
+                "build.zig",
+                "build.zig.zon",
+                "LICENSE",
+                "README.md",
+            },
+        },
+
+        .{
+            .repo_folder = "znfde",
+            .entries = .{
+                "includes",
+                "nativefiledialog",
+                "src",
+                "build.zig",
+                "build.zig.zon",
+                "README.md",
+            },
+        },
+
+        .{
+            .repo_folder = "ztracy",
+            .entries = .{
+                "libs",
+                "src",
+                ".gitignore",
+                "build.zig",
+                "build.zig.zon",
+                "LICENSE",
+                "README.md",
+            },
+        },
+
+        .{
+            .repo_folder = "zphysics",
+            .entries = .{
+                "libs",
+                "src",
+                ".gitignore",
+                "build.zig",
+                "build.zig.zon",
+                "LICENSE",
+                "README.md",
+            },
+        },
+    },
+}

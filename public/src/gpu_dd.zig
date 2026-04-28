@@ -352,6 +352,6 @@ pub const GpuDDApi = struct {
 
 pub var api: *const GpuDDApi = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     api = apidb.getZigApi(module, GpuDDApi).?;
 }

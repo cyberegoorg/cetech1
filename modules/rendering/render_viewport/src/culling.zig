@@ -43,10 +43,10 @@ pub const Viewer = struct { // TODO: use plane
 pub const CullingRequest = struct {
     allocator: std.mem.Allocator,
 
-    mtx: TransformList = .{},
-    data: CullableBufferList = .{},
-    sphere_volumes: CullingSphereVolumeList = .{},
-    box_volumes: CullingBoxVolumeList = .{},
+    mtx: TransformList = .empty,
+    data: CullableBufferList = .empty,
+    sphere_volumes: CullingSphereVolumeList = .empty,
+    box_volumes: CullingBoxVolumeList = .empty,
 
     data_size: usize,
 
@@ -93,11 +93,11 @@ pub const CullingRequest = struct {
 pub const CullingResult = struct {
     allocator: std.mem.Allocator,
 
-    visibility: VisibilityAtomicFieldList = .{},
+    visibility: VisibilityAtomicFieldList = .empty,
 
-    sphere_entites_idx: EntitiesIdxList = .{},
-    box_entites_idx: EntitiesIdxList = .{},
-    compact_visibility: VisibilityAtomicFieldList = .{},
+    sphere_entites_idx: EntitiesIdxList = .empty,
+    box_entites_idx: EntitiesIdxList = .empty,
+    compact_visibility: VisibilityAtomicFieldList = .empty,
 
     visible_cnt: std.atomic.Value(usize),
 
@@ -256,7 +256,7 @@ pub const CullingSystem = struct {
     cr_pool: ResultPool,
     result_map: ResultMap = .{},
 
-    tasks: cetech1.task.TaskIdList = .{},
+    tasks: cetech1.task.TaskIdList = .empty,
 
     draw_culling_sphere_debug: bool = false,
     draw_culling_box_debug: bool = false,
@@ -289,7 +289,7 @@ pub const CullingSystem = struct {
         self.tasks.deinit(self.allocator);
     }
 
-    pub fn getNewRequest(self: *Self, cullable_type: cetech1.StrId64, cullable_count: usize, cullable_size: usize) !*CullingRequest {
+    pub fn getNewRequest(self: *Self, io: std.Io, cullable_type: cetech1.StrId64, cullable_count: usize, cullable_size: usize) !*CullingRequest {
         if (self.request_map.get(cullable_type)) |rq| {
             try rq.clear(cullable_count);
 
@@ -300,11 +300,11 @@ pub const CullingSystem = struct {
             return rq;
         }
 
-        const rq = try self.crq_pool.create();
+        const rq = try self.crq_pool.create(io);
         rq.* = try CullingRequest.init(self.allocator, cullable_size, cullable_count);
         try self.request_map.put(self.allocator, cullable_type, rq);
 
-        const rs = try self.cr_pool.create();
+        const rs = try self.cr_pool.create(io);
         rs.* = CullingResult.init(self.allocator);
         try self.result_map.put(self.allocator, cullable_type, rs);
 

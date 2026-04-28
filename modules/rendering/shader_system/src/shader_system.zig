@@ -436,7 +436,7 @@ pub const GpuTranspileState = struct {
     resouces: ?ResourceBufferInstance = null,
 
     // TODO: split to transpile context and state?
-    common_code: cetech1.ByteList = .{},
+    common_code: cetech1.ByteList = .empty,
 
     context_map: TranspileContextMap = .{},
     context_result_map: TranspileContextMap = .{},
@@ -478,7 +478,7 @@ pub const GpuTranspileState = struct {
         }
     }
 
-    pub fn getWriter(self: *GpuTranspileState, context: []const u8, stage: cetech1.StrId32) !cetech1.ByteList.Writer {
+    pub fn getWriter(self: *GpuTranspileState, context: []const u8, stage: cetech1.StrId32) !*cetech1.ByteList {
         const get_ctx_result = try self.context_map.getOrPut(self.allocator, context);
         if (!get_ctx_result.found_existing) {
             get_ctx_result.value_ptr.* = .{};
@@ -486,10 +486,10 @@ pub const GpuTranspileState = struct {
 
         const get_result = try get_ctx_result.value_ptr.getOrPut(self.allocator, stage);
         if (!get_result.found_existing) {
-            get_result.value_ptr.* = .{};
+            get_result.value_ptr.* = .empty;
         }
 
-        return get_result.value_ptr.*.writer(self.allocator);
+        return get_result.value_ptr;
     }
 
     pub inline fn fromBytes(state: []u8) *GpuTranspileState {
@@ -612,6 +612,6 @@ pub const ShaderSystemAPI = struct {
 
 pub var api: *const ShaderSystemAPI = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     api = apidb.getZigApi(module, ShaderSystemAPI).?;
 }

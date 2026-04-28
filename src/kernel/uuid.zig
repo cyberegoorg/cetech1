@@ -1,7 +1,6 @@
 const std = @import("std");
 
 const apidb = cetech1.apidb;
-const Uuid = @import("Uuid");
 const cetech1 = @import("cetech1");
 const public = cetech1.uuid;
 const profiler = @import("profiler.zig");
@@ -14,7 +13,10 @@ const api = public.UuidAPI{
     .fromStr = fromStr,
 };
 
-pub fn init() !void {
+var _io: std.Io = undefined;
+
+pub fn init(io: std.Io) !void {
+    _io = io;
     public.api = &api;
 }
 
@@ -25,20 +27,46 @@ pub fn registerToApi() !void {
 pub fn newUUID7() public.Uuid {
     var zone_ctx = profiler.ztracy.Zone(@src());
     defer zone_ctx.End();
-    return .{ .bytes = Uuid.V7.new().bytes };
+
+    var uuid: public.Uuid = fromInt(0);
+
+    const millis: u64 = @bitCast(std.Io.Timestamp.now(_io, .awake).toMilliseconds());
+    const millis_u48: u48 = @truncate(millis);
+    std.mem.writeInt(u48, uuid.bytes[0..6], millis_u48, .big);
+    _io.random(uuid.bytes[6..]);
+
+    uuid.bytes[8] = 0b10000000 | (uuid.bytes[8] & 0b00111111);
+    uuid.bytes[6] = @as(u8, 7) << 4 | (uuid.bytes[6] & 0xF);
+
+    return uuid;
 }
 
 pub fn fromInt(int: u128) public.Uuid {
-    return .{ .bytes = Uuid.fromInt(int).bytes };
+    var uuid: public.Uuid = undefined;
+    std.mem.writeInt(u128, uuid.bytes[0..], int, .big);
+    return uuid;
 }
 
 pub fn fromStr(str: []const u8) ?public.Uuid {
-    const u = Uuid.fromString(str) catch return null;
-    return .{ .bytes = u.bytes };
+    std.debug.assert(str.len == 36 and str[8] == '-' and str[13] == '-' and str[18] == '-' and str[23] == '-');
+
+    var uuid: public.Uuid = undefined;
+    var i: usize = 0;
+    for (uuid.bytes[0..]) |*byte| {
+        if (str[i] == '-') {
+            i += 1;
+        }
+        const hi = std.fmt.charToDigit(str[i], 16) catch return null;
+        const lo = std.fmt.charToDigit(str[i + 1], 16) catch return null;
+        byte.* = hi << 4 | lo;
+        i += 2;
+    }
+
+    return uuid;
 }
 
 test "uuid: Can create uuid7" {
-    try init();
+    try init(std.testing.io);
     const uuid1 = public.newUUID7();
     const uuid2 = public.newUUID7();
 
@@ -46,7 +74,7 @@ test "uuid: Can create uuid7" {
 }
 
 test "uuid: Can format uuid to string" {
-    try init();
+    try init(std.testing.io);
     const uuid1 = public.newUUID7();
     _ = uuid1;
 

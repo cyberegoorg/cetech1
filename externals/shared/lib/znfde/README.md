@@ -1,4 +1,4 @@
-# znfde v0.1.0 - NativeFileDialog extended bindings
+# znfde - NativeFileDialog extended bindings for zig lang.
 
 Easy to use NFDe zig wraper.
 

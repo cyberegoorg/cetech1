@@ -284,6 +284,6 @@ pub const RenderGraphApi = struct {
 
 pub var api: *const RenderGraphApi = undefined;
 
-pub fn loadAPI(comptime module: @Type(.enum_literal)) !void {
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
     api = apidb.getZigApi(module, RenderGraphApi).?;
 }

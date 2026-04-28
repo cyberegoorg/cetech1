@@ -62,7 +62,7 @@ const ActiveSetStack = cetech1.StrId32List;
 
 const Action = struct {
     action: public.Action,
-    mapping: MappingList = .{},
+    mapping: MappingList = .empty,
 
     pub fn init(action: public.Action) !Action {
         return .{
@@ -86,8 +86,8 @@ var actions_kernel_task = cetech1.kernel.KernelTaskI.implement(
     &[_]cetech1.StrId64{},
     struct {
         pub fn init() !void {
-            _action_set = .{};
-            _active_set_stack = .{};
+            _action_set = .empty;
+            _active_set_stack = .empty;
         }
 
         pub fn shutdown() !void {
@@ -288,8 +288,9 @@ pub fn checkInputs() void {
 }
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
+    _ = io;
 
     // basic
     _allocator = allocator;
@@ -319,6 +320,6 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_actions(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
+pub export fn ct_load_module_actions(io: *const std.Io, apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, apidb_, allocator, load, reload);
 }

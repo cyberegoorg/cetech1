@@ -26,6 +26,7 @@ const log = std.log.scoped(module_name);
 
 // Basic cetech "import".
 var _allocator: Allocator = undefined;
+var _io: std.Io = undefined;
 
 const tempalloc = cetech1.tempalloc;
 
@@ -499,8 +500,8 @@ const GraphVM = struct {
     vmnodes: VMNodePool = undefined,
     used_nodes_set: UsedInstnaceSet,
 
-    connection: ConnectionPairList = .{},
-    data_list: DataList = .{},
+    connection: ConnectionPairList = .empty,
+    data_list: DataList = .empty,
 
     node_plan: NodeIdxPlan,
     plan_arena: std.heap.ArenaAllocator,
@@ -746,7 +747,7 @@ const GraphVM = struct {
 
         const node_type_get = try self.node_by_type.getOrPut(self.allocator, iface.type_hash);
         if (!node_type_get.found_existing) {
-            node_type_get.value_ptr.* = .{};
+            node_type_get.value_ptr.* = .empty;
         }
         try node_type_get.value_ptr.*.append(self.allocator, node_idx);
     }
@@ -866,7 +867,7 @@ const GraphVM = struct {
             {
                 const get = try node_map.getOrPut(allocator, .{ .obj = from_node_obj, .pin = from_pin });
                 if (!get.found_existing) {
-                    get.value_ptr.* = .init();
+                    get.value_ptr.* = .empty;
                 }
                 _ = try get.value_ptr.*.add(allocator, NodeValue{ .graph = graph, .obj = to_node_obj, .pin = to_pin });
             }
@@ -876,7 +877,7 @@ const GraphVM = struct {
             {
                 const get = try node_backward_map.getOrPut(allocator, .{ .obj = to_node_obj, .pin = to_pin });
                 if (!get.found_existing) {
-                    get.value_ptr.* = .init();
+                    get.value_ptr.* = .empty;
                 }
                 _ = try get.value_ptr.*.add(allocator, NodeValue{ .graph = graph, .obj = from_node_obj, .pin = from_pin });
             }
@@ -998,7 +999,7 @@ const GraphVM = struct {
         }
     }
 
-    pub fn buildVM(self: *Self, allocator: std.mem.Allocator) !void {
+    pub fn buildVM(self: *Self, io: std.Io, allocator: std.mem.Allocator) !void {
         var zone_ctx = profiler.ZoneN(@src(), "GraphVM - build");
         defer zone_ctx.End();
 
@@ -1009,19 +1010,19 @@ const GraphVM = struct {
         const graph_version = cdb.getVersion(self.graph_obj);
         self.graph_version = graph_version;
 
-        var pivots = cetech1.ArrayList(VMNodeIdx){};
+        var pivots = cetech1.ArrayList(VMNodeIdx).empty;
         defer pivots.deinit(allocator);
 
-        var changed_nodes = IdxSet.init();
+        var changed_nodes = IdxSet.empty;
         defer changed_nodes.deinit(allocator);
 
-        var deleted_nodes = NodeSet.init();
+        var deleted_nodes = NodeSet.empty;
         defer deleted_nodes.deinit(allocator);
 
-        var graph_nodes_set = NodeSet.init();
+        var graph_nodes_set = NodeSet.empty;
         defer graph_nodes_set.deinit(allocator);
 
-        var out_data = OutDataList{};
+        var out_data = OutDataList.empty;
         defer out_data.deinit(allocator);
 
         var node_map = NodeMap{};
@@ -1036,7 +1037,7 @@ const GraphVM = struct {
             node_backward_map.deinit(allocator);
         }
 
-        var out_connections = OutConnectionArray{};
+        var out_connections = OutConnectionArray.empty;
         defer out_connections.deinit(allocator);
 
         self.node_prototype_map.clearRetainingCapacity();
@@ -1085,7 +1086,7 @@ const GraphVM = struct {
             const to_node = !to_subgraph and !to_outputs;
 
             if (!to_node) {
-                var outs = NodeValueSet.init();
+                var outs = NodeValueSet.empty;
                 defer outs.deinit(allocator);
 
                 try self.collectNodePoints(allocator, &outs, &node_map, to_node_obj, to_pin);
@@ -1129,7 +1130,7 @@ const GraphVM = struct {
                     );
                 }
             } else if (!from_node) {
-                var outs = NodeValueSet.init();
+                var outs = NodeValueSet.empty;
                 defer outs.deinit(allocator);
 
                 try self.collectNodePoints(allocator, &outs, &node_backward_map, from_node_obj, from_pin);
@@ -1240,7 +1241,7 @@ const GraphVM = struct {
 
             // If data is wire to sungraph we need collect and wire it to all sub graph input "consumers".
             if (!to_node) {
-                var outs = NodeValueSet.init();
+                var outs = NodeValueSet.empty;
                 defer outs.deinit(allocator);
 
                 try self.collectNodePoints(allocator, &outs, &node_map, to_node_obj, data.pin_hash);
@@ -1301,16 +1302,16 @@ const GraphVM = struct {
             var to_from_map = ToFromConMap.init(allocator);
             defer to_from_map.deinit();
 
-            var depends = cetech1.AutoArrayHashMap(VMNodeIdx, void){};
+            var depends = cetech1.AutoArrayHashMap(VMNodeIdx, void).empty;
             defer depends.deinit(allocator);
 
             var resolved_pintype_map = PinValueTypeMap{};
             defer resolved_pintype_map.deinit(allocator);
 
-            var patched_nodes = cetech1.ArrayList(VMNodeIdx){};
+            var patched_nodes = cetech1.ArrayList(VMNodeIdx).empty;
             defer patched_nodes.deinit(allocator);
 
-            var fnn = cetech1.AutoArrayHashMap(VMNodeIdx, void){};
+            var fnn = cetech1.AutoArrayHashMap(VMNodeIdx, void).empty;
             defer fnn.deinit(allocator);
 
             // add all nodes
@@ -1439,7 +1440,7 @@ const GraphVM = struct {
 
         var plan_allocator = self.plan_arena.allocator();
 
-        var transpile_pivots = cetech1.ArrayList(VMNodeIdx){};
+        var transpile_pivots = cetech1.ArrayList(VMNodeIdx).empty;
         defer transpile_pivots.deinit(allocator);
 
         for (pivots.items) |pivot| {
@@ -1560,7 +1561,7 @@ const GraphVM = struct {
             }
         }
 
-        try self.writePlanD2(allocator);
+        try self.writePlanD2(io, allocator);
 
         var alloc_size: usize = self.output_blob_size + self.data_blob_size + self.input_blob_size;
         for (self.node_idx_map.values()) |node_idx| {
@@ -1779,7 +1780,7 @@ const GraphVM = struct {
     }
 
     fn flowDag(self: *Self, allocator: std.mem.Allocator, dag: *cetech1.dag.DAG(VMNodeIdx), node: VMNodeIdx) !void {
-        var depends = cetech1.ArrayList(VMNodeIdx){};
+        var depends = cetech1.ArrayList(VMNodeIdx).empty;
         defer depends.deinit(allocator);
 
         for (self.connection.items) |pair| {
@@ -1804,7 +1805,7 @@ const GraphVM = struct {
     }
 
     fn inputDag(self: *Self, allocator: std.mem.Allocator, dag: *cetech1.dag.DAG(VMNodeIdx), node: VMNodeIdx, skip_transpile: bool, only_pins: ?[]const u32) !void {
-        var depends = cetech1.ArrayList(VMNodeIdx){};
+        var depends = cetech1.ArrayList(VMNodeIdx).empty;
         defer depends.deinit(allocator);
 
         const vmnode = self.vmnodes.get(node);
@@ -2051,11 +2052,11 @@ const GraphVM = struct {
         }
     }
 
-    fn writePlanD2(self: *Self, allocator: std.mem.Allocator) !void {
+    fn writePlanD2(self: *Self, io: std.Io, allocator: std.mem.Allocator) !void {
         if (assetdb.getAssetRootPath() == null) return;
 
-        var root_dir = try std.fs.cwd().openDir(assetdb.getAssetRootPath().?, .{});
-        defer root_dir.close();
+        var root_dir = try std.Io.Dir.cwd().openDir(io, assetdb.getAssetRootPath().?, .{});
+        defer root_dir.close(io);
 
         const asset_obj = assetdb.getAssetForObj(self.graph_obj).?;
         const asset_obj_r = cetech1.assetdb.AssetCdb.read(asset_obj).?;
@@ -2064,12 +2065,12 @@ const GraphVM = struct {
         const filename = try std.fmt.allocPrint(allocator, "{s}/graph_{s}.md", .{ cetech1.assetdb.CT_TEMP_FOLDER, name });
         defer allocator.free(filename);
 
-        var d2_file = try root_dir.createFile(filename, .{});
-        defer d2_file.close();
+        var d2_file = try root_dir.createFile(io, filename, .{});
+        defer d2_file.close(io);
 
         var buffer: [4096]u8 = undefined;
 
-        var bw = d2_file.writer(&buffer);
+        var bw = d2_file.writer(io, &buffer);
         const writer = &bw.interface;
         defer writer.flush() catch undefined;
 
@@ -2257,13 +2258,13 @@ fn getTypeColor(type_hash: cetech1.StrId32) math.Color4f {
 fn createVM(graph: cdb.ObjId) !*GraphVM {
     std.debug.assert(!_g.vm_map.contains(graph));
 
-    const vm = try _g.vm_pool.create();
+    const vm = try _g.vm_pool.create(_io);
     vm.* = try GraphVM.init(_allocator, graph);
     try _g.vm_map.put(_allocator, graph, vm);
 
     const alloc = try tempalloc.create();
     defer tempalloc.destroy(alloc);
-    try vm.buildVM(alloc);
+    try vm.buildVM(_io, alloc);
 
     return vm;
 }
@@ -2271,10 +2272,10 @@ fn createVM(graph: cdb.ObjId) !*GraphVM {
 fn destroyVM(vm: *GraphVM) void {
     vm.deinit();
     _ = _g.vm_map.swapRemove(vm.graph_obj);
-    _g.vm_pool.destroy(vm);
+    _g.vm_pool.destroy(_io, vm);
 }
 
-var vm_lock = std.Thread.Mutex{};
+var vm_lock = std.Io.Mutex.init;
 
 fn createInstance(allocator: std.mem.Allocator, graph: cdb.ObjId) !public.GraphInstance {
     var vm = _g.vm_map.get(graph).?;
@@ -2356,10 +2357,10 @@ fn clusterByGraph(allocator: std.mem.Allocator, sorted_instances: []const public
     var zone2_ctx = profiler.ZoneN(@src(), "clusterByGraph");
     defer zone2_ctx.End();
 
-    var clusters = cetech1.ArrayList([]const public.GraphInstance){};
+    var clusters = cetech1.ArrayList([]const public.GraphInstance).empty;
     defer clusters.deinit(allocator);
 
-    var clusters_idx = cetech1.ArrayList([]const usize){};
+    var clusters_idx = cetech1.ArrayList([]const usize).empty;
     defer clusters_idx.deinit(allocator);
 
     var cluster_begin_idx: usize = 0;
@@ -2540,7 +2541,7 @@ fn needCompile(graph: cdb.ObjId) bool {
 }
 fn compile(allocator: std.mem.Allocator, graph: cdb.ObjId) !void {
     var vm = _g.vm_map.get(graph).?;
-    try vm.buildVM(allocator);
+    try vm.buildVM(_io, allocator);
 }
 
 fn needCompileAny() bool {
@@ -2550,7 +2551,7 @@ fn needCompileAny() bool {
 fn compileAllChanged(allocator: std.mem.Allocator) !void {
     for (_g.graph_to_compile.keys()) |graph| {
         var vm = _g.vm_map.get(graph) orelse try createVM(graph);
-        try vm.buildVM(allocator);
+        try vm.buildVM(_io, allocator);
     }
     _g.graph_to_compile.clearRetainingCapacity();
 }
@@ -2926,7 +2927,7 @@ const graph_inputs_i = public.NodeI.implement(
             _ = node_obj;
 
             const db = cdb.getDbFromObjid(graph_obj);
-            var pins = public.NodePinList{};
+            var pins = public.NodePinList.empty;
 
             const graph_r = public.GraphTypeCdb.read(graph_obj).?;
 
@@ -2952,7 +2953,7 @@ const graph_inputs_i = public.NodeI.implement(
                             allocator,
                             public.NodePin.initRaw(
                                 name,
-                                try _g.string_intern.intern(str),
+                                try _g.string_intern.intern(_io, str),
                                 value_type.type_hash,
                             ),
                         );
@@ -3009,7 +3010,7 @@ const graph_outputs_i = public.NodeI.implement(
         pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
             _ = self;
             _ = node_obj;
-            var pins = public.NodePinList{};
+            var pins = public.NodePinList.empty;
 
             const db = cdb.getDbFromObjid(graph_obj);
 
@@ -3037,7 +3038,7 @@ const graph_outputs_i = public.NodeI.implement(
                             allocator,
                             public.NodePin.initRaw(
                                 name,
-                                try _g.string_intern.intern(str),
+                                try _g.string_intern.intern(_io, str),
                                 value_type.type_hash,
                             ),
                         );
@@ -3103,8 +3104,8 @@ const call_graph_node_i = public.NodeI.implement(
         pub fn getPinsDef(self: *const public.NodeI, allocator: std.mem.Allocator, graph_obj: cdb.ObjId, node_obj: cdb.ObjId) !public.NodePinDef {
             _ = self;
             const db = cdb.getDbFromObjid(graph_obj);
-            var in_pins = public.NodePinList{};
-            var out_pins = public.NodePinList{};
+            var in_pins = public.NodePinList.empty;
+            var out_pins = public.NodePinList.empty;
 
             const node_obj_r = public.NodeTypeCdb.read(node_obj).?;
             if (public.NodeTypeCdb.readSubObj(node_obj_r, .settings)) |settings| {
@@ -3132,7 +3133,7 @@ const call_graph_node_i = public.NodeI.implement(
                                 const value_type = findValueTypeIByCdb(cdb.getTypeHash(db, value_obj.type_idx).?).?;
 
                                 in_pins.appendAssumeCapacity(
-                                    public.NodePin.initRaw(name, try _g.string_intern.intern(str), value_type.type_hash),
+                                    public.NodePin.initRaw(name, try _g.string_intern.intern(_io, str), value_type.type_hash),
                                 );
                             }
                         }
@@ -3155,7 +3156,7 @@ const call_graph_node_i = public.NodeI.implement(
                                 const value_type = findValueTypeIByCdb(cdb.getTypeHash(db, value_obj.type_idx).?).?;
 
                                 out_pins.appendAssumeCapacity(
-                                    public.NodePin.initRaw(name, try _g.string_intern.intern(str), value_type.type_hash),
+                                    public.NodePin.initRaw(name, try _g.string_intern.intern(_io, str), value_type.type_hash),
                                 );
                             }
                         }
@@ -3365,8 +3366,9 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
+    _io = io;
     // basic
     _allocator = allocator;
     public.api = &api;
@@ -3399,6 +3401,6 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_graphvm(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
+pub export fn ct_load_module_graphvm(io: *const std.Io, apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, apidb_, allocator, load, reload);
 }

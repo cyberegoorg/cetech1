@@ -78,8 +78,7 @@ fn formatedPropNameToBuff(buf: []u8, prop_name: [:0]const u8) ![]u8 {
     var split = std.mem.splitAny(u8, prop_name, "_");
     const first = split.first();
 
-    var buff_stream = std.io.fixedBufferStream(buf);
-    var writer = buff_stream.writer();
+    var writer = std.Io.Writer.fixed(buf);
 
     var tmp_buf: [128]u8 = undefined;
 
@@ -95,8 +94,8 @@ fn formatedPropNameToBuff(buf: []u8, prop_name: [:0]const u8) ![]u8 {
         _ = try writer.write(" ");
     }
 
-    var writen = buff_stream.getWritten();
-    return writen[0 .. writen.len - 1];
+    const writen = writer.end;
+    return buf[0 .. writen - 1];
 }
 
 fn uiAssetInput(
@@ -241,7 +240,7 @@ fn uiAssetInputRaw(
 
     if (coreui.beginDragDropTarget()) {
         if (coreui.acceptDragDropPayload("obj", .{ .source_allow_null_id = true })) |payload| {
-            var drag_obj: cdb.ObjId = std.mem.bytesToValue(cdb.ObjId, payload.data.?);
+            var drag_obj: cdb.ObjId = payload.toValue(cdb.ObjId);
             if (drag_obj.type_idx.eql(AssetTypeIdx)) {
                 drag_obj = assetdb.AssetCdb.readSubObj(cdb.readObj(drag_obj).?, .Object).?;
             }
@@ -277,7 +276,9 @@ fn beginPropTable(name: [:0]const u8) bool {
             .sizing = .stretch_prop,
             .no_saved_settings = true,
             // .borders = .outer,
-            // .row_bg = true,
+            // .row_bg = tru
+            //
+            // e,
             //.resizable = true,
         },
     });
@@ -2022,8 +2023,9 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 });
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
+    _ = io;
     // basic
     _allocator = allocator;
     public.api = &api;
@@ -2107,8 +2109,8 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_editor_inspector(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
+pub export fn ct_load_module_editor_inspector(io: *const std.Io, apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, apidb_, allocator, load, reload);
 }
 
 // Assert C api == C api in zig.

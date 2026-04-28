@@ -1331,12 +1331,7 @@ fn flecs_abort() callconv(.c) noreturn {
     std.posix.exit(1);
 }
 
-//--------------------------------------------------------------------------------------------------
-//
-// Creation & Deletion
-//
-//--------------------------------------------------------------------------------------------------
-pub fn init() *world_t {
+pub fn init_zflecs(allocator: std.mem.Allocator) !void {
     if (builtin.os.tag == .windows) {
         os.ecs_os_api.abort_ = flecs_abort;
     }
@@ -1344,15 +1339,25 @@ pub fn init() *world_t {
     assert(num_worlds == 0);
 
     if (num_worlds == 0) {
-        EcsAllocator.gpa = .{};
-        EcsAllocator.allocator = EcsAllocator.gpa.?.allocator();
+        EcsAllocator.allocator = allocator;
 
         os.ecs_os_api.malloc_ = &EcsAllocator.alloc;
         os.ecs_os_api.free_ = &EcsAllocator.free;
         os.ecs_os_api.realloc_ = &EcsAllocator.realloc;
         os.ecs_os_api.calloc_ = &EcsAllocator.calloc;
     }
+}
 
+pub fn deinit_zflecs() void {
+    EcsAllocator.allocator = null;
+}
+
+//--------------------------------------------------------------------------------------------------
+//
+// Creation & Deletion
+//
+//--------------------------------------------------------------------------------------------------
+pub fn init() *world_t {
     num_worlds += 1;
     component_ids_hm.ensureTotalCapacity(32) catch @panic("OOM");
     const world = ecs_init();
@@ -1450,12 +1455,6 @@ pub fn fini(world: *world_t) i32 {
         ptr.* = 0;
     }
     component_ids_hm.clearRetainingCapacity();
-
-    if (num_worlds == 0) {
-        _ = EcsAllocator.gpa.?.deinit();
-        EcsAllocator.gpa = null;
-        EcsAllocator.allocator = null;
-    }
 
     return fini_result;
 }

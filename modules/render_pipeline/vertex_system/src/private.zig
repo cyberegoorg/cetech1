@@ -56,9 +56,9 @@ fn createVertexSystemFromVertexBuffer(allocator: std.mem.Allocator, vertex_buffe
     const vertex_system_resources = (try _shader_system.createResourceBuffer(system_io)).?;
 
     var it = vertex_buffer.active_channels.iterator(.{ .kind = .set });
-    var channel_offset: [4]math.F32x4 = @splat(@splat(0));
-    var channel_stride: [4]math.F32x4 = @splat(@splat(0));
-    var channel_buffer_idx: [4]math.F32x4 = @splat(@splat(0));
+    var channel_offset: [4][4]f32 = @splat(@splat(0));
+    var channel_stride: [4][4]f32 = @splat(@splat(0));
+    var channel_buffer_idx: [4][4]f32 = @splat(@splat(0));
 
     var buffer_idx_map: cetech1.AutoArrayHashMap(gpu.BufferHandle, void) = .{};
     defer buffer_idx_map.deinit(allocator);
@@ -152,8 +152,9 @@ var kernel_task = cetech1.kernel.KernelTaskI.implement(
 );
 
 // Create types, register api, interfaces etc...
-pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
     _ = reload;
+    _ = io;
 
     // basic
     _allocator = allocator;
@@ -178,6 +179,6 @@ pub fn load_module_zig(allocator: Allocator, load: bool, reload: bool) anyerror!
 }
 
 // This is only one fce that cetech1 need to load/unload/reload module.
-pub export fn ct_load_module_vertex_system(apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
-    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, apidb_, allocator, load, reload);
+pub export fn ct_load_module_vertex_system(io: *const std.Io, apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, apidb_, allocator, load, reload);
 }
