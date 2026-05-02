@@ -1739,7 +1739,7 @@ pub fn registerToApi() !void {
 }
 
 pub fn initFonts() void {
-    const sized_pixel = 0; //font_size;
+    const sized_pixel = 16; //font_size;
 
     // Load main font
     var main_cfg = zgui.FontConfig.init();
@@ -1760,7 +1760,7 @@ pub fn initFonts() void {
     );
 }
 
-pub fn enableWithWindow(window: ?cetech1.host.Window, gpu_backend: ?gpu.GpuBackend) !void {
+pub fn enableWithWindow(window: ?*cetech1.host.Window, gpu_backend: ?gpu.GpuBackend) !void {
     _scale_factor = scale_factor: {
         if (builtin.os.tag.isDarwin()) break :scale_factor 1;
         if (host.getWMType() == .Wayland) break :scale_factor 1;

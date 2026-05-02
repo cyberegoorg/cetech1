@@ -49,11 +49,35 @@ pub const window_api = host.WindowApi{
     .createWindow = createWindow,
     .destroyWindow = destroyWindow,
     .getWmType = getWMType,
+    .get_content_scale = getContentScale,
+    .get_cursor_pos = getCursorPos,
+    .get_framebuffer_size = getFramebufferSize,
+    .get_internal_handler = getInternalHandler,
+    .get_os_display_handler = getOsDisplayHandler,
+    .get_os_window_handler = getOsWindowHandler,
+    .get_scroll = getScroll,
+    .set_cursor_mode = setCursorMode,
+    .set_should_close = setShouldClose,
+    .should_close = shouldClose,
 };
 
+//
+// Monitor
+//
 pub const monitor_api = host.MonitorApi{
     .get_primary_monitor = getPrimaryMonitor,
+    .get_monitor_video_mode = getMonitorVideoMode,
 };
+
+pub fn getPrimaryMonitor() ?*host.Monitor {
+    return @ptrCast(zglfw.Monitor.getPrimary() orelse return null);
+}
+
+pub fn getMonitorVideoMode(monitor: *host.Monitor) !*host.Monitor.VideoMode {
+    const true_monitor: *zglfw.Monitor = @ptrCast(monitor);
+    const vm = try true_monitor.getVideoMode();
+    return @ptrCast(vm);
+}
 
 var _allocator: std.mem.Allocator = undefined;
 var _io: std.Io = undefined;
@@ -409,106 +433,14 @@ fn mouseButtonCallback(
 //
 // Window
 //
-pub const window_vt = host.Window.VTable.implement(struct {
-    pub fn setCursorMode(window: *anyopaque, mode: host.CursorMode) void {
-        const true_w: *Window = @ptrCast(@alignCast(window));
-        const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
+pub const window_vt = host.Window.VTable.implement(struct {});
 
-        // TODO: this is HOTFIX
-        const Task = struct {
-            mode: host.CursorMode,
-            glfw_w: *zglfw.Window,
+pub const monitor_vt = host.MonitorVTable.implement(struct {});
 
-            pub fn exec(s: *@This()) !void {
-                try s.glfw_w.setInputMode(.cursor, cursorModeTOGlfw(s.mode));
-            }
-        };
-        const task_id = task.schedule(
-            cetech1.task.TaskID.none,
-            Task{
-                .mode = mode,
-                .glfw_w = glfw_w,
-            },
-            .{ .affinity = 0 },
-        ) catch undefined;
-        _ = task_id;
-        //task.wait(task_id);
-    }
-
-    pub fn getOsWindowHandler(window: *anyopaque) ?*anyopaque {
-        const true_w: *Window = @ptrCast(@alignCast(window));
-        const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
-
-        return switch (builtin.target.os.tag) {
-            .linux => if (getWMType() == .Wayland) zglfw.getWaylandWindow(glfw_w) else @ptrFromInt(zglfw.getX11Window(glfw_w)),
-            .windows => zglfw.getWin32Window(glfw_w),
-            else => |v| if (v.isDarwin())
-                zglfw.getCocoaWindow(glfw_w)
-            else
-                null,
-        };
-    }
-
-    pub fn getOsDisplayHandler(window: *anyopaque) ?*anyopaque {
-        _ = window;
-
-        return switch (builtin.target.os.tag) {
-            .linux => if (getWMType() == .Wayland) zglfw.getWaylandDisplay() else zglfw.getX11Display(),
-            else => null,
-        };
-    }
-
-    pub fn shouldClose(window: *anyopaque) bool {
-        const true_w: *Window = @ptrCast(@alignCast(window));
-        const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
-        return zglfw.Window.shouldClose(glfw_w);
-    }
-
-    pub fn setShouldClose(window: *anyopaque, should_quit: bool) void {
-        const true_w: *Window = @ptrCast(@alignCast(window));
-        const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
-        zglfw.setWindowShouldClose(glfw_w, should_quit);
-    }
-
-    pub fn getCursorPos(window: *anyopaque) [2]f64 {
-        const true_w: *Window = @ptrCast(@alignCast(window));
-        return true_w.last_cursor_pos;
-    }
-
-    pub fn getScroll(window: *anyopaque) [2]f64 {
-        const true_w: *Window = @ptrCast(@alignCast(window));
-        return true_w.last_scroll;
-    }
-
-    pub fn getFramebufferSize(window: *anyopaque) [2]i32 {
-        const true_w: *Window = @ptrCast(@alignCast(window));
-        return true_w.fb_size;
-    }
-
-    pub fn getContentScale(window: *anyopaque) math.Vec2f {
-        const true_w: *Window = @ptrCast(@alignCast(window));
-        return true_w.content_scale;
-    }
-
-    pub fn getInternalHandler(window: *anyopaque) *const anyopaque {
-        const true_w: *Window = @ptrCast(@alignCast(window));
-        const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
-        return glfw_w;
-    }
-});
-
-pub const monitor_vt = host.Monitor.VTable.implement(struct {
-    pub fn getMonitorVideoMode(monitor: *anyopaque) !*host.Monitor.VideoMode {
-        const true_monitor: *zglfw.Monitor = @ptrCast(monitor);
-        const vm = try true_monitor.getVideoMode();
-        return @ptrCast(vm);
-    }
-});
-
-pub fn createWindow(width: i32, height: i32, title: [:0]const u8, monitor: ?host.Monitor) !host.Window {
+pub fn createWindow(width: i32, height: i32, title: [:0]const u8, monitor: ?*host.Monitor) !*host.Window {
     var w: *zglfw.Window = undefined;
 
-    const m: ?*zglfw.Monitor = if (monitor) |m| @ptrCast(m.ptr) else null;
+    const m: ?*zglfw.Monitor = if (monitor) |m| @ptrCast(m) else null;
     w = try zglfw.Window.create(width, height, title, m, null);
 
     const new_w = try _window_pool.create(_io);
@@ -529,11 +461,11 @@ pub fn createWindow(width: i32, height: i32, title: [:0]const u8, monitor: ?host
     std.debug.assert(zglfw.setFramebufferSizeCallback(w, framebufferSizeCallback) == null);
     std.debug.assert(zglfw.setWindowContentScaleCallback(w, contentScaleCallback) == null);
 
-    return .{ .ptr = new_w, .vtable = &window_vt };
+    return @ptrCast(new_w);
 }
 
-pub fn destroyWindow(window: host.Window) void {
-    const true_w: *Window = @ptrCast(@alignCast(window.ptr));
+pub fn destroyWindow(window: *host.Window) void {
+    const true_w: *Window = @ptrCast(@alignCast(window));
 
     _ = _window_set.remove(true_w);
     _window_pool.destroy(_io, true_w);
@@ -566,6 +498,92 @@ fn contentScaleCallback(window: *zglfw.Window, x: f32, y: f32) callconv(.c) void
     w.content_scale = .{ .x = x, .y = y };
 }
 
+pub fn setCursorMode(window: *host.Window, mode: host.CursorMode) void {
+    const true_w: *Window = @ptrCast(@alignCast(window));
+    const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
+
+    // TODO: this is HOTFIX
+    const Task = struct {
+        mode: host.CursorMode,
+        glfw_w: *zglfw.Window,
+
+        pub fn exec(s: *@This()) !void {
+            try s.glfw_w.setInputMode(.cursor, cursorModeTOGlfw(s.mode));
+        }
+    };
+    const task_id = task.schedule(
+        cetech1.task.TaskID.none,
+        Task{
+            .mode = mode,
+            .glfw_w = glfw_w,
+        },
+        .{ .affinity = 0 },
+    ) catch undefined;
+    _ = task_id;
+    //task.wait(task_id);
+}
+
+pub fn getOsWindowHandler(window: *host.Window) ?*anyopaque {
+    const true_w: *Window = @ptrCast(@alignCast(window));
+    const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
+
+    return switch (builtin.target.os.tag) {
+        .linux => if (getWMType() == .Wayland) zglfw.getWaylandWindow(glfw_w) else @ptrFromInt(zglfw.getX11Window(glfw_w)),
+        .windows => zglfw.getWin32Window(glfw_w),
+        else => |v| if (v.isDarwin())
+            zglfw.getCocoaWindow(glfw_w)
+        else
+            null,
+    };
+}
+
+pub fn getOsDisplayHandler(window: *host.Window) ?*anyopaque {
+    _ = window;
+
+    return switch (builtin.target.os.tag) {
+        .linux => if (getWMType() == .Wayland) zglfw.getWaylandDisplay() else zglfw.getX11Display(),
+        else => null,
+    };
+}
+
+pub fn shouldClose(window: *host.Window) bool {
+    const true_w: *Window = @ptrCast(@alignCast(window));
+    const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
+    return zglfw.Window.shouldClose(glfw_w);
+}
+
+pub fn setShouldClose(window: *host.Window, should_quit: bool) void {
+    const true_w: *Window = @ptrCast(@alignCast(window));
+    const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
+    zglfw.setWindowShouldClose(glfw_w, should_quit);
+}
+
+pub fn getCursorPos(window: *host.Window) [2]f64 {
+    const true_w: *Window = @ptrCast(@alignCast(window));
+    return true_w.last_cursor_pos;
+}
+
+pub fn getScroll(window: *host.Window) [2]f64 {
+    const true_w: *Window = @ptrCast(@alignCast(window));
+    return true_w.last_scroll;
+}
+
+pub fn getFramebufferSize(window: *host.Window) [2]i32 {
+    const true_w: *Window = @ptrCast(@alignCast(window));
+    return true_w.fb_size;
+}
+
+pub fn getContentScale(window: *host.Window) math.Vec2f {
+    const true_w: *Window = @ptrCast(@alignCast(window));
+    return true_w.content_scale;
+}
+
+pub fn getInternalHandler(window: *host.Window) *const anyopaque {
+    const true_w: *Window = @ptrCast(@alignCast(window));
+    const glfw_w: *zglfw.Window = @ptrCast(true_w.window);
+    return glfw_w;
+}
+
 //
 //
 //
@@ -591,16 +609,6 @@ pub fn update(kernel_tick: u64, timeout: f64) !void {
         @memcpy(&_gamepad_state[gamepad_idx].buttons, @as([]const input.Action, @ptrCast(&new_state.buttons)));
         @memcpy(&_gamepad_state[gamepad_idx].axes, &new_state.axes);
     }
-}
-
-//
-// Monitor
-//
-pub fn getPrimaryMonitor() ?host.Monitor {
-    return .{
-        .ptr = @ptrCast(zglfw.Monitor.getPrimary() orelse return null),
-        .vtable = &monitor_vt,
-    };
 }
 
 //

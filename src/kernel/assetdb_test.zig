@@ -202,6 +202,7 @@ test "asset: Should save asset to json" {
         WriteBlobToNull,
         "",
         std.testing.allocator,
+        null,
     );
     try std.testing.expectEqualStrings(
         try std.fmt.bufPrint(
@@ -340,6 +341,7 @@ test "asset: Should read asset from json reader" {
         WriteBlobToNull,
         "",
         std.testing.allocator,
+        null,
     );
 
     try std.testing.expectEqualStrings(input_json, std.mem.sliceTo(&out_buffer, 0));

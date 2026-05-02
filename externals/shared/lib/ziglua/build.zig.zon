@@ -1,0 +1,55 @@
+.{
+    .name = .zlua,
+    .fingerprint = 0xcf671dd0b696484, // changing this has security and trust implications
+    .version = "0.1.0",
+    .paths = .{ "build.zig", "build.zig.zon", "src", "license", "build" },
+
+    .dependencies = .{
+        .lua51 = .{
+            .url = "https://www.lua.org/ftp/lua-5.1.5.tar.gz",
+            .hash = "N-V-__8AABAhDAAIlXL7OA-0Z5sWQh_FOFGoImvOvJzkRGOg",
+            .lazy = true,
+        },
+
+        .lua52 = .{
+            .url = "https://www.lua.org/ftp/lua-5.2.4.tar.gz",
+            .hash = "N-V-__8AALg2DgDVsrOXOPBkTZ7Vt0MZc_Gha5N--G1M-FiH",
+            .lazy = true,
+        },
+
+        .lua53 = .{
+            .url = "https://www.lua.org/ftp/lua-5.3.6.tar.gz",
+            .hash = "N-V-__8AALihEACTeiI1Me9rP-qPZT3BNTELDoSAXn76FIhw",
+            .lazy = true,
+        },
+
+        .lua54 = .{
+            .url = "https://www.lua.org/ftp/lua-5.4.8.tar.gz",
+            .hash = "N-V-__8AAKEzFAAA695b9LXBhUSVK5MAV_VKSm1mEj3Acbze",
+            .lazy = true,
+        },
+
+        .lua55 = .{
+            .url = "https://www.lua.org/ftp/lua-5.5.0.tar.gz",
+            .hash = "N-V-__8AAGuAFQAFQL34FRuOIGC9klkZq44uTTan4cUS9vas",
+            .lazy = true,
+        },
+
+        .luajit = .{
+            .url = "https://github.com/LuaJIT/LuaJIT/archive/18b087cd2cd4ddc4a79782bf155383a689d5093d.tar.gz",
+            .hash = "N-V-__8AAODpQgCVrpfzE2ze9FA_rOuByh3WKyIyk5iS_o9a",
+            .lazy = true,
+        },
+
+        .luau = .{
+            .url = "https://github.com/luau-lang/luau/archive/refs/tags/0.718.tar.gz",
+            .hash = "N-V-__8AAHD3twASfaoQIBT7MgqysHE9qE1pnme3FsEVRc84",
+            .lazy = true,
+        },
+
+        .translate_c = .{
+            .url = "git+https://codeberg.org/ziglang/translate-c#46b5609b5ac4c0a896217d1d984f3ae50e4810b5",
+            .hash = "translate_c-0.0.0-Q_BUWpf0BgAwrh5AM-acJcslN_YPEhcoCVKbbNjwuUTJ",
+        },
+    },
+}

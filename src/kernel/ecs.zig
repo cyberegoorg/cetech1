@@ -137,8 +137,8 @@ const World = struct {
         self.obj2prefab.deinit(self.allocator);
     }
 
-    pub fn toPublic(world: *World) public.World {
-        return .{ .ptr = world, .vtable = &world_vt };
+    pub fn toPublic(world: *World) *public.World {
+        return @ptrCast(world);
     }
 
     pub fn cloneForFakeWorld(world: *World, fake_world: *zflecs.world_t) World {
@@ -234,7 +234,7 @@ const World = struct {
         return ret;
     }
 
-    pub fn createQuery(self: *World, query: public.QueryDesc) !public.Query {
+    pub fn createQuery(self: *World, query: public.QueryDesc) !*public.Query {
         var qd = zflecs.query_desc_t{};
 
         if (query.order_by_component) |c| {
@@ -251,10 +251,7 @@ const World = struct {
         }
 
         const q = try zflecs.query_init(self.w, &qd);
-        return .{
-            .ptr = q,
-            .vtable = &query_vt,
-        };
+        return @ptrCast(q);
     }
 
     pub fn deferBegin(self: *World) bool {
@@ -464,6 +461,8 @@ var _world_data_lck: std.Io.Mutex = .init;
 pub fn init(io: std.Io, allocator: std.mem.Allocator) !void {
     _ = @alignOf(public.TermId);
     public.api = &api;
+    public.world_api = &world_api;
+    public.query_api = &query_api;
 
     _allocator = allocator;
     _io = io;
@@ -527,8 +526,8 @@ pub fn deinit() void {
     _component_by_cdb_hash.deinit(_allocator);
 }
 
-fn getPrivateWorldPtr(world: public.World) *World {
-    return @ptrCast(@alignCast(world.ptr));
+fn getPrivateWorldPtr(world: *public.World) *World {
+    return @ptrCast(@alignCast(world));
 }
 
 var _component_version: ComponentVersionMap = undefined;
@@ -652,7 +651,7 @@ var sync_changes_from_cdb_task = cetech1.kernel.KernelTaskUpdateI.implment(
                         //if (deleted_ent_obj.contains()) continue;
                         const worlds = _world_data.unmanaged.keys();
                         for (worlds) |world| {
-                            const w = toWorld(world);
+                            const w: *public.World = @ptrCast(world);
 
                             const parent_obj = world.obj2parent_obj.get(component_obj);
                             const new_component = parent_obj == null;
@@ -837,6 +836,8 @@ var create_cdb_types_i = cdb.CreateTypesI.implement(
 
 pub fn registerToApi() !void {
     try apidb.setZigApi(module_name, public.EcsAPI, &api);
+    try apidb.setZigApi(module_name, public.EcsWorldAPI, &world_api);
+    try apidb.setZigApi(module_name, public.EcsQueryAPI, &query_api);
 
     try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, true);
     try apidb.implOrRemove(module_name, cetech1.kernel.KernelTaskUpdateI, &sync_changes_from_cdb_task, true);
@@ -846,11 +847,49 @@ pub fn registerToApi() !void {
 const api = cetech1.ecs.EcsAPI{
     .createWorld = createWorld,
     .destroyWorld = destroyWorld,
-    .toWorld = @ptrCast(&toWorld),
     .findCategoryById = findCategoryById,
     .findComponentIByCdbHash = findComponentIByCdbHash,
     .findComponentIById = findComponentIById,
     .spawnManyFromCdb = spawnManyFromCDB,
+};
+
+const world_api = public.EcsWorldAPI{
+    .new_entity = @ptrCast(&World.newEntity),
+    .new_entities = @ptrCast(&World.newEntities),
+    .destroy_entities = @ptrCast(&World.destroyEntities),
+    .set_component = @ptrCast(&World.setComponent),
+    .get_mut_component = @ptrCast(&World.getMutComponent),
+    .get_component = @ptrCast(&World.getComponent),
+    .remove_component = @ptrCast(&World.removeComponent),
+    .set_singleton_component = @ptrCast(&World.setSingletonComponent),
+    .get_singleton_component = @ptrCast(&World.getSingletonComponent),
+    .get_component_manager = @ptrCast(&World.getComponentManager),
+    .modified = @ptrCast(&World.modified),
+    .parent = @ptrCast(&World.parent),
+    .children = @ptrCast(&World.children),
+    .progress = @ptrCast(&World.progress),
+    .create_query = @ptrCast(&World.createQuery),
+    .defer_begin = @ptrCast(&World.deferBegin),
+    .defer_end = @ptrCast(&World.deferEnd),
+    .defer_suspend = @ptrCast(&World.deferSuspend),
+    .defer_resume = @ptrCast(&World.deferResume),
+    .is_remote_debug_active = @ptrCast(&World.isRemoteDebugActive),
+    .set_remote_debug_active = @ptrCast(&World.setRemoteDebugActive),
+    .set_simulate = @ptrCast(&World.setSimulate),
+    .enable_observer = @ptrCast(&World.enableObserver),
+    .is_simulate = @ptrCast(&World.isSimulate),
+    .do_step = @ptrCast(&World.doStep),
+    .clear = @ptrCast(&World.clear),
+    .debugui_menu_items = @ptrCast(&World.debuguiMenuItems),
+    .ui_remote_debug_menu_items = @ptrCast(&World.uiRemoteDebugMenuItems),
+    .find_entity_by_cdb_obj = @ptrCast(&World.findEntityByCdbObj),
+};
+
+const query_api = public.EcsQueryAPI{
+    .count = Query.count,
+    .destroy = Query.destroy,
+    .iter = Query.iter,
+    .next = Query.next,
 };
 
 const CategoryByIdMap = cetech1.AutoArrayHashMap(cetech1.StrId32, *const public.ComponentCategoryI);
@@ -875,7 +914,7 @@ fn findComponentIById(name: public.IdStrId) ?*const public.ComponentI {
 
 fn getOrCreatePrefab(
     allocator: std.mem.Allocator,
-    world: public.World,
+    world: *public.World,
     db: cdb.DbId,
     obj: cdb.ObjId,
     parent: ?public.EntityId,
@@ -958,7 +997,7 @@ fn getOrCreatePrefab(
     return prefab_ent;
 }
 
-fn spawnManyFromCDB(allocator: std.mem.Allocator, world: public.World, obj: cdb.ObjId, count: usize) anyerror![]public.EntityId {
+fn spawnManyFromCDB(allocator: std.mem.Allocator, world: *public.World, obj: cdb.ObjId, count: usize) anyerror![]public.EntityId {
     var zone = profiler.ZoneN(@src(), "ECS - spawn many from cdb");
     defer zone.End();
 
@@ -968,47 +1007,8 @@ fn spawnManyFromCDB(allocator: std.mem.Allocator, world: public.World, obj: cdb.
     return top_level_entities;
 }
 
-const world_vt = public.World.VTable{
-    .new_entity = @ptrCast(&World.newEntity),
-    .new_entities = @ptrCast(&World.newEntities),
-    .destroy_entities = @ptrCast(&World.destroyEntities),
-
-    .set_component = @ptrCast(&World.setComponent),
-    .get_mut_component = @ptrCast(&World.getMutComponent),
-    .get_component = @ptrCast(&World.getComponent),
-
-    .remove_component = @ptrCast(&World.removeComponent),
-    .set_singleton_component = @ptrCast(&World.setSingletonComponent),
-    .get_singleton_component = @ptrCast(&World.getSingletonComponent),
-
-    .get_component_manager = @ptrCast(&World.getComponentManager),
-    .modified = @ptrCast(&World.modified),
-
-    .parent = @ptrCast(&World.parent),
-    .children = @ptrCast(&World.children),
-
-    .progress = @ptrCast(&World.progress),
-
-    .create_query = @ptrCast(&World.createQuery),
-
-    .defer_begin = @ptrCast(&World.deferBegin),
-    .defer_end = @ptrCast(&World.deferEnd),
-    .defer_suspend = @ptrCast(&World.deferSuspend),
-    .defer_resume = @ptrCast(&World.deferResume),
-    .is_remote_debug_active = @ptrCast(&World.isRemoteDebugActive),
-    .set_remote_debug_active = @ptrCast(&World.setRemoteDebugActive),
-    .set_simulate = @ptrCast(&World.setSimulate),
-    .enable_observer = @ptrCast(&World.enableObserver),
-    .is_simulate = @ptrCast(&World.isSimulate),
-    .do_step = @ptrCast(&World.doStep),
-    .clear = @ptrCast(&World.clear),
-    .debugui_menu_items = @ptrCast(&World.debuguiMenuItems),
-    .ui_remote_debug_menu_items = @ptrCast(&World.uiRemoteDebugMenuItems),
-    .find_entity_by_cdb_obj = @ptrCast(&World.findEntityByCdbObj),
-};
-
 const iter_vt = public.Iter.VTable.implement(struct {
-    pub fn getWorld(self: *anyopaque) public.World {
+    pub fn getWorld(self: *anyopaque) *public.World {
         const it: *zflecs.iter_t = @ptrCast(@alignCast(self));
 
         const w: *World = @ptrCast(@alignCast(zflecs.get_binding_ctx(it.world).?));
@@ -1082,25 +1082,25 @@ pub const query_count_t = extern struct {
 };
 extern fn ecs_query_count(query: *const zflecs.query_t) query_count_t;
 
-const query_vt = public.Query.VTable.implement(struct {
-    pub fn destroy(self: *anyopaque) void {
+const Query = struct {
+    pub fn destroy(self: *public.Query) void {
         zflecs.query_fini(@ptrCast(@alignCast(self)));
     }
 
-    pub fn iter(self: *anyopaque) !public.Iter {
+    pub fn iter(self: *public.Query) !public.Iter {
         const q: *zflecs.query_t = @ptrCast(@alignCast(self));
         const it = zflecs.query_iter(q.world.?, q);
 
         return .{ .data = std.mem.toBytes(it), .vtable = &iter_vt };
     }
 
-    pub fn next(self: *anyopaque, iter_: *public.Iter) bool {
+    pub fn next(self: *public.Query, iter_: *public.Iter) bool {
         _ = self;
         const it: *zflecs.iter_t = @ptrCast(@alignCast(&iter_.data));
         return zflecs.query_next(it);
     }
 
-    pub fn count(self: *anyopaque) public.QueryCount {
+    pub fn count(self: *public.Query) public.QueryCount {
         const q: *zflecs.query_t = @ptrCast(@alignCast(self));
         const qc = ecs_query_count(q);
         return .{
@@ -1110,7 +1110,7 @@ const query_vt = public.Query.VTable.implement(struct {
             .empty_tables = qc.empty_tables,
         };
     }
-});
+};
 
 pub fn progressAll(allocator: std.mem.Allocator, dt: f32) !void {
     var zone = profiler.ZoneN(@src(), "ECS progress all worlds");
@@ -1180,7 +1180,7 @@ fn free_w(ctx: ?*anyopaque) callconv(.c) void {
     _ = ctx;
 }
 
-pub fn createWorld() !public.World {
+pub fn createWorld() !*public.World {
     var z = profiler.ZoneN(@src(), "ECS: Create world");
     defer z.End();
 
@@ -1472,19 +1472,19 @@ pub fn createWorld() !public.World {
     return wd;
 }
 
-pub fn destroyWorld(world: public.World) void {
+pub fn destroyWorld(world: *public.World) void {
     const onworld_impls = apidb.getImpl(_allocator, public.OnWorldI) catch undefined;
     defer _allocator.free(onworld_impls);
     for (onworld_impls) |iface| {
         iface.on_destroy(world) catch undefined;
     }
 
-    const w: *World = @ptrCast(@alignCast(world.ptr));
+    const w: *World = @ptrCast(@alignCast(world));
     w.deinit();
 
     _world_data_lck.lockUncancelable(_io);
     defer _world_data_lck.unlock(_io);
-    _ = _world_data.remove(@ptrCast(@alignCast(world.ptr)));
+    _ = _world_data.remove(@ptrCast(@alignCast(world)));
 }
 
 fn toIter(iter: *public.IterO) public.Iter {
@@ -1493,13 +1493,6 @@ fn toIter(iter: *public.IterO) public.Iter {
     return public.Iter{
         .data = std.mem.toBytes(it.*),
         .vtable = &iter_vt,
-    };
-}
-
-fn toWorld(world: *World) public.World {
-    return public.World{
-        .ptr = world,
-        .vtable = &world_vt,
     };
 }
 

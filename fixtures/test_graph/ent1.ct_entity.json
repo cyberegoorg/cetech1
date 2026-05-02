@@ -45,6 +45,11 @@
       "__type_name": "ct_velocity",
       "__uuid": "019267e3-2557-77a7-a54f-a5b4ac2e9240",
       "z": -1
+    },
+    {
+      "__type_name": "ct_luau_script_component",
+      "__uuid": "00000240-3672-75cb-aa1e-7c1414d90de3",
+      "script": "ct_luau:00000212-ca9f-7f54-ae3f-de102a1e74aa"
     }
   ]
 }

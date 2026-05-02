@@ -39,6 +39,8 @@ const Uuid2AssetUuid = cetech1.AutoArrayHashMap(uuid.Uuid, uuid.Uuid);
 const AssetUuid2Path = cetech1.AutoArrayHashMap(uuid.Uuid, []u8);
 const AssetUuid2Depend = cetech1.AutoArrayHashMap(uuid.Uuid, UuidSet);
 const AssetObjIdVersion = cetech1.AutoArrayHashMap(cdb.ObjId, u64);
+const Uuid2Imported = cetech1.AutoArrayHashMap(uuid.Uuid, []const u8);
+const Imported2Uuid = std.StringArrayHashMapUnmanaged(uuid.Uuid);
 const ToDeleteList = cetech1.ArraySet(cdb.ObjId);
 const UuidSet = cetech1.ArraySet(uuid.Uuid);
 
@@ -58,6 +60,7 @@ const JSON_UUID_TOKEN = "__uuid";
 const JSON_PROTOTYPE_UUID = "__prototype_uuid";
 const JSON_REMOVED_POSTFIX = "__removed";
 const JSON_INSTANTIATE_POSTFIX = "__instantiate";
+const JSON_IMPORTED_FROM = "__imported_from";
 
 const CT_ASSETS_FILE_PREFIX = ".json";
 const BLOB_EXTENSION = "ct_blob";
@@ -91,13 +94,12 @@ const ReadBlobFn = *const fn (
 
 const api = public.AssetDBAPI{
     .createAsset = createAsset,
+    .createImportedAsset = createImportedAsset,
     .openAssetRootFolder = openAssetRootFolder,
     .getRootFolder = getRootFolder,
     .getObjId = getObjId,
     .getUuid = getUuid,
     .getOrCreateUuid = getOrCreateUuid,
-    .addAssetIo = addAssetIO,
-    .removeAssetIo = removeAssetIO,
     .getTmpPath = getTmpPath,
     .isAssetModified = isObjModified,
     .isProjectModified = isProjectModified,
@@ -135,8 +137,7 @@ var asset_root_type: cdb.TypeIdx = undefined;
 var _allocator: std.mem.Allocator = undefined;
 var _io: std.Io = undefined;
 var _db: cdb.DbId = undefined;
-var _assetio_set: AssetIOSet = undefined;
-var _assetroot_fs: AssetRootFS = undefined; // TODO: remove pub
+var _assetroot_fs: AssetRootFS = undefined;
 var _str_intern: cetech1.string.InternWithLock([]const u8) = undefined;
 
 // file info
@@ -152,6 +153,8 @@ const AnalyzeInfo = struct {
     uuid2asset_uuid: Uuid2AssetUuid = .{},
     asset_uuid2path: AssetUuid2Path = .{},
     asset_uuid2depend: AssetUuid2Depend = .{},
+    uuid2imported_from: Uuid2Imported = .{},
+    imported_from2uuid: Imported2Uuid = .{},
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         return .{
@@ -182,9 +185,11 @@ const AnalyzeInfo = struct {
         self.uuid2asset_uuid.deinit(self.allocator);
         self.asset_uuid2path.deinit(self.allocator);
         self.asset_uuid2depend.deinit(self.allocator);
+        self.uuid2imported_from.deinit(self.allocator);
+        self.imported_from2uuid.deinit(self.allocator);
     }
 
-    fn addAnalyzedFileInfo(self: *Self, io: std.Io, path: []const u8, asset_uuid: uuid.Uuid, depend_on: *UuidSet, provide_uuids: *UuidSet) !void {
+    fn addAnalyzedFileInfo(self: *Self, io: std.Io, path: []const u8, asset_uuid: uuid.Uuid, depend_on: *UuidSet, provide_uuids: *UuidSet, imported_from: ?[]const u8) !void {
         // TODO
         self.file_info_lck.lockUncancelable(io);
         defer self.file_info_lck.unlock(io);
@@ -200,6 +205,20 @@ const AnalyzeInfo = struct {
         }
 
         try self.asset_uuid2depend.put(self.allocator, asset_uuid, try depend_on.clone(_allocator));
+
+        if (imported_from) |v| {
+            try self.uuid2imported_from.put(self.allocator, asset_uuid, v);
+            try self.imported_from2uuid.put(self.allocator, v, asset_uuid);
+        }
+    }
+
+    pub fn addImportedAsset(self: *Self, io: std.Io, asset_uuid: uuid.Uuid, imported_from: []const u8) !void {
+        // TODO
+        self.file_info_lck.lockUncancelable(io);
+        defer self.file_info_lck.unlock(io);
+
+        try self.uuid2imported_from.put(self.allocator, asset_uuid, imported_from);
+        try self.imported_from2uuid.put(self.allocator, imported_from, asset_uuid);
     }
 
     fn resetAnalyzedFileInfo(self: *Self, io: std.Io) !void {
@@ -228,6 +247,8 @@ const AnalyzeInfo = struct {
         self.asset_uuid2depend.clearRetainingCapacity();
         self.path2folder.clearRetainingCapacity();
         self.folder2path.clearRetainingCapacity();
+        self.uuid2imported_from.clearRetainingCapacity();
+        self.imported_from2uuid.clearRetainingCapacity();
     }
 
     fn analyzeFile(self: *Self, io: std.Io, allocator: std.mem.Allocator, path: []const u8) !void {
@@ -254,6 +275,9 @@ const AnalyzeInfo = struct {
         const asset_uuid_str = parsed.value.object.get(JSON_ASSET_UUID_TOKEN).?;
         const asset_uuid = uuid.fromStr(asset_uuid_str.string).?;
 
+        const imported_from = parsed.value.object.get(JSON_IMPORTED_FROM);
+        const imported_from_str = if (imported_from) |v| try _str_intern.intern(io, v.string) else null;
+
         var depend_on = UuidSet.empty;
         defer depend_on.deinit(allocator);
 
@@ -261,7 +285,7 @@ const AnalyzeInfo = struct {
         defer provide_uuids.deinit(allocator);
 
         try analyzFromJsonValue(parsed.value, allocator, &depend_on, &provide_uuids);
-        try self.addAnalyzedFileInfo(io, path, asset_uuid, &depend_on, &provide_uuids);
+        try self.addAnalyzedFileInfo(io, path, asset_uuid, &depend_on, &provide_uuids, imported_from_str);
     }
 
     fn analyzeFolder(self: *Self, io: std.Io, root_dir: std.Io.Dir, parent_folder: cdb.ObjId, tasks: *TaskList, allocator: std.mem.Allocator) !void {
@@ -320,6 +344,77 @@ const AnalyzeInfo = struct {
 
                 try self.analyzeFolder(io, dir, folder_asset, tasks, allocator);
                 try _assetroot_fs.addAssetToRoot(io, folder_asset);
+            }
+        }
+    }
+
+    fn importFolder(self: *Self, io: std.Io, root_dir: std.Io.Dir, parent_folder: cdb.ObjId, tasks: *TaskList, allocator: std.mem.Allocator) !void {
+        var zone_ctx = profiler_private.ztracy.Zone(@src());
+        defer zone_ctx.End();
+
+        var iterator = root_dir.iterate();
+        while (try iterator.next(io)) |entry| {
+            // Skip . files
+            if (std.mem.startsWith(u8, entry.name, ".")) continue;
+
+            if (entry.kind == .file) {
+                const extension = std.fs.path.extension(entry.name);
+                if (std.mem.startsWith(u8, entry.name, ".")) continue;
+
+                const asset_io = findFirstAssetIOForImport(entry.name, extension) orelse continue;
+
+                const Task = struct {
+                    fi: *AnalyzeInfo,
+                    path: [:0]const u8,
+                    filename: []const u8,
+                    folder: cdb.ObjId,
+                    allocator: std.mem.Allocator,
+                    io: std.Io,
+                    asset_io: *const public.AssetIOI,
+                    pub fn exec(s: *@This()) !void {
+                        defer s.allocator.free(s.path);
+
+                        const dirname = std.fs.path.dirname(s.path).?;
+                        const filename = std.fs.path.basename(s.path);
+                        var copy_dir = try std.Io.Dir.openDirAbsolute(s.io, dirname, .{});
+                        defer copy_dir.close(s.io);
+
+                        const imported_from = blk: {
+                            if (s.fi.imported_from2uuid.get(filename)) |asset_uuid| {
+                                break :blk getObjId(asset_uuid).?;
+                            }
+
+                            break :blk null;
+                        };
+                        const import_task = try s.asset_io.import_asset.?(s.io, _db, .none, copy_dir, s.folder, s.filename, imported_from);
+
+                        task.wait(import_task);
+                    }
+                };
+                const task_id = try task.schedule(
+                    cetech1.task.TaskID.none,
+                    Task{
+                        .fi = self,
+                        .path = try root_dir.realPathFileAlloc(io, entry.name, allocator),
+                        .allocator = allocator,
+                        .io = io,
+                        .asset_io = asset_io,
+                        .filename = try _str_intern.intern(io, entry.name),
+                        .folder = parent_folder,
+                    },
+                    .{},
+                );
+                try tasks.append(allocator, task_id);
+            } else if (entry.kind == .directory) {
+                if (std.mem.endsWith(u8, entry.name, "." ++ BLOB_EXTENSION)) continue;
+                var dir = try root_dir.openDir(io, entry.name, .{ .iterate = true });
+                defer dir.close(io);
+
+                const real_path = try dir.realPathFileAlloc(io, ".", allocator);
+                defer allocator.free(real_path);
+                const folder_asset = self.path2folder.get(real_path).?;
+
+                try self.importFolder(io, dir, folder_asset, tasks, allocator);
             }
         }
     }
@@ -784,7 +879,6 @@ const AssetRootFS = struct {
         defer tasks.deinit(allocator);
         try self.analyzer.analyzeFolder(io, root_dir, self.asset_root_folder, &tasks, allocator);
         task.waitMany(tasks.items);
-        //tasks.clearRetainingCapacity();
 
         try self.asset_dag.reset();
         for (self.analyzer.asset_uuid2depend.keys(), self.analyzer.asset_uuid2depend.values()) |asset_uuid, depends| {
@@ -819,14 +913,12 @@ const AssetRootFS = struct {
         for (self.asset_dag.output.keys()) |asset_uuid| {
             const asset_path = self.analyzer.asset_uuid2path.get(asset_uuid).?;
             const filename = std.fs.path.basename(asset_path);
-            const extension = std.fs.path.extension(asset_path);
+            // const extension = std.fs.path.extension(asset_path);
             const dirname = std.fs.path.dirname(asset_path).?;
             const parent_folder = self.analyzer.path2folder.get(dirname).?;
 
             // skip
             if (std.mem.eql(u8, filename, PROJECT_FILENAME)) continue;
-
-            const asset_io = findFirstAssetIOForImport(filename, extension) orelse continue;
 
             var prereq = cetech1.task.TaskID.none;
             const depeds = self.asset_dag.dependList(asset_uuid);
@@ -843,7 +935,7 @@ const AssetRootFS = struct {
             }
 
             const copy_dir = try std.Io.Dir.openDirAbsolute(io, dirname, .{});
-            if (asset_io.import_asset.?(io, _db, prereq, copy_dir, parent_folder, filename, null)) |import_task| {
+            if (_assetroot_fs.importAsset(io, _db, prereq, copy_dir, parent_folder, filename, null)) |import_task| {
                 try self.tmp_taskid_map.put(self.allocator, asset_uuid, import_task);
             } else |err| {
                 log.err("Could not import asset {s} {}", .{ asset_path, err });
@@ -861,6 +953,10 @@ const AssetRootFS = struct {
         for (all_asset_copy) |obj| {
             try self.asset_objid2version.put(self.allocator, obj, cdb.getVersion(obj));
         }
+
+        tasks.clearRetainingCapacity();
+        try self.analyzer.importFolder(io, root_dir, self.asset_root_folder, &tasks, allocator);
+        task.waitMany(tasks.items);
 
         self.asset_root_last_version = cdb.getVersion(self.asset_root);
 
@@ -965,19 +1061,15 @@ const AssetRootFS = struct {
             extension = sub_path;
         }
 
-        if (findFirstAssetIOForExport(_db, asset, sub_path, extension)) |asset_io| {
-            const taskid = try asset_io.export_asset.?(io, _db, root_path, sub_path, asset);
-            return taskid;
-        }
-
-        return .none;
+        const taskid = try _assetroot_fs.exportAsset(io, _db, root_path, sub_path, asset);
+        return taskid;
     }
 
     fn saveFolderObj(self: *Self, io: std.Io, allocator: std.mem.Allocator, folder_asset: cdb.ObjId, root_path: []const u8) !void {
         var zone_ctx = profiler_private.ztracy.Zone(@src());
         defer zone_ctx.End();
 
-        try self.analyzer.file_info_lck.lock(io);
+        self.analyzer.file_info_lck.lockUncancelable(io);
         defer self.analyzer.file_info_lck.unlock(io);
 
         var buff: [128]u8 = undefined;
@@ -1031,6 +1123,7 @@ const AssetRootFS = struct {
             WriteBlobToFile,
             root_path,
             allocator,
+            null,
         );
 
         _assetroot_fs.markObjSaved(io, folder_asset, cdb.getVersion(folder_asset));
@@ -1042,49 +1135,9 @@ const AssetRootFS = struct {
             try self.analyzer.folder2path.put(self.allocator, folder_asset, try _allocator.dupe(u8, real_path_dir));
         }
     }
-};
-
-//TODO:
-//  without lock? (actualy problem when creating ref_placeholder and real ref).
-//  ref_placeholder is needed because there is unsorderd order for load. ordered need analyze phase for UUID.
-//var _get_or_create_lock = std.Io.Mutex.init;
-
-var _cdb_asset_io_i = public.AssetIOI.implement(struct {
-    pub fn canImport(filename: []const u8, _: []const u8) bool {
-        const extension = std.fs.path.extension(filename);
-        if (!std.ascii.eqlIgnoreCase(extension, ".json")) return false;
-
-        const f2 = std.fs.path.stem(filename);
-
-        const type_name = std.fs.path.extension(f2)[1..];
-
-        const type_hash = cetech1.strId32(type_name);
-        return cdb.getTypeIdx(_db, type_hash) != null;
-    }
-
-    pub fn canExport(db: cdb.DbId, asset: cdb.ObjId, filename: []const u8, _: []const u8) bool {
-        _ = db;
-
-        const extension = std.fs.path.extension(filename);
-        if (!std.ascii.eqlIgnoreCase(extension, ".json")) return false;
-
-        const type_name = blk: {
-            if (filename[0] == '.') {
-                break :blk std.fs.path.stem(filename);
-            } else {
-                const f2 = std.fs.path.stem(filename);
-                break :blk std.fs.path.extension(f2)[1..];
-            }
-        };
-
-        const type_hash = cetech1.strId32(type_name);
-        const type_idx = cdb.getTypeIdx(_db, type_hash) orelse return false;
-
-        const asset_obj = public.AssetCdb.readSubObj(cdb.readObj(asset).?, .Object) orelse return false;
-        return type_idx.eql(asset_obj.type_idx);
-    }
 
     pub fn importAsset(
+        selff: *Self,
         io: std.Io,
         db: cdb.DbId,
         prereq: cetech1.task.TaskID,
@@ -1094,6 +1147,7 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
         reimport_to: ?cdb.ObjId,
     ) !cetech1.task.TaskID {
         _ = reimport_to;
+        _ = selff;
         const Task = struct {
             io: std.Io,
             db: cdb.DbId,
@@ -1161,7 +1215,44 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
         );
     }
 
+    pub fn saveCdbObj(self: *Self, io: std.Io, obj: cdb.ObjId, root_path: []const u8, sub_path: []const u8, allocator: std.mem.Allocator) !void {
+        var zone_ctx = profiler_private.ztracy.Zone(@src());
+        defer zone_ctx.End();
+
+        var root_dir = try std.Io.Dir.cwd().openDir(io, root_path, .{});
+        defer root_dir.close(io);
+
+        const dir_path = std.fs.path.dirname(sub_path);
+        if (dir_path != null) {
+            try root_dir.createDirPath(io, dir_path.?);
+        }
+
+        var obj_file = try root_dir.createFile(io, sub_path, .{});
+        defer obj_file.close(io);
+
+        var buffer: [4096]u8 = undefined;
+
+        var bw = obj_file.writer(io, &buffer);
+        const writer = &bw.interface;
+        defer writer.flush() catch undefined;
+
+        const imported_from = self.analyzer.uuid2imported_from.get(self.getUuid(io, obj).?);
+
+        //const folder = public.Asset.readRef( _db.readObj(obj).?, .Folder).?;
+        try writeCdbObjJson(
+            io,
+            obj,
+            writer,
+            obj,
+            WriteBlobToFile,
+            root_path,
+            allocator,
+            imported_from,
+        );
+    }
+
     pub fn exportAsset(
+        selff: *Self,
         io: std.Io,
         db: cdb.DbId,
         root_path: []const u8,
@@ -1174,6 +1265,7 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
             sub_path: []const u8,
             root_path: []const u8,
             io: std.Io,
+            assetroot_fs: *Self,
             pub fn exec(self: *@This()) !void {
                 var zone_ctx = profiler_private.ztracy.Zone(@src());
                 defer zone_ctx.End();
@@ -1187,23 +1279,27 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
                 defer dir.close(self.io);
 
                 if (isAssetFolder(self.asset)) {
-                    _assetroot_fs.saveFolderObj(self.io, allocator, self.asset, self.root_path) catch |err| {
+                    self.assetroot_fs.saveFolderObj(self.io, allocator, self.asset, self.root_path) catch |err| {
                         log.err("Could not save folder asset {}", .{err});
                         return err;
                     };
                 } else {
-                    saveCdbObj(self.io, self.asset, self.root_path, self.sub_path, allocator) catch |err| {
+                    self.assetroot_fs.saveCdbObj(self.io, self.asset, self.root_path, self.sub_path, allocator) catch |err| {
                         log.err("Could not save asset {}", .{err});
                         return err;
                     };
                 }
-                _assetroot_fs.markObjSaved(self.io, self.asset, version);
+                self.assetroot_fs.markObjSaved(self.io, self.asset, version);
 
                 // TODO: temp shit
-                const asset_uuid = getUuid(self.asset).?;
-                if (!_assetroot_fs.analyzer.asset_uuid2path.contains(asset_uuid)) {
-                    const path = try std.fs.path.join(_assetroot_fs.analyzer.allocator, &.{ self.root_path, self.sub_path });
-                    try _assetroot_fs.analyzer.asset_uuid2path.put(_assetroot_fs.analyzer.allocator, asset_uuid, path);
+                const asset_uuid = public.getUuid(self.asset).?;
+                {
+                    self.assetroot_fs.analyzer.file_info_lck.lockUncancelable(self.io);
+                    defer self.assetroot_fs.analyzer.file_info_lck.unlock(self.io);
+                    if (!self.assetroot_fs.analyzer.asset_uuid2path.contains(asset_uuid)) {
+                        const path = try std.fs.path.join(self.assetroot_fs.analyzer.allocator, &.{ self.root_path, self.sub_path });
+                        try self.assetroot_fs.analyzer.asset_uuid2path.put(self.assetroot_fs.analyzer.allocator, asset_uuid, path);
+                    }
                 }
             }
         };
@@ -1216,11 +1312,12 @@ var _cdb_asset_io_i = public.AssetIOI.implement(struct {
                 .sub_path = try _str_intern.intern(io, sub_path),
                 .asset = asset,
                 .root_path = root_path,
+                .assetroot_fs = selff,
             },
             .{},
         );
     }
-});
+};
 
 fn isAssetNameValid(allocator: std.mem.Allocator, folder: cdb.ObjId, type_idx: cdb.TypeIdx, base_name: [:0]const u8) !bool {
     const set = try cdb.getReferencerSet(allocator, folder);
@@ -1343,18 +1440,16 @@ pub fn init(io: std.Io, allocator: std.mem.Allocator) !void {
 
     _assetroot_fs = try AssetRootFS.init(io, allocator);
 
-    _assetio_set = .empty;
     _str_intern = cetech1.string.InternWithLock([]const u8).init(allocator);
     try cdb.addOnObjIdDestroyed(_db, onObjidDestroyed);
 
-    addAssetIO(&_cdb_asset_io_i);
+    // try apidb.implOrRemove(module_name, public.AssetIOI, &_cdb_asset_io_i, true);
 
     public.api = &api;
 }
 
 pub fn deinit() void {
-    removeAssetIO(&_cdb_asset_io_i);
-    _assetio_set.deinit(_allocator);
+    // try apidb.implOrRemove(module_name, public.AssetIOI, &_cdb_asset_io_i, false);
     _assetroot_fs.deinit();
     _str_intern.deinit();
     cdb.removeOnObjIdDestroyed(_db, onObjidDestroyed);
@@ -1472,25 +1567,20 @@ pub fn getTmpPath(path_buf: []u8) !?[]u8 {
     return _assetroot_fs.getTmpPath(_io, path_buf);
 }
 
-pub fn addAssetIO(asset_io: *public.AssetIOI) void {
-    _ = _assetio_set.add(_allocator, asset_io) catch |err| {
-        log.err("Could not add AssetIO {}", .{err});
-    };
-}
-
-pub fn removeAssetIO(asset_io: *public.AssetIOI) void {
-    _ = _assetio_set.remove(asset_io);
-}
-
-pub fn findFirstAssetIOForImport(filename: []const u8, extension: []const u8) ?*public.AssetIOI {
-    for (_assetio_set.unmanaged.keys()) |asset_io| {
+pub fn findFirstAssetIOForImport(filename: []const u8, extension: []const u8) ?*const public.AssetIOI {
+    const impls = apidb.getImpl(_allocator, public.AssetIOI) catch return null;
+    defer _allocator.free(impls);
+    for (impls) |asset_io| {
         if (asset_io.can_import != null and asset_io.can_import.?(filename, extension)) return asset_io;
     }
+
     return null;
 }
 
-pub fn findFirstAssetIOForExport(db: cdb.DbId, asset: cdb.ObjId, filename: []const u8, extension: []const u8) ?*public.AssetIOI {
-    for (_assetio_set.unmanaged.keys()) |asset_io| {
+pub fn findFirstAssetIOForExport(db: cdb.DbId, asset: cdb.ObjId, filename: []const u8, extension: []const u8) ?*const public.AssetIOI {
+    const impls = apidb.getImpl(_allocator, public.AssetIOI) catch return null;
+    defer _allocator.free(impls);
+    for (impls) |asset_io| {
         if (asset_io.can_export != null and asset_io.can_export.?(db, asset, filename, extension)) return asset_io;
     }
     return null;
@@ -1587,7 +1677,7 @@ fn loadProject(io: std.Io, allocator: std.mem.Allocator, db: cdb.DbId, asset_roo
         ReadBlobFromFile,
         allocator,
     ) catch |err| {
-        log.err("Could not import asset {}", .{err});
+        log.err("Could not read asset {}", .{err});
         return err;
     };
 
@@ -1708,6 +1798,25 @@ fn createAsset(asset_name: []const u8, asset_folder: cdb.ObjId, asset_obj: ?cdb.
     cdb.writeCommit(asset_w) catch return null;
 
     _assetroot_fs.addAssetToRoot(_io, asset) catch return null;
+    return asset;
+}
+
+fn createImportedAsset(asset_name: []const u8, asset_folder: cdb.ObjId, asset_obj: cdb.ObjId, imported_from: []const u8) ?cdb.ObjId {
+    const asset = createObject(AssetTypeIdx) catch return null;
+    const asset_w = cdb.writeObj(asset).?;
+
+    const asset_obj_w = cdb.writeObj(asset_obj).?;
+    public.AssetCdb.setSubObj(asset_w, .Object, asset_obj_w) catch return null;
+
+    cdb.writeCommit(asset_obj_w) catch return null;
+
+    setAssetNameAndFolder(asset_w, asset_name, null, asset_folder) catch return null;
+
+    cdb.writeCommit(asset_w) catch return null;
+
+    _assetroot_fs.addAssetToRoot(_io, asset) catch return null;
+    _assetroot_fs.analyzer.addImportedAsset(_io, getOrCreateUuid(asset) catch return null, _str_intern.intern(_io, imported_from) catch return null) catch return null;
+
     return asset;
 }
 
@@ -1867,39 +1976,6 @@ fn ReadBlobFromFile(
     return blob;
 }
 
-fn saveCdbObj(io: std.Io, obj: cdb.ObjId, root_path: []const u8, sub_path: []const u8, allocator: std.mem.Allocator) !void {
-    var zone_ctx = profiler_private.ztracy.Zone(@src());
-    defer zone_ctx.End();
-
-    var root_dir = try std.Io.Dir.cwd().openDir(io, root_path, .{});
-    defer root_dir.close(io);
-
-    const dir_path = std.fs.path.dirname(sub_path);
-    if (dir_path != null) {
-        try root_dir.createDirPath(io, dir_path.?);
-    }
-
-    var obj_file = try root_dir.createFile(io, sub_path, .{});
-    defer obj_file.close(io);
-
-    var buffer: [4096]u8 = undefined;
-
-    var bw = obj_file.writer(io, &buffer);
-    const writer = &bw.interface;
-    defer writer.flush() catch undefined;
-
-    //const folder = public.Asset.readRef( _db.readObj(obj).?, .Folder).?;
-    try writeCdbObjJson(
-        io,
-        obj,
-        writer,
-        obj,
-        WriteBlobToFile,
-        root_path,
-        allocator,
-    );
-}
-
 fn existRootFolderMarker(io: std.Io, root_folder: std.Io.Dir) bool {
     var buf: [1024]u8 = undefined;
     const path = std.fmt.bufPrint(&buf, FOLDER_FILENAME, .{}) catch return false;
@@ -1935,6 +2011,7 @@ pub fn writeCdbObjJson(
     write_blob: WriteBlobFn,
     root_path: []const u8,
     allocator: std.mem.Allocator,
+    imported_from: ?[]const u8,
 ) !void {
     var zone_ctx = profiler_private.ztracy.Zone(@src());
     defer zone_ctx.End();
@@ -1946,7 +2023,7 @@ pub fn writeCdbObjJson(
     var asset_obj: ?cdb.ObjId = null;
 
     try ws.objectField(JSON_ASSET_VERSION);
-    try ws.print("\"{s}\"", .{ASSET_CURRENT_VERSION_STR});
+    try ws.write(ASSET_CURRENT_VERSION_STR);
 
     if (obj.type_idx.eql(AssetTypeIdx)) {
         asset_obj = public.AssetCdb.readSubObj(obj_r, .Object);
@@ -1956,7 +2033,7 @@ pub fn writeCdbObjJson(
 
         if (public.AssetCdb.readStr(obj_r, .Description)) |desc| {
             try ws.objectField(JSON_DESCRIPTION_TOKEN);
-            try ws.print("\"{s}\"", .{desc});
+            try ws.write(desc);
         }
 
         // TAGS
@@ -1968,6 +2045,11 @@ pub fn writeCdbObjJson(
                 try ws.print("\"{s}:{f}\"", .{ cdb.getTypeName(_db, item.type_idx).?, try getOrCreateUuid(item) });
             }
             try ws.endArray();
+        }
+
+        if (imported_from) |v| {
+            try ws.objectField(JSON_IMPORTED_FROM);
+            try ws.write(v);
         }
     } else {
         asset_obj = obj;
@@ -2003,7 +2085,7 @@ fn writeCdbObjJsonBody(
 
     // Type name
     try writer.objectField(JSON_TYPE_NAME_TOKEN);
-    try writer.print("\"{s}\"", .{type_name});
+    try writer.write(type_name);
 
     // UUID
     try writer.objectField(JSON_UUID_TOKEN);
@@ -2134,7 +2216,7 @@ fn writeCdbObjJsonBody(
                 // }
 
                 try writer.objectField(prop_def.name);
-                try writer.print("\"{s}\"", .{str.?});
+                try writer.write(str.?);
             },
             cdb.PropType.BLOB => {
                 const blob = cdb.readBlob(obj_r, prop_idx);

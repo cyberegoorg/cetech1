@@ -154,5 +154,18 @@
                 "README.md",
             },
         },
+
+        .{
+            .repo_folder = "ziglua",
+            .entries = .{
+                "build",
+                "src",
+                ".gitignore",
+                "build.zig",
+                "build.zig.zon",
+                "license",
+                "readme.md",
+            },
+        },
     },
 }

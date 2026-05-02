@@ -42,7 +42,7 @@ pub fn main(init: std.process.Init) !void {
 
     for (modules.items) |m| {
         if (m.len == 0) continue;
-        try w.print("    .{{ .name = \"{s}\", .module_fce = ct_load_module_{s} }},\n", .{ m, m });
+        try w.print("    .{{ .name = \"{s}\", .module_fce = .{{ .c_fce = ct_load_module_{s} }} }},\n", .{ m, m });
     }
 
     try w.print("}};\n", .{});

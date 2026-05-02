@@ -1,0 +1,279 @@
+// TODO: WIP, non optimal for large logs
+
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+
+const cetech1 = @import("cetech1");
+const cdb = cetech1.cdb;
+const coreui = cetech1.coreui;
+const math = cetech1.math;
+const apidb = cetech1.apidb;
+const Icons = coreui.CoreIcons;
+
+const editor = cetech1.editor;
+const editor_tabs = cetech1.editor.tabs;
+
+const module_name = .editor_log;
+
+// Need for logging from std.
+pub const std_options: std.Options = .{
+    .logFn = cetech1.log.zigLogFnGen(),
+};
+// Log for module
+const log = std.log.scoped(module_name);
+
+const TAB_NAME = "ct_editor_log";
+
+// Basic cetech "import".
+var _allocator: Allocator = undefined;
+var _io: std.Io = undefined;
+
+const LogEntry = struct {
+    level: cetech1.log.Level,
+    scope: [:0]const u8,
+    msg: [:0]const u8,
+};
+
+const LogBuffer = cetech1.ArrayList(LogEntry);
+
+// Global state that can surive hot-reload
+const G = struct {
+    log_tab_vt_ptr: *editor_tabs.TabTypeI = undefined,
+
+    log_buffer: ?LogBuffer = null,
+    log_buffer_lock: std.Io.Mutex = .init,
+};
+var _g: *G = undefined;
+
+// Struct for tab type
+const LogTab = struct {
+    tab_i: editor_tabs.TabI,
+
+    filter_buff: [256:0]u8 = std.mem.zeroes([256:0]u8),
+    filter: ?[:0]const u8 = null,
+
+    autoscroll: bool = true,
+
+    enabled_levels: struct {
+        err: bool = true,
+        warn: bool = true,
+        debug: bool = true,
+        info: bool = true,
+
+        pub fn pass(enabled_levels: @This(), level: cetech1.log.Level) bool {
+            return switch (level) {
+                .Err => enabled_levels.err,
+                .Warn => enabled_levels.warn,
+                .Info => enabled_levels.info,
+                .Debug => enabled_levels.debug,
+                else => false,
+            };
+        }
+    } = .{},
+};
+
+pub fn levelIcon(level: cetech1.log.Level) [:0]const u8 {
+    return switch (level) {
+        .Err => coreui.Icons.Error,
+        .Warn => coreui.Icons.Warning,
+        .Info => coreui.Icons.Info,
+        .Debug => coreui.Icons.Debug,
+        else => "SHIT",
+    };
+}
+
+pub fn levelColor(level: cetech1.log.Level) math.Color4f {
+    if (!editor.isColorsEnabled()) return coreui.getStyle().getColor(.text);
+    const one = 0.80;
+    return switch (level) {
+        .Err => .{ .r = one, .a = 1.0 },
+        .Warn => .{ .r = one, .g = one, .a = 1.0 },
+        .Debug => .{ .g = one, .a = 1.0 },
+        else => coreui.getStyle().getColor(.text),
+    };
+}
+
+// Fill editor tab interface
+var log_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
+    .tab_name = TAB_NAME,
+    .tab_hash = .fromStr(TAB_NAME),
+    .create_on_init = true,
+    .category = "Debug",
+}, struct {
+
+    // Return name for menu /Tabs/
+    pub fn menuName() ![:0]const u8 {
+        return coreui.Icons.Logs ++ "  " ++ "Log";
+    }
+
+    // Return tab title
+    pub fn title(inst: *editor_tabs.TabO) ![:0]const u8 {
+        _ = inst;
+        return coreui.Icons.Logs ++ "  " ++ " Log";
+    }
+
+    // Create new tab instantce
+    pub fn create(tab_id: u32) !?*editor_tabs.TabI {
+        _ = tab_id;
+
+        var tab_inst = _allocator.create(LogTab) catch undefined;
+        tab_inst.* = .{
+            .tab_i = .{
+                .vt = _g.log_tab_vt_ptr,
+                .inst = @ptrCast(tab_inst),
+            },
+        };
+
+        return &tab_inst.tab_i;
+    }
+
+    // Destroy tab instantce
+    pub fn destroy(tab_inst: *editor_tabs.TabI) !void {
+        const tab_o: *LogTab = @ptrCast(@alignCast(tab_inst.inst));
+        _allocator.destroy(tab_o);
+    }
+
+    // Draw tab content
+    pub fn ui(inst: *editor_tabs.TabO, kernel_tick: u64, dt: f32) !void {
+        _ = kernel_tick;
+        _ = dt;
+        const tab_o: *LogTab = @ptrCast(@alignCast(inst));
+        var scrollBotom = false;
+
+        _ = coreui.checkbox("###Autoscroll", .{ .v = &tab_o.autoscroll });
+
+        coreui.sameLine(.{});
+        if (coreui.button(coreui.Icons.ScrollDown ++ "###ScrollBotom", .{})) {
+            scrollBotom = true;
+        }
+
+        {
+            coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.Err) });
+            defer coreui.popStyleColor(.{ .count = 1 });
+
+            coreui.sameLine(.{});
+            if (coreui.toggleButton(levelIcon(.Err), &tab_o.enabled_levels.err)) {}
+        }
+        {
+            coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.Debug) });
+            defer coreui.popStyleColor(.{ .count = 1 });
+
+            coreui.sameLine(.{});
+            if (coreui.toggleButton(levelIcon(.Debug), &tab_o.enabled_levels.debug)) {}
+        }
+        {
+            coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.Warn) });
+            defer coreui.popStyleColor(.{ .count = 1 });
+
+            coreui.sameLine(.{});
+            if (coreui.toggleButton(levelIcon(.Warn), &tab_o.enabled_levels.warn)) {}
+        }
+        {
+            coreui.pushStyleColor4f(.{ .idx = .text, .c = levelColor(.Info) });
+            defer coreui.popStyleColor(.{ .count = 1 });
+
+            coreui.sameLine(.{});
+            if (coreui.toggleButton(levelIcon(.Info), &tab_o.enabled_levels.info)) {}
+        }
+
+        coreui.sameLine(.{});
+        tab_o.filter = coreui.uiFilter(&tab_o.filter_buff, tab_o.filter);
+
+        if (coreui.beginTable("###LogTable", .{
+            .column = 3,
+            .flags = .{
+                .no_saved_settings = true,
+                .row_bg = true,
+                .scroll_x = true,
+                .scroll_y = true,
+                .resizable = true,
+            },
+        })) {
+            defer coreui.endTable();
+            //coreui.tableSetupScrollFreeze(2, 0);
+
+            if (_g.log_buffer) |buffer| {
+                _g.log_buffer_lock.lockUncancelable(_io);
+                defer _g.log_buffer_lock.unlock(_io);
+
+                for (buffer.items) |entry| {
+                    if (!tab_o.enabled_levels.pass(entry.level)) continue;
+
+                    if (tab_o.filter) |f| {
+                        if (null == coreui.uiFilterPass(_allocator, f, entry.scope, false) and null == coreui.uiFilterPass(_allocator, f, entry.msg, false)) continue;
+                    }
+
+                    _ = coreui.tableNextColumn();
+                    coreui.textColored(levelColor(entry.level), levelIcon(entry.level));
+
+                    _ = coreui.tableNextColumn();
+                    coreui.text(entry.scope);
+
+                    _ = coreui.tableNextColumn();
+                    coreui.text(entry.msg);
+                }
+            }
+
+            const scroll_y = coreui.getScrollY();
+            const max_scroll_y = coreui.getScrollMaxY();
+            if (scrollBotom or (tab_o.autoscroll and scroll_y >= max_scroll_y)) {
+                coreui.setScrollHereY(.{ .center_y_ratio = 1.0 });
+            }
+        }
+    }
+
+    // Draw tab menu
+    // pub fn menu(inst: *editor_tabs.TabO) !void {
+    //     const tab_o: *LogTab = @alignCast(@ptrCast(inst));
+    //     _ = tab_o;
+    // }
+});
+
+var handler = cetech1.log.LogHandlerI.implement(struct {
+    pub fn logFn(level: cetech1.log.Level, scope: [:0]const u8, log_msg: [:0]const u8) !void {
+        _g.log_buffer_lock.lockUncancelable(_io);
+        defer _g.log_buffer_lock.unlock(_io);
+
+        if (_g.log_buffer) |*buffer| {
+            try buffer.append(_allocator, .{ .level = level, .scope = try _allocator.dupeZ(u8, scope), .msg = try _allocator.dupeZ(u8, log_msg) });
+        }
+    }
+});
+
+// Create types, register api, interfaces etc...
+pub fn load_module_zig(io: std.Io, allocator: Allocator, load: bool, reload: bool) anyerror!bool {
+    // basic
+    _io = io;
+    _allocator = allocator;
+
+    // create global variable that can survive reload
+    _g = try apidb.setGlobalVar(G, module_name, "_g", .{});
+    if (_g.log_buffer == null) _g.log_buffer = .empty;
+
+    // Alocate memory for VT of tab.
+    // Need for hot reload becasue vtable is shared we need strong pointer adress.
+    _g.log_tab_vt_ptr = try apidb.setGlobalVarValue(editor_tabs.TabTypeI, module_name, TAB_NAME, log_tab);
+
+    try apidb.implOrRemove(module_name, editor_tabs.TabTypeI, &log_tab, load);
+    try apidb.implOrRemove(module_name, cetech1.log.LogHandlerI, &handler, load);
+
+    if (!reload and !load) {
+        _g.log_buffer_lock.lockUncancelable(_io);
+        defer _g.log_buffer_lock.unlock(_io);
+
+        for (_g.log_buffer.?.items) |entry| {
+            _allocator.free(entry.msg);
+            _allocator.free(entry.scope);
+        }
+
+        _g.log_buffer.?.deinit(_allocator);
+        _g.log_buffer = null;
+    }
+
+    return true;
+}
+
+// This is only one fce that cetech1 need to load/unload/reload module.
+pub export fn ct_load_module_editor_log(io: *const std.Io, apidb_: *const cetech1.apidb.ApiDbAPI, allocator: *const std.mem.Allocator, load: bool, reload: bool) callconv(.c) bool {
+    return cetech1.modules.loadModuleZigHelper(load_module_zig, module_name, io, apidb_, allocator, load, reload);
+}

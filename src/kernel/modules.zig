@@ -133,7 +133,7 @@ pub fn addDynamicModule(desc: public.ModuleDesc, full_path: ?[:0]u8) !void {
 
 pub fn loadAll(io: std.Io) !void {
     for (_modules_map.values()) |*it| {
-        var module_desc = it;
+        const module_desc = it;
 
         var alloc_item = _modules_allocator_map.getPtr(module_desc.desc.name);
         if (alloc_item == null) {
@@ -150,8 +150,18 @@ pub fn loadAll(io: std.Io) !void {
             alloc_item = _modules_allocator_map.getPtr(module_desc.desc.name);
         }
 
-        if (!module_desc.desc.module_fce(&io, @ptrCast(apidb.api), @ptrCast(@alignCast(&alloc_item.?.*.allocator)), true, false)) {
-            log.err("Problem with load module {s}", .{module_desc.desc.name});
+        switch (module_desc.desc.module_fce) {
+            .c_fce => |fce| {
+                if (!fce(&io, @ptrCast(apidb.api), @ptrCast(@alignCast(&alloc_item.?.*.allocator)), true, false)) {
+                    log.err("Problem with load module {s}", .{module_desc.desc.name});
+                }
+            },
+
+            .zig_fce => |fce| {
+                _ = fce(io, alloc_item.?.*.allocator, true, false) catch |err| {
+                    log.err("Problem with load module {s}: {}", .{ module_desc.desc.name, err });
+                };
+            },
         }
     }
 }
@@ -160,8 +170,18 @@ pub fn unloadAll(io: std.Io) !void {
     for (_modules_map.values()) |*it| {
         const alloc_item = _modules_allocator_map.getPtr(it.desc.name).?;
 
-        if (!it.desc.module_fce(&io, @ptrCast(apidb.api), @ptrCast(&alloc_item.*.allocator), false, false)) {
-            log.err("Problem with unload module {s}", .{it.desc.name});
+        switch (it.desc.module_fce) {
+            .c_fce => |fce| {
+                if (!fce(&io, @ptrCast(apidb.api), @ptrCast(@alignCast(&alloc_item.*.allocator)), false, false)) {
+                    log.err("Problem with unload module {s}", .{it.desc.name});
+                }
+            },
+
+            .zig_fce => |fce| {
+                _ = fce(io, alloc_item.*.allocator, false, false) catch |err| {
+                    log.err("Problem with unload module {s}: {}", .{ it.desc.name, err });
+                };
+            },
         }
     }
 
@@ -262,7 +282,7 @@ pub fn loadDynModules(io: std.Io) !void {
         if (_loadDynLib(io, full_path) catch continue) |dyn_lib_info| {
             log.warn("Loading dynamic module from {s}", .{full_path});
             try _dyn_modules_map.put(_allocator, dyn_lib_info.full_path, dyn_lib_info);
-            try addDynamicModule(.{ .name = dyn_lib_info.name, .module_fce = dyn_lib_info.symbol }, dyn_lib_info.full_path);
+            try addDynamicModule(.{ .name = dyn_lib_info.name, .module_fce = .{ .c_fce = dyn_lib_info.symbol } }, dyn_lib_info.full_path);
         }
     }
 }
@@ -311,7 +331,7 @@ pub fn reloadAllIfNeeded(io: std.Io, allocator: std.mem.Allocator) !bool {
 
             const alloc_item = _modules_allocator_map.getPtr(old_module_desc.desc.name).?;
 
-            if (!old_module_desc.desc.module_fce(&io, @ptrCast(apidb.api), @ptrCast(&alloc_item.*.allocator), false, true)) {
+            if (!old_module_desc.desc.module_fce.c_fce(&io, @ptrCast(apidb.api), @ptrCast(&alloc_item.*.allocator), false, true)) {
                 log.err("Problem with unload old module {s}", .{k});
                 continue;
             }
@@ -334,7 +354,7 @@ pub fn reloadAllIfNeeded(io: std.Io, allocator: std.mem.Allocator) !bool {
                 new_lib_info.name = v.name;
                 v_ptr.* = new_lib_info.*;
 
-                old_module_desc.desc.module_fce = new_lib_info.symbol;
+                old_module_desc.desc.module_fce.c_fce = new_lib_info.symbol;
             }
         }
     }
@@ -374,7 +394,7 @@ test "Can register module" {
         }
     };
 
-    var modules = [_]public.ModuleDesc{.{ .name = "module1", .module_fce = @ptrCast(&Module1.load_module) }};
+    const modules = [_]public.ModuleDesc{.{ .name = "module1", .module_fce = .{ .c_fce = @ptrCast(&Module1.load_module) } }};
     try addModules(&modules);
     try loadAll(std.testing.io);
 

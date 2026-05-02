@@ -38,6 +38,82 @@ const module_name = .kernel;
 
 const log = std.log.scoped(module_name);
 
+const core_modules = [_]cetech1.modules.ModuleDesc{
+    .{ .name = "actions", .module_fce = .{ .zig_fce = @import("actions.zig").load_module_zig } },
+    .{ .name = "transform", .module_fce = .{ .zig_fce = @import("transform.zig").load_module_zig } },
+    .{ .name = "graphvm", .module_fce = .{ .zig_fce = @import("scripting/graphvm/graphvm.zig").load_module_zig } },
+    .{ .name = "graphvm_script_component", .module_fce = .{ .zig_fce = @import("scripting/graphvm/graphvm_script_component.zig").load_module_zig } },
+    .{ .name = "native_script_component", .module_fce = .{ .zig_fce = @import("scripting/native_script_component.zig").load_module_zig } },
+    .{ .name = "camera", .module_fce = .{ .zig_fce = @import("camera/camera.zig").load_module_zig } },
+    .{ .name = "camera_controller", .module_fce = .{ .zig_fce = @import("camera/camera_controller.zig").load_module_zig } },
+    .{ .name = "visibility_flags", .module_fce = .{ .zig_fce = @import("renderer/visibility_flags.zig").load_module_zig } },
+    .{ .name = "render_graph", .module_fce = .{ .zig_fce = @import("renderer/render_graph.zig").load_module_zig } },
+    .{ .name = "render_pipeline", .module_fce = .{ .zig_fce = @import("renderer/render_pipeline.zig").load_module_zig } },
+    .{ .name = "render_viewport", .module_fce = .{ .zig_fce = @import("renderer/render_viewport.zig").load_module_zig } },
+    .{ .name = "shader_system", .module_fce = .{ .zig_fce = @import("renderer/shader_system.zig").load_module_zig } },
+    .{ .name = "renderer_nodes", .module_fce = .{ .zig_fce = @import("renderer/renderer_nodes.zig").load_module_zig } },
+    .{ .name = "physics", .module_fce = .{ .zig_fce = @import("physics/physics.zig").load_module_zig } },
+    .{ .name = "bloom", .module_fce = .{ .zig_fce = @import("renderer_pipeline/bloom.zig").load_module_zig } },
+    .{ .name = "default_render_pipeline", .module_fce = .{ .zig_fce = @import("renderer_pipeline/default_render_pipeline.zig").load_module_zig } },
+    .{ .name = "instance_system", .module_fce = .{ .zig_fce = @import("renderer_pipeline/instance_system.zig").load_module_zig } },
+    .{ .name = "light_component", .module_fce = .{ .zig_fce = @import("renderer_pipeline/light_component.zig").load_module_zig } },
+    .{ .name = "light_system", .module_fce = .{ .zig_fce = @import("renderer_pipeline/light_system.zig").load_module_zig } },
+    .{ .name = "render_component", .module_fce = .{ .zig_fce = @import("renderer_pipeline/render_component.zig").load_module_zig } },
+    .{ .name = "tonemap", .module_fce = .{ .zig_fce = @import("renderer_pipeline/tonemap.zig").load_module_zig } },
+    .{ .name = "vertex_system", .module_fce = .{ .zig_fce = @import("renderer_pipeline/vertex_system.zig").load_module_zig } },
+    .{ .name = "physics_jolt", .module_fce = .{ .zig_fce = @import("physics/physics_jolt.zig").load_module_zig } },
+    .{ .name = "luauvm", .module_fce = .{ .zig_fce = @import("scripting/luauvm.zig").load_module_zig } },
+    .{ .name = "gpu_bgfx", .module_fce = .{ .zig_fce = @import("gpu_bgfx/gpu_bgfx.zig").load_module_zig } },
+};
+
+const editor_modules = [_]cetech1.modules.ModuleDesc{
+    .{ .name = "editor", .module_fce = .{ .zig_fce = @import("editor/editor.zig").load_module_zig } },
+    .{ .name = "editor_asset_browser", .module_fce = .{ .zig_fce = @import("editor/asset_browser.zig").load_module_zig } },
+    .{ .name = "editor_asset_preview", .module_fce = .{ .zig_fce = @import("editor/asset_preview.zig").load_module_zig } },
+    .{ .name = "editor_assetdb", .module_fce = .{ .zig_fce = @import("editor/assetdb.zig").load_module_zig } },
+    .{ .name = "editor_entity_asset", .module_fce = .{ .zig_fce = @import("editor/entity_asset.zig").load_module_zig } },
+    .{ .name = "editor_entity_editor", .module_fce = .{ .zig_fce = @import("editor/entity_editor.zig").load_module_zig } },
+    .{ .name = "editor_explorer", .module_fce = .{ .zig_fce = @import("editor/explorer.zig").load_module_zig } },
+    .{ .name = "editor_fixtures", .module_fce = .{ .zig_fce = @import("editor/fixtures.zig").load_module_zig } },
+    .{ .name = "editor_gizmo", .module_fce = .{ .zig_fce = @import("editor/gizmo.zig").load_module_zig } },
+    .{ .name = "editor_graph", .module_fce = .{ .zig_fce = @import("editor/graph.zig").load_module_zig } },
+    .{ .name = "editor_input", .module_fce = .{ .zig_fce = @import("editor/input.zig").load_module_zig } },
+    .{ .name = "editor_inspector", .module_fce = .{ .zig_fce = @import("editor/inspector.zig").load_module_zig } },
+    .{ .name = "editor_log", .module_fce = .{ .zig_fce = @import("editor/log.zig").load_module_zig } },
+    .{ .name = "editor_metrics", .module_fce = .{ .zig_fce = @import("editor/metrics.zig").load_module_zig } },
+    .{ .name = "editor_obj_buffer", .module_fce = .{ .zig_fce = @import("editor/obj_buffer.zig").load_module_zig } },
+    .{ .name = "editor_renderer", .module_fce = .{ .zig_fce = @import("editor/renderer.zig").load_module_zig } },
+    .{ .name = "editor_simulator", .module_fce = .{ .zig_fce = @import("editor/simulator.zig").load_module_zig } },
+    .{ .name = "editor_tabs", .module_fce = .{ .zig_fce = @import("editor/tabs.zig").load_module_zig } },
+    .{ .name = "editor_tree", .module_fce = .{ .zig_fce = @import("editor/tree.zig").load_module_zig } },
+};
+
+const runner_modules = [_]cetech1.modules.ModuleDesc{
+    .{ .name = "runner", .module_fce = .{ .zig_fce = @import("runner.zig").load_module_zig } },
+};
+
+pub fn bootRunner(process_init: std.process.Init, comptime static_modules: []const cetech1.modules.ModuleDesc) !void {
+    try boot(
+        process_init,
+        static_modules ++ runner_modules,
+        .{
+            .ignored_modules = &.{"editor"},
+            .ignored_modules_prefix = &.{"editor_"},
+        },
+    );
+}
+
+pub fn bootStudio(process_init: std.process.Init, comptime static_modules: []const cetech1.modules.ModuleDesc) !void {
+    try boot(
+        process_init,
+        static_modules ++ editor_modules,
+        .{
+            .ignored_modules = &.{"runner"},
+            .ignored_modules_prefix = &.{"runner_"},
+        },
+    );
+}
+
 const UpdateArray = cetech1.ArrayList(*const public.KernelTaskUpdateI);
 const KernelTaskArray = cetech1.ArrayList(*const public.KernelTaskI);
 const PhaseMap = cetech1.AutoArrayHashMap(cetech1.StrId64, Phase);
@@ -120,7 +196,7 @@ var _restart = true;
 
 var _next_asset_root_buff: [256]u8 = undefined;
 var _next_asset_root: ?[]u8 = null;
-var _main_window: ?cetech1.host.Window = null;
+var _main_window: ?*cetech1.host.Window = null;
 var _gpu_backend: ?cetech1.gpu.GpuBackend = null;
 
 const api = cetech1.kernel.KernelApi{
@@ -150,7 +226,7 @@ fn getAuthors() [:0]const u8 {
     return authors;
 }
 
-fn getMainWindow() ?cetech1.host.Window {
+fn getMainWindow() ?*cetech1.host.Window {
     return _main_window;
 }
 fn getGpuBackend() ?cetech1.gpu.GpuBackend {
@@ -364,6 +440,8 @@ pub fn getStrArgs(arg_name: []const u8) ?[]const u8 {
 }
 
 pub fn bigInit(io: std.Io, static_modules: []const cetech1.modules.ModuleDesc, load_dynamic: bool) !void {
+    try modules_private.addModules(&core_modules);
+
     if (static_modules.len != 0) {
         try modules_private.addModules(static_modules);
     }
@@ -375,14 +453,11 @@ pub fn bigInit(io: std.Io, static_modules: []const cetech1.modules.ModuleDesc, l
     }
 
     try modules_private.loadAll(io);
-
     modules_private.dumpModules();
 
     const worker_count = getIntArgs("--worker-count");
     try task_private.start(worker_count);
-
     try ecs_private.init(io, _ecs_allocator.allocator());
-
     try assetdb_private.init(io, _assetdb_allocator.allocator());
 
     try generateKernelTaskChain(_kernel_allocator);
@@ -475,6 +550,7 @@ pub fn getSysTmpDir(a: std.mem.Allocator, env_map: *const std.process.Environ.Ma
 
     return Impl.get(a, env_map);
 }
+
 pub fn boot(process_init: std.process.Init, static_modules: []const cetech1.modules.ModuleDesc, boot_args: BootArgs) !void {
     while (_restart) {
         _restart = false;

@@ -5,12 +5,9 @@
     .fingerprint = 0x999557f3ebfaa97a,
     .paths = .{
         "docs",
-        "kernel",
-        "public",
-        "modules",
         "externals",
         "fixtures",
-
+        "src",
         "build.zig",
         "build.zig.zon",
         "CONTRIBUTING.md",
@@ -19,88 +16,14 @@
     },
     .dependencies = .{
         //
-        // Public API for modules
-        //
-        .cetech1 = .{ .path = "public/" },
-
-        //
-        // CETech1 bundled modules
-        //
-
-        // EDITOR
-        .editor = .{ .path = "modules/editor/editor", .lazy = true },
-        .editor_tabs = .{ .path = "modules/editor/tabs", .lazy = true },
-        .editor_assetdb = .{ .path = "modules/editor/assetdb", .lazy = true },
-        .editor_asset_browser = .{ .path = "modules/editor/asset_browser", .lazy = true },
-        .editor_explorer = .{ .path = "modules/editor/explorer", .lazy = true },
-        .editor_fixtures = .{ .path = "modules/editor/fixtures", .lazy = true },
-        .editor_inspector = .{ .path = "modules/editor/inspector", .lazy = true },
-        .editor_obj_buffer = .{ .path = "modules/editor/obj_buffer", .lazy = true },
-        .editor_tree = .{ .path = "modules/editor/tree", .lazy = true },
-        .editor_log = .{ .path = "modules/editor/log", .lazy = true },
-        .editor_graph = .{ .path = "modules/editor/graph", .lazy = true },
-        .editor_metrics = .{ .path = "modules/editor/metrics", .lazy = true },
-        .editor_entity_asset = .{ .path = "modules/editor/entity_asset", .lazy = true },
-        .editor_entity = .{ .path = "modules/editor/entity_editor", .lazy = true },
-        .editor_asset_preview = .{ .path = "modules/editor/asset_preview", .lazy = true },
-        .editor_simulator = .{ .path = "modules/editor/simulator", .lazy = true },
-        .editor_renderer = .{ .path = "modules/editor/renderer", .lazy = true },
-        .editor_input = .{ .path = "modules/editor/input", .lazy = true },
-        .editor_gizmo = .{ .path = "modules/editor/gizmo", .lazy = true },
-
-        // RUNNER
-        .runner = .{ .path = "modules/runner/runner", .lazy = true },
-
-        // PHYSICS
-        .physics = .{ .path = "modules/physics/physics", .lazy = true },
-        .physics_jolt = .{ .path = "modules/physics/physics_jolt", .lazy = true },
-
-        // INPUT
-        .actions = .{ .path = "modules/input/actions", .lazy = true },
-
-        // SCRIPTING
-        .graphvm = .{ .path = "modules/scripting/graphvm", .lazy = true },
-        .graphvm_script_component = .{ .path = "modules/scripting/graphvm_script_component", .lazy = true },
-        .native_script_component = .{ .path = "modules/scripting/native_script_component", .lazy = true },
-        .renderer_nodes = .{ .path = "modules/scripting/renderer_nodes", .lazy = true },
-
-        // TRANSFORM
-        .transform = .{ .path = "modules/transform", .lazy = true },
-
-        // CAMERA
-        .camera = .{ .path = "modules/camera/camera", .lazy = true },
-        .camera_controller = .{ .path = "modules/camera/camera_controller", .lazy = true },
-
-        // RENDERING
-        .render_pipeline = .{ .path = "modules/rendering/render_pipeline", .lazy = true },
-        .render_viewport = .{ .path = "modules/rendering/render_viewport", .lazy = true },
-        .render_graph = .{ .path = "modules/rendering/render_graph", .lazy = true },
-        .shader_system = .{ .path = "modules/rendering/shader_system", .lazy = true },
-        .visibility_flags = .{ .path = "modules/rendering/visibility_flags", .lazy = true },
-        .gpu_bgfx = .{ .path = "modules/rendering/gpu_bgfx", .lazy = true },
-
-        // RENDERING PIPELINE
-        .default_render_pipeline = .{ .path = "modules/render_pipeline/default_render_pipeline", .lazy = true },
-        .light_system = .{ .path = "modules/render_pipeline/light_system", .lazy = true },
-        .bloom = .{ .path = "modules/render_pipeline/bloom", .lazy = true },
-        .tonemap = .{ .path = "modules/render_pipeline/tonemap", .lazy = true },
-        .light_component = .{ .path = "modules/render_pipeline/light_component", .lazy = true },
-        .vertex_system = .{ .path = "modules/render_pipeline/vertex_system", .lazy = true },
-        .instance_system = .{ .path = "modules/render_pipeline/instance_system", .lazy = true },
-        .render_component = .{ .path = "modules/render_pipeline/render_component", .lazy = true },
-
-        // Examples
-        .foo = .{ .path = "modules/examples/foo", .lazy = true },
-        .editor_foo_tab = .{ .path = "modules/examples/editor_foo_tab", .lazy = true },
-        .editor_foo_viewport_tab = .{ .path = "modules/examples/editor_foo_viewport_tab", .lazy = true },
-        .example_native_script = .{ .path = "modules/examples/native_script", .lazy = true },
-
-        //
         // Externals
         //
         .zf = .{ .path = "externals/shared/lib/zf" },
         .znfde = .{ .path = "externals/shared/lib/znfde" },
         .zbgfx = .{ .path = "externals/shared/lib/zbgfx" },
+        .zlua = .{ .path = "externals/shared/lib/ziglua" },
+        .zmath = .{ .path = "externals/shared/lib/zmath" },
+        .ziglangSet = .{ .path = "externals/shared/lib/ziglang-set" },
 
         // zig-gamedev
         .system_sdk = .{
@@ -112,5 +35,6 @@
         .zflecs = .{ .path = "externals/shared/lib/zflecs" },
         .ztracy = .{ .path = "externals/shared/lib/ztracy" },
         .zgui = .{ .path = "externals/shared/lib/zgui" },
+        .zphysics = .{ .path = "externals/shared/lib/zphysics" },
     },
 }

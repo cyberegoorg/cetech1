@@ -5,6 +5,11 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
     const options = .{
+        .shared = b.option(
+            bool,
+            "shared",
+            "Build shared library",
+        ) orelse false,
         .with_portal = b.option(
             bool,
             "with_portal",
@@ -23,11 +28,12 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "cnfde", .module = translate_c.createModule() },
         },
+        .link_libc = true,
     });
 
     var lib: *std.Build.Step.Compile = undefined;
     lib = b.addLibrary(.{
-        .linkage = .static,
+        .linkage = if (options.shared) .dynamic else .static,
         .name = "nfde",
         .root_module = b.createModule(.{
             .target = target,
@@ -52,6 +58,9 @@ pub fn build(b: *std.Build) void {
             lib.root_module.addCSourceFile(.{ .file = b.path("nativefiledialog/src/nfd_cocoa.m"), .flags = &cflags });
             lib.root_module.linkFramework("AppKit", .{ .needed = true });
             lib.root_module.linkFramework("UniformTypeIdentifiers", .{ .needed = true });
+            lib.root_module.linkFramework("CoreFoundation", .{ .needed = true });
+            lib.root_module.linkFramework("Foundation", .{ .needed = true });
+            lib.root_module.linkSystemLibrary("objc", .{});
         },
         else => {
             if (options.with_portal) {

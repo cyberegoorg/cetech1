@@ -118,7 +118,7 @@ pub fn deinit() void {
 pub fn initNoContext(allocator: std.mem.Allocator) void {
     mem_allocator = allocator;
     if (temp_buffer == null) {
-        temp_buffer = std.ArrayList(u8){};
+        temp_buffer = std.ArrayList(u8).empty;
         temp_buffer.?.resize(mem_allocator.?, 3 * 1024 + 1) catch unreachable;
     }
 }

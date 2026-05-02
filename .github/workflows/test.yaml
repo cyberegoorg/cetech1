@@ -94,8 +94,7 @@ jobs:
       - if: runner.os == 'Linux'
         name: Test unit with kcov
         shell: bash
-        run: kcov --include-pattern=/cetech1/src/,/cetech/public/ kcov-output
-          zig-out/bin/cetech1_test
+        run: kcov --include-pattern=/cetech1/src/ kcov-output zig-out/bin/cetech1_test
 
       - if: runner.os == 'Linux'
         name: Upload code coverage report to Codecov

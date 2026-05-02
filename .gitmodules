@@ -37,3 +37,6 @@
 [submodule "externals/shared/repo/zphysics"]
 	path = externals/shared/repo/zphysics
 	url = https://github.com/cyberegoorg/zphysics.git
+[submodule "externals/shared/repo/ziglua"]
+	path = externals/shared/repo/ziglua
+	url = https://github.com/cyberegoorg/ziglua.git
