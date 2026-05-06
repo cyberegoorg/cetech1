@@ -416,7 +416,7 @@ pub fn build(b: *std.Build) !void {
 
     // TODO: remove?
     const lucide_c = b.addTranslateC(.{
-        .root_source_file = b.path("src/public/IconsLucide.h"),
+        .root_source_file = b.path("src/coreui/private/IconsLucide.h"),
         .target = target,
         .optimize = optimize,
     });
@@ -564,7 +564,7 @@ pub fn build(b: *std.Build) !void {
     const cetech1_module = b.addModule(
         "cetech1",
         .{
-            .root_source_file = b.path("src/public/cetech1.zig"),
+            .root_source_file = b.path("src/cetech1.zig"),
         },
     );
     cetech1_module.addImport("lucide_icons", lucide_c.createModule());

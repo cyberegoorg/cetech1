@@ -1,83 +1,47 @@
 const std = @import("std");
+const cetech1 = @import("../cetech1.zig");
 
 const apidb = cetech1.apidb;
-const cetech1 = @import("cetech1");
-const public = cetech1.uuid;
-const profiler = @import("profiler.zig");
+/// UUID types
+pub const Uuid = struct {
+    bytes: [16]u8 = .{0} ** 16,
 
-const module_name = .uuid;
-
-const api = public.UuidAPI{
-    .newUuid7 = newUUID7,
-    .fromInt = fromInt,
-    .fromStr = fromStr,
+    /// support for zig std fmt
+    pub fn format(self: Uuid, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print("{s}-{s}-{s}-{s}-{s}", .{
+            std.fmt.bytesToHex(self.bytes[0..4], .lower),
+            std.fmt.bytesToHex(self.bytes[4..6], .lower),
+            std.fmt.bytesToHex(self.bytes[6..8], .lower),
+            std.fmt.bytesToHex(self.bytes[8..10], .lower),
+            std.fmt.bytesToHex(self.bytes[10..16], .lower),
+        });
+    }
 };
 
-var _io: std.Io = undefined;
-
-pub fn init(io: std.Io) !void {
-    _io = io;
-    public.api = &api;
+/// Create new UUIDv7
+pub inline fn newUUID7() Uuid {
+    return api.newUuid7();
 }
 
-pub fn registerToApi() !void {
-    try apidb.setZigApi(module_name, public.UuidAPI, &api);
+/// Create new UUID from int
+pub inline fn fromInt(int: u128) Uuid {
+    return api.fromInt(int);
 }
 
-pub fn newUUID7() public.Uuid {
-    var zone_ctx = profiler.ztracy.Zone(@src());
-    defer zone_ctx.End();
-
-    var uuid: public.Uuid = fromInt(0);
-
-    const millis: u64 = @bitCast(std.Io.Timestamp.now(_io, .awake).toMilliseconds());
-    const millis_u48: u48 = @truncate(millis);
-    std.mem.writeInt(u48, uuid.bytes[0..6], millis_u48, .big);
-    _io.random(uuid.bytes[6..]);
-
-    uuid.bytes[8] = 0b10000000 | (uuid.bytes[8] & 0b00111111);
-    uuid.bytes[6] = @as(u8, 7) << 4 | (uuid.bytes[6] & 0xF);
-
-    return uuid;
+/// Create new UUID from str
+pub inline fn fromStr(str: []const u8) ?Uuid {
+    return api.fromStr(str);
 }
 
-pub fn fromInt(int: u128) public.Uuid {
-    var uuid: public.Uuid = undefined;
-    std.mem.writeInt(u128, uuid.bytes[0..], int, .big);
-    return uuid;
-}
+/// Main UUID API
+pub const UuidAPI = struct {
+    newUuid7: *const fn () Uuid,
+    fromInt: *const fn (int: u128) Uuid,
+    fromStr: *const fn (str: []const u8) ?Uuid,
+};
 
-pub fn fromStr(str: []const u8) ?public.Uuid {
-    std.debug.assert(str.len == 36 and str[8] == '-' and str[13] == '-' and str[18] == '-' and str[23] == '-');
+pub var api: *const UuidAPI = undefined;
 
-    var uuid: public.Uuid = undefined;
-    var i: usize = 0;
-    for (uuid.bytes[0..]) |*byte| {
-        if (str[i] == '-') {
-            i += 1;
-        }
-        const hi = std.fmt.charToDigit(str[i], 16) catch return null;
-        const lo = std.fmt.charToDigit(str[i + 1], 16) catch return null;
-        byte.* = hi << 4 | lo;
-        i += 2;
-    }
-
-    return uuid;
-}
-
-test "uuid: Can create uuid7" {
-    try init(std.testing.io);
-    const uuid1 = public.newUUID7();
-    const uuid2 = public.newUUID7();
-
-    try std.testing.expect(!std.mem.eql(u8, uuid1.bytes[0..], uuid2.bytes[0..]));
-}
-
-test "uuid: Can format uuid to string" {
-    try init(std.testing.io);
-    const uuid1 = public.newUUID7();
-    _ = uuid1;
-
-    const uuid = public.fromInt(0x0123456789ABCDEF0123456789ABCDEF);
-    try std.testing.expectFmt("01234567-89ab-cdef-0123-456789abcdef", "{f}", .{uuid});
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
+    api = apidb.getZigApi(module, UuidAPI).?;
 }

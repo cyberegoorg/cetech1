@@ -1,366 +1,135 @@
-// TODO: Uber shit need rework...
 const std = @import("std");
-const mem = std.mem;
-const Allocator = mem.Allocator;
 
-const cetech1 = @import("cetech1");
+const cetech1 = @import("../cetech1.zig");
 
-const public = cetech1.apidb;
+pub const InterfaceVersion = u64;
 
-test {
-    _ = std.testing.refAllDecls(@import("apidb_test.zig"));
+/// Zig api
+pub const lang_zig = "zig";
+
+/// Crete variable that can survive reload.
+pub inline fn setGlobalVar(comptime T: type, comptime module: @EnumLiteral(), var_name: []const u8, default: T) !*T {
+    const ptr: *T = @ptrCast(@alignCast(try api.setGlobalVar(@tagName(module), var_name, @sizeOf(T), &std.mem.toBytes(default))));
+    return ptr;
 }
 
-const module_name = .apidb;
+/// Crete variable that can survive reload + always set value
+pub inline fn setGlobalVarValue(comptime T: type, comptime module: @EnumLiteral(), var_name: []const u8, value: T) !*T {
+    const ptr: *T = @ptrCast(@alignCast(try api.setGlobalVar(@tagName(module), var_name, @sizeOf(T), &.{})));
+    ptr.* = value;
+    return ptr;
+}
 
-const log = std.log.scoped(module_name);
+/// Register api for given language and api name.
+pub inline fn setApi(comptime module: @EnumLiteral(), comptime T: type, language: []const u8, api_name: []const u8, api_ptr: *const T) !void {
+    return try api.setApiOpaqueue(@tagName(module), language, api_name, api_ptr, @sizeOf(T));
+}
 
-const ApiItem = struct {
-    api_ptr: []u8,
-    api_size: usize,
+/// Unregister api for given language and api name.
+pub inline fn removeApi(comptime module: @EnumLiteral(), language: []const u8, api_name: []const u8) void {
+    return api.removeApi(@tagName(module), language, api_name);
+}
+
+/// Get api for given language.
+/// If api not exist create place holder with zeroed values and return it. (setApi fill the valid pointers)
+pub inline fn getApi(comptime module: @EnumLiteral(), comptime T: type, language: []const u8, api_name: []const u8) ?*const T {
+    return @ptrCast(@alignCast(api.getApiOpaaque(@tagName(module), language, api_name, @sizeOf(T))));
+}
+
+/// Set or remove API for given language and api name
+pub inline fn setOrRemoveApi(comptime module: @EnumLiteral(), comptime T: type, language: []const u8, api_name: []const u8, api_ptr: *const T, load: bool) !void {
+    if (load) {
+        return setApi(module, T, language, api_name, api_ptr);
+    } else {
+        return removeApi(module, language, api_name);
+    }
+}
+
+/// Set or remove Zig API
+pub inline fn setOrRemoveZigApi(comptime module: @EnumLiteral(), comptime T: type, api_ptr: *const T, load: bool) !void {
+    if (load) {
+        return setZigApi(module, T, api_ptr);
+    } else {
+        return removeZigApi(module, T);
+    }
+}
+
+/// Implement or remove interface
+pub inline fn implOrRemove(comptime module: @EnumLiteral(), comptime T: type, impl_ptr: *const T, load: bool) !void {
+    if (load) {
+        return implInterface(module, T, impl_ptr);
+    } else {
+        return removeImpl(module, T, impl_ptr);
+    }
+}
+
+/// Set zig api
+pub inline fn setZigApi(comptime module: @EnumLiteral(), comptime T: type, api_ptr: *const T) !void {
+    var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
+    return try api.setApiOpaqueue(@tagName(module), lang_zig, name_iter.first(), api_ptr, @sizeOf(T));
+}
+
+/// Get zig api
+pub inline fn getZigApi(comptime module: @EnumLiteral(), comptime T: type) ?*const T {
+    var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
+    return @ptrCast(@alignCast(api.getApiOpaaque(@tagName(module), lang_zig, name_iter.first(), @sizeOf(T))));
+}
+
+/// Remove zig api
+pub inline fn removeZigApi(comptime module: @EnumLiteral(), comptime T: type) void {
+    var name_iter = std.mem.splitBackwardsAny(u8, @typeName(T), ".");
+    api.removeApi(@tagName(module), lang_zig, name_iter.first());
+}
+
+/// Implement interface
+pub inline fn implInterface(comptime module: @EnumLiteral(), comptime T: type, impl_ptr: *const T) !void {
+    return api.implInterface(@tagName(module), T.name_hash, impl_ptr);
+}
+
+/// Get all implementation for given interface
+pub inline fn getImpl(allocator: std.mem.Allocator, comptime T: type) ![]*const T {
+    const impls = try api.getImpl(allocator, T.name_hash);
+    var result: []*const T = undefined;
+    result.ptr = @ptrCast(@alignCast(impls.ptr));
+    result.len = impls.len;
+    return result;
+}
+
+/// Remove interface
+pub inline fn removeImpl(comptime module: @EnumLiteral(), comptime T: type, impl_ptr: *const T) void {
+    api.removeImpl(@tagName(module), T.name_hash, impl_ptr);
+}
+
+/// Get version for given interface.
+/// Version is number that is increment every time is interface implementation added or removed
+pub inline fn getInterafcesVersion(comptime T: type) InterfaceVersion {
+    return api.getInterafcesVersion(T.name_hash);
+}
+
+/// ApiDbAPI is main api db and purpose is shared api/interafce across all part of enfine+language
+/// API is struct with pointers to functions.
+/// Interaface is similiar to API but Interaface can have multiple implementation and must be valid C struct because he is shared across langugage.
+/// You can create variable that can survive module reload.
+/// You can register API for any language.
+/// You can implement interface.
+pub const ApiDbAPI = struct {
+
+    //#region Pointers to implementation.
+    setGlobalVar: *const fn (module: []const u8, var_name: []const u8, size: usize, default: []const u8) anyerror!*anyopaque,
+
+    setApiOpaqueue: *const fn (module: []const u8, language: []const u8, api_name: []const u8, api_ptr: *const anyopaque, api_size: usize) anyerror!void,
+    getApiOpaaque: *const fn (module: []const u8, language: []const u8, api_name: []const u8, api_size: usize) ?*anyopaque,
+    removeApi: *const fn (module: []const u8, language: []const u8, api_name: []const u8) void,
+
+    implInterface: *const fn (module: []const u8, interface_name: cetech1.StrId64, impl_ptr: *const anyopaque) anyerror!void,
+    getImpl: *const fn (allocator: std.mem.Allocator, interface_name: cetech1.StrId64) anyerror![]*const anyopaque,
+    removeImpl: *const fn (module: []const u8, interface_name: cetech1.StrId64, impl_ptr: *const anyopaque) void,
+    getInterafcesVersion: *const fn (interface_name: cetech1.StrId64) InterfaceVersion,
+    //#endregion
 };
 
-const ApiHashMap = cetech1.AutoArrayHashMap(cetech1.StrId64, ApiItem);
-const ApiHashMapPool = std.heap.MemoryPool(ApiHashMap);
-const LanguagesApiHashMap = cetech1.AutoArrayHashMap(cetech1.StrId64, *ApiHashMap);
+pub var api: *const ApiDbAPI = undefined;
 
-const InterfaceImplList = cetech1.ArrayList(*const anyopaque);
-const InterfaceHashMap = cetech1.AutoArrayHashMap(cetech1.StrId64, InterfaceImplList);
-const InterfaceGen = cetech1.AutoArrayHashMap(cetech1.StrId64, u64);
-
-const setGlobalVarMap = cetech1.AutoArrayHashMap(cetech1.StrId64, []u8);
-const Api2Modules = cetech1.AutoArrayHashMap(cetech1.StrId64, []const u8);
-const ModuleInfoMap = cetech1.AutoArrayHashMap(cetech1.StrId64, ModuleInfo);
-
-const ModuleInfo = struct {
-    const Self = @This();
-    module_name: []const u8,
-    provided_api: cetech1.ArraySet([]const u8) = .empty,
-    need_api: cetech1.ArraySet([]const u8) = .empty,
-
-    fn init(module: []const u8) !Self {
-        return .{
-            .module_name = module,
-        };
-    }
-
-    fn deinit(self: *Self) void {
-        for (self.provided_api.unmanaged.keys()) |keys| {
-            _allocator.free(keys);
-        }
-
-        for (self.need_api.unmanaged.keys()) |keys| {
-            _allocator.free(keys);
-        }
-
-        self.provided_api.deinit(_allocator);
-        self.need_api.deinit(_allocator);
-    }
-
-    fn addProvidedApi(self: *Self, api_name: []const u8) !void {
-        if (self.provided_api.contains(api_name)) return;
-        _ = try self.provided_api.add(_allocator, try _allocator.dupe(u8, api_name));
-    }
-
-    fn addNeedApi(self: *Self, api_name: []const u8) !void {
-        if (self.need_api.contains(api_name)) return;
-        _ = try self.need_api.add(_allocator, try _allocator.dupe(u8, api_name));
-    }
-};
-
-const api = public.ApiDbAPI{
-    .setGlobalVar = setGlobalVar,
-    .setApiOpaqueue = setApiOpaqueue,
-    .getApiOpaaque = getApiOpaque,
-    .removeApi = removeApi,
-    .implInterface = implInterface,
-    .getImpl = getImpl,
-    .removeImpl = removeImpl,
-    .getInterafcesVersion = getInterafcesVersion,
-};
-
-var _init = false;
-var _allocator: Allocator = undefined;
-var _language_api_map: LanguagesApiHashMap = undefined;
-var _api_map_pool: ApiHashMapPool = undefined;
-
-var _interafce_gen: InterfaceGen = undefined;
-var _interafce_map: InterfaceHashMap = undefined;
-var _global_var_map: setGlobalVarMap = undefined;
-
-var _module_info_map: ModuleInfoMap = undefined;
-var _api2module: Api2Modules = undefined;
-
-pub fn isInit() bool {
-    return _init;
-}
-
-pub fn init(a: Allocator) !void {
-    public.api = &api;
-
-    _init = true;
-    _allocator = a;
-    _language_api_map = .{};
-    _api_map_pool = ApiHashMapPool.empty;
-
-    _interafce_gen = .{};
-    _interafce_map = .{};
-
-    _module_info_map = .{};
-
-    _global_var_map = .{};
-
-    _api2module = .{};
-
-    try public.setZigApi(module_name, public.ApiDbAPI, &api);
-}
-
-pub fn deinit() void {
-    for (_language_api_map.values()) |entry| {
-        var api_map: *ApiHashMap = entry;
-
-        for (api_map.values()) |api_entry| {
-            _allocator.free(api_entry.api_ptr);
-        }
-
-        api_map.deinit(_allocator);
-    }
-
-    var it = _global_var_map.iterator();
-    while (it.next()) |entry| {
-        _allocator.free(entry.value_ptr.*);
-    }
-    _global_var_map.deinit(_allocator);
-
-    _api_map_pool.deinit(_allocator);
-    _language_api_map.deinit(_allocator);
-
-    for (_interafce_map.values()) |*v| {
-        v.deinit(_allocator);
-    }
-
-    _interafce_map.deinit(_allocator);
-    _interafce_gen.deinit(_allocator);
-    _api2module.deinit(_allocator);
-
-    for (_module_info_map.values()) |*v| {
-        v.deinit();
-    }
-    _module_info_map.deinit(_allocator);
-
-    _init = false;
-}
-
-fn _toBytes(ptr: *const anyopaque, ptr_size: usize) []u8 {
-    var a: [*]u8 = @ptrFromInt(@intFromPtr(ptr)); // TODO: ???
-    return a[0..ptr_size];
-}
-
-fn getOrCreateModuleInfo(module: []const u8) !*ModuleInfo {
-    const module_hash = cetech1.strId64(module);
-    if (_module_info_map.getPtr(module_hash)) |mi| return mi;
-    const mi = try ModuleInfo.init(module);
-    try _module_info_map.put(_allocator, module_hash, mi);
-    return _module_info_map.getPtr(module_hash).?;
-}
-
-fn setGlobalVar(module: []const u8, var_name: []const u8, size: usize, default: []const u8) !*anyopaque {
-    var buff: [256]u8 = undefined;
-    const combine_name = try std.fmt.bufPrint(&buff, "{s}:{s}", .{ module, var_name });
-    const combine_hash = cetech1.strId64(combine_name);
-
-    const v = _global_var_map.get(combine_hash);
-    if (v == null) {
-        const data = try _allocator.alloc(u8, size);
-        if (default.len != 0) {
-            @memcpy(data, default);
-        }
-        try _global_var_map.put(_allocator, combine_hash, data);
-        return data.ptr;
-    }
-
-    return v.?.ptr;
-}
-
-fn setApiOpaqueue(module: []const u8, language: []const u8, api_name: []const u8, api_ptr: *const anyopaque, api_size: usize) !void {
-    const language_hash = cetech1.strId64(language);
-
-    if (!_language_api_map.contains(language_hash)) {
-        const api_map = try _api_map_pool.create(_allocator);
-        api_map.* = .{};
-        try _language_api_map.put(_allocator, language_hash, api_map);
-    }
-
-    log.debug("Register {s} api '{s}'", .{ language, api_name });
-
-    const api_name_hash = cetech1.strId64(api_name);
-
-    var mi = try getOrCreateModuleInfo(module);
-    try mi.addProvidedApi(api_name);
-    try _api2module.put(_allocator, api_name_hash, mi.module_name);
-
-    const api_ptr_intern = _getApiOpaque(language, api_name, api_size);
-
-    if (api_ptr_intern == null) {
-        return;
-    }
-
-    const api_map = _language_api_map.getPtr(language_hash).?;
-    const old_api_ptr = api_map.*.getPtr(api_name_hash).?;
-    @memcpy(old_api_ptr.api_ptr, _toBytes(api_ptr, api_size));
-}
-
-fn _getApiOpaque(language: []const u8, api_name: []const u8, api_size: usize) ?*anyopaque {
-    const language_hash = cetech1.strId64(language);
-
-    if (!_language_api_map.contains(language_hash)) {
-        const api_map = _api_map_pool.create(_allocator) catch return null;
-        api_map.* = .{};
-        _language_api_map.put(_allocator, language_hash, api_map) catch return null;
-    }
-    const api_name_hash = cetech1.strId64(api_name);
-
-    const api_map = _language_api_map.getPtr(language_hash).?;
-
-    const api_ptr = api_map.*.get(api_name_hash);
-
-    if (api_ptr == null) {
-        const api_data = _allocator.alloc(u8, api_size) catch return null;
-        @memset(api_data, 0);
-        api_map.*.put(_allocator, api_name_hash, ApiItem{ .api_ptr = api_data, .api_size = api_size }) catch return null;
-        return api_data.ptr;
-    }
-
-    return api_ptr.?.api_ptr.ptr;
-}
-
-fn getApiOpaque(module: []const u8, language: []const u8, api_name: []const u8, api_size: usize) ?*anyopaque {
-    const ret = _getApiOpaque(language, api_name, api_size);
-
-    var mi = getOrCreateModuleInfo(module) catch return null;
-    mi.addNeedApi(api_name) catch return null;
-
-    return ret;
-}
-
-fn removeApi(module: []const u8, language: []const u8, api_name: []const u8) void {
-    _ = module;
-    const language_hash = cetech1.strId64(language);
-
-    var api_map = _language_api_map.get(language_hash);
-    if (api_map == null) {
-        return;
-    }
-
-    const api_name_hash = cetech1.strId64(api_name);
-
-    const api_ptr = api_map.?.get(api_name_hash);
-
-    if (api_ptr == null) {
-        return;
-    }
-
-    @memset(api_ptr.?.api_ptr, 0);
-}
-
-fn increaseIfaceGen(interface_name: cetech1.StrId64) void {
-    const iface_gen = _interafce_gen.getPtr(interface_name).?;
-    iface_gen.* += 1;
-}
-
-fn getInterafcesVersion(interface_name: cetech1.StrId64) u64 {
-    const iface_gen = _interafce_gen.getPtr(interface_name);
-    if (iface_gen == null) return 0;
-    return iface_gen.?.*;
-}
-
-pub fn dumpsetGlobalVar() void {
-    // log.info("GLOBAL APIDB VARIABLES", .{});
-
-    // var it = _global_var_map.iterator();
-    // while (it.next()) |entry| {
-    //     log.info(" +- {s}", .{entry.key_ptr.*});
-    // }
-}
-
-fn implInterface(module: []const u8, interface_name: cetech1.StrId64, impl_ptr: *const anyopaque) anyerror!void {
-    _ = module;
-    if (!_interafce_map.contains(interface_name)) {
-        try _interafce_map.put(_allocator, interface_name, .empty);
-        try _interafce_gen.put(_allocator, interface_name, 0);
-    }
-
-    var impl_list = _interafce_map.getPtr(interface_name).?;
-    try impl_list.append(_allocator, impl_ptr);
-
-    increaseIfaceGen(interface_name);
-}
-
-fn getImpl(allocator: std.mem.Allocator, interface_name: cetech1.StrId64) ![]*const anyopaque {
-    if (_interafce_map.getPtr(interface_name)) |impl_list| {
-        return allocator.dupe(*const anyopaque, impl_list.items);
-    }
-    return allocator.dupe(*const anyopaque, &.{});
-}
-
-fn removeImpl(module: []const u8, interface_name: cetech1.StrId64, impl_ptr: *const anyopaque) void {
-    _ = module;
-    var impl_list = _interafce_map.getPtr(interface_name);
-
-    if (impl_list == null) {
-        return;
-    }
-
-    const idx = std.mem.indexOf(*const anyopaque, impl_list.?.items, &.{impl_ptr}) orelse return;
-    _ = impl_list.?.swapRemove(idx);
-
-    increaseIfaceGen(interface_name);
-}
-
-pub fn dumpApi() void {
-    // log.debug("SUPPORTED API", .{});
-
-    // var lang_iter = _language_api_map.iterator();
-    // while (lang_iter.next()) |lang_entry| {
-    //     log.debug(" +- LANG {s}", .{lang_entry.key_ptr.*});
-
-    //     var api_iter = lang_entry.value_ptr.*.iterator();
-    //     while (api_iter.next()) |api_entry| {
-    //         log.debug("     +- {s}", .{api_entry.key_ptr.*});
-    //     }
-    // }
-}
-
-pub fn writeApiGraphMD(io: std.Io, out_path: []const u8) !void {
-    var dot_file = try std.Io.Dir.cwd().createFile(io, out_path, .{});
-    defer dot_file.close(io);
-
-    var buffer: [4096]u8 = undefined;
-
-    var bw = dot_file.writer(io, &buffer);
-    const writer = &bw.interface;
-    defer writer.flush() catch undefined;
-
-    // write header
-    _ = try writer.write("# API graph\n");
-    _ = try writer.write("```d2\n");
-    _ = try writer.write("vars: {d2-config: {layout-engine: elk}}\n\n");
-
-    for (_module_info_map.values()) |module_info| {
-        const name = module_info.module_name;
-
-        try writer.print("{s} : {{\n", .{name});
-
-        for (module_info.provided_api.unmanaged.keys()) |api_str| {
-            try writer.print("  {s}\n", .{api_str});
-        }
-        try writer.print("}}\n", .{});
-
-        for (module_info.need_api.unmanaged.keys()) |api_str| {
-            if (_api2module.get(.fromStr(api_str))) |api_module_name| {
-                try writer.print("{s}->{s}: {s}\n", .{ name, api_module_name, api_str });
-            }
-        }
-    }
-    _ = try writer.write("```\n");
+pub fn loadAPI(apidb: *const cetech1.apidb.ApiDbAPI) !void {
+    api = apidb;
 }

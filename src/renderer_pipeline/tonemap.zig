@@ -1,0 +1,13 @@
+const std = @import("std");
+
+const cetech1 = @import("../cetech1.zig");
+
+pub const TonemapType = enum(u8) {
+    aces = 0,
+    uncharted,
+    luma_debug,
+};
+
+pub const TonemapComponent = extern struct {
+    type: TonemapType = .aces,
+};

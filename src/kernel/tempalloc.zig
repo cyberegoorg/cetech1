@@ -1,42 +1,22 @@
 const std = @import("std");
-
-const cetech1 = @import("cetech1");
-const public = cetech1.tempalloc;
+const cetech1 = @import("../cetech1.zig");
 
 const apidb = cetech1.apidb;
-const profiler = @import("profiler.zig");
+pub fn create() !std.mem.Allocator {
+    return api.create();
+}
 
-const api = cetech1.tempalloc.TempAllocApi{
-    .create = create,
-    .destroy = destroy,
+pub fn destroy(allocator: std.mem.Allocator) void {
+    return api.destroy(allocator);
+}
+
+pub const TempAllocApi = struct {
+    create: *const fn () anyerror!std.mem.Allocator,
+    destroy: *const fn (allocator: std.mem.Allocator) void,
 };
-const module_name = .tempalloc;
 
-var _allocator: std.mem.Allocator = undefined;
-var _tmp_pool: cetech1.heap.TmpAllocatorPool = undefined;
+pub var api: *const TempAllocApi = undefined;
 
-pub fn init(allocator: std.mem.Allocator, max_allocators: u32) !void {
-    public.api = &api;
-    _allocator = allocator;
-    _tmp_pool = try cetech1.heap.TmpAllocatorPool.init(allocator, max_allocators);
-}
-
-pub fn deinit() void {
-    _tmp_pool.deinit();
-}
-
-pub fn registerToApi() !void {
-    try apidb.setZigApi(module_name, cetech1.tempalloc.TempAllocApi, &api);
-}
-
-fn create() !std.mem.Allocator {
-    var zone_ctx = profiler.ztracy.Zone(@src());
-    defer zone_ctx.End();
-    return _tmp_pool.create();
-}
-
-fn destroy(allocator: std.mem.Allocator) void {
-    var zone_ctx = profiler.ztracy.Zone(@src());
-    defer zone_ctx.End();
-    _tmp_pool.destroy(allocator);
+pub fn loadAPI(comptime module: @EnumLiteral()) !void {
+    api = apidb.getZigApi(module, TempAllocApi).?;
 }
