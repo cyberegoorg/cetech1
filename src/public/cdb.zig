@@ -700,11 +700,6 @@ pub inline fn removeOnObjIdDestroyed(db: DbId, fce: OnObjIdDestroyed) void {
     api.removeOnObjIdDestroyed(db, fce);
 }
 
-//TODO: temporary
-pub inline fn stressIt(db: DbId, type_idx: TypeIdx, type_idx2: TypeIdx, ref_obj1: ObjId) anyerror!void {
-    try api.stressIt(db, type_idx, type_idx2, ref_obj1);
-}
-
 /// Create new cdb type.
 pub inline fn addType(db: DbId, name: []const u8, prop_def: []const PropDef) !TypeIdx {
     return api.addType(db, name, prop_def);
@@ -797,7 +792,6 @@ pub const CdbAPI = struct {
     getTypeName: *const fn (db: DbId, type_idx: TypeIdx) ?[]const u8,
     getTypePropDef: *const fn (db: DbId, type_idx: TypeIdx) ?[]const PropDef,
     getTypePropDefIdx: *const fn (db: DbId, type_idx: TypeIdx, prop_name: []const u8) ?u32,
-    stressIt: *const fn (db: DbId, type_idx: TypeIdx, type_idx2: TypeIdx, ref_obj1: ObjId) anyerror!void,
     gc: *const fn (db: DbId, allocator: std.mem.Allocator) anyerror!void,
     dump: *const fn (db: DbId) anyerror!void,
 };

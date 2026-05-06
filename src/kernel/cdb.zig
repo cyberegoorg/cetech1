@@ -2211,40 +2211,6 @@ pub const Db = struct {
         return result.toOwnedSlice(allocator) catch null;
     }
 
-    pub fn stressIt(self: *Self, io: std.Io, type_idx: public.TypeIdx, type_hash2: public.TypeIdx, ref_obj1: public.ObjId) !void {
-        const obj1 = try self.createObject(io, type_idx);
-        const obj2 = try self.createObject(io, type_hash2);
-        const obj3 = try self.createObject(io, type_hash2);
-
-        const writer = self.writerObj(io, obj1).?;
-
-        self.setT(bool, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.Bool), true);
-        self.setT(u64, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.U64), 10);
-        self.setT(i64, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.I64), 20);
-        self.setT(u32, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.U32), 10);
-        self.setT(i32, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.I32), 20);
-        self.setT(f64, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.F64), 20.10);
-        self.setT(f32, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.F32), 30.20);
-        try self.setRef(io, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.Reference), ref_obj1);
-        try self.addRefToSet(io, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.ReferenceSet), &[_]public.ObjId{ref_obj1});
-
-        const writer2 = self.writerObj(io, obj2).?;
-        try self.setSubObj(io, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.Subobject), writer2);
-        try self.writerCommit(io, writer2);
-
-        const writer3 = self.writerObj(io, obj3).?;
-        try self.addToSubObjSet(writer, public.propIdx(cetech1.cdb_types.BigTypeProps.SubobjectSet), &[_]*public.Obj{writer3});
-        try self.writerCommit(io, writer3);
-
-        try self.writerCommit(io, writer);
-
-        _ = self.getVersion(obj1);
-
-        self.destroyObject(io, obj1);
-        self.destroyObject(io, obj2);
-        self.destroyObject(io, obj3);
-    }
-
     pub fn getReferencerSet(self: *Self, allocator: std.mem.Allocator, obj: public.ObjId) ![]public.ObjId {
         var storage = self.getTypeStorage(obj).?;
         const keys = storage.objid2refs.items[obj.id].keys();
@@ -2380,7 +2346,6 @@ const api = public.CdbAPI{
     .getTypePropDef = getTypePropDefFn,
     .getTypeName = getTypeNameFn,
     .getTypePropDefIdx = getTypePropDefIdxFn,
-    .stressIt = stressItFn,
     .gc = gcFn,
     .dump = dumpFn,
 };
@@ -2630,10 +2595,6 @@ fn createBlobFn(writer: *public.Obj, prop_idx: u32, size: usize) !?[]u8 {
 fn readBlobFn(reader: *public.Obj, prop_idx: u32) []u8 {
     var db = getDbFromObj(reader);
     return db.readBlob(reader, prop_idx);
-}
-fn stressItFn(dbidx: public.DbId, type_idx: public.TypeIdx, type_idx2: public.TypeIdx, ref_obj1: public.ObjId) !void {
-    var db = getDbFromIdx(dbidx);
-    return db.stressIt(_io, type_idx, type_idx2, ref_obj1);
 }
 fn gcFn(dbidx: public.DbId, allocator: std.mem.Allocator) !void {
     var db = getDbFromIdx(dbidx);

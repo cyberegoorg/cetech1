@@ -33,7 +33,9 @@ pub const physics = @import("physics.zig");
 pub const graphvm = @import("scripting/graphvm.zig");
 pub const graphvm_script_component = @import("scripting/graphvm_script_component.zig");
 pub const native_script_component = @import("scripting/native_script_component.zig");
+
 pub const luauvm = @import("scripting/luauvm.zig");
+pub const luauvm_script_component = @import("scripting/luauvm_script_component.zig");
 
 pub const coreui = @import("coreui.zig");
 pub const coreui_node_editor = @import("coreui_node_editor.zig");

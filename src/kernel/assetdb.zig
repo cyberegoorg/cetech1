@@ -37,6 +37,7 @@ const Path2Folder = std.StringArrayHashMapUnmanaged(cdb.ObjId);
 const Folder2Path = cetech1.AutoArrayHashMap(cdb.ObjId, []u8);
 const Uuid2AssetUuid = cetech1.AutoArrayHashMap(uuid.Uuid, uuid.Uuid);
 const AssetUuid2Path = cetech1.AutoArrayHashMap(uuid.Uuid, []u8);
+const Path2AssetUuid = std.StringArrayHashMapUnmanaged(uuid.Uuid);
 const AssetUuid2Depend = cetech1.AutoArrayHashMap(uuid.Uuid, UuidSet);
 const AssetObjIdVersion = cetech1.AutoArrayHashMap(cdb.ObjId, u64);
 const Uuid2Imported = cetech1.AutoArrayHashMap(uuid.Uuid, []const u8);
@@ -111,7 +112,9 @@ const api = public.AssetDBAPI{
     .isAssetFolder = isAssetFolder,
     .isProjectOpened = isProjectOpened,
     .getFilePathForAsset = getFilePathForAsset,
+    .getPathForAsset = getPathForAsset,
     .getPathForFolder = getPathForFolder,
+    .getAssetByPath = getAssetByPath,
     .createNewFolder = createNewFolder,
     .isAssetNameValid = isAssetNameValid,
     .saveAsAllAssets = saveAsAllAssets,
@@ -150,9 +153,12 @@ const AnalyzeInfo = struct {
 
     path2folder: Path2Folder = .{},
     folder2path: Folder2Path = .{},
+
     uuid2asset_uuid: Uuid2AssetUuid = .{},
     asset_uuid2path: AssetUuid2Path = .{},
+    path2asset_uuid: Path2AssetUuid = .{},
     asset_uuid2depend: AssetUuid2Depend = .{},
+
     uuid2imported_from: Uuid2Imported = .{},
     imported_from2uuid: Imported2Uuid = .{},
 
@@ -168,6 +174,9 @@ const AnalyzeInfo = struct {
             _allocator.free(path);
         }
 
+        for (self.path2asset_uuid.keys()) |path| {
+            _allocator.free(path);
+        }
         for (self.path2folder.keys()) |path| {
             _allocator.free(path);
         }
@@ -185,6 +194,7 @@ const AnalyzeInfo = struct {
         self.uuid2asset_uuid.deinit(self.allocator);
         self.asset_uuid2path.deinit(self.allocator);
         self.asset_uuid2depend.deinit(self.allocator);
+        self.path2asset_uuid.deinit(self.allocator);
         self.uuid2imported_from.deinit(self.allocator);
         self.imported_from2uuid.deinit(self.allocator);
     }
@@ -195,6 +205,8 @@ const AnalyzeInfo = struct {
         defer self.file_info_lck.unlock(io);
 
         try self.asset_uuid2path.put(self.allocator, asset_uuid, try _allocator.dupe(u8, path));
+        try self.path2asset_uuid.put(self.allocator, try _allocator.dupe(u8, path), asset_uuid);
+        log.debug("path: {s}", .{std.fs.path.dirname(path).?});
 
         for (provide_uuids.unmanaged.keys()) |provide_uuid| {
             try self.uuid2asset_uuid.put(self.allocator, provide_uuid, asset_uuid);
@@ -230,6 +242,10 @@ const AnalyzeInfo = struct {
             _allocator.free(path);
         }
 
+        for (self.path2asset_uuid.keys()) |path| {
+            _allocator.free(path);
+        }
+
         for (self.path2folder.keys()) |path| {
             _allocator.free(path);
         }
@@ -245,6 +261,7 @@ const AnalyzeInfo = struct {
         self.asset_uuid2path.clearRetainingCapacity();
         self.uuid2asset_uuid.clearRetainingCapacity();
         self.asset_uuid2depend.clearRetainingCapacity();
+        self.path2asset_uuid.clearRetainingCapacity();
         self.path2folder.clearRetainingCapacity();
         self.folder2path.clearRetainingCapacity();
         self.uuid2imported_from.clearRetainingCapacity();
@@ -344,77 +361,6 @@ const AnalyzeInfo = struct {
 
                 try self.analyzeFolder(io, dir, folder_asset, tasks, allocator);
                 try _assetroot_fs.addAssetToRoot(io, folder_asset);
-            }
-        }
-    }
-
-    fn importFolder(self: *Self, io: std.Io, root_dir: std.Io.Dir, parent_folder: cdb.ObjId, tasks: *TaskList, allocator: std.mem.Allocator) !void {
-        var zone_ctx = profiler_private.ztracy.Zone(@src());
-        defer zone_ctx.End();
-
-        var iterator = root_dir.iterate();
-        while (try iterator.next(io)) |entry| {
-            // Skip . files
-            if (std.mem.startsWith(u8, entry.name, ".")) continue;
-
-            if (entry.kind == .file) {
-                const extension = std.fs.path.extension(entry.name);
-                if (std.mem.startsWith(u8, entry.name, ".")) continue;
-
-                const asset_io = findFirstAssetIOForImport(entry.name, extension) orelse continue;
-
-                const Task = struct {
-                    fi: *AnalyzeInfo,
-                    path: [:0]const u8,
-                    filename: []const u8,
-                    folder: cdb.ObjId,
-                    allocator: std.mem.Allocator,
-                    io: std.Io,
-                    asset_io: *const public.AssetIOI,
-                    pub fn exec(s: *@This()) !void {
-                        defer s.allocator.free(s.path);
-
-                        const dirname = std.fs.path.dirname(s.path).?;
-                        const filename = std.fs.path.basename(s.path);
-                        var copy_dir = try std.Io.Dir.openDirAbsolute(s.io, dirname, .{});
-                        defer copy_dir.close(s.io);
-
-                        const imported_from = blk: {
-                            if (s.fi.imported_from2uuid.get(filename)) |asset_uuid| {
-                                break :blk getObjId(asset_uuid).?;
-                            }
-
-                            break :blk null;
-                        };
-                        const import_task = try s.asset_io.import_asset.?(s.io, _db, .none, copy_dir, s.folder, s.filename, imported_from);
-
-                        task.wait(import_task);
-                    }
-                };
-                const task_id = try task.schedule(
-                    cetech1.task.TaskID.none,
-                    Task{
-                        .fi = self,
-                        .path = try root_dir.realPathFileAlloc(io, entry.name, allocator),
-                        .allocator = allocator,
-                        .io = io,
-                        .asset_io = asset_io,
-                        .filename = try _str_intern.intern(io, entry.name),
-                        .folder = parent_folder,
-                    },
-                    .{},
-                );
-                try tasks.append(allocator, task_id);
-            } else if (entry.kind == .directory) {
-                if (std.mem.endsWith(u8, entry.name, "." ++ BLOB_EXTENSION)) continue;
-                var dir = try root_dir.openDir(io, entry.name, .{ .iterate = true });
-                defer dir.close(io);
-
-                const real_path = try dir.realPathFileAlloc(io, ".", allocator);
-                defer allocator.free(real_path);
-                const folder_asset = self.path2folder.get(real_path).?;
-
-                try self.importFolder(io, dir, folder_asset, tasks, allocator);
             }
         }
     }
@@ -955,7 +901,7 @@ const AssetRootFS = struct {
         }
 
         tasks.clearRetainingCapacity();
-        try self.analyzer.importFolder(io, root_dir, self.asset_root_folder, &tasks, allocator);
+        try self.importFolder(io, root_dir, self.asset_root_folder, &tasks, allocator);
         task.waitMany(tasks.items);
 
         self.asset_root_last_version = cdb.getVersion(self.asset_root);
@@ -1050,6 +996,8 @@ const AssetRootFS = struct {
                         defer allocator.free(real_path_dir);
 
                         try self.analyzer.asset_uuid2path.put(self.allocator, a_uuid, try _allocator.dupe(u8, real_path_dir));
+                        try self.analyzer.path2asset_uuid.put(self.allocator, try _allocator.dupe(u8, real_path_dir), a_uuid);
+
                         _allocator.free(old_path);
                     }
                 }
@@ -1316,6 +1264,77 @@ const AssetRootFS = struct {
             },
             .{},
         );
+    }
+
+    fn importFolder(self: *Self, io: std.Io, root_dir: std.Io.Dir, parent_folder: cdb.ObjId, tasks: *TaskList, allocator: std.mem.Allocator) !void {
+        var zone_ctx = profiler_private.ztracy.Zone(@src());
+        defer zone_ctx.End();
+
+        var iterator = root_dir.iterate();
+        while (try iterator.next(io)) |entry| {
+            // Skip . files
+            if (std.mem.startsWith(u8, entry.name, ".")) continue;
+
+            if (entry.kind == .file) {
+                const extension = std.fs.path.extension(entry.name);
+                if (std.mem.startsWith(u8, entry.name, ".")) continue;
+
+                const asset_io = findFirstAssetIOForImport(entry.name, extension) orelse continue;
+
+                const Task = struct {
+                    fi: *AssetRootFS,
+                    path: [:0]const u8,
+                    filename: []const u8,
+                    folder: cdb.ObjId,
+                    allocator: std.mem.Allocator,
+                    io: std.Io,
+                    asset_io: *const public.AssetIOI,
+                    pub fn exec(s: *@This()) !void {
+                        defer s.allocator.free(s.path);
+
+                        const dirname = std.fs.path.dirname(s.path).?;
+                        const filename = std.fs.path.basename(s.path);
+                        var copy_dir = try std.Io.Dir.openDirAbsolute(s.io, dirname, .{});
+                        defer copy_dir.close(s.io);
+
+                        const imported_from = blk: {
+                            if (s.fi.analyzer.imported_from2uuid.get(filename)) |asset_uuid| {
+                                break :blk s.fi.getObjId(s.io, asset_uuid).?;
+                            }
+
+                            break :blk null;
+                        };
+                        const import_task = try s.asset_io.import_asset.?(s.io, _db, .none, copy_dir, s.folder, s.filename, imported_from);
+
+                        task.wait(import_task);
+                    }
+                };
+                const task_id = try task.schedule(
+                    cetech1.task.TaskID.none,
+                    Task{
+                        .fi = self,
+                        .path = try root_dir.realPathFileAlloc(io, entry.name, allocator),
+                        .allocator = allocator,
+                        .io = io,
+                        .asset_io = asset_io,
+                        .filename = try _str_intern.intern(io, entry.name),
+                        .folder = parent_folder,
+                    },
+                    .{},
+                );
+                try tasks.append(allocator, task_id);
+            } else if (entry.kind == .directory) {
+                if (std.mem.endsWith(u8, entry.name, "." ++ BLOB_EXTENSION)) continue;
+                var dir = try root_dir.openDir(io, entry.name, .{ .iterate = true });
+                defer dir.close(io);
+
+                const real_path = try dir.realPathFileAlloc(io, ".", allocator);
+                defer allocator.free(real_path);
+                const folder_asset = self.analyzer.path2folder.get(real_path).?;
+
+                try self.importFolder(io, dir, folder_asset, tasks, allocator);
+            }
+        }
     }
 };
 
@@ -1872,6 +1891,11 @@ fn getPathForFolder(buff: []u8, from_folder: cdb.ObjId) ![]u8 {
     }
 
     return buff[pos..];
+}
+
+pub fn getAssetByPath(path: []const u8) ?cdb.ObjId {
+    const asset_uuid = _assetroot_fs.analyzer.path2asset_uuid.get(path) orelse return null;
+    return getObjId(asset_uuid);
 }
 
 pub fn getFilePathForAsset(buff: []u8, asset: cdb.ObjId) ![]u8 {

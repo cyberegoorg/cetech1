@@ -248,6 +248,15 @@ pub fn getDb() cdb.DbId {
 pub fn getFilePathForAsset(buff: []u8, asset: cdb.ObjId) ![]u8 {
     return api.getFilePathForAsset(buff, asset);
 }
+
+pub fn getPathForAsset(buff: []u8, asset: cdb.ObjId, extension: []const u8) ![]u8 {
+    return api.getPathForAsset(buff, asset, extension);
+}
+
+pub fn getAssetByPath(path: []const u8) ?cdb.ObjId {
+    return api.getAssetByPath(path);
+}
+
 pub fn getPathForFolder(buff: []u8, asset: cdb.ObjId) ![]u8 {
     return api.getPathForFolder(buff, asset);
 }
@@ -306,6 +315,8 @@ pub const AssetDBAPI = struct {
     getAssetRootObj: *const fn () cdb.ObjId,
     getDb: *const fn () cdb.DbId,
     getFilePathForAsset: *const fn (buff: []u8, asset: cdb.ObjId) anyerror![]u8,
+    getPathForAsset: *const fn (buff: []u8, asset: cdb.ObjId, extension: []const u8) anyerror![]u8,
+    getAssetByPath: *const fn (path: []const u8) ?cdb.ObjId,
     getPathForFolder: *const fn (buff: []u8, asset: cdb.ObjId) anyerror![]u8,
     createNewFolder: *const fn (db: cdb.DbId, parent_folder: cdb.ObjId, name: [:0]const u8) anyerror!cdb.ObjId,
     saveAsAllAssets: *const fn (allocator: std.mem.Allocator, path: []const u8) anyerror!void,

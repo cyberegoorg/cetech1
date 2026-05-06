@@ -62,7 +62,8 @@ const core_modules = [_]cetech1.modules.ModuleDesc{
     .{ .name = "tonemap", .module_fce = .{ .zig_fce = @import("renderer_pipeline/tonemap.zig").load_module_zig } },
     .{ .name = "vertex_system", .module_fce = .{ .zig_fce = @import("renderer_pipeline/vertex_system.zig").load_module_zig } },
     .{ .name = "physics_jolt", .module_fce = .{ .zig_fce = @import("physics/physics_jolt.zig").load_module_zig } },
-    .{ .name = "luauvm", .module_fce = .{ .zig_fce = @import("scripting/luauvm.zig").load_module_zig } },
+    .{ .name = "luauvm", .module_fce = .{ .zig_fce = @import("scripting/luauvm/luauvm.zig").load_module_zig } },
+    .{ .name = "luauvm_script_component", .module_fce = .{ .zig_fce = @import("scripting/luauvm/luauvm_script_component.zig").load_module_zig } },
     .{ .name = "gpu_bgfx", .module_fce = .{ .zig_fce = @import("gpu_bgfx/gpu_bgfx.zig").load_module_zig } },
 };
 
@@ -733,6 +734,8 @@ pub fn boot(process_init: std.process.Init, static_modules: []const cetech1.modu
                 pub fn exec(self: *@This()) !void {
                     profiler.frameMark();
 
+                    const call_time: std.Io.Timestamp = .now(self.io.*, .awake);
+
                     var task_zone_ctx = profiler.ZoneN(@src(), "GameTick");
                     defer task_zone_ctx.End();
 
@@ -748,7 +751,7 @@ pub fn boot(process_init: std.process.Init, static_modules: []const cetech1.modu
                     try metrics.pushFrames();
 
                     if (!(isTestigMode() and self.fast_mode)) {
-                        const t = try sleepIfNeed(self.io, allocator, .now(self.io.*, .awake), _max_tick_rate, task.getThreadNum() - 1);
+                        const t = try sleepIfNeed(self.io, allocator, call_time, _max_tick_rate, task.getThreadNum() - 1);
                         task.wait(t);
                     }
                 }

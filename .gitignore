@@ -57,3 +57,5 @@ result.xml
 NodeEditor.json
 
 *.zst
+
+definitions.lua

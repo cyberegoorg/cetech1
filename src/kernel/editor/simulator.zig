@@ -221,10 +221,10 @@ var foo_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
             tab_o.viewport.setMainCamera(c);
         }
 
-        if (coreui.beginMenu(allocator, cetech1.coreui.Icons.Explosion, true, null)) {
+        if (coreui.beginMenu(allocator, cetech1.coreui.Icons.Explosion ++ "##explosion", true, null)) {
             defer coreui.endMenu();
 
-            _ = coreui.dragU32("", .{ .v = &tab_o.explode_num });
+            _ = coreui.dragU32("##explode_num", .{ .v = &tab_o.explode_num });
 
             coreui.sameLine(.{});
 

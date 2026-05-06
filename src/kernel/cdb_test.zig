@@ -1709,6 +1709,40 @@ test "cdb: Should get object realtion" {
     try expectGCStats(db, 3, 5);
 }
 
+pub fn stressIt(db: cdb.DbId, type_idx: public.TypeIdx, type_hash2: public.TypeIdx, ref_obj1: public.ObjId) !void {
+    const obj1 = try cdb.createObject(db, type_idx);
+    const obj2 = try cdb.createObject(db, type_hash2);
+    const obj3 = try cdb.createObject(db, type_hash2);
+
+    const writer = cdb.writeObj(obj1).?;
+
+    cdb.setValue(bool, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.Bool), true);
+    cdb.setValue(u64, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.U64), 10);
+    cdb.setValue(i64, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.I64), 20);
+    cdb.setValue(u32, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.U32), 10);
+    cdb.setValue(i32, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.I32), 20);
+    cdb.setValue(f64, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.F64), 20.10);
+    cdb.setValue(f32, writer, public.propIdx(cetech1.cdb_types.BigTypeProps.F32), 30.20);
+    try cdb.setRef(writer, public.propIdx(cetech1.cdb_types.BigTypeProps.Reference), ref_obj1);
+    try cdb.addRefToSet(writer, public.propIdx(cetech1.cdb_types.BigTypeProps.ReferenceSet), &[_]public.ObjId{ref_obj1});
+
+    const writer2 = cdb.writeObj(obj2).?;
+    try cdb.setSubObj(writer, public.propIdx(cetech1.cdb_types.BigTypeProps.Subobject), writer2);
+    try cdb.writeCommit(writer2);
+
+    const writer3 = cdb.writeObj(obj3).?;
+    try cdb.addSubObjToSet(writer, public.propIdx(cetech1.cdb_types.BigTypeProps.SubobjectSet), &[_]*public.Obj{writer3});
+    try cdb.writeCommit(writer3);
+
+    try cdb.writeCommit(writer);
+
+    _ = cdb.getVersion(obj1);
+
+    cdb.destroyObject(obj1);
+    cdb.destroyObject(obj2);
+    cdb.destroyObject(obj3);
+}
+
 fn stressTest(comptime task_count: u32, task_based: bool) !void {
     const db = try cdb.createDb("Test");
     defer cdb.destroyDb(db);
@@ -1726,7 +1760,7 @@ fn stressTest(comptime task_count: u32, task_based: bool) !void {
             type_hash: cdb.TypeIdx,
             type_hash2: cdb.TypeIdx,
             pub fn exec(self: *@This()) !void {
-                cdb.stressIt(
+                stressIt(
                     self.db,
                     self.type_hash,
                     self.type_hash2,
@@ -1751,7 +1785,7 @@ fn stressTest(comptime task_count: u32, task_based: bool) !void {
         task.waitMany(&tasks);
     } else {
         for (0..task_count) |_| {
-            try cdb.stressIt(
+            try stressIt(
                 db,
                 type_hash,
                 type_hash2,

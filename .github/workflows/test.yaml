@@ -81,7 +81,7 @@ jobs:
 
       - name: Build
         shell: bash
-        run: zig build -Doptimize=Debug
+        run: zig build -Doptimize=Debug -Dwith_test
 
       - name: Upload build
         uses: actions/upload-artifact@v5

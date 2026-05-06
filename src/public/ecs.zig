@@ -204,20 +204,9 @@ pub const ComponentI = struct {
     on_copy: ?*const fn (dst_ptr: *anyopaque, src_ptr: *const anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void = null,
     on_move: ?*const fn (dst_ptr: *anyopaque, src_ptr: *anyopaque, count: i32, type_info: *anyopaque) callconv(.c) void = null,
 
-    from_cdb: ?*const fn (
-        allocator: std.mem.Allocator,
-        obj: cdb.ObjId,
-        data: []u8,
-    ) anyerror!void = null,
+    from_cdb: ?*const fn (allocator: std.mem.Allocator, obj: cdb.ObjId, data: []u8) anyerror!void = null,
 
-    debugdraw: ?*const fn (
-        gpu_backend: gpu.GpuBackend,
-        dd: gpu_dd.Encoder,
-        world: *World,
-        entites: []const EntityId,
-        data: []const u8,
-        size: math.Vec2f,
-    ) anyerror!void = null,
+    debugdraw: ?*const fn (gpu_backend: gpu.GpuBackend, dd: gpu_dd.Encoder, world: *World, entites: []const EntityId, data: []const u8, size: math.Vec2f) anyerror!void = null,
 
     pub fn implement(comptime T: type, args: ComponentI, comptime Hooks: type) Self {
         // Must be extern for C ABI compatibility.

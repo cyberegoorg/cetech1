@@ -286,7 +286,8 @@ pub fn build(b: *std.Build) !void {
         // Modules
         .enable_studio = b.option(bool, "with_studio", "Build with studio.") orelse true,
         .enable_runner = b.option(bool, "with_runner", "Build with runner.") orelse false,
-        .enable_samples = b.option(bool, "with_samples", "build with sample modules.") orelse true,
+        .enable_samples = b.option(bool, "with_samples", "Build with sample modules.") orelse true,
+        .enable_test = b.option(bool, "with_test", "Build tests.") orelse false,
 
         .modules = b.option([]const []const u8, "with_module", "build with this modules."),
 
@@ -324,112 +325,94 @@ pub fn build(b: *std.Build) !void {
     //
 
     // ZF
-    const zf = b.dependency(
-        "zf",
-        .{
-            .target = target,
-            .optimize = options.externals_optimize,
-            .with_tui = false,
-        },
-    );
+    const zf = b.dependency("zf", .{
+        .target = target,
+        .optimize = options.externals_optimize,
+        .with_tui = false,
+    });
 
     // ZNFDE
-    const znfde = b.dependency(
-        "znfde",
-        .{
-            .target = target,
-            .optimize = options.externals_optimize,
-            .with_portal = options.nfd_portal,
-            .shared = options.externals_shared,
-        },
-    );
+    const znfde = b.dependency("znfde", .{
+        .target = target,
+        .optimize = options.externals_optimize,
+        .with_portal = options.nfd_portal,
+        .shared = options.externals_shared,
+    });
 
     // Tracy
-    const ztracy = b.dependency(
-        "ztracy",
-        .{
-            .target = target,
-            .optimize = options.externals_optimize,
-            .enable_ztracy = options.with_tracy,
-            .enable_fibers = false,
-            .on_demand = options.tracy_on_demand,
-            // .shared = options.externals_shared,
-        },
-    );
+    const ztracy = b.dependency("ztracy", .{
+        .target = target,
+        .optimize = options.externals_optimize,
+        .enable_ztracy = options.with_tracy,
+        .enable_fibers = false,
+        .on_demand = options.tracy_on_demand,
+        // .shared = options.externals_shared,
+    });
 
     // ZGUI
-    const zgui = b.dependency(
-        "zgui",
-        .{
-            .target = target,
-            .optimize = optimize, //options.externals_optimize,
-            .backend = .glfw, // TODO: move to module
-            .with_implot = true,
-            .with_gizmo = true,
-            .with_node_editor = true,
-            .with_te = true,
-            .with_freetype = options.with_freetype,
-            .shared = options.externals_shared,
-        },
-    );
+    const zgui = b.dependency("zgui", .{
+        .target = target,
+        .optimize = optimize, //options.externals_optimize,
+        .backend = .glfw, // TODO: move to module
+        .with_implot = true,
+        .with_gizmo = true,
+        .with_node_editor = true,
+        .with_te = true,
+        .with_freetype = options.with_freetype,
+        .shared = options.externals_shared,
+    });
 
     // ZGLFW
-    const zglfw = b.dependency(
-        "zglfw",
-        .{
-            .target = target,
-            .optimize = options.externals_optimize,
-            // .shared = options.externals_shared,
-        },
-    );
+    const zglfw = b.dependency("zglfw", .{
+        .target = target,
+        .optimize = options.externals_optimize,
+        // .shared = options.externals_shared,
+    });
 
     // ZFLECS
-    const zflecs = b.dependency(
-        "zflecs",
-        .{
-            .target = target,
-            .optimize = options.externals_optimize,
-            .keep_assert = optimize == .Debug,
-            .soft_assert = optimize == .Debug,
-            .shared = options.externals_shared,
-        },
-    );
+    const zflecs = b.dependency("zflecs", .{
+        .target = target,
+        .optimize = options.externals_optimize,
+        .keep_assert = optimize == .Debug,
+        .soft_assert = optimize == .Debug,
+        .shared = options.externals_shared,
+    });
 
     // ZBGFX
-    const zbgfx_dep = b.dependency(
-        "zbgfx",
-        .{
-            .target = target,
-            .optimize = options.externals_optimize,
-            .shared = options.externals_shared,
-        },
-    );
+    const zbgfx_dep = b.dependency("zbgfx", .{
+        .target = target,
+        .optimize = options.externals_optimize,
+        .shared = options.externals_shared,
+    });
 
+    // Jolt
     const zphysics = b.dependency("zphysics", .{
+        .target = target,
+        .optimize = options.externals_optimize,
         .use_double_precision = false,
         .enable_debug_renderer = true,
         .enable_cross_platform_determinism = true,
         .shared = options.externals_shared,
     });
 
+    // Luau
     const zlua = b.dependency("zlua", .{
         .target = target,
         .optimize = optimize,
         .lang = .luau,
     });
 
+    // Ziglang set
     const ziglangSet = b.dependency("ziglangSet", .{
         .target = target,
         .optimize = optimize,
     });
 
-    const zmath = b.dependency(
-        "zmath",
-        .{
-            .target = target,
-            .optimize = optimize, // TODO: why?
-        },
-    );
+    // ZMath
+    const zmath = b.dependency("zmath", .{
+        .target = target,
+        .optimize = optimize,
+    });
 
     // TODO: remove?
     const lucide_c = b.addTranslateC(.{
@@ -745,7 +728,6 @@ pub fn build(b: *std.Build) !void {
         .use_lld = use_lld,
     });
     useSystemSDK(b, target, tests.root_module);
-    b.installArtifact(tests);
     tests.step.dependOn(&generated_files.step);
 
     const run_unit_tests = b.addRunArtifact(tests);
@@ -753,69 +735,81 @@ pub fn build(b: *std.Build) !void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
 
+    if (options.enable_test) {
+        b.installArtifact(tests);
+    }
+
+    //
+    // Lua definition exporter
+    //
+    const def_exe = b.addExecutable(.{
+        .name = "define-zig-types",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/kernel/scripting/luauvm/luaapi.zig"),
+            .target = target,
+            .imports = &imports,
+        }),
+    });
+    var run_def_exe = b.addRunArtifact(def_exe);
+    run_def_exe.addFileArg(b.path("definitions.lua"));
+    const define_step = b.step("define", "Generate definitions.lua file");
+    define_step.dependOn(&run_def_exe.step);
+
+    //
+    // Samples
+    //
     if (options.enable_samples) {
-        {
-            const lib = b.addLibrary(.{
-                .linkage = .dynamic,
-                .name = "ct_" ++ "editor_foo_tab",
-                .version = .{ .major = 0, .minor = 1, .patch = 0 },
-                .root_module = b.createModule(.{
-                    .root_source_file = b.path("src/examples/editor_foo_tab/private.zig"),
-                    .target = target,
-                    .optimize = optimize,
-                }),
-                .use_llvm = true,
-            });
-            lib.root_module.addImport("cetech1", cetech1_module);
-            b.installArtifact(lib);
-        }
+        _ = addCetechModule(
+            b,
+            "editor_foo_tab",
+            .{ .major = 0, .minor = 1, .patch = 0 },
+            b.path("src/examples/editor_foo_tab/private.zig"),
+            cetech1_module,
+            target,
+            optimize,
+            false,
+            null,
+            null,
+        );
 
-        {
-            const lib = b.addLibrary(.{
-                .linkage = .dynamic,
-                .name = "ct_" ++ "editor_foo_viewport_tab",
-                .version = .{ .major = 0, .minor = 1, .patch = 0 },
-                .root_module = b.createModule(.{
-                    .root_source_file = b.path("src/examples/editor_foo_viewport_tab/private.zig"),
-                    .target = target,
-                    .optimize = optimize,
-                }),
-                .use_llvm = true,
-            });
-            lib.root_module.addImport("cetech1", cetech1_module);
-            b.installArtifact(lib);
-        }
+        _ = addCetechModule(
+            b,
+            "editor_foo_viewport_tab",
+            .{ .major = 0, .minor = 1, .patch = 0 },
+            b.path("src/examples/editor_foo_viewport_tab/private.zig"),
+            cetech1_module,
+            target,
+            optimize,
+            false,
+            null,
+            null,
+        );
 
-        {
-            const lib = b.addLibrary(.{
-                .linkage = .dynamic,
-                .name = "ct_" ++ "example_foo",
-                .version = .{ .major = 0, .minor = 1, .patch = 0 },
-                .root_module = b.createModule(.{
-                    .root_source_file = b.path("src/examples/foo/private.zig"),
-                    .target = target,
-                    .optimize = optimize,
-                }),
-                .use_llvm = true,
-            });
-            lib.root_module.addImport("cetech1", cetech1_module);
-            b.installArtifact(lib);
-        }
-        {
-            const lib = b.addLibrary(.{
-                .linkage = .dynamic,
-                .name = "ct_" ++ "example_native_script",
-                .version = .{ .major = 0, .minor = 1, .patch = 0 },
-                .root_module = b.createModule(.{
-                    .root_source_file = b.path("src/examples/native_script/private.zig"),
-                    .target = target,
-                    .optimize = optimize,
-                }),
-                .use_llvm = true,
-            });
-            lib.root_module.addImport("cetech1", cetech1_module);
-            b.installArtifact(lib);
-        }
+        _ = addCetechModule(
+            b,
+            "example_foo",
+            .{ .major = 0, .minor = 1, .patch = 0 },
+            b.path("src/examples/foo/private.zig"),
+            cetech1_module,
+            target,
+            optimize,
+            false,
+            null,
+            null,
+        );
+
+        _ = addCetechModule(
+            b,
+            "example_native_script",
+            .{ .major = 0, .minor = 1, .patch = 0 },
+            b.path("src/examples/native_script/private.zig"),
+            cetech1_module,
+            target,
+            optimize,
+            false,
+            null,
+            null,
+        );
     }
 }
 

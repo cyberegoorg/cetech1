@@ -87,27 +87,6 @@ const KernelTask = struct {
         if (spam_log) log.info("alloc {}", .{foo});
 
         defer allocator.destroy(foo);
-
-        // Cdb object create test
-        // if (do_cdb) {
-        //     try _db.stressIt(_g.type_hash, _g.type_hash2, _g.ref_obj1);
-
-        //     const obj1 = try FooCDB.createObject(_cdb);
-        //     if (spam_log) log.debug("obj1 id {d}", .{obj1.id});
-
-        //     if (cdb.writeObj(obj1)) |writer| {
-        //         defer cdb.writeCommit(writer);
-
-        //         FooCDB.setValue( f32, writer, .PROP1, @floatFromInt(kernel_tick));
-        //         FooCDB.setValue( u64, writer, .KERNEL_TICK, kernel_tick);
-        //     }
-
-        //     const version = cdb.getVersion(obj1);
-        //     if (spam_log) log.debug("obj1 version {d}", .{version});
-        //     _db.destroyObject(obj1);
-        // }
-
-        //std.Thread.sleep(1 * std.time.ns_per_ms);
     }
 };
 
