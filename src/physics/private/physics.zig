@@ -320,7 +320,7 @@ var shape_type_aspec = editor_inspector.UiInspectorPropertyValueAspect.implement
         var type_enum = public.PhysicsShapeCdb.readStrEnum(public.PhysicsShapeType, r, .Type, .Box);
 
         coreui.setNextItemWidth(-1.0);
-        if (coreui.comboFromEnum("", &type_enum)) {
+        if (coreui.comboFromEnum("##select_shape_type", &type_enum)) {
             const w = public.PhysicsShapeCdb.write(obj).?;
             try public.PhysicsShapeCdb.setStr(w, .Type, @tagName(type_enum));
             try public.PhysicsShapeCdb.commit(w);

@@ -20,6 +20,7 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run tests");
     const run_lib_tests = b.addRunArtifact(lib_tests);
+    run_lib_tests.setName("lib tests");
     test_step.dependOn(&run_lib_tests.step);
 
     if (with_tui) {
@@ -61,6 +62,7 @@ pub fn build(b: *std.Build) void {
             tui_tests.root_module.addImport("vaxis", dep_vaxis.module("vaxis"));
 
             const run_tui_tests = b.addRunArtifact(tui_tests);
+            run_tui_tests.setName("tui tests");
             test_step.dependOn(&run_tui_tests.step);
         }
     }

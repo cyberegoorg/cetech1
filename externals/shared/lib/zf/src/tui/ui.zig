@@ -1,4 +1,4 @@
-const candidate = @import("candidate.zig");
+const input = @import("input.zig");
 const std = @import("std");
 const vaxis = @import("vaxis");
 const zf = @import("zf");
@@ -6,7 +6,7 @@ const zf = @import("zf");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const ArrayToggleSet = @import("array_toggle_set.zig").ArrayToggleSet;
-const Candidate = candidate.Candidate;
+const Haystack = input.Haystack;
 const Config = @import("opts.zig").Config;
 const EditBuffer = @import("EditBuffer.zig");
 const Key = vaxis.Key;
@@ -72,16 +72,16 @@ fn numDigits(number: usize) u16 {
     return @intCast(std.math.log10(number) + 1);
 }
 
-/// split the query on spaces and return a slice of query tokens
-pub fn splitQuery(query_tokens: [][]const u8, query: []const u8) [][]const u8 {
+/// split the query on spaces and return a slice of needles
+pub fn splitQuery(needles: [][]const u8, query: []const u8) [][]const u8 {
     var index: u8 = 0;
     var it = std.mem.tokenizeScalar(u8, query, ' ');
-    while (it.next()) |token| : (index += 1) {
-        if (index == query_tokens.len) break;
-        query_tokens[index] = token;
+    while (it.next()) |needle| : (index += 1) {
+        if (index == needles.len) break;
+        needles[index] = needle;
     }
 
-    return query_tokens[0..index];
+    return needles[0..index];
 }
 
 pub fn hasUpper(query: []const u8) bool {
@@ -107,11 +107,11 @@ pub const State = struct {
 
     preview: ?Previewer = null,
 
-    pub fn init(allocator: Allocator, buf: []u8, config: Config) !State {
-        const vx = try vaxis.init(allocator, .{});
+    pub fn init(io: std.Io, allocator: Allocator, env_map: *std.process.Environ.Map, buf: []u8, config: Config) !State {
+        const vx = try vaxis.init(io, allocator, env_map, .{});
 
         const preview = if (config.preview) |cmd| blk: {
-            break :blk Previewer.init(cmd);
+            break :blk try Previewer.init(allocator, env_map, cmd);
         } else null;
 
         return .{
@@ -119,7 +119,7 @@ pub const State = struct {
             .config = config,
 
             .vx = vx,
-            .tty = try vaxis.Tty.init(buf),
+            .tty = try vaxis.Tty.init(io, buf),
 
             .selected = 0,
             .selected_rows = .empty,
@@ -130,7 +130,9 @@ pub const State = struct {
         };
     }
 
-    fn deinit(state: *State) void {
+    fn deinit(state: *State, io: std.Io) void {
+        if (state.preview) |*preview| preview.deinit(io);
+
         // We must clear the window because we aren't using the alternate screen
         state.vx.window().clear();
         state.vx.render(state.tty.writer()) catch {};
@@ -141,36 +143,33 @@ pub const State = struct {
 
     pub fn run(
         state: *State,
-        candidates: [][]const u8,
+        io: std.Io,
+        haystacks: [][]const u8,
     ) !?[]const []const u8 {
-        defer state.deinit();
+        defer state.deinit(io);
 
         var filtered = blk: {
-            var filtered: ArrayList(Candidate) = try .initCapacity(state.allocator, candidates.len);
-            for (candidates) |c| {
-                filtered.appendAssumeCapacity(.{ .str = c });
+            var filtered: ArrayList(Haystack) = try .initCapacity(state.allocator, haystacks.len);
+            for (haystacks) |h| {
+                filtered.appendAssumeCapacity(.{ .str = h });
             }
             break :blk try filtered.toOwnedSlice(state.allocator);
         };
-        const filtered_buf = try state.allocator.alloc(Candidate, candidates.len);
+        const filtered_buf = try state.allocator.alloc(Haystack, haystacks.len);
 
-        const tokens_buf = try state.allocator.alloc([]const u8, 16);
-        var tokens = splitQuery(tokens_buf, state.query.slice());
+        const needles_buf = try state.allocator.alloc([]const u8, 16);
+        var needles = splitQuery(needles_buf, state.query.slice());
 
-        var loop: vaxis.Loop(Event) = .{
-            .tty = &state.tty,
-            .vaxis = &state.vx,
-        };
-        try loop.init();
+        var loop: vaxis.Loop(Event) = .init(io, &state.tty, &state.vx);
 
         try loop.start();
         defer loop.stop();
 
-        if (state.preview) |*preview| try preview.startThread(&loop);
+        if (state.preview) |*preview| try preview.startThread(io, &loop);
 
         {
             // Get initial window size
-            const ws = try vaxis.Tty.getWinsize(state.tty.fd);
+            const ws = try state.tty.getWinsize();
             try state.vx.resize(state.allocator, state.tty.writer(), ws);
         }
 
@@ -178,10 +177,10 @@ pub const State = struct {
             if (state.query.dirty) {
                 state.query.dirty = false;
 
-                tokens = splitQuery(tokens_buf, state.query.slice());
+                needles = splitQuery(needles_buf, state.query.slice());
                 state.case_sensitive = hasUpper(state.query.slice());
 
-                filtered = candidate.rank(filtered_buf, candidates, tokens, state.config.keep_order, state.config.plain, state.case_sensitive);
+                filtered = input.rankAndSort(filtered_buf, haystacks, needles, state.config.keep_order, state.config.plain, state.case_sensitive);
                 state.selected = 0;
                 state.offset = 0;
                 state.selected_rows.clear();
@@ -191,11 +190,11 @@ pub const State = struct {
             if (state.selection_changed) if (state.preview) |*preview| {
                 state.selection_changed = false;
                 if (filtered.len > 0) {
-                    preview.spawn(filtered[state.selected + state.offset].str);
+                    preview.spawn(io, filtered[state.selected + state.offset].str);
                 } else preview.output = "";
             };
 
-            try state.draw(tokens, filtered, candidates.len);
+            try state.draw(needles, filtered, haystacks.len);
 
             const possibleResult = try state.handleInput(&loop, filtered.len);
             if (possibleResult) |result| {
@@ -230,7 +229,7 @@ pub const State = struct {
     fn handleInput(state: *State, loop: *vaxis.Loop(Event), num_filtered: usize) !?Result {
         const old = state.*;
 
-        const event = loop.nextEvent();
+        const event = try loop.nextEvent();
         switch (event) {
             .key_press => |key| {
                 const visible_rows = @min(@min(state.config.height, state.vx.screen.height) - 1, num_filtered);
@@ -272,7 +271,7 @@ pub const State = struct {
                     }
                     return .one;
                 } else if (key.matches(Key.escape, .{})) {
-                    return .none;
+                    return .cancel;
                 } else if (key.text) |text| {
                     try state.query.insert(state.allocator, text);
                 }
@@ -290,9 +289,9 @@ pub const State = struct {
 
     fn draw(
         state: *State,
-        tokens: [][]const u8,
-        candidates: []Candidate,
-        total_candidates: usize,
+        needles: [][]const u8,
+        haystacks: []Haystack,
+        total_haystacks: usize,
     ) !void {
         const win = state.vx.window();
         win.clear();
@@ -308,14 +307,14 @@ pub const State = struct {
 
         const height = @min(state.vx.screen.height, state.config.height);
 
-        // draw the candidates
+        // draw the haystacks
         var line: u16 = 0;
         while (line < height - 1) : (line += 1) {
-            if (line < candidates.len) state.drawCandidate(
+            if (line < haystacks.len) state.drawHaystack(
                 items,
                 line + 1,
-                candidates[line + state.offset].str,
-                tokens,
+                haystacks[line + state.offset].str,
+                needles,
                 state.selected_rows.contains(line + state.offset),
                 line == state.selected,
             );
@@ -326,12 +325,12 @@ pub const State = struct {
         {
             var buf: [32]u8 = undefined;
             if (num_selected > 0) {
-                const stats = try std.fmt.bufPrint(&buf, "{}/{} [{}]", .{ candidates.len, total_candidates, num_selected });
-                const stats_width = numDigits(candidates.len) + numDigits(total_candidates) + numDigits(num_selected) + 4;
+                const stats = try std.fmt.bufPrint(&buf, "{}/{} [{}]", .{ haystacks.len, total_haystacks, num_selected });
+                const stats_width = numDigits(haystacks.len) + numDigits(total_haystacks) + numDigits(num_selected) + 4;
                 _ = items.printSegment(.{ .text = stats }, .{ .col_offset = items_width - stats_width, .row_offset = 0 });
             } else {
-                const stats = try std.fmt.bufPrint(&buf, "{}/{}", .{ candidates.len, total_candidates });
-                const stats_width = numDigits(candidates.len) + numDigits(total_candidates) + 1;
+                const stats = try std.fmt.bufPrint(&buf, "{}/{}", .{ haystacks.len, total_haystacks });
+                const stats_width = numDigits(haystacks.len) + numDigits(total_haystacks) + 1;
                 _ = items.printSegment(.{ .text = stats }, .{ .col_offset = items_width - stats_width, .row_offset = 0 });
             }
         }
@@ -371,17 +370,17 @@ pub const State = struct {
         try state.vx.render(state.tty.writer());
     }
 
-    fn drawCandidate(
+    fn drawHaystack(
         state: *State,
         win: vaxis.Window,
         line: u16,
         str: []const u8,
-        tokens: [][]const u8,
+        needles: [][]const u8,
         selected: bool,
         highlight: bool,
     ) void {
         var matches_buf: [2048]usize = undefined;
-        const matches = zf.highlight(str, tokens, &matches_buf, .{ .to_lower = !state.case_sensitive, .plain = state.config.plain });
+        const matches = zf.highlight(str, needles, &matches_buf, .{ .case_sensitive = state.case_sensitive, .plain = state.config.plain });
 
         // no highlights, just output the string
         if (matches.len == 0) {

@@ -1000,23 +1000,22 @@ var asset_properties_aspec = public.UiInspectorObjAspect.implement(struct {
                 defer endPropTabel();
 
                 // Asset UUID
-                if (assetdb.getUuid(obj)) |asset_uuid| {
-                    if (uiPropBegin(allocator, "UUID", null, true, args)) {
-                        defer uiPropEnd(true, args);
-                        // coreui.indent(.{});
-                        // defer coreui.unindent(.{});
+                const asset_uuid = try cdb.getOrCreateUuid(obj);
+                if (uiPropBegin(allocator, "UUID", null, true, args)) {
+                    defer uiPropEnd(true, args);
+                    // coreui.indent(.{});
+                    // defer coreui.unindent(.{});
 
-                        _ = try std.fmt.bufPrintZ(&buf, "{f}", .{asset_uuid});
+                    _ = try std.fmt.bufPrintZ(&buf, "{f}", .{asset_uuid});
 
-                        coreui.setNextItemWidth(-1.0);
-                        _ = coreui.inputText("##UUID", .{
-                            .buf = &buf,
-                            .flags = .{
-                                .read_only = true,
-                                .auto_select_all = true,
-                            },
-                        });
-                    }
+                    coreui.setNextItemWidth(-1.0);
+                    _ = coreui.inputText("##UUID", .{
+                        .buf = &buf,
+                        .flags = .{
+                            .read_only = true,
+                            .auto_select_all = true,
+                        },
+                    });
                 }
 
                 var is_project = false;
@@ -1409,7 +1408,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
                     const db = kernel.getDb();
                     _ = db;
-                    const obj = assetdb.getObjId(uuid.fromStr("018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f").?).?;
+                    const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f").?).?;
 
                     ctx.setRef("###ct_editor_asset_browser_tab_1");
                     // ctx.menuAction(  .Check, "###AssetBrowserMenu/###Vertical");
@@ -1524,7 +1523,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                             coreui.checkTestError(@src(), err);
                             return;
                         };
-                        std.testing.expect(ref.?.eql(assetdb.getObjId(uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?)) catch |err| {
+                        std.testing.expect(ref.?.eql(cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?)) catch |err| {
                             coreui.checkTestError(@src(), err);
                             return;
                         };
@@ -1560,7 +1559,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/bool/###PrototypeButtons", .{}, null);
                         ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
                         const obj_r = assetdb.FooAsset.read(obj).?;
                         const value = assetdb.FooAsset.readValue(bool, obj_r, .Bool);
                         std.testing.expect(!value) catch |err| {
@@ -1576,7 +1575,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/u64/###PrototypeButtons", .{}, null);
                         ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
                         const obj_r = assetdb.FooAsset.read(obj).?;
                         const value = assetdb.FooAsset.readValue(u64, obj_r, .U64);
                         std.testing.expectEqual(0, value) catch |err| {
@@ -1592,7 +1591,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/i64/###PrototypeButtons", .{}, null);
                         ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
                         const obj_r = assetdb.FooAsset.read(obj).?;
                         const value = assetdb.FooAsset.readValue(i64, obj_r, .I64);
                         std.testing.expectEqual(0, value) catch |err| {
@@ -1608,7 +1607,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/u32/###PrototypeButtons", .{}, null);
                         ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
                         const obj_r = assetdb.FooAsset.read(obj).?;
                         const value = assetdb.FooAsset.readValue(u32, obj_r, .U32);
                         std.testing.expectEqual(0, value) catch |err| {
@@ -1624,7 +1623,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/i32/###PrototypeButtons", .{}, null);
                         ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
                         const obj_r = assetdb.FooAsset.read(obj).?;
                         const value = assetdb.FooAsset.readValue(i32, obj_r, .I32);
                         std.testing.expectEqual(0, value) catch |err| {
@@ -1640,7 +1639,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/f32/###PrototypeButtons", .{}, null);
                         ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
                         const obj_r = assetdb.FooAsset.read(obj).?;
                         const value = assetdb.FooAsset.readValue(f32, obj_r, .F32);
                         std.testing.expectEqual(0, value) catch |err| {
@@ -1656,7 +1655,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/f64/###PrototypeButtons", .{}, null);
                         ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
                         const obj_r = assetdb.FooAsset.read(obj).?;
                         const value = assetdb.FooAsset.readValue(f64, obj_r, .F64);
                         std.testing.expectEqual(0, value) catch |err| {
@@ -1672,7 +1671,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/str/###PrototypeButtons", .{}, null);
                         ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
                         const obj_r = assetdb.FooAsset.read(obj).?;
                         const str = assetdb.FooAsset.readStr(obj_r, .Str);
                         std.testing.expect(str == null) catch |err| {
@@ -1690,7 +1689,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                         ctx.itemAction(.Click, "**/018e4b5d-01cb-7fc9-8730-7939c945c996/reference/###PrototypeButtons", .{}, null);
                         ctx.itemAction(.Click, "**/###ResetToPrototypeValue", .{}, null);
 
-                        const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                        const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
                         const obj_r = assetdb.FooAsset.read(obj).?;
                         const ref = assetdb.FooAsset.readRef(obj_r, .Reference);
                         std.testing.expect(ref == null) catch |err| {
@@ -1721,7 +1720,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
                     const db = kernel.getDb();
                     _ = db;
-                    const obj = assetdb.getObjId(uuid.fromStr("018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f").?).?;
+                    const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f").?).?;
 
                     // Bool
                     {
@@ -1862,7 +1861,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                             coreui.checkTestError(@src(), err);
                             return err;
                         };
-                        std.testing.expect(ref.?.eql(assetdb.getObjId(uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?)) catch |err| {
+                        std.testing.expect(ref.?.eql(cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?)) catch |err| {
                             coreui.checkTestError(@src(), err);
                             return err;
                         };
@@ -1917,8 +1916,8 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.yield(1);
                     ctx.menuAction(.Click, "//$FOCUSED/###SelectFrom/###1");
 
-                    const obj = assetdb.getObjId(uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?;
-                    const proto_obj = assetdb.getObjId(uuid.fromStr("018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f").?).?;
+                    const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?;
+                    const proto_obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e4b5a-5fe3-7e1a-bf5b-10df8c083e9f").?).?;
 
                     std.testing.expect(proto_obj.eql(cdb.getPrototype(cdb.readObj(obj).?))) catch |err| {
                         coreui.checkTestError(@src(), err);
@@ -1947,7 +1946,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.yield(1);
                     ctx.menuAction(.Click, "//$FOCUSED/###Clear");
 
-                    const obj = assetdb.getObjId(uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
+                    const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e4b5d-01cb-7fc9-8730-7939c945c996").?).?;
                     std.testing.expect(cdb.getPrototype(cdb.readObj(obj).?).isEmpty()) catch |err| {
                         coreui.checkTestError(@src(), err);
                         return err;
@@ -2003,7 +2002,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.yield(1);
                     ctx.menuAction(.Click, "//$FOCUSED/###AddToSet/###SelectFrom/###1");
 
-                    const obj = assetdb.getObjId(uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?;
+                    const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e4c98-35a7-7cdb-8538-6c3030bc4fe9").?).?;
 
                     const set = try assetdb.FooAsset.readSubObjSet(cdb.readObj(obj).?, .ReferenceSet, _allocator);
                     std.testing.expect(set != null) catch |err| {

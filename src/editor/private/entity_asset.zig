@@ -396,7 +396,7 @@ var children_storage_prop_aspect = editor_inspector.UiInspectorPropertyValueAspe
         var type_enum = ecs.EntityCdb.readStrEnum(ecs.ChildrenStorageType, r, .Storage, .Parent);
 
         coreui.setNextItemWidth(-1.0);
-        if (coreui.comboFromEnum("", &type_enum)) {
+        if (coreui.comboFromEnum("##select_child_storage", &type_enum)) {
             const w = ecs.EntityCdb.write(obj).?;
             try ecs.EntityCdb.setStr(w, .Storage, @tagName(type_enum));
             try ecs.EntityCdb.commit(w);

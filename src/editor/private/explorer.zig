@@ -267,7 +267,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.itemAction(.Click, "**/###empty.ct_foo_asset/###subobject_set", .{}, null);
                     ctx.menuAction(.Click, "###ObjContextMenu/###AddToSet/###AddNew");
 
-                    const obj = assetdb.getObjId(uuid.fromStr("018e7ba0-571a-71e9-a03e-cbe1fdcf2581").?).?;
+                    const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e7ba0-571a-71e9-a03e-cbe1fdcf2581").?).?;
 
                     const set = try assetdb.FooAsset.readSubObjSet(cdb.readObj(obj).?, .SubobjectSet, _allocator);
                     std.testing.expect(set != null) catch |err| {
@@ -304,7 +304,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.itemAction(.Click, "**/###child_asset.ct_foo_asset/###subobject_set/###018e7ba3-4f75-7e4f-bb0a-697eff5b21e2", .{}, null);
                     ctx.menuAction(.Click, "###ObjContextMenu/###Inisiate");
 
-                    const obj = assetdb.getObjId(uuid.fromStr("018e7ba2-d04a-7176-8374-c38cca68b3ab").?).?;
+                    const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e7ba2-d04a-7176-8374-c38cca68b3ab").?).?;
 
                     const set = try assetdb.FooAsset.readSubObjSet(cdb.readObj(obj).?, .SubobjectSet, _allocator);
                     std.testing.expect(set != null) catch |err| {
@@ -349,7 +349,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
 
                     ctx.menuAction(.Click, "###ObjContextMenu/###Remove");
 
-                    const obj = assetdb.getObjId(uuid.fromStr("018e7ba3-3540-7790-bb65-3e63081a76f7").?).?;
+                    const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e7ba3-3540-7790-bb65-3e63081a76f7").?).?;
 
                     const set = try assetdb.FooAsset.readSubObjSet(cdb.readObj(obj).?, .SubobjectSet, _allocator);
                     std.testing.expect(set != null) catch |err| {
@@ -386,7 +386,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     ctx.itemAction(.Click, "**/###child_asset.ct_foo_asset/###subobject", .{}, null);
                     ctx.menuAction(.Click, "###ObjContextMenu/###Inisiate");
 
-                    const obj = assetdb.getObjId(uuid.fromStr("018e7ba2-d04a-7176-8374-c38cca68b3ab").?).?;
+                    const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e7ba2-d04a-7176-8374-c38cca68b3ab").?).?;
 
                     const subobj = assetdb.FooAsset.readSubObj(cdb.readObj(obj).?, .Subobject);
                     std.testing.expect(subobj != null) catch |err| {

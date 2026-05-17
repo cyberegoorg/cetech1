@@ -417,7 +417,7 @@ var debug_context_menu_i = editor.ObjContextMenuI.implement(struct {
             defer coreui.endMenu();
 
             if (coreui.menuItem(allocator, "Asset UUID", .{}, filter)) {
-                const obj_uuid = try assetdb.getOrCreateUuid(obj.obj);
+                const obj_uuid = try cdb.getOrCreateUuid(obj.obj);
                 var buff: [128]u8 = undefined;
                 const uuid_str = std.fmt.bufPrintZ(&buff, "{f}", .{obj_uuid}) catch undefined;
                 coreui.setClipboardText(uuid_str);
@@ -718,11 +718,10 @@ var asset_visual_aspect = editor.UiVisualAspect.implement(struct {
         allocator: std.mem.Allocator,
         obj: cdb.ObjId,
     ) !void {
-        if (assetdb.getUuid(obj)) |uuuid| {
-            var buff: [256:0]u8 = undefined;
-            const uuid_str = try std.fmt.bufPrintZ(&buff, "Asset UUID: {f}", .{uuuid});
-            coreui.text(uuid_str);
-        }
+        const uuuid = try cdb.getOrCreateUuid(obj);
+        var buff: [256:0]u8 = undefined;
+        const uuid_str = try std.fmt.bufPrintZ(&buff, "Asset UUID: {f}", .{uuuid});
+        coreui.text(uuid_str);
 
         const asset_obj = assetdb.getObjForAsset(obj).?;
         const db = cdb.getDbFromObjid(obj);
@@ -1198,7 +1197,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
         //             const db = kernel.getDb();
 
         //             {
-        //                 const foo = assetdb.getObjId(uuid.fromStr("018b5846-c2d5-7b88-95f9-a7538a00e76b").?).?;
+        //                 const foo = cdb.getObjId(assetdb.getDb(),uuid.fromStr("018b5846-c2d5-7b88-95f9-a7538a00e76b").?).?;
         //                 const name = assetdb.Asset.readStr(db, db.readObj(foo).?, .Name);
 
         //                 std.testing.expect(name != null) catch |err| {
@@ -1212,7 +1211,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
         //             }
 
         //             {
-        //                 const core = assetdb.getObjId(uuid.fromStr("018e0f87-9fc7-7fa5-afc8-4814fd500014").?).?;
+        //                 const core = cdb.getObjId(assetdb.getDb(),uuid.fromStr("018e0f87-9fc7-7fa5-afc8-4814fd500014").?).?;
         //                 const name = assetdb.Asset.readStr(db, db.readObj(core).?, .Name);
 
         //                 std.testing.expect(name != null) catch |err| {
@@ -1284,7 +1283,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     kernel.openAssetRoot("fixtures/test_move");
                     ctx.yield(1);
 
-                    const obj = assetdb.getObjId(uuid.fromStr("018e48d4-df07-7602-9068-55d32eb8bb1d").?).?;
+                    const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e48d4-df07-7602-9068-55d32eb8bb1d").?).?;
                     std.testing.expect(!assetdb.isToDeleted(obj)) catch |err| {
                         coreui.checkTestError(@src(), err);
                         return err;
@@ -1322,7 +1321,7 @@ var register_tests_i = coreui.RegisterTestsI.implement(struct {
                     kernel.openAssetRoot("fixtures/test_move");
                     ctx.yield(1);
 
-                    const obj = assetdb.getObjId(uuid.fromStr("018e48d3-3837-705a-979f-94f28d478284").?).?;
+                    const obj = cdb.getObjId(assetdb.getDb(), uuid.fromStr("018e48d3-3837-705a-979f-94f28d478284").?).?;
                     std.testing.expect(!assetdb.isToDeleted(obj)) catch |err| {
                         coreui.checkTestError(@src(), err);
                         return err;

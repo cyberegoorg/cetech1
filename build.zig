@@ -731,7 +731,7 @@ pub fn build(b: *std.Build) !void {
     tests.step.dependOn(&generated_files.step);
 
     const run_unit_tests = b.addRunArtifact(tests);
-    run_unit_tests.step.dependOn(b.getInstallStep());
+    // run_unit_tests.step.dependOn(b.getInstallStep());
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
 

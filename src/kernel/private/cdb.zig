@@ -9,6 +9,7 @@ const cetech1 = @import("cetech1");
 const public = cetech1.cdb;
 const assetdb = cetech1.assetdb;
 const metrics = cetech1.metrics;
+const uuid = cetech1.uuid;
 
 const apidb = cetech1.apidb;
 const profiler = @import("profiler.zig");
@@ -906,6 +907,17 @@ pub const TypeStorage = struct {
 
         try self.changed_objs.addChangedObjects(io, self.version, destroyed_ids.items);
 
+        // Remove UUID
+        {
+            self.db.uuid2objid_lock.lockUncancelable(_io);
+            defer self.db.uuid2objid_lock.unlock(_io);
+            for (destroyed_ids.items) |obj| {
+                const obj_uuid = self.db.objid2uuid.get(obj) orelse continue;
+                _ = self.db.uuid2objid.swapRemove(obj_uuid);
+                _ = self.db.objid2uuid.swapRemove(obj);
+            }
+        }
+
         self.db.callOnObjIdDestroyed(destroyed_ids.items);
 
         if (destroyed_ids.items.len != 0) {
@@ -1063,6 +1075,9 @@ pub const TypeStorage = struct {
 
 const StringIntern = cetech1.string.InternWithLock([:0]const u8);
 
+const Uuid2ObjId = cetech1.AutoArrayHashMap(uuid.Uuid, public.ObjId);
+const ObjId2Uuid = cetech1.AutoArrayHashMap(public.ObjId, uuid.Uuid);
+
 pub const Db = struct {
     const Self = @This();
 
@@ -1092,6 +1107,11 @@ pub const Db = struct {
     gc_free_objects_counter: *f64 = undefined,
 
     metrics_init: bool = false,
+
+    // UUID maping
+    uuid2objid: Uuid2ObjId = .{},
+    objid2uuid: ObjId2Uuid = .{},
+    uuid2objid_lock: std.Io.Mutex = .init,
 
     pub fn init(allocator: std.mem.Allocator, idx: public.DbId, name: [:0]const u8) !Db {
         var self: @This() = .{
@@ -1135,6 +1155,9 @@ pub const Db = struct {
         self.typestorage_map.deinit(self.allocator);
         self.typestorage_pool.deinit();
         self.str_intern.deinit();
+
+        self.uuid2objid.deinit(self.allocator);
+        self.objid2uuid.deinit(self.allocator);
     }
 
     pub fn readersCount(self: *Self) usize {
@@ -1734,7 +1757,7 @@ pub const Db = struct {
 
         var obj_storage = self.getTypeStorage(true_obj.objid).?;
         if (!obj_storage.isTypeHashValidForProperty(prop_idx, true_sub_obj.objid.type_idx)) {
-            log.warn("Invalid type_hash for set sub obj", .{});
+            // log.warn("Invalid type_hash for set sub obj", .{});
             return;
         }
 
@@ -1795,7 +1818,7 @@ pub const Db = struct {
 
         var obj_storage = self.getTypeStorage(true_obj.objid).?;
         if (!obj_storage.isTypeHashValidForProperty(prop_idx, value.type_idx)) {
-            log.warn("Invalid type_hash for set ref", .{});
+            // log.warn("Invalid type_hash for set ref", .{});
             return;
         }
 
@@ -1826,7 +1849,7 @@ pub const Db = struct {
 
         for (values) |value| {
             if (!obj_storage.isTypeHashValidForProperty(prop_idx, value.type_idx)) {
-                log.warn("Invalid type_hash for add to ref set", .{});
+                // log.warn("Invalid type_hash for add to ref set", .{});
                 continue;
             }
 
@@ -2055,7 +2078,7 @@ pub const Db = struct {
         for (sub_obj_writers) |sub_obj_writer| {
             const true_sub_obj = toObjFromObjO(sub_obj_writer);
             if (!obj_storage.isTypeHashValidForProperty(prop_idx, true_sub_obj.objid.type_idx)) {
-                log.warn("Invalid type_hash for add to subobj set", .{});
+                // log.warn("Invalid type_hash for add to subobj set", .{});
                 continue;
             }
 
@@ -2236,6 +2259,47 @@ pub const Db = struct {
 
         return false;
     }
+
+    pub fn getObjId(self: *Self, io: std.Io, obj_uuid: uuid.Uuid) ?public.ObjId {
+        self.uuid2objid_lock.lockUncancelable(io);
+        defer self.uuid2objid_lock.unlock(io);
+        return self.uuid2objid.get(obj_uuid);
+    }
+
+    pub fn getUuid(self: *Self, io: std.Io, obj: public.ObjId) ?uuid.Uuid {
+        self.uuid2objid_lock.lockUncancelable(io);
+        defer self.uuid2objid_lock.unlock(io);
+        return self.objid2uuid.get(obj);
+    }
+
+    pub fn mapUuidObjid(self: *Self, io: std.Io, obj_uuid: uuid.Uuid, objid: public.ObjId) !void {
+        self.uuid2objid_lock.lockUncancelable(io);
+        defer self.uuid2objid_lock.unlock(io);
+        try self.uuid2objid.put(self.allocator, obj_uuid, objid);
+        try self.objid2uuid.put(self.allocator, objid, obj_uuid);
+    }
+
+    fn getOrCreateUuid(self: *Self, io: std.Io, obj: public.ObjId) !uuid.Uuid {
+        var obj_uuid = self.getUuid(io, obj);
+        if (obj_uuid != null) {
+            return obj_uuid.?;
+        }
+        obj_uuid = uuid.newUUID7();
+        try self.mapUuidObjid(io, obj_uuid.?, obj);
+        return obj_uuid.?;
+    }
+
+    pub fn createObjectWithUuid(self: *Self, io: std.Io, type_idx: public.TypeIdx, with_uuid: uuid.Uuid) !public.ObjId {
+        const obj = try self.createObject(io, type_idx);
+        try self.mapUuidObjid(io, with_uuid, obj);
+        return obj;
+    }
+
+    pub fn createEmptyObjectWithUuid(self: *Self, io: std.Io, type_idx: public.TypeIdx, with_uuid: uuid.Uuid) !public.ObjId {
+        const obj = try self.createEmptyObj(io, type_idx);
+        try self.mapUuidObjid(io, with_uuid, obj);
+        return obj;
+    }
 };
 
 const DbPool = cetech1.heap.VirtualPool(Db);
@@ -2313,7 +2377,6 @@ const api = public.CdbAPI{
     .isInSet = isInSetFn,
     .isIinisiated = isIinisiatedFn,
     .canIinisiate = canIinisiateFn,
-    .getDbFromObjid = getDbFromObjidFn,
     .getDbFromObj = getDbFromObjFn,
     .getVersion = getVersionFn,
     .getReferencerSet = getReferencerSetFn,
@@ -2348,11 +2411,42 @@ const api = public.CdbAPI{
     .getTypePropDefIdx = getTypePropDefIdxFn,
     .gc = gcFn,
     .dump = dumpFn,
+
+    .getObjId = getObjId,
+    .getOrCreate = getOrCreate,
+    .getOrCreateUuid = getOrCreateUuid,
+    .setUuid = setUuid,
+    .createObjectWithUuid = createObjectWithUuid,
+    .createEmptyObjectWithUuid = createEmptyObjectWithUuid,
 };
 
-fn getDbFromObjidFn(obj: public.ObjId) public.DbId {
+fn getObjId(dbidx: public.DbId, obj_uuid: uuid.Uuid) ?public.ObjId {
+    var db = getDbFromIdx(dbidx);
+    return db.getObjId(_io, obj_uuid);
+}
+
+fn getOrCreate(dbidx: public.DbId, obj_uuid: uuid.Uuid, type_idx: public.TypeIdx) !public.ObjId {
+    return getObjId(dbidx, obj_uuid) orelse try createObjectWithUuid(dbidx, type_idx, obj_uuid);
+}
+
+fn createObjectWithUuid(dbidx: public.DbId, type_idx: public.TypeIdx, obj_uuid: uuid.Uuid) !public.ObjId {
+    var db = getDbFromIdx(dbidx);
+    return db.createObjectWithUuid(_io, type_idx, obj_uuid);
+}
+
+fn createEmptyObjectWithUuid(dbidx: public.DbId, type_idx: public.TypeIdx, obj_uuid: uuid.Uuid) !public.ObjId {
+    var db = getDbFromIdx(dbidx);
+    return db.createEmptyObjectWithUuid(_io, type_idx, obj_uuid);
+}
+
+fn getOrCreateUuid(obj: public.ObjId) !uuid.Uuid {
     const db = getDbFromIdx(obj.db);
-    return db.idx;
+    return db.getOrCreateUuid(_io, obj);
+}
+
+pub fn setUuid(obj_uuid: uuid.Uuid, obj: public.ObjId) !void {
+    const db = getDbFromIdx(obj.db);
+    try db.mapUuidObjid(_io, obj_uuid, obj);
 }
 
 fn getDbFromObjFn(obj: *public.Obj) public.DbId {

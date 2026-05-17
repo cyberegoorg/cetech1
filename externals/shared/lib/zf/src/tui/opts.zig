@@ -15,7 +15,7 @@ const version_str = std.fmt.comptimePrint("zf {s} Nathan Craddock", .{version});
 const help =
     \\Usage: zf [options]
     \\
-    \\-d, --delimiter DELIMITER  Set the delimiter used to split candidates (default \n)
+    \\-d, --delimiter DELIMITER  Set the delimiter used to split the input (default \n)
     \\-0                         Shorthand for -d'\0' to split on null bytes
     \\-f, --filter QUERY         Skip interactive use and filter using the given query
     \\    --height HEIGHT        The height of the interface in rows (default 10)

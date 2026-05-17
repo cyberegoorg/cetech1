@@ -184,7 +184,7 @@ fn formatObjLabel(allocator: std.mem.Allocator, obj: cdb.ObjId, in_set_idx: ?usi
                     status_icons orelse "",
                     if (cfg.with_icon) "  " else "",
                     if (cfg.with_txt) name else "",
-                    assetdb.getOrCreateUuid(obj) catch return allocator.dupeZ(u8, "Not implemented"),
+                    cdb.getOrCreateUuid(obj) catch return allocator.dupeZ(u8, "Not implemented"),
                 }, 0) catch return try allocator.dupeZ(u8, "Not implemented");
             } else {
                 return std.fmt.allocPrintSentinel(allocator, "{s}{s}" ++ "{s}" ++ "{s}###{s}", .{
@@ -580,7 +580,7 @@ fn doMainMenu(allocator: std.mem.Allocator) !void {
                 defer coreui.endMenu();
 
                 var rate = kernel.getKernelTickRate();
-                if (coreui.inputU32("###kernel_tick_rate", .{ .v = &rate, .flags = .{ .enter_returns_true = true } })) {
+                if (coreui.inputU32("###kernel_tick_rate", .{ .v = &rate, .flags = .{} })) {
                     kernel.setKernelTickRate(rate);
                 }
             }

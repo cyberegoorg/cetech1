@@ -118,7 +118,7 @@ var camera_type_aspec = editor_inspector.UiInspectorPropertyValueAspect.implemen
         var type_enum = public.CameraCdb.readStrEnum(public.CameraType, r, .Type, .Perspective);
 
         coreui.setNextItemWidth(-1.0);
-        if (coreui.comboFromEnum("", &type_enum)) {
+        if (coreui.comboFromEnum("##select_camera_type", &type_enum)) {
             const w = public.CameraCdb.write(obj).?;
             try public.CameraCdb.setStr(w, .Type, @tagName(type_enum));
             try public.CameraCdb.commit(w);

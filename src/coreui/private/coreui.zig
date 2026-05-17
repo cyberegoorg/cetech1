@@ -1653,7 +1653,7 @@ fn menuItemPtr(allocator: std.mem.Allocator, label: [:0]const u8, args: public.M
 }
 
 fn pushObjUUID(obj: cdb.ObjId) void {
-    const uuid = assetdb.getOrCreateUuid(obj) catch undefined;
+    const uuid = cdb.getOrCreateUuid(obj) catch undefined;
     var buff: [128]u8 = undefined;
     const uuid_str = std.fmt.bufPrintZ(&buff, "{f}", .{uuid}) catch undefined;
 
@@ -1682,7 +1682,7 @@ fn uiFilterPass(allocator: std.mem.Allocator, filter: [:0]const u8, value: [:0]c
     }
     //return 0;
 
-    return zf.rank(value, tokens.items, .{ .to_lower = true, .plain = !is_path });
+    return zf.rank(value, tokens.items, .{ .case_sensitive = false, .plain = !is_path });
 }
 
 fn uiFilter(buf: []u8, filter: ?[:0]const u8) ?[:0]const u8 {
@@ -1735,7 +1735,7 @@ pub fn drawUI(allocator: std.mem.Allocator, gpu_backend: gpu.GpuBackend, viewid:
 pub fn registerToApi() !void {
     try apidb.setZigApi(module_name, public.CoreUIApi, &api);
     try apidb.setZigApi(module_name, node_editor.NodeEditorApi, &node_editor_api);
-    try apidb.implOrRemove(.cdb_types, cdb.CreateTypesI, &create_cdb_types_i, true);
+    try apidb.implOrRemove(module_name, cdb.CreateTypesI, &create_cdb_types_i, true);
 }
 
 pub fn initFonts() void {

@@ -1,7 +1,6 @@
 /// AssetDB main API
 /// Asset is CDB object associated with name, folder and is load/save from fs, net etc.
 /// Asset act like wraper for real asset object that is store inside "asset" property.
-/// AssetDB map UUID to cdbobj if obj  thru it via save/load methods.
 const std = @import("std");
 const cdb = @import("cdb.zig");
 const cdb_types = @import("cdb_types.zig");
@@ -73,7 +72,7 @@ pub const ProjectCdb = cdb.CdbTypeDecl(
 );
 
 pub const AssetRootOpenedI = extern struct {
-    pub const c_name = "ct_cdb_assetroot_opened_i";
+    pub const c_name = "ct_assetroot_opened_i";
     pub const name_hash = cetech1.strId64(@This().c_name);
 
     opened: ?*const fn () anyerror!void,
@@ -157,6 +156,147 @@ pub const FilteredAsset = struct {
 
 pub const FilteredAssets = []FilteredAsset;
 
+pub const AssetRootI = struct {
+    const Self = @This();
+
+    pub fn addImportedAsset(self: Self, io: std.Io, asset_uuid: uuid.Uuid, imported_from: []const u8) !void {
+        return self.vtable.addImportedAsset(self.inst, io, asset_uuid, imported_from);
+    }
+    pub fn isModified(self: Self) bool {
+        return self.vtable.isModified(self.inst);
+    }
+    pub fn isObjModified(self: Self, asset: cdb.ObjId) bool {
+        return self.vtable.isObjModified(self.inst, asset);
+    }
+    pub fn deleteAsset(self: Self, asset: cdb.ObjId) anyerror!void {
+        return self.vtable.deleteAsset(self.inst, asset);
+    }
+    pub fn deleteFolder(self: Self, folder: cdb.ObjId) anyerror!void {
+        return self.vtable.deleteFolder(self.inst, folder);
+    }
+    pub fn isToDeleted(self: Self, asset_or_folder: cdb.ObjId) bool {
+        return self.vtable.isToDeleted(self.inst, asset_or_folder);
+    }
+    pub fn reviveDeleted(self: Self, asset_or_folder: cdb.ObjId) void {
+        self.vtable.reviveDeleted(self.inst, asset_or_folder);
+    }
+    pub fn getAssetUuid(self: Self, io: std.Io, path: []const u8) ?uuid.Uuid {
+        return self.vtable.getAssetUuid(self.inst, io, path);
+    }
+    pub fn saveAll(self: Self, io: std.Io, allocator: std.mem.Allocator) !void {
+        return self.vtable.saveAll(self.inst, io, allocator);
+    }
+    pub fn saveAllModifiedAssets(self: Self, io: std.Io, allocator: std.mem.Allocator) !void {
+        return self.vtable.saveAllModifiedAssets(self.inst, io, allocator);
+    }
+    pub fn saveAsAllAssets(self: Self, io: std.Io, allocator: std.mem.Allocator, path: []const u8) !void {
+        return self.vtable.saveAsAllAssets(self.inst, io, allocator, path);
+    }
+    pub fn markObjSaved(self: Self, io: std.Io, objdi: cdb.ObjId, version: u64) void {
+        self.vtable.markObjSaved(self.inst, io, objdi, version);
+    }
+    pub fn isProjectOpened(self: Self) bool {
+        return self.vtable.isProjectOpened(self.inst);
+    }
+    pub fn getTmpPath(self: Self, io: std.Io, path_buf: []u8) !?[]u8 {
+        return self.vtable.getTmpPath(self.inst, io, path_buf);
+    }
+    pub fn getRootFolder(self: Self) cdb.ObjId {
+        return self.vtable.getRootFolder(self.inst);
+    }
+    pub fn addAssetToRoot(self: Self, io: std.Io, asset: cdb.ObjId) !void {
+        return self.vtable.addAssetToRoot(self.inst, io, asset);
+    }
+    pub fn openAssetRootFolder(self: Self, io: std.Io, asset_root_path: []const u8, allocator: std.mem.Allocator) !void {
+        return self.vtable.openAssetRootFolder(self.inst, io, asset_root_path, allocator);
+    }
+    pub fn saveAsset(self: Self, io: std.Io, allocator: std.mem.Allocator, root_path: []const u8, asset: cdb.ObjId) !cetech1.task.TaskID {
+        return self.vtable.saveAsset(self.inst, io, allocator, root_path, asset);
+    }
+    pub fn saveFolderObj(self: Self, io: std.Io, allocator: std.mem.Allocator, folder_asset: cdb.ObjId, root_path: []const u8) !void {
+        return self.vtable.saveFolderObj(self.inst, io, allocator, folder_asset, root_path);
+    }
+    pub fn getAssetRootPath(self: Self) ?[]const u8 {
+        return self.vtable.getAssetRootPath(self.inst);
+    }
+    pub fn getAssetRootObj(self: Self) cdb.ObjId {
+        return self.vtable.getAssetRootObj(self.inst);
+    }
+    pub fn createImportedAsset(self: *Self, asset_name: []const u8, asset_folder: cdb.ObjId, asset_obj: cdb.ObjId, imported_from: []const u8) ?cdb.ObjId {
+        return self.vtable.createImportedAsset(self.inst, asset_name, asset_folder, asset_obj, imported_from);
+    }
+
+    inst: *anyopaque,
+    vtable: *const VTable,
+
+    pub const VTable = struct {
+        addImportedAsset: *const fn (self: *anyopaque, io: std.Io, asset_uuid: uuid.Uuid, imported_from: []const u8) anyerror!void,
+        createImportedAsset: *const fn (self: *anyopaque, asset_name: []const u8, asset_folder: cdb.ObjId, asset_obj: cdb.ObjId, imported_from: []const u8) ?cdb.ObjId,
+        isModified: *const fn (self: *anyopaque) bool,
+        isObjModified: *const fn (self: *anyopaque, asset: cdb.ObjId) bool,
+        deleteAsset: *const fn (self: *anyopaque, asset: cdb.ObjId) anyerror!void,
+        deleteFolder: *const fn (self: *anyopaque, folder: cdb.ObjId) anyerror!void,
+        isToDeleted: *const fn (self: *anyopaque, asset_or_folder: cdb.ObjId) bool,
+        reviveDeleted: *const fn (self: *anyopaque, asset_or_folder: cdb.ObjId) void,
+        getAssetUuid: *const fn (self: *anyopaque, io: std.Io, path: []const u8) ?uuid.Uuid,
+        saveAll: *const fn (self: *anyopaque, io: std.Io, allocator: std.mem.Allocator) anyerror!void,
+        saveAllModifiedAssets: *const fn (self: *anyopaque, io: std.Io, allocator: std.mem.Allocator) anyerror!void,
+        saveAsAllAssets: *const fn (self: *anyopaque, io: std.Io, allocator: std.mem.Allocator, path: []const u8) anyerror!void,
+        markObjSaved: *const fn (self: *anyopaque, io: std.Io, objdi: cdb.ObjId, version: u64) void,
+        isProjectOpened: *const fn (self: *anyopaque) bool,
+        getTmpPath: *const fn (self: *anyopaque, io: std.Io, path_buf: []u8) anyerror!?[]u8,
+        getRootFolder: *const fn (self: *anyopaque) cdb.ObjId,
+        addAssetToRoot: *const fn (self: *anyopaque, io: std.Io, asset: cdb.ObjId) anyerror!void,
+        openAssetRootFolder: *const fn (self: *anyopaque, io: std.Io, asset_root_path: []const u8, allocator: std.mem.Allocator) anyerror!void,
+        saveAsset: *const fn (self: *anyopaque, io: std.Io, allocator: std.mem.Allocator, root_path: []const u8, asset: cdb.ObjId) anyerror!cetech1.task.TaskID,
+        saveFolderObj: *const fn (self: *anyopaque, io: std.Io, allocator: std.mem.Allocator, folder_asset: cdb.ObjId, root_path: []const u8) anyerror!void,
+        getAssetRootPath: *const fn (self: *anyopaque) ?[]const u8,
+        getAssetRootObj: *const fn (self: *anyopaque) cdb.ObjId,
+
+        pub fn implement(comptime T: type) @This() {
+            return @This(){
+                .addImportedAsset = @ptrCast(&T.addImportedAsset),
+                .isModified = @ptrCast(&T.isModified),
+                .isObjModified = @ptrCast(&T.isObjModified),
+                .deleteAsset = @ptrCast(&T.deleteAsset),
+                .deleteFolder = @ptrCast(&T.deleteFolder),
+                .isToDeleted = @ptrCast(&T.isToDeleted),
+                .reviveDeleted = @ptrCast(&T.reviveDeleted),
+                .getAssetUuid = @ptrCast(&T.getAssetUuid),
+                .saveAll = @ptrCast(&T.saveAll),
+                .saveAllModifiedAssets = @ptrCast(&T.saveAllModifiedAssets),
+                .saveAsAllAssets = @ptrCast(&T.saveAsAllAssets),
+                .markObjSaved = @ptrCast(&T.markObjSaved),
+                .isProjectOpened = @ptrCast(&T.isProjectOpened),
+                .getTmpPath = @ptrCast(&T.getTmpPath),
+                .getRootFolder = @ptrCast(&T.getRootFolder),
+                .addAssetToRoot = @ptrCast(&T.addAssetToRoot),
+                .openAssetRootFolder = @ptrCast(&T.openAssetRootFolder),
+                .saveAsset = @ptrCast(&T.saveAsset),
+                .saveFolderObj = @ptrCast(&T.saveFolderObj),
+                .getAssetRootPath = @ptrCast(&T.getAssetRootPath),
+                .getAssetRootObj = @ptrCast(&T.getAssetRootObj),
+                .createImportedAsset = @ptrCast(&T.createImportedAsset),
+            };
+        }
+    };
+};
+
+pub const AssetRootProviderI = struct {
+    pub const c_name = "ct_assetroot_provider_i";
+    pub const name_hash = cetech1.strId64(@This().c_name);
+
+    create: *const fn () anyerror!AssetRootI,
+    destroy: *const fn (root: AssetRootI) void,
+
+    pub fn implement(comptime T: type) @This() {
+        return @This(){
+            .create = T.create,
+            .destroy = T.destroy,
+        };
+    }
+};
+
 /// Create new asset with name, folder and probably asset object.
 pub inline fn createAsset(asset_name: []const u8, asset_folder: cdb.ObjId, asset_obj: ?cdb.ObjId) ?cdb.ObjId {
     return api.createAsset(asset_name, asset_folder, asset_obj);
@@ -175,23 +315,6 @@ pub inline fn openAssetRootFolder(asset_root_path: []const u8, allocator: std.me
 /// Get root folder object.
 pub inline fn getRootFolder() cdb.ObjId {
     return api.getRootFolder();
-}
-
-/// Get UUID for obj if exist.
-/// Only object that is loaded/saved has UUID
-pub inline fn getUuid(obj: cdb.ObjId) ?uuid.Uuid {
-    return api.getUuid(obj);
-}
-
-/// Get or create UUID for obj.
-pub inline fn getOrCreateUuid(obj: cdb.ObjId) !uuid.Uuid {
-    return api.getOrCreateUuid(obj);
-}
-
-/// Get objid for UUID if exist.
-/// Only object that is loaded/saved has UUID
-pub inline fn getObjId(obj_uuid: uuid.Uuid) ?cdb.ObjId {
-    return api.getObjId(obj_uuid);
 }
 
 /// Get path to tmp directory within asset root dir
@@ -305,8 +428,20 @@ pub fn getAssetRootPath() ?[]const u8 {
 pub fn filerAsset(allocator: std.mem.Allocator, filter: [:0]const u8, tags_filter: cdb.ObjId) !FilteredAssets {
     return api.filerAsset(allocator, filter, tags_filter);
 }
+pub fn findFirstAssetIOForImport(filename: []const u8, extension: []const u8) ?*const AssetIOI {
+    return api.findFirstAssetIOForImport(filename, extension);
+}
+pub fn findFirstAssetIOForExport(db: cdb.DbId, asset: cdb.ObjId, filename: []const u8, extension: []const u8) ?*const AssetIOI {
+    return api.findFirstAssetIOForExport(db, asset, filename, extension);
+}
+
+pub fn setAssetNameAndFolder(asset_w: *cdb.Obj, name: []const u8, description: ?[]const u8, asset_folder: cdb.ObjId) !void {
+    return api.setAssetNameAndFolder(asset_w, name, description, asset_folder);
+}
 
 pub const AssetDBAPI = struct {
+    findFirstAssetIOForImport: *const fn (filename: []const u8, extension: []const u8) ?*const AssetIOI,
+    findFirstAssetIOForExport: *const fn (db: cdb.DbId, asset: cdb.ObjId, filename: []const u8, extension: []const u8) ?*const AssetIOI,
     isAssetNameValid: *const fn (allocator: std.mem.Allocator, folder: cdb.ObjId, type_idx: cdb.TypeIdx, base_name: [:0]const u8) anyerror!bool,
     getAssetForObj: *const fn (obj: cdb.ObjId) ?cdb.ObjId,
     getObjForAsset: *const fn (obj: cdb.ObjId) ?cdb.ObjId,
@@ -315,7 +450,7 @@ pub const AssetDBAPI = struct {
     getAssetRootObj: *const fn () cdb.ObjId,
     getDb: *const fn () cdb.DbId,
     getFilePathForAsset: *const fn (buff: []u8, asset: cdb.ObjId) anyerror![]u8,
-    getPathForAsset: *const fn (buff: []u8, asset: cdb.ObjId, extension: []const u8) anyerror![]u8,
+    getPathForAsset: *const fn (buff: []u8, asset: cdb.ObjId, extension: ?[]const u8) anyerror![]u8,
     getAssetByPath: *const fn (path: []const u8) ?cdb.ObjId,
     getPathForFolder: *const fn (buff: []u8, asset: cdb.ObjId) anyerror![]u8,
     createNewFolder: *const fn (db: cdb.DbId, parent_folder: cdb.ObjId, name: [:0]const u8) anyerror!cdb.ObjId,
@@ -338,15 +473,15 @@ pub const AssetDBAPI = struct {
     createImportedAsset: *const fn (asset_name: []const u8, asset_folder: cdb.ObjId, asset_obj: cdb.ObjId, imported_from: []const u8) ?cdb.ObjId,
     openAssetRootFolder: *const fn (asset_root_path: []const u8, allocator: std.mem.Allocator) anyerror!void,
     getRootFolder: *const fn () cdb.ObjId,
-    getObjId: *const fn (obj_uuid: uuid.Uuid) ?cdb.ObjId,
-    getUuid: *const fn (obj: cdb.ObjId) ?uuid.Uuid,
-    getOrCreateUuid: *const fn (obj: cdb.ObjId) anyerror!uuid.Uuid,
+
     isAssetModified: *const fn (asset: cdb.ObjId) bool,
     isProjectModified: *const fn () bool,
     saveAllAssets: *const fn (allocator: std.mem.Allocator) anyerror!void,
     saveAllModifiedAssets: *const fn (allocator: std.mem.Allocator) anyerror!void,
     saveAsset: *const fn (allocator: std.mem.Allocator, asset: cdb.ObjId) anyerror!void,
     getTmpPath: *const fn ([]u8) anyerror!?[]u8,
+
+    setAssetNameAndFolder: *const fn (asset_w: *cdb.Obj, name: []const u8, description: ?[]const u8, asset_folder: cdb.ObjId) anyerror!void,
 };
 
 pub var api: *const AssetDBAPI = undefined;

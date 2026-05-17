@@ -157,7 +157,7 @@ var light_type_aspec = editor_inspector.UiInspectorPropertyValueAspect.implement
         var type_enum = public.LightCdb.readStrEnum(public.LightType, r, .Type, .Point);
 
         coreui.setNextItemWidth(-1.0);
-        if (coreui.comboFromEnum("", &type_enum)) {
+        if (coreui.comboFromEnum("##select_light_type", &type_enum)) {
             const w = public.LightCdb.write(obj).?;
             try public.LightCdb.setStr(w, .Type, @tagName(type_enum));
             try public.LightCdb.commit(w);

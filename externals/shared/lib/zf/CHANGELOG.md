@@ -36,15 +36,15 @@ Rather than accept boolean parameters, the options are now in a struct passed to
 This means
 
 ```zig
-zf.rank(string, token, false, false);
-zf.rank(string, token, false, true);
+zf.rank(haystack, needle, false, false);
+zf.rank(haystack, needle, false, true);
 ```
 
 Is now written as
 
 ```zig
-zf.rank(string, token, .{});
-zf.rank(string, token, .{ .plain = true });
+zf.rank(haystack, needle, .{});
+zf.rank(haystack, needle, .{ .plain = true });
 ```
 
 This makes the default case simpler, and also makes the boolean parameters clear at the call site.

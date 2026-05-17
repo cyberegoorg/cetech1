@@ -1099,7 +1099,7 @@ const GraphVM = struct {
                     const node_to_idx = self.node_idx_map.get(.{ .parent = vv.key_ptr.graph, .node = vv.key_ptr.obj });
 
                     if (node_to_idx == null) {
-                        log.err("Invalid node_to_idx for node with UUID {any}", .{assetdb.getUuid(vv.key_ptr.obj)});
+                        log.err("Invalid node_to_idx for node with UUID {any}", .{try cdb.getOrCreateUuid(vv.key_ptr.obj)});
                     }
 
                     const to_vmnode = self.vmnodes.get(node_to_idx.?);
@@ -1139,7 +1139,7 @@ const GraphVM = struct {
                 const to_vmnode = self.vmnodes.get(node_to_idx.?);
 
                 // const node_to_idx = self.node_idx_map.get(.{ .parent = v.graph, .node = to_node_obj }) orelse {
-                //     log.err("Could not find to_node_obj with UUID {s}", .{assetdb.getUuid(to_node_obj).?});
+                //     log.err("Could not find to_node_obj with UUID {s}", .{cdb.getUuid(to_node_obj).?});
                 //     continue;
                 // };
 
@@ -1148,7 +1148,7 @@ const GraphVM = struct {
                     //const node_from_idx = self.node_idx_map.get(.{ .parent = v.graph, .node = vv.key_ptr.obj }) orelse continue;
 
                     const node_from_idx = self.node_idx_map.get(.{ .parent = vv.key_ptr.graph, .node = vv.key_ptr.obj }) orelse {
-                        log.err("Could not find vv.key_ptr.obj with UUID {f} in graph UUID {f}", .{ assetdb.getUuid(vv.key_ptr.obj).?, assetdb.getUuid(vv.key_ptr.graph).? });
+                        log.err("Could not find vv.key_ptr.obj with UUID {f} in graph UUID {f}", .{ try cdb.getOrCreateUuid(vv.key_ptr.obj), try cdb.getOrCreateUuid(vv.key_ptr.graph) });
                         continue;
                     };
 
@@ -1181,12 +1181,12 @@ const GraphVM = struct {
                 }
             } else {
                 const node_from_idx = self.node_idx_map.get(.{ .parent = v.graph, .node = from_node_obj }) orelse {
-                    log.err("Could not find from_node_obj with UUID {f}", .{assetdb.getUuid(from_node_obj).?});
+                    log.err("Could not find from_node_obj with UUID {f}", .{try cdb.getOrCreateUuid(from_node_obj)});
                     continue;
                 };
 
                 const node_to_idx = self.node_idx_map.get(.{ .parent = v.graph, .node = to_node_obj }) orelse {
-                    log.err("Could not find to_node_obj with UUID {f}", .{assetdb.getUuid(to_node_obj).?});
+                    log.err("Could not find to_node_obj with UUID {f}", .{try cdb.getOrCreateUuid(to_node_obj)});
                     continue;
                 };
 
@@ -1318,7 +1318,7 @@ const GraphVM = struct {
             for (1..self.vmnodes.alocated_items.raw) |node_idx| {
                 depends.clearRetainingCapacity();
 
-                // log.debug("\tdddd: {s} {s}", .{ assetdb.getUuid(vm_node.node_obj).?, ifaces[node_idx].name });
+                // log.debug("\tdddd: {s} {s}", .{ cdb.getUuid(vm_node.node_obj).?, ifaces[node_idx].name });
 
                 for (self.connection.items) |connect| {
                     const from_node = connect.from.node;
@@ -1341,14 +1341,14 @@ const GraphVM = struct {
 
             // for (dag.output.keys()) |node_idx| {
             //     const vm_node = self.vmnodes.get(node_idx);
-            //     log.debug("\taaaaaa {s} {s}", .{ assetdb.getUuid(vm_node.node_obj).?, ifaces[node_idx].name });
+            //     log.debug("\taaaaaa {s} {s}", .{ cdb.getUuid(vm_node.node_obj).?, ifaces[node_idx].name });
             // }
 
             // log.debug("Collect types:", .{});
             for (dag.output.keys()) |node_idx| {
                 const vmnode = self.vmnodes.get(node_idx);
 
-                // log.debug("\t{s} {s}", .{ assetdb.getUuid(vm_node.node_obj).?, ifaces[node_idx].name });
+                // log.debug("\t{s} {s}", .{ cdb.getUuid(vm_node.node_obj).?, ifaces[node_idx].name });
 
                 const in_pins = vmnode.pin_def.in;
                 const out_pins = vmnode.pin_def.out;
@@ -1391,7 +1391,7 @@ const GraphVM = struct {
                 const vm_node = self.vmnodes.get(node_idx);
                 const size = try vm_node.getOutputPinsSize(vm_node.pin_def.out);
                 vm_node.output_blob_size = size;
-                log.debug("Pathed output type {f} {s}", .{ assetdb.getUuid(vm_node.node_obj) orelse cetech1.uuid.Uuid{}, vm_node.iface.name });
+                log.debug("Pathed output type {f} {s}", .{ try cdb.getOrCreateUuid(vm_node.node_obj), vm_node.iface.name });
             }
         }
 
@@ -2087,7 +2087,7 @@ const GraphVM = struct {
 
             for (v) |node| {
                 const vmnode = self.vmnodes.get(node);
-                try writer.print("{f}: {s}\n", .{ try assetdb.getOrCreateUuid(vmnode.node_obj), vmnode.iface.name });
+                try writer.print("{f}: {s}\n", .{ try cdb.getOrCreateUuid(vmnode.node_obj), vmnode.iface.name });
             }
 
             try writer.print("\n", .{});
@@ -2099,7 +2099,7 @@ const GraphVM = struct {
                 const vmnode = self.vmnodes.get(node);
                 const nex_vmnode = self.vmnodes.get(nex_node);
 
-                try writer.print("{f}->{f}\n", .{ try assetdb.getOrCreateUuid(vmnode.node_obj), try assetdb.getOrCreateUuid(nex_vmnode.node_obj) });
+                try writer.print("{f}->{f}\n", .{ try cdb.getOrCreateUuid(vmnode.node_obj), try cdb.getOrCreateUuid(nex_vmnode.node_obj) });
             }
 
             try writer.print("```\n", .{});
@@ -2943,7 +2943,7 @@ const graph_inputs_i = public.NodeI.implement(
                         const name = public.InterfaceInputCdb.readStr(input_r, .name) orelse "NO NAME!!";
                         const value_obj = public.InterfaceInputCdb.readSubObj(input_r, .value) orelse continue;
 
-                        const uuid = try assetdb.getOrCreateUuid(input);
+                        const uuid = try cdb.getOrCreateUuid(input);
                         var buffer: [128]u8 = undefined;
                         const str = try std.fmt.bufPrintZ(&buffer, "{f}", .{uuid});
 
@@ -3028,7 +3028,7 @@ const graph_outputs_i = public.NodeI.implement(
                         const name = public.InterfaceInputCdb.readStr(input_r, .name) orelse "NO NAME!!";
                         const value_obj = public.InterfaceInputCdb.readSubObj(input_r, .value) orelse continue;
 
-                        const uuid = try assetdb.getOrCreateUuid(input);
+                        const uuid = try cdb.getOrCreateUuid(input);
                         var buffer: [128]u8 = undefined;
                         const str = try std.fmt.bufPrintZ(&buffer, "{f}", .{uuid});
 
@@ -3126,7 +3126,7 @@ const call_graph_node_i = public.NodeI.implement(
                                 const name = public.InterfaceInputCdb.readStr(input_r, .name) orelse "NO NAME!!";
                                 const value_obj = public.InterfaceInputCdb.readSubObj(input_r, .value) orelse continue;
 
-                                const uuid = try assetdb.getOrCreateUuid(input);
+                                const uuid = try cdb.getOrCreateUuid(input);
                                 var buffer: [128]u8 = undefined;
                                 const str = try std.fmt.bufPrintZ(&buffer, "{f}", .{uuid});
 
@@ -3149,7 +3149,7 @@ const call_graph_node_i = public.NodeI.implement(
                                 const name = public.InterfaceOutputCdb.readStr(input_r, .name) orelse "NO NAME!!";
                                 const value_obj = public.InterfaceOutputCdb.readSubObj(input_r, .value) orelse continue;
 
-                                const uuid = try assetdb.getOrCreateUuid(input);
+                                const uuid = try cdb.getOrCreateUuid(input);
                                 var buffer: [128]u8 = undefined;
                                 const str = try std.fmt.bufPrintZ(&buffer, "{f}", .{uuid});
 

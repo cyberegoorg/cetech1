@@ -806,7 +806,7 @@ fn uiAssetBrowser(
                         // Filter by uuid
                         if (filter_tab_result.new_filter != null and isUuid(filter_tab_result.new_filter.?)) {
                             if (uuid.fromStr(filter_tab_result.new_filter.?)) |filter_uuid| {
-                                if (assetdb.getObjId(filter_uuid)) |asset| {
+                                if (cdb.getObjId(assetdb.getDb(), filter_uuid)) |asset| {
                                     try uiAssetBrowserCards(
                                         allocator,
                                         &.{asset},

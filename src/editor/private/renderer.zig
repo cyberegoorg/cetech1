@@ -45,7 +45,7 @@ const test_geometry_type_aspec = editor_inspector.UiInspectorPropertyValueAspect
         var type_enum = renderer_nodes.SimpleMeshNodeSettingsCdb.readStrEnum(renderer_nodes.SimpleMeshNodeType, r, .Type, .Cube);
 
         coreui.setNextItemWidth(-1.0);
-        if (coreui.comboFromEnum("", &type_enum)) {
+        if (coreui.comboFromEnum("##select_geometry", &type_enum)) {
             const w = renderer_nodes.SimpleMeshNodeSettingsCdb.write(obj).?;
             try renderer_nodes.SimpleMeshNodeSettingsCdb.setStr(w, .Type, @tagName(type_enum));
             try renderer_nodes.SimpleMeshNodeSettingsCdb.commit(w);

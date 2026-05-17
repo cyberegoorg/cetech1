@@ -116,7 +116,7 @@ fn ecsGizmoMenu(allocator: std.mem.Allocator, world: *ecs.World, entity: ecs.Ent
             coreui.sameLine(.{});
             var snap = options.snap.x;
             coreui.setNextItemWidth(4.0 * coreui.getStyle().font_size_base);
-            if (coreui.dragF32("", .{
+            if (coreui.dragF32("##snap_grid", .{
                 .v = &snap,
                 .min = 0,
                 .max = 100,

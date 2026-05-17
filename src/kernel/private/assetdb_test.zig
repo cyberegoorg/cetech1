@@ -10,6 +10,7 @@ const cdb_types_private = @import("cdb_types.zig");
 const log_private = @import("log.zig");
 const uuid_private = @import("uuid.zig");
 const assetdb_private = @import("assetdb.zig");
+const assetdbfs_private = @import("assetdb_fs.zig");
 const metrics_private = @import("metrics.zig");
 
 const cetech1 = @import("cetech1");
@@ -24,6 +25,7 @@ pub fn WriteBlobToNull(
     io: std.Io,
     blob: []const u8,
     asset: cdb.ObjId,
+    type_name: []const u8,
     obj_uuid: cetech1.uuid.Uuid,
     prop_hash: cetech1.StrId32,
     root_path: []const u8,
@@ -32,6 +34,7 @@ pub fn WriteBlobToNull(
     _ = io;
     _ = blob;
     _ = asset;
+    _ = type_name;
     _ = prop_hash;
     _ = allocator;
     _ = obj_uuid;
@@ -41,14 +44,18 @@ pub fn WriteBlobToNull(
 pub fn ReadBlobFromNull(
     io: std.Io,
     asset: cdb.ObjId,
+    type_name: []const u8,
     obj_uuid: cetech1.uuid.Uuid,
     prop_hash: cetech1.StrId32,
+    root_path: []const u8,
     allocator: std.mem.Allocator,
 ) anyerror![]u8 {
     _ = io;
     _ = asset;
+    _ = type_name;
     _ = obj_uuid;
     _ = prop_hash;
+    _ = root_path;
     _ = allocator;
     return &.{};
 }
@@ -82,7 +89,8 @@ test "asset: Should save asset to json" {
 
     const db = assetdb_private.getDb();
 
-    const prototype_obj = try assetdb_private.createObjectWithUuid(
+    const prototype_obj = try cdb.createObjectWithUuid(
+        db,
         FooAsset.typeIdx(db),
         uuid_private.fromStr("9c49cfdb-0d31-485f-8623-24248b53c30f").?,
     );
@@ -194,7 +202,7 @@ test "asset: Should save asset to json" {
     var out_buffer: [2048]u8 = @splat(0);
     var fixed_buffer_stream = std.Io.Writer.fixed(&out_buffer);
 
-    try assetdb_private.writeCdbObjJson(
+    try assetdbfs_private.writeCdbObjJson(
         std.testing.io,
         asset,
         &fixed_buffer_stream,
@@ -209,16 +217,16 @@ test "asset: Should save asset to json" {
             &expect_buffer,
             expected_fmt,
             .{
-                public.getUuid(asset).?,
-                public.getUuid(asset_obj).?,
-                cetech1.strId32(&public.getUuid(asset_obj).?.bytes).id,
-                public.getUuid(sub_obj1).?,
-                public.getUuid(ref_obj1).?,
-                public.getUuid(sub_obj2).?,
-                public.getUuid(inisiated_subobj1).?,
-                public.getUuid(proto_sub_obj1).?,
-                public.getUuid(ref_obj2).?,
-                public.getUuid(proto_ref_obj1).?,
+                try cdb.getOrCreateUuid(asset),
+                try cdb.getOrCreateUuid(asset_obj),
+                cetech1.strId32(&(try cdb.getOrCreateUuid(asset_obj)).bytes).id,
+                try cdb.getOrCreateUuid(sub_obj1),
+                try cdb.getOrCreateUuid(ref_obj1),
+                try cdb.getOrCreateUuid(sub_obj2),
+                try cdb.getOrCreateUuid(inisiated_subobj1),
+                try cdb.getOrCreateUuid(proto_sub_obj1),
+                try cdb.getOrCreateUuid(ref_obj2),
+                try cdb.getOrCreateUuid(proto_ref_obj1),
             },
         ),
         std.mem.sliceTo(&out_buffer, 0),
@@ -240,11 +248,11 @@ test "asset: Should read asset from json reader" {
     defer assetdb_private.deinit();
     const db = assetdb_private.getDb();
 
-    const prototype_obj = try assetdb_private.createObjectWithUuid(FooAsset.typeIdx(db), uuid_private.fromStr("9c49cfdb-0d31-485f-8623-24248b53c30f").?);
-    const proto_ref_obj1 = try assetdb_private.createObjectWithUuid(FooAsset.typeIdx(db), uuid_private.fromStr("965a0c48-f166-4f66-a894-9f8d750c7c28").?);
-    const proto_ref_obj2 = try assetdb_private.createObjectWithUuid(FooAsset.typeIdx(db), uuid_private.fromStr("8c709979-23ca-4542-90ca-0a9b7a96f3c5").?);
-    const proto_sub_obj1 = try assetdb_private.createObjectWithUuid(FooAsset.typeIdx(db), uuid_private.fromStr("16e130f3-f21d-4fa7-8974-b90e607ce640").?);
-    const proto_sub_obj2 = try assetdb_private.createObjectWithUuid(FooAsset.typeIdx(db), uuid_private.fromStr("bee0d651-e624-4b78-8500-00cbeeeecf44").?);
+    const prototype_obj = try cdb.createObjectWithUuid(db, FooAsset.typeIdx(db), uuid_private.fromStr("9c49cfdb-0d31-485f-8623-24248b53c30f").?);
+    const proto_ref_obj1 = try cdb.createObjectWithUuid(db, FooAsset.typeIdx(db), uuid_private.fromStr("965a0c48-f166-4f66-a894-9f8d750c7c28").?);
+    const proto_ref_obj2 = try cdb.createObjectWithUuid(db, FooAsset.typeIdx(db), uuid_private.fromStr("8c709979-23ca-4542-90ca-0a9b7a96f3c5").?);
+    const proto_sub_obj1 = try cdb.createObjectWithUuid(db, FooAsset.typeIdx(db), uuid_private.fromStr("16e130f3-f21d-4fa7-8974-b90e607ce640").?);
+    const proto_sub_obj2 = try cdb.createObjectWithUuid(db, FooAsset.typeIdx(db), uuid_private.fromStr("bee0d651-e624-4b78-8500-00cbeeeecf44").?);
 
     const proto_w = cdb.writeObj(prototype_obj).?;
     const proto_sub_obj1_w = cdb.writeObj(proto_sub_obj1).?;
@@ -271,8 +279,8 @@ test "asset: Should read asset from json reader" {
     cdb.setValue(i64, prototype_obj_w, propIdx(cetech1.cdb_types.BigTypeProps.I64), 20);
     try cdb.writeCommit(prototype_obj_w);
 
-    const ref_obj1 = try assetdb_private.createObjectWithUuid(FooAsset.typeIdx(db), uuid_private.fromStr("018b5846-c2d5-7921-823a-60d80f9285de").?);
-    const ref_obj2 = try assetdb_private.createObjectWithUuid(FooAsset.typeIdx(db), uuid_private.fromStr("018b5846-c2d5-74f2-a050-c9375ad9a1f6").?);
+    const ref_obj1 = try cdb.createObjectWithUuid(db, FooAsset.typeIdx(db), uuid_private.fromStr("018b5846-c2d5-7921-823a-60d80f9285de").?);
+    const ref_obj2 = try cdb.createObjectWithUuid(db, FooAsset.typeIdx(db), uuid_private.fromStr("018b5846-c2d5-74f2-a050-c9375ad9a1f6").?);
 
     const input_json =
         \\{
@@ -316,24 +324,25 @@ test "asset: Should read asset from json reader" {
 
     var fixed_buffer_stream = std.Io.Reader.fixed(input_json);
 
-    const asset = try assetdb_private.readAssetFromReader(
+    const asset = try assetdbfs_private.readAssetFromReader(
         std.testing.io,
         &fixed_buffer_stream,
         "foo",
         folder1_asset,
+        "",
         ReadBlobFromNull,
         std.testing.allocator,
     );
-    try std.testing.expectEqual(uuid_private.fromStr("018b5846-c2d5-7b88-95f9-a7538a00e76b").?, public.getUuid(asset).?);
+    try std.testing.expectEqual(uuid_private.fromStr("018b5846-c2d5-7b88-95f9-a7538a00e76b").?, try cdb.getOrCreateUuid(asset));
 
     const asset_obj = public.AssetCdb.readSubObj(cdb.readObj(asset).?, .Object);
     try std.testing.expect(asset_obj != null);
 
-    try std.testing.expectEqual(uuid_private.fromStr("018b5846-c2d5-712f-bb12-9d9d15321ecb").?, public.getUuid(asset_obj.?).?);
+    try std.testing.expectEqual(uuid_private.fromStr("018b5846-c2d5-712f-bb12-9d9d15321ecb").?, try cdb.getOrCreateUuid(asset_obj.?));
 
     var out_buffer: [2048]u8 = @splat(0);
     var fixed_out_buffer_stream = std.Io.Writer.fixed(&out_buffer);
-    try assetdb_private.writeCdbObjJson(
+    try assetdbfs_private.writeCdbObjJson(
         std.testing.io,
         asset,
         &fixed_out_buffer_stream,
@@ -387,7 +396,7 @@ test "asset: Should open asset root dir" {
 
     // /
     {
-        const foo_obj = public.getObjId(uuid_private.fromStr("018b5846-c2d5-712f-bb12-9d9d15321ecb").?);
+        const foo_obj = cdb.getObjId(db, uuid_private.fromStr("018b5846-c2d5-712f-bb12-9d9d15321ecb").?);
         try std.testing.expect(foo_obj != null);
 
         var foo_obj_asset = cdb.getParent(foo_obj.?);
@@ -423,7 +432,7 @@ test "asset: Should open asset root dir" {
         ).?);
     }
 
-    const foo_core_obj = public.getObjId(uuid_private.fromStr("018b5c72-5350-7d06-b5ed-6fed2793fdd4").?);
+    const foo_core_obj = cdb.getObjId(db, uuid_private.fromStr("018b5c72-5350-7d06-b5ed-6fed2793fdd4").?);
     // /core
     {
         try std.testing.expect(foo_core_obj != null);
@@ -461,7 +470,7 @@ test "asset: Should open asset root dir" {
 
     // /core/core_subfolder
     {
-        const foo_subcore_obj = public.getObjId(uuid_private.fromStr("018b5c74-06f7-79fd-a6ad-3678552795a1").?);
+        const foo_subcore_obj = cdb.getObjId(db, uuid_private.fromStr("018b5c74-06f7-79fd-a6ad-3678552795a1").?);
         try std.testing.expect(foo_subcore_obj != null);
 
         var foo_subcore_obj_asset = cdb.getParent(foo_subcore_obj.?);
@@ -485,8 +494,8 @@ test "asset: Should open asset root dir" {
             ref_set.?,
         );
 
-        const subobj = public.getObjId(uuid_private.fromStr("018b5c74-06f7-70bb-94e3-10a2a8619d31").?);
-        const inisiated_subobj = public.getObjId(uuid_private.fromStr("7d0d10ce-128e-45ab-8c14-c5d486542d4f").?);
+        const subobj = cdb.getObjId(db, uuid_private.fromStr("018b5c74-06f7-70bb-94e3-10a2a8619d31").?);
+        const inisiated_subobj = cdb.getObjId(db, uuid_private.fromStr("7d0d10ce-128e-45ab-8c14-c5d486542d4f").?);
         const subobj_set = cdb.readRefSet(cdb.readObj(foo_subcore_obj.?).?, propIdx(cetech1.cdb_types.BigTypeProps.SubobjectSet), std.testing.allocator);
         defer std.testing.allocator.free(subobj_set.?);
         try std.testing.expect(subobj_set != null);
@@ -698,6 +707,9 @@ test "asset: Should rename asset" {
     try public.saveAllAssets(allocator);
     try std.testing.expect(!public.isAssetModified(asset));
 
+    const asset_uuid_str = try std.fmt.allocPrint(std.testing.allocator, "{f}", .{try cetech1.cdb.getOrCreateUuid(asset)});
+    defer std.testing.allocator.free(asset_uuid_str);
+
     // Change name to new name
     {
         const w = cdb.writeObj(asset).?;
@@ -719,15 +731,6 @@ test "asset: Should rename asset" {
         try std.testing.expect(f == std.Io.File.OpenError.FileNotFound);
     }
 
-    // Original asset blob dir does not exist
-    {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_blob" });
-        defer std.testing.allocator.free(path);
-
-        const d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});
-        try std.testing.expect(d == std.Io.Dir.OpenError.FileNotFound);
-    }
-
     // Asset with new name exist
     {
         const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "bar.ct_foo_asset.json" });
@@ -736,16 +739,6 @@ test "asset: Should rename asset" {
         var f = std.Io.Dir.cwd().openFile(std.testing.io, path, .{});
         try std.testing.expect(f != std.Io.File.OpenError.FileNotFound);
         (try f).close(std.testing.io);
-    }
-
-    // Asset blob for new named asset exist
-    {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "bar.ct_blob" });
-        defer std.testing.allocator.free(path);
-
-        var d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});
-        try std.testing.expect(d != std.Io.Dir.OpenError.FileNotFound);
-        (try d).close(std.testing.io);
     }
 }
 
@@ -803,6 +796,9 @@ test "asset: Should move asset" {
     try public.saveAllModifiedAssets(allocator);
     try std.testing.expect(!public.isAssetModified(asset));
 
+    const asset_uuid_str = try std.fmt.allocPrint(std.testing.allocator, "{f}", .{try cetech1.cdb.getOrCreateUuid(asset)});
+    defer std.testing.allocator.free(asset_uuid_str);
+
     // Original asset does not exist
     {
         const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_foo_asset" });
@@ -810,15 +806,6 @@ test "asset: Should move asset" {
 
         const f = std.Io.Dir.cwd().openFile(std.testing.io, path, .{});
         try std.testing.expect(f == std.Io.File.OpenError.FileNotFound);
-    }
-
-    // Original asset blob dir does not exist
-    {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_blob" });
-        defer std.testing.allocator.free(path);
-
-        const d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});
-        try std.testing.expect(d == std.Io.Dir.OpenError.FileNotFound);
     }
 
     // Asset with new folder exist
@@ -829,16 +816,6 @@ test "asset: Should move asset" {
         var f = std.Io.Dir.cwd().openFile(std.testing.io, path, .{});
         try std.testing.expect(f != std.Io.File.OpenError.FileNotFound);
         (try f).close(std.testing.io);
-    }
-
-    // Asset blob for new folder exist
-    {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "bar", "foo.ct_blob" });
-        defer std.testing.allocator.free(path);
-
-        var d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});
-        try std.testing.expect(d != std.Io.Dir.OpenError.FileNotFound);
-        (try d).close(std.testing.io);
     }
 }
 
@@ -889,6 +866,9 @@ test "asset: Should delete asset" {
     try public.saveAllModifiedAssets(allocator);
     try std.testing.expect(!public.isToDeleted(asset));
 
+    const asset_uuid_str = try std.fmt.allocPrint(std.testing.allocator, "{f}", .{try cetech1.cdb.getOrCreateUuid(asset)});
+    defer std.testing.allocator.free(asset_uuid_str);
+
     // Original asset does not exist
     {
         const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_foo_asset" });
@@ -900,7 +880,7 @@ test "asset: Should delete asset" {
 
     // Original asset blob dir does not exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_blob" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, assetdb_private.BLOB_DIR, asset_uuid_str });
         defer std.testing.allocator.free(path);
 
         const d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});
@@ -956,6 +936,9 @@ test "asset: Should revive asset" {
     try public.saveAllModifiedAssets(allocator);
     try std.testing.expect(!public.isToDeleted(asset));
 
+    const asset_uuid_str = try std.fmt.allocPrint(std.testing.allocator, "{f}", .{try cetech1.cdb.getOrCreateUuid(asset)});
+    defer std.testing.allocator.free(asset_uuid_str);
+
     // Original asset does not exist
     {
         const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_foo_asset.json" });
@@ -968,7 +951,7 @@ test "asset: Should revive asset" {
 
     // Original asset blob dir does not exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_blob" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, assetdb_private.BLOB_DIR, asset_uuid_str });
         defer std.testing.allocator.free(path);
 
         var d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});
@@ -1015,6 +998,9 @@ test "asset: Should create asset without asset root" {
     try public.saveAsAllAssets(allocator, root_dir);
     try std.testing.expect(!public.isAssetModified(asset));
 
+    const asset_uuid_str = try std.fmt.allocPrint(std.testing.allocator, "{f}", .{try cetech1.cdb.getOrCreateUuid(asset)});
+    defer std.testing.allocator.free(asset_uuid_str);
+
     // Original asset does not exist
     {
         const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_foo_asset.json" });
@@ -1027,7 +1013,7 @@ test "asset: Should create asset without asset root" {
 
     // Original asset blob dir does not exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo.ct_blob" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, assetdb_private.BLOB_DIR, asset_uuid_str });
         defer std.testing.allocator.free(path);
 
         var d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});
@@ -1077,6 +1063,9 @@ test "asset: Should create folder without asset root" {
     try public.saveAsAllAssets(allocator, root_dir);
     try std.testing.expect(!public.isAssetModified(asset));
 
+    const asset_uuid_str = try std.fmt.allocPrint(std.testing.allocator, "{f}", .{try cetech1.cdb.getOrCreateUuid(asset)});
+    defer std.testing.allocator.free(asset_uuid_str);
+
     // Original asset does not exist
     {
         const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo", "foo.ct_foo_asset.json" });
@@ -1089,7 +1078,7 @@ test "asset: Should create folder without asset root" {
 
     // Original asset blob dir does not exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo", "foo.ct_blob" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, assetdb_private.BLOB_DIR, asset_uuid_str });
         defer std.testing.allocator.free(path);
 
         var d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});
@@ -1162,15 +1151,6 @@ test "asset: Should rename folder" {
         try std.testing.expect(f == std.Io.File.OpenError.FileNotFound);
     }
 
-    // Original asset blob dir does not exist
-    {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo", "foo.ct_blob" });
-        defer std.testing.allocator.free(path);
-
-        const d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});
-        try std.testing.expect(d == std.Io.Dir.OpenError.FileNotFound);
-    }
-
     // Asset with new folder exist
     {
         const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "bar", "foo.ct_foo_asset.json" });
@@ -1179,16 +1159,6 @@ test "asset: Should rename folder" {
         var f = std.Io.Dir.cwd().openFile(std.testing.io, path, .{});
         try std.testing.expect(f != std.Io.File.OpenError.FileNotFound);
         (try f).close(std.testing.io);
-    }
-
-    // Asset blob for new folder exist
-    {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "bar", "foo.ct_blob" });
-        defer std.testing.allocator.free(path);
-
-        var d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});
-        try std.testing.expect(d != std.Io.Dir.OpenError.FileNotFound);
-        (try d).close(std.testing.io);
     }
 }
 
@@ -1258,15 +1228,6 @@ test "asset: Should move folder" {
         try std.testing.expect(f == std.Io.File.OpenError.FileNotFound);
     }
 
-    // Original asset blob dir does not exist
-    {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo", "foo.ct_blob" });
-        defer std.testing.allocator.free(path);
-
-        const d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});
-        try std.testing.expect(d == std.Io.Dir.OpenError.FileNotFound);
-    }
-
     // Asset with new folder exist
     {
         const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "bar", "foo", "foo.ct_foo_asset.json" });
@@ -1275,16 +1236,6 @@ test "asset: Should move folder" {
         var f = std.Io.Dir.cwd().openFile(std.testing.io, path, .{});
         try std.testing.expect(f != std.Io.File.OpenError.FileNotFound);
         (try f).close(std.testing.io);
-    }
-
-    // Asset blob for new folder exist
-    {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "bar", "foo", "foo.ct_blob" });
-        defer std.testing.allocator.free(path);
-
-        var d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});
-        try std.testing.expect(d != std.Io.Dir.OpenError.FileNotFound);
-        (try d).close(std.testing.io);
     }
 }
 
@@ -1347,6 +1298,9 @@ test "asset: Should delete folder" {
     try public.saveAllModifiedAssets(allocator);
     try std.testing.expect(!public.isToDeleted(foo_folder_asset));
 
+    const asset_uuid_str = try std.fmt.allocPrint(std.testing.allocator, "{f}", .{try cetech1.cdb.getOrCreateUuid(asset)});
+    defer std.testing.allocator.free(asset_uuid_str);
+
     // Original dir does not exist
     {
         const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo" });
@@ -1367,7 +1321,7 @@ test "asset: Should delete folder" {
 
     // Original asset blob dir does not exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, "foo", "foo.ct_blob" });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, assetdb_private.BLOB_DIR, asset_uuid_str });
         defer std.testing.allocator.free(path);
 
         const d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});

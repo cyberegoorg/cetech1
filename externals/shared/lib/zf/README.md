@@ -59,7 +59,7 @@ The query is matched first on the filename and then on the path if the filename 
 
 Fzf and fzy both rank `source/blender/makesdna/DNA_genfile.h` first in the results, with `GNUmakefile` 10 items down the list.
 
-### Space-separated tokens
+### Space-separated terms
 
 But not every filename is unique. Sometimes there are codebases where there are many files with the same or similar names, like an `__init__.py` in Python, or `.c` and `.h` file pairs in C. In zf each space separated query term is used to narrow down the results. Imagine searching for an `__init__.py` file in a Python project.
 
@@ -72,21 +72,21 @@ But not every filename is unique. Sometimes there are codebases where there are 
 ```
 
 At this point you can either move the selection down with <kdb>Down</kbd> or `c-n` to find
-`./config/__init__.py`, or you can add a new token to the query string.
+`./config/__init__.py`, or you can add a new search term to the query string.
 
 ```text
 > init c
 ./config/__init__.py
 ```
 
-Treating the query string as a sequence of tokens makes filtering more
+Treating the query string as a sequence of terms makes filtering more
 efficient.
 
 ### Strict path matching
 
 This feature is a "do what I mean" feature, more easily used than explained. When the query looks like a path (contains at least one path separator) strict path matching is enabled.
 
-Path segments are the portions of a path delimited by path separators. `foo/bar` has segments `foo` and `bar`. With strict path matching the path segments of the query token must not span across path segments in the candidate. As an example, the query `foo/` would match `foo/bar/` but not `fo/obar/` because the characters `"foo"` must appear in a single path segment.
+Path segments are the portions of a path delimited by path separators. `foo/bar` has segments `foo` and `bar`. With strict path matching the path segments of the query term must not span across path segments in the string. As an example, the query `foo/` would match `foo/bar/` but not `fo/obar/` because the characters `"foo"` must appear in a single path segment.
 
 This is useful for narrowing down results when you know the exact path structure of your files. With the following paths
 
@@ -106,7 +106,7 @@ Strict path matching ensures that the intended path structure is found.
 
 In other fuzzy finders the string `app/monsters/dungeon/foo/bar/baz.rb` is also included in the results. Strict path matching prevents this because there is a slash between `onsters/dungeon` and nothing in the query matches the `dungeon` segment.
 
-To end strict path matching, just add a space to start a new query token.
+To end strict path matching, just add a space to start a new query term.
 
 ## Installation
 

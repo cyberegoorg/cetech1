@@ -14,7 +14,7 @@ const assetdb = cetech1.assetdb;
 
 const zlua = @import("zlua");
 
-const luaapi = @import("luaapi.zig");
+const luaapi = @import("luauvm_api.zig");
 const public = cetech1.scripting.luauvm;
 
 const module_name = .luauvm;

@@ -189,7 +189,7 @@ var native_script_type_aspec = editor_inspector.UiInspectorPropertyValueAspect.i
         }
 
         coreui.setNextItemWidth(-1.0);
-        if (coreui.combo("", .{
+        if (coreui.combo("##select_native_script", .{
             .current_item = &cur_idx,
             .items_separated_by_zeros = try all_values.toOwnedSliceSentinel(allocator, 0),
         })) {

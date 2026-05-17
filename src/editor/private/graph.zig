@@ -415,7 +415,7 @@ var graph_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
                     const node_type_hash = graphvm.NodeTypeCdb.f.getNodeTypeId(node_r);
                     const node_iface = graphvm.findNodeI(node_type_hash).?;
 
-                    // log.debug("\t{s} {s}", .{ assetdb.getUuid(node_obj).?, node_iface.name });
+                    // log.debug("\t{s} {s}", .{ cdb.getUuid(node_obj).?, node_iface.name });
                     var pins_def = try node_iface.getPinsDef(node_iface, allocator, graph_obj, node_obj);
                     defer pins_def.deinit(allocator);
 
@@ -1363,7 +1363,7 @@ var graph_tab = editor_tabs.TabTypeI.implement(editor_tabs.TabTypeIArgs{
                 const asset = assetdb.getAssetForObj(value);
                 //const asset_or_obj = asset orelse value;
 
-                const uuid = assetdb.getUuid(value) orelse continue;
+                const uuid = try cdb.getOrCreateUuid(value);
 
                 const name = blk: {
                     const graph_r = cdb.readObj(value).?;

@@ -70,7 +70,7 @@ const tonemap_c = ecs.ComponentI.implement(
                             const mm: *const TonemapComponentManager = @ptrCast(@alignCast(data));
 
                             if (mm.component) |tonemap_component| {
-                                if (coreui.comboFromEnum("", &tonemap_component.type)) {}
+                                if (coreui.comboFromEnum("##select_tonemap", &tonemap_component.type)) {}
                             }
                         }
                     },

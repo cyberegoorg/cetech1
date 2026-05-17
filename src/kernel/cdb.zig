@@ -557,7 +557,7 @@ pub inline fn isInSet(reader: *Obj, prop_idx: u32, item_ibj: ObjId) bool {
 }
 
 pub inline fn getDbFromObjid(obj: ObjId) DbId {
-    return api.getDbFromObjid(obj);
+    return obj.db;
 }
 
 pub inline fn getDbFromObj(obj: *Obj) DbId {
@@ -720,10 +720,35 @@ pub inline fn getTypePropDefIdx(db: DbId, type_idx: TypeIdx, prop_name: []const 
     return api.getTypePropDefIdx(db, type_idx, prop_name);
 }
 
+pub fn getOrCreate(dbidx: DbId, obj_uuid: uuid.Uuid, type_idx: TypeIdx) !ObjId {
+    return api.getOrCreate(dbidx, obj_uuid, type_idx);
+}
+
+/// Get or create UUID for obj.
+pub inline fn getOrCreateUuid(obj: ObjId) !uuid.Uuid {
+    return api.getOrCreateUuid(obj);
+}
+
+/// Get objid for UUID if exist.
+pub inline fn getObjId(dbidx: DbId, obj_uuid: uuid.Uuid) ?ObjId {
+    return api.getObjId(dbidx, obj_uuid);
+}
+
+pub inline fn setUuid(obj_uuid: uuid.Uuid, objid: ObjId) anyerror!void {
+    return api.setUuid(obj_uuid, objid);
+}
+
+pub inline fn createObjectWithUuid(dbidx: DbId, type_idx: TypeIdx, obj_uuid: uuid.Uuid) !ObjId {
+    return api.createObjectWithUuid(dbidx, type_idx, obj_uuid);
+}
+
+pub inline fn createEmptyObjectWithUuid(dbidx: DbId, type_idx: TypeIdx, obj_uuid: uuid.Uuid) !ObjId {
+    return api.createEmptyObjectWithUuid(dbidx, type_idx, obj_uuid);
+}
+
 pub const CdbAPI = struct {
     createDb: *const fn (name: [:0]const u8) anyerror!DbId,
     destroyDb: *const fn (db: DbId) void,
-    getDbFromObjid: *const fn (obj: ObjId) DbId,
     getDbFromObj: *const fn (obj: *Obj) DbId,
     setPrototype: *const fn (obj: ObjId, prototype: ObjId) anyerror!void,
     writeObj: *const fn (obj: ObjId) ?*Obj,
@@ -794,6 +819,13 @@ pub const CdbAPI = struct {
     getTypePropDefIdx: *const fn (db: DbId, type_idx: TypeIdx, prop_name: []const u8) ?u32,
     gc: *const fn (db: DbId, allocator: std.mem.Allocator) anyerror!void,
     dump: *const fn (db: DbId) anyerror!void,
+
+    getObjId: *const fn (dbidx: DbId, obj_uuid: uuid.Uuid) ?ObjId,
+    getOrCreate: *const fn (dbidx: DbId, obj_uuid: uuid.Uuid, type_idx: TypeIdx) anyerror!ObjId,
+    getOrCreateUuid: *const fn (obj: ObjId) anyerror!uuid.Uuid,
+    setUuid: *const fn (obj_uuid: uuid.Uuid, objid: ObjId) anyerror!void,
+    createObjectWithUuid: *const fn (dbidx: DbId, type_idx: TypeIdx, obj_uuid: uuid.Uuid) anyerror!ObjId,
+    createEmptyObjectWithUuid: *const fn (dbidx: DbId, type_idx: TypeIdx, obj_uuid: uuid.Uuid) anyerror!ObjId,
 };
 
 pub var api: *const CdbAPI = undefined;

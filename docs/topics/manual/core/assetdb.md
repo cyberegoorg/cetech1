@@ -22,7 +22,6 @@ AssetDb is persistent layer for [CDB](cdb.md) that support import/export of asse
 
 ## How it works
 
-- AssetDB map UUID to cdbobj if obj go thru it via save/load methods.
 - Asset is [CDB](cdb.md) object associated with name, folder and is load/save from fs, net etc.
 - Asset act like wrapper for real asset object that is store inside "asset" property.
 

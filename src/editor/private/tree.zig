@@ -454,11 +454,11 @@ fn cdbObjTree(
                             if (inisiated_prototypes.contains(subobj)) continue;
 
                             var label: ?[:0]u8 = null;
-                            if (assetdb.getUuid(subobj)) |uuid| {
-                                label = try std.fmt.bufPrintZ(&buff, coreui.Icons.Deleted ++ "  " ++ "{f}###{f}", .{ uuid, uuid });
-                            } else {
-                                label = try std.fmt.bufPrintZ(&buff, coreui.Icons.Deleted ++ "  " ++ "{d}:{d}###{d}{d}", .{ subobj.id, subobj.type_idx.idx, subobj.id, subobj.type_idx.idx });
-                            }
+                            const uuid = try cdb.getOrCreateUuid(subobj);
+                            label = try std.fmt.bufPrintZ(&buff, coreui.Icons.Deleted ++ "  " ++ "{f}###{f}", .{ uuid, uuid });
+                            // } else {
+                            // label = try std.fmt.bufPrintZ(&buff, coreui.Icons.Deleted ++ "  " ++ "{d}:{d}###{d}{d}", .{ subobj.id, subobj.type_idx.idx, subobj.id, subobj.type_idx.idx });
+                            // }
 
                             const oo = coreui.SelectedObj{ .top_level_obj = obj.top_level_obj, .obj = subobj };
 
