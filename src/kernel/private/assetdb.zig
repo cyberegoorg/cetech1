@@ -24,55 +24,14 @@ test {
     _ = std.testing.refAllDecls(@import("assetdb_test.zig"));
 }
 
-const Uuid2ObjId = cetech1.AutoArrayHashMap(uuid.Uuid, cdb.ObjId);
-const ObjId2Uuid = cetech1.AutoArrayHashMap(cdb.ObjId, uuid.Uuid);
-
-const TaskList = cetech1.task.TaskIdList;
-
-// File info
-// TODO: to struct
-const Path2Folder = std.StringArrayHashMapUnmanaged(cdb.ObjId);
-const Folder2Path = cetech1.AutoArrayHashMap(cdb.ObjId, []const u8);
-const Uuid2AssetUuid = cetech1.AutoArrayHashMap(uuid.Uuid, uuid.Uuid);
-const AssetUuid2Path = cetech1.AutoArrayHashMap(uuid.Uuid, []const u8);
-const Path2AssetUuid = std.StringArrayHashMapUnmanaged(uuid.Uuid);
-const AssetUuid2Depend = cetech1.AutoArrayHashMap(uuid.Uuid, UuidSet);
-const AssetObjIdVersion = cetech1.AutoArrayHashMap(cdb.ObjId, u64);
-const Uuid2Imported = cetech1.AutoArrayHashMap(uuid.Uuid, []const u8);
-const Imported2Uuid = std.StringArrayHashMapUnmanaged(uuid.Uuid);
-const ToDeleteList = cetech1.ArraySet(cdb.ObjId);
-const UuidSet = cetech1.ArraySet(uuid.Uuid);
-
 const AssetIOSet = cetech1.ArraySet(*public.AssetIOI);
 
 const module_name = .assetdb;
 
 const log = std.log.scoped(module_name);
 
-// Keywords for json format
-const JSON_ASSET_VERSION = "__version";
-const JSON_ASSET_UUID_TOKEN = "__asset_uuid";
-const JSON_TAGS_TOKEN = "__tags";
-const JSON_DESCRIPTION_TOKEN = "__description";
-const JSON_TYPE_NAME_TOKEN = "__type_name";
-const JSON_UUID_TOKEN = "__uuid";
-const JSON_PROTOTYPE_UUID = "__prototype_uuid";
-const JSON_REMOVED_POSTFIX = "__removed";
-const JSON_INSTANTIATE_POSTFIX = "__instantiate";
-const JSON_IMPORTED_FROM = "__imported_from";
-
-const CT_ASSETS_FILE_PREFIX = ".json";
-pub const BLOB_DIR = ".ct_blobs";
-
-const ASSET_CURRENT_VERSION_STR = "0.1.0";
-const ASSET_CURRENT_VERSION = std.SemanticVersion.parse(ASSET_CURRENT_VERSION_STR) catch undefined;
-
-const PROJECT_FILENAME = "project." ++ public.ProjectCdb.name ++ ".json";
-const FOLDER_FILENAME = "." ++ public.FolderCdb.name ++ ".json";
-
 // Type for root of all assets
 pub const AssetRootCdb = public.AssetRootCdb;
-
 var assetroot_fs_provider_i: *const public.AssetRootProviderI = undefined;
 
 //

@@ -38,63 +38,6 @@ const module_name = .kernel;
 
 const log = std.log.scoped(module_name);
 
-const core_modules = [_]cetech1.modules.ModuleDesc{
-    .{ .name = "actions", .module_fce = .{ .zig_fce = @import("../../actions/private/actions.zig").load_module_zig } },
-    .{ .name = "transform", .module_fce = .{ .zig_fce = @import("../../transform/private/transform.zig").load_module_zig } },
-
-    .{ .name = "graphvm", .module_fce = .{ .zig_fce = @import("../../scripting/private/graphvm/graphvm.zig").load_module_zig } },
-    .{ .name = "graphvm_script_component", .module_fce = .{ .zig_fce = @import("../../scripting/private/graphvm/graphvm_script_component.zig").load_module_zig } },
-    .{ .name = "native_script_component", .module_fce = .{ .zig_fce = @import("../../scripting/private/native_script_component.zig").load_module_zig } },
-    .{ .name = "luauvm", .module_fce = .{ .zig_fce = @import("../../scripting/private/luauvm/luauvm.zig").load_module_zig } },
-    .{ .name = "luauvm_script_component", .module_fce = .{ .zig_fce = @import("../../scripting/private/luauvm/luauvm_script_component.zig").load_module_zig } },
-
-    .{ .name = "camera", .module_fce = .{ .zig_fce = @import("../../camera/private/camera.zig").load_module_zig } },
-    .{ .name = "camera_controller", .module_fce = .{ .zig_fce = @import("../../camera/private/camera_controller.zig").load_module_zig } },
-
-    .{ .name = "visibility_flags", .module_fce = .{ .zig_fce = @import("../../renderer/private/visibility_flags.zig").load_module_zig } },
-    .{ .name = "render_graph", .module_fce = .{ .zig_fce = @import("../../renderer/private/render_graph.zig").load_module_zig } },
-    .{ .name = "render_pipeline", .module_fce = .{ .zig_fce = @import("../../renderer/private/render_pipeline.zig").load_module_zig } },
-    .{ .name = "render_viewport", .module_fce = .{ .zig_fce = @import("../../renderer/private/render_viewport.zig").load_module_zig } },
-    .{ .name = "shader_system", .module_fce = .{ .zig_fce = @import("../../renderer/private/shader_system.zig").load_module_zig } },
-    .{ .name = "renderer_nodes", .module_fce = .{ .zig_fce = @import("../../renderer/private/renderer_nodes.zig").load_module_zig } },
-
-    .{ .name = "physics", .module_fce = .{ .zig_fce = @import("../../physics/private/physics.zig").load_module_zig } },
-    .{ .name = "physics_jolt", .module_fce = .{ .zig_fce = @import("../../physics/private/physics_jolt.zig").load_module_zig } },
-
-    .{ .name = "bloom", .module_fce = .{ .zig_fce = @import("../../renderer_pipeline/private/bloom.zig").load_module_zig } },
-    .{ .name = "default_render_pipeline", .module_fce = .{ .zig_fce = @import("../../renderer_pipeline/private/default_render_pipeline.zig").load_module_zig } },
-    .{ .name = "instance_system", .module_fce = .{ .zig_fce = @import("../../renderer_pipeline/private/instance_system.zig").load_module_zig } },
-    .{ .name = "light_component", .module_fce = .{ .zig_fce = @import("../../renderer_pipeline/private/light_component.zig").load_module_zig } },
-    .{ .name = "light_system", .module_fce = .{ .zig_fce = @import("../../renderer_pipeline/private/light_system.zig").load_module_zig } },
-    .{ .name = "render_component", .module_fce = .{ .zig_fce = @import("../../renderer_pipeline/private/render_component.zig").load_module_zig } },
-    .{ .name = "tonemap", .module_fce = .{ .zig_fce = @import("../../renderer_pipeline/private/tonemap.zig").load_module_zig } },
-    .{ .name = "vertex_system", .module_fce = .{ .zig_fce = @import("../../renderer_pipeline/private/vertex_system.zig").load_module_zig } },
-
-    .{ .name = "gpu_bgfx", .module_fce = .{ .zig_fce = @import("../../gpu_bgfx/private/gpu_bgfx.zig").load_module_zig } },
-};
-
-const editor_modules = [_]cetech1.modules.ModuleDesc{
-    .{ .name = "editor", .module_fce = .{ .zig_fce = @import("../../editor/private/editor.zig").load_module_zig } },
-    .{ .name = "editor_asset_browser", .module_fce = .{ .zig_fce = @import("../../editor/private/asset_browser.zig").load_module_zig } },
-    .{ .name = "editor_asset_preview", .module_fce = .{ .zig_fce = @import("../../editor/private/asset_preview.zig").load_module_zig } },
-    .{ .name = "editor_assetdb", .module_fce = .{ .zig_fce = @import("../../editor/private/assetdb.zig").load_module_zig } },
-    .{ .name = "editor_entity_asset", .module_fce = .{ .zig_fce = @import("../../editor/private/entity_asset.zig").load_module_zig } },
-    .{ .name = "editor_entity_editor", .module_fce = .{ .zig_fce = @import("../../editor/private/entity_editor.zig").load_module_zig } },
-    .{ .name = "editor_explorer", .module_fce = .{ .zig_fce = @import("../../editor/private/explorer.zig").load_module_zig } },
-    .{ .name = "editor_fixtures", .module_fce = .{ .zig_fce = @import("../../editor/private/fixtures.zig").load_module_zig } },
-    .{ .name = "editor_gizmo", .module_fce = .{ .zig_fce = @import("../../editor/private/gizmo.zig").load_module_zig } },
-    .{ .name = "editor_graph", .module_fce = .{ .zig_fce = @import("../../editor/private/graph.zig").load_module_zig } },
-    .{ .name = "editor_input", .module_fce = .{ .zig_fce = @import("../../editor/private/input.zig").load_module_zig } },
-    .{ .name = "editor_inspector", .module_fce = .{ .zig_fce = @import("../../editor/private/inspector.zig").load_module_zig } },
-    .{ .name = "editor_log", .module_fce = .{ .zig_fce = @import("../../editor/private/log.zig").load_module_zig } },
-    .{ .name = "editor_metrics", .module_fce = .{ .zig_fce = @import("../../editor/private/metrics.zig").load_module_zig } },
-    .{ .name = "editor_obj_buffer", .module_fce = .{ .zig_fce = @import("../../editor/private/obj_buffer.zig").load_module_zig } },
-    .{ .name = "editor_renderer", .module_fce = .{ .zig_fce = @import("../../editor/private/renderer.zig").load_module_zig } },
-    .{ .name = "editor_simulator", .module_fce = .{ .zig_fce = @import("../../editor/private/simulator.zig").load_module_zig } },
-    .{ .name = "editor_tabs", .module_fce = .{ .zig_fce = @import("../../editor/private/tabs.zig").load_module_zig } },
-    .{ .name = "editor_tree", .module_fce = .{ .zig_fce = @import("../../editor/private/tree.zig").load_module_zig } },
-};
-
 const runner_modules = [_]cetech1.modules.ModuleDesc{
     .{ .name = "runner", .module_fce = .{ .zig_fce = @import("../../runner/private/runner.zig").load_module_zig } },
 };
@@ -113,7 +56,7 @@ pub fn bootRunner(process_init: std.process.Init, comptime static_modules: []con
 pub fn bootStudio(process_init: std.process.Init, comptime static_modules: []const cetech1.modules.ModuleDesc) !void {
     try boot(
         process_init,
-        static_modules ++ editor_modules,
+        static_modules,
         .{
             .ignored_modules = &.{"runner"},
             .ignored_modules_prefix = &.{"runner_"},
@@ -447,8 +390,6 @@ pub fn getStrArgs(arg_name: []const u8) ?[]const u8 {
 }
 
 pub fn bigInit(io: std.Io, static_modules: []const cetech1.modules.ModuleDesc, load_dynamic: bool) !void {
-    try modules_private.addModules(&core_modules);
-
     if (static_modules.len != 0) {
         try modules_private.addModules(static_modules);
     }

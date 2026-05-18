@@ -4,52 +4,111 @@ const builtin = @import("builtin");
 pub const generate_ide = @import("src/tools/generate_ide.zig");
 const zbgfx = @import("zbgfx");
 
-const min_zig_version = std.SemanticVersion.parse("0.16.0") catch @panic("Where is .zigversion?");
 const cetech1_version = std.SemanticVersion.parse(@embedFile(".version")) catch @panic("Where is .version?");
+
+pub const Cetech1ModuleOut = struct {
+    public_module: ?*std.Build.Module = null,
+    private_module: ?*std.Build.Module = null,
+};
 
 pub fn addCetechModule(
     b: *std.Build,
-    comptime name: []const u8,
+    name: []const u8,
     version: std.SemanticVersion,
-    root_source_file: std.Build.LazyPath,
+    root_source_file: ?std.Build.LazyPath,
+    public_root_source_file: ?std.Build.LazyPath,
     cetech1_module: *std.Build.Module,
-    target: ?std.Build.ResolvedTarget,
-    optimize: ?std.builtin.OptimizeMode,
-    static_modules: bool,
-    studio: ?*std.Build.Step.Compile,
-    runner: ?*std.Build.Step.Compile,
-) *std.Build.Step.Compile {
-    const lib = b.addLibrary(.{
-        .linkage = if (static_modules) .static else .dynamic,
-        .name = "ct_" ++ name,
-        .version = version,
-        .root_module = b.createModule(
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    static_modules: ?*std.Build.Module,
+) !Cetech1ModuleOut {
+    var out = Cetech1ModuleOut{};
+
+    if (root_source_file) |root_source| {
+        const private_module = b.createModule(
             .{
-                .root_source_file = root_source_file,
+                .root_source_file = root_source,
                 .target = target,
                 .optimize = optimize,
                 .imports = &.{
                     .{ .name = "cetech1", .module = cetech1_module },
                 },
             },
-        ),
-        .use_llvm = true,
+        );
+
+        out.private_module = private_module;
+
+        if (static_modules) |sm| {
+            const import_name = try std.fmt.allocPrint(b.allocator, "{s}_private", .{name});
+            defer b.allocator.free(import_name);
+            sm.addImport(import_name, private_module);
+        } else {
+            const lib_name = try std.fmt.allocPrint(b.allocator, "ct_{s}", .{name});
+            defer b.allocator.free(lib_name);
+
+            const lib = b.addLibrary(.{
+                .linkage = .dynamic,
+                .name = lib_name,
+                .version = version,
+                .root_module = private_module,
+                .use_llvm = true,
+            });
+            b.installArtifact(lib);
+        }
+    }
+
+    if (public_root_source_file) |root_source| {
+        const public_module = b.createModule(
+            .{
+                .root_source_file = root_source,
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{
+                    .{ .name = "cetech1", .module = cetech1_module },
+                },
+            },
+        );
+
+        out.public_module = public_module;
+    }
+    return out;
+}
+
+pub fn addStaticModule(
+    b: *std.Build,
+    target: ?std.Build.ResolvedTarget,
+    optimize: ?std.builtin.OptimizeMode,
+    root_source_file: ?std.Build.LazyPath,
+    cetech1_module: *std.Build.Module,
+    shared_modules: []const []const u8,
+    studio_modules: []const []const u8,
+) !*std.Build.Module {
+    const generate_static_tool = b.addExecutable(.{
+        .name = "generate_static",
+        .root_module = b.createModule(.{
+            .root_source_file = root_source_file,
+            .target = target,
+            .optimize = optimize,
+        }),
     });
+    const gen_static = b.addRunArtifact(generate_static_tool);
+    const static_output_file = gen_static.addOutputFileArg("_static.zig");
+    const shared_m = try std.mem.join(b.allocator, ",", shared_modules);
+    defer b.allocator.free(shared_m);
+    gen_static.addArg("--shared");
+    gen_static.addArg(shared_m);
 
-    if (!static_modules) {
-        b.installArtifact(lib);
-    }
+    const studio_m = try std.mem.join(b.allocator, ",", studio_modules);
+    defer b.allocator.free(studio_m);
+    gen_static.addArg("--studio");
+    gen_static.addArg(studio_m);
 
-    if (static_modules) {
-        if (studio) |exe| {
-            exe.root_module.addImport("minimal", lib.root_module);
-        }
-
-        if (runner) |exe| {
-            exe.root_module.addImport("minimal", lib.root_module);
-        }
-    }
-    return lib;
+    return b.addModule("static_module", .{
+        .root_source_file = static_output_file,
+        .imports = &.{
+            .{ .name = "cetech1", .module = cetech1_module },
+        },
+    });
 }
 
 pub fn installShaderc(
@@ -174,16 +233,16 @@ pub fn updateCectechStep(
 pub fn createKernelExe(
     b: *std.Build,
     cetech1_b: *std.Build,
-    comptime bin_name: []const u8,
-    comptime run_name: []const u8,
-    comptime run_description: []const u8,
+    bin_name: []const u8,
+    run_name: []const u8,
+    run_description: []const u8,
     runner_main: std.Build.LazyPath,
     cetech1_module: *std.Build.Module,
     cetech1_kernel: *std.Build.Module,
     versionn: std.SemanticVersion,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    static_modules: bool,
+    static_module: *std.Build.Module,
 ) !*std.Build.Step.Compile {
     const use_lld = !target.result.os.tag.isDarwin();
 
@@ -201,12 +260,13 @@ pub fn createKernelExe(
     exe.root_module.link_libc = true;
     exe.root_module.addImport("kernel", cetech1_kernel);
     exe.root_module.addImport("cetech1", cetech1_module);
+    exe.root_module.addImport("static_modules", static_module);
+
     b.installArtifact(exe);
     useSystemSDK(cetech1_b, target, exe.root_module);
     createRunStep(b, exe, run_name, run_description);
 
     const options_step = b.addOptions();
-    options_step.addOption(bool, "static_modules", static_modules);
     const options_module = options_step.createModule();
     exe.root_module.addImport("kernel_options", options_module);
     return exe;
@@ -215,19 +275,22 @@ pub fn createKernelExe(
 pub fn createStudioExe(
     b: *std.Build,
     cetech1_b: *std.Build,
-    comptime base_bin_name: []const u8,
+    base_bin_name: []const u8,
     root_source: std.Build.LazyPath,
     cetech1_module: *std.Build.Module,
     cetech1_kernel: *std.Build.Module,
     versionn: std.SemanticVersion,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    static_modules: bool,
+    static_module: *std.Build.Module,
 ) !*std.Build.Step.Compile {
+    const bin_name = try std.fmt.allocPrint(b.allocator, "{s}_studio", .{base_bin_name});
+    defer b.allocator.free(bin_name);
+
     return try createKernelExe(
         b,
         cetech1_b,
-        base_bin_name ++ "_studio",
+        bin_name,
         "run-studio",
         "Run studio",
         root_source,
@@ -236,21 +299,21 @@ pub fn createStudioExe(
         versionn,
         target,
         optimize,
-        static_modules,
+        static_module,
     );
 }
 
 pub fn createRunnerExe(
     b: *std.Build,
     cetech1_b: *std.Build,
-    comptime base_bin_name: []const u8,
+    base_bin_name: []const u8,
     root_source: std.Build.LazyPath,
     cetech1_module: *std.Build.Module,
     cetech1_kernel: *std.Build.Module,
     versionn: std.SemanticVersion,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    static_modules: bool,
+    static_module: *std.Build.Module,
 ) !*std.Build.Step.Compile {
     return try createKernelExe(
         b,
@@ -264,13 +327,18 @@ pub fn createRunnerExe(
         versionn,
         target,
         optimize,
-        static_modules,
+        static_module,
     );
 }
 
-pub fn build(b: *std.Build) !void {
-    try ensureZigVersion();
+const ModuleDesc = struct {
+    name: []const u8,
+    private_root_file: std.Build.LazyPath,
+    private_add_import: ?[]const std.Build.Module.Import = null,
+    private_link_lib: ?[]const *std.Build.Step.Compile = null,
+};
 
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
@@ -279,6 +347,7 @@ pub fn build(b: *std.Build) !void {
     //
     const options = .{
         .app_name = b.option([]const u8, "app_name", "App name") orelse "CETech1",
+        .bin_name = b.option([]const u8, "bin_name", "App bin name") orelse "cetech1",
 
         .externals_optimize = b.option(std.builtin.OptimizeMode, "externals_optimize", "Optimize for externals libs") orelse .ReleaseFast,
         .externals_shared = b.option(bool, "externals_shared", "Build externals as shared") orelse (optimize == .Debug),
@@ -290,6 +359,9 @@ pub fn build(b: *std.Build) !void {
         .enable_test = b.option(bool, "with_test", "Build tests.") orelse false,
 
         .modules = b.option([]const []const u8, "with_module", "build with this modules."),
+
+        .add_shared_modules = b.option([]const []const u8, "add_shared_modules", "Add these static modules."),
+        .add_studio_modules = b.option([]const []const u8, "add_studio_modules", "Add these static modules."),
 
         // Tracy options
         .with_tracy = b.option(bool, "with_tracy", "build with tracy.") orelse true,
@@ -422,6 +494,87 @@ pub fn build(b: *std.Build) !void {
     });
 
     //
+    // Shared modules
+    //
+    const all_shared_modules = [_]ModuleDesc{
+        .{ .name = "actions", .private_root_file = b.path("src/actions/private/actions.zig") },
+        .{ .name = "transform", .private_root_file = b.path("src/transform/private/transform.zig") },
+        .{ .name = "graphvm", .private_root_file = b.path("src/scripting/private/graphvm/graphvm.zig") },
+        .{ .name = "graphvm_script_component", .private_root_file = b.path("src/scripting/private/graphvm/graphvm_script_component.zig") },
+        .{ .name = "native_script_component", .private_root_file = b.path("src/scripting/private/native_script_component.zig") },
+        .{
+            .name = "luauvm",
+            .private_root_file = b.path("src/scripting/private/luauvm/luauvm.zig"),
+            .private_add_import = &.{
+                .{ .name = "zlua", .module = zlua.module("zlua") },
+            },
+        },
+        .{ .name = "luauvm_script_component", .private_root_file = b.path("src/scripting/private/luauvm/luauvm_script_component.zig") },
+        .{ .name = "camera", .private_root_file = b.path("src/camera/private/camera.zig") },
+        .{ .name = "camera_controller", .private_root_file = b.path("src/camera/private/camera_controller.zig") },
+        .{ .name = "visibility_flags", .private_root_file = b.path("src/renderer/private/visibility_flags.zig") },
+        .{ .name = "render_graph", .private_root_file = b.path("src/renderer/private/render_graph.zig") },
+        .{ .name = "render_pipeline", .private_root_file = b.path("src/renderer/private/render_pipeline.zig") },
+        .{ .name = "render_viewport", .private_root_file = b.path("src/renderer/private/render_viewport.zig") },
+        .{ .name = "shader_system", .private_root_file = b.path("src/renderer/private/shader_system.zig") },
+        .{ .name = "renderer_nodes", .private_root_file = b.path("src/renderer/private/renderer_nodes.zig") },
+        .{ .name = "physics", .private_root_file = b.path("src/physics/private/physics.zig") },
+        .{
+            .name = "physics_jolt",
+            .private_root_file = b.path("src/physics/private/physics_jolt.zig"),
+            .private_add_import = &.{
+                .{ .name = "zphysics", .module = zphysics.module("root") },
+            },
+            .private_link_lib = &.{
+                zphysics.artifact("joltc"),
+            },
+        },
+        .{ .name = "bloom", .private_root_file = b.path("src/renderer_pipeline/private/bloom.zig") },
+        .{ .name = "default_render_pipeline", .private_root_file = b.path("src/renderer_pipeline/private/default_render_pipeline.zig") },
+        .{ .name = "instance_system", .private_root_file = b.path("src/renderer_pipeline/private/instance_system.zig") },
+        .{ .name = "light_component", .private_root_file = b.path("src/renderer_pipeline/private/light_component.zig") },
+        .{ .name = "light_system", .private_root_file = b.path("src/renderer_pipeline/private/light_system.zig") },
+        .{ .name = "render_component", .private_root_file = b.path("src/renderer_pipeline/private/render_component.zig") },
+        .{ .name = "tonemap", .private_root_file = b.path("src/renderer_pipeline/private/tonemap.zig") },
+        .{ .name = "vertex_system", .private_root_file = b.path("src/renderer_pipeline/private/vertex_system.zig") },
+        .{
+            .name = "gpu_bgfx",
+            .private_root_file = b.path("src/gpu_bgfx/private/gpu_bgfx.zig"),
+            .private_add_import = &.{
+                .{ .name = "zbgfx", .module = zbgfx_dep.module("zbgfx") },
+            },
+            .private_link_lib = &.{
+                zbgfx_dep.artifact("bgfx"),
+            },
+        },
+    };
+
+    //
+    // Studio modules
+    //
+    const all_studio_modules = [_]ModuleDesc{
+        .{ .name = "editor", .private_root_file = b.path("src/editor/private/editor.zig") },
+        .{ .name = "editor_asset_browser", .private_root_file = b.path("src/editor/private/asset_browser.zig") },
+        .{ .name = "editor_asset_preview", .private_root_file = b.path("src/editor/private/asset_preview.zig") },
+        .{ .name = "editor_assetdb", .private_root_file = b.path("src/editor/private/assetdb.zig") },
+        .{ .name = "editor_entity_asset", .private_root_file = b.path("src/editor/private/entity_asset.zig") },
+        .{ .name = "editor_entity_editor", .private_root_file = b.path("src/editor/private/entity_editor.zig") },
+        .{ .name = "editor_explorer", .private_root_file = b.path("src/editor/private/explorer.zig") },
+        .{ .name = "editor_fixtures", .private_root_file = b.path("src/editor/private/fixtures.zig") },
+        .{ .name = "editor_gizmo", .private_root_file = b.path("src/editor/private/gizmo.zig") },
+        .{ .name = "editor_graph", .private_root_file = b.path("src/editor/private/graph.zig") },
+        .{ .name = "editor_input", .private_root_file = b.path("src/editor/private/input.zig") },
+        .{ .name = "editor_inspector", .private_root_file = b.path("src/editor/private/inspector.zig") },
+        .{ .name = "editor_log", .private_root_file = b.path("src/editor/private/log.zig") },
+        .{ .name = "editor_metrics", .private_root_file = b.path("src/editor/private/metrics.zig") },
+        .{ .name = "editor_obj_buffer", .private_root_file = b.path("src/editor/private/obj_buffer.zig") },
+        .{ .name = "editor_renderer", .private_root_file = b.path("src/editor/private/renderer.zig") },
+        .{ .name = "editor_simulator", .private_root_file = b.path("src/editor/private/simulator.zig") },
+        .{ .name = "editor_tabs", .private_root_file = b.path("src/editor/private/tabs.zig") },
+        .{ .name = "editor_tree", .private_root_file = b.path("src/editor/private/tree.zig") },
+    };
+
+    //
     // TOOLS
     //
 
@@ -429,14 +582,6 @@ pub fn build(b: *std.Build) !void {
     //     .name = "copy",
     //     .root_source_file = .{ .path = "src/tools/copy.zig" },
     //     .target = target,
-    // });
-
-    // const generate_static_tool = b.addExecutable(.{
-    //     .name = "generate_static",
-    //     .root_module = b.createModule(.{
-    //         .root_source_file = b.path("src/tools/generate_static.zig"),
-    //         .target = b.graph.host,
-    //     }),
     // });
 
     const generate_externals_tool = b.addExecutable(.{
@@ -455,66 +600,10 @@ pub fn build(b: *std.Build) !void {
         }),
     });
 
-    // Modules
-    const ModulesSet = std.StringArrayHashMapUnmanaged(void);
-
-    var internal_modules = std.ArrayListUnmanaged([]const u8).empty;
-    defer internal_modules.deinit(b.allocator);
-
-    var module_set = ModulesSet{};
-    defer module_set.deinit(b.allocator);
-    for (all_modules) |module| {
-        try module_set.put(b.allocator, module, {});
-    }
-
-    var enabled_modules = std.ArrayListUnmanaged([]const u8).empty;
-    defer enabled_modules.deinit(b.allocator);
-
-    if (options.modules) |modules| {
-        try enabled_modules.appendSlice(b.allocator, modules);
-    } else {
-        try enabled_modules.appendSlice(b.allocator, &core_modules);
-
-        if (options.enable_samples) try enabled_modules.appendSlice(b.allocator, &samples_modules);
-        if (options.enable_studio) try enabled_modules.appendSlice(b.allocator, &studio_modules);
-        if (options.enable_runner) try enabled_modules.appendSlice(b.allocator, &runner_modules);
-    }
-
-    // Static modules.
-    // var static_modules = ModulesSet{};
-    // defer static_modules.deinit(b.allocator);
-
-    // Dynamic modules.
-    // var dynamic_modules = ModulesSet{};
-    // defer dynamic_modules.deinit(b.allocator);
-
-    // if (options.static_modules) {
-    //     for (enabled_modules.items) |m| {
-    //         try static_modules.put(b.allocator, m, {});
-    //     }
-    // } else if (options.dynamic_modules) {
-    //     for (enabled_modules.items) |m| {
-    //         if (static_modules.contains(m)) continue;
-    //
-    //         try dynamic_modules.put(b.allocator, m, {});
-    //     }
-    // }
-
     //
     // Generated content
     //
     const generated_files = b.addUpdateSourceFiles();
-
-    // _static.zig
-    // const gen_static = b.addRunArtifact(generate_static_tool);
-    // const _static_output_file = gen_static.addOutputFileArg("_static.zig");
-    // if (static_modules.count() != 0) {
-    //     const modules_arg = try std.mem.join(b.allocator, ",", static_modules.keys());
-    //     defer b.allocator.free(modules_arg);
-    //     gen_static.addArg(modules_arg);
-    // } else {
-    //     gen_static.addArg("");
-    // }
 
     // Extrenals credits/license
     const gen_externals = b.addRunArtifact(generate_externals_tool);
@@ -565,6 +654,8 @@ pub fn build(b: *std.Build) !void {
         "cetech1",
         .{
             .root_source_file = b.path("src/cetech1.zig"),
+            .target = target,
+            .optimize = optimize,
         },
     );
     cetech1_module.addImport("lucide_icons", lucide_c.createModule());
@@ -572,51 +663,21 @@ pub fn build(b: *std.Build) !void {
     cetech1_module.addImport("ziglangSet", ziglangSet.module("ziglangSet"));
     cetech1_module.addImport("cetech1_options", options_module);
 
-    // const static_module_module = b.addModule("static_module", .{
-    //     .root_source_file = _static_output_file,
-    //     .imports = &.{
-    //         .{ .name = "cetech1", .module = cetech1_module },
-    //     },
-    // });
-
     if (options.with_shaderc) {
         const shaderc_install = try zbgfx.build_step.installShaderc(b, zbgfx_dep);
         b.getInstallStep().dependOn(shaderc_install);
     }
 
-    //
-    // Dynamic modules
-    //
-    // var buff: [256:0]u8 = undefined;
-    // for (dynamic_modules.keys()) |m| {
-    //     const artifact_name = try std.fmt.bufPrintZ(&buff, "ct_{s}", .{m});
-    //
-    //     if (!module_set.contains(m)) continue;
-    //
-    //     const art = b.lazyDependency(m, .{
-    //         .target = target,
-    //         .optimize = optimize,
-    //         .link_mode = .dynamic,
-    //     }).?.artifact(artifact_name);
-    //
-    //     const step = b.addInstallArtifact(art, .{});
-    //     b.default_step.dependOn(&step.step);
-    // }
     const imports = [_]std.Build.Module.Import{
         .{ .name = "cetech1", .module = cetech1_module },
-
         .{ .name = "cetech1_options", .module = options_module },
-        // .{ .name = "static_module", .module = static_module_module },
 
         // Deps
         .{ .name = "ztracy", .module = ztracy.module("root") },
         .{ .name = "zglfw", .module = zglfw.module("root") },
         .{ .name = "zgui", .module = zgui.module("root") },
         .{ .name = "zflecs", .module = zflecs.module("root") },
-        .{ .name = "zphysics", .module = zphysics.module("root") },
         .{ .name = "zf", .module = zf.module("zf") },
-        .{ .name = "zlua", .module = zlua.module("zlua") },
-        .{ .name = "zbgfx", .module = zbgfx_dep.module("zbgfx") },
 
         // Generated stuff
         .{
@@ -657,8 +718,6 @@ pub fn build(b: *std.Build) !void {
     kernel_module.linkLibrary(zglfw.artifact("glfw"));
     kernel_module.linkLibrary(zgui.artifact("imgui"));
     kernel_module.linkLibrary(zflecs.artifact("flecs"));
-    kernel_module.linkLibrary(zphysics.artifact("joltc"));
-    kernel_module.linkLibrary(zbgfx_dep.artifact("bgfx"));
 
     if (options.with_nfd) {
         kernel_module.addImport("znfde", znfde.module("root"));
@@ -675,20 +734,51 @@ pub fn build(b: *std.Build) !void {
     }
 
     //
+    // Static modules
+    //
+    var static_shared_modules = std.ArrayList([]const u8).empty;
+    defer static_shared_modules.deinit(b.allocator);
+    for (all_shared_modules) |module| {
+        try static_shared_modules.append(b.allocator, module.name);
+    }
+    if (options.add_shared_modules) |modules| {
+        try static_shared_modules.appendSlice(b.allocator, modules);
+    }
+
+    var static_studio_modules = std.ArrayList([]const u8).empty;
+    defer static_studio_modules.deinit(b.allocator);
+    for (all_studio_modules) |module| {
+        try static_studio_modules.append(b.allocator, module.name);
+    }
+    if (options.add_studio_modules) |modules| {
+        try static_studio_modules.appendSlice(b.allocator, modules);
+    }
+
+    const static_module = try addStaticModule(
+        b,
+        target,
+        optimize,
+        b.path("src/tools/generate_static.zig"),
+        cetech1_module,
+        static_shared_modules.items,
+        static_studio_modules.items,
+    );
+
+    //
     // CETech1 editor standalone exe
     //
     if (options.enable_studio) {
         const studio_exe = try createStudioExe(
             b,
             b,
-            "cetech1",
+            options.bin_name,
             b.path("src/main_studio.zig"),
             cetech1_module,
             kernel_module,
             cetech1_version,
             target,
             optimize,
-            false,
+            static_module,
         );
         studio_exe.step.dependOn(&generated_files.step);
 
@@ -706,14 +796,14 @@ pub fn build(b: *std.Build) !void {
         const runner_exe = try createRunnerExe(
             b,
             b,
-            "cetech1",
+            options.bin_name,
             b.path("src/main_runner.zig"),
             cetech1_module,
             kernel_module,
             cetech1_version,
             target,
             optimize,
-            false,
+            static_module,
         );
         runner_exe.step.dependOn(&generated_files.step);
     }
@@ -756,92 +846,97 @@ pub fn build(b: *std.Build) !void {
     define_step.dependOn(&run_def_exe.step);
 
     //
+    // Basic static modules
+    //
+    for (all_studio_modules) |value| {
+        _ = try addCetechModule(
+            b,
+            value.name,
+            .{ .major = 0, .minor = 1, .patch = 0 },
+            value.private_root_file,
+            null,
+            cetech1_module,
+            target,
+            optimize,
+            static_module,
+        );
+    }
+    for (all_shared_modules) |value| {
+        const out = try addCetechModule(
+            b,
+            value.name,
+            .{ .major = 0, .minor = 1, .patch = 0 },
+            value.private_root_file,
+            null,
+            cetech1_module,
+            target,
+            optimize,
+            static_module,
+        );
+
+        if (value.private_add_import) |add_imports| {
+            for (add_imports) |import| {
+                out.private_module.?.addImport(import.name, import.module);
+            }
+        }
+
+        if (value.private_link_lib) |libs| {
+            for (libs) |l| {
+                out.private_module.?.linkLibrary(l);
+            }
+        }
+    }
+
+    //
     // Samples
     //
     if (options.enable_samples) {
-        _ = addCetechModule(
+        _ = try addCetechModule(
             b,
             "editor_foo_tab",
             .{ .major = 0, .minor = 1, .patch = 0 },
             b.path("src/examples/editor_foo_tab/private.zig"),
+            null,
             cetech1_module,
             target,
             optimize,
-            false,
-            null,
             null,
         );
 
-        _ = addCetechModule(
+        _ = try addCetechModule(
             b,
             "editor_foo_viewport_tab",
             .{ .major = 0, .minor = 1, .patch = 0 },
             b.path("src/examples/editor_foo_viewport_tab/private.zig"),
+            null,
             cetech1_module,
             target,
             optimize,
-            false,
-            null,
             null,
         );
 
-        _ = addCetechModule(
+        _ = try addCetechModule(
             b,
             "example_foo",
             .{ .major = 0, .minor = 1, .patch = 0 },
             b.path("src/examples/foo/private.zig"),
+            null,
             cetech1_module,
             target,
             optimize,
-            false,
-            null,
             null,
         );
 
-        _ = addCetechModule(
+        _ = try addCetechModule(
             b,
             "example_native_script",
             .{ .major = 0, .minor = 1, .patch = 0 },
             b.path("src/examples/native_script/private.zig"),
+            null,
             cetech1_module,
             target,
             optimize,
-            false,
-            null,
             null,
         );
     }
 }
-
-fn ensureZigVersion() !void {
-    var installed_ver = builtin.zig_version;
-    installed_ver.build = null;
-
-    if (installed_ver.order(min_zig_version) == .lt) {
-        std.log.err("\n" ++
-            \\---------------------------------------------------------------------------
-            \\
-            \\Installed Zig compiler version is too old.
-            \\
-            \\Min. required version: {any}
-            \\Installed version: {any}
-            \\
-            \\Please install newer version and try again.
-            \\zig/get_zig.sh <ARCH>
-            \\
-            \\---------------------------------------------------------------------------
-            \\
-        , .{ min_zig_version, installed_ver });
-        return error.ZigIsTooOld;
-    }
-}
-
-pub const studio_modules = [_][]const u8{};
-
-pub const runner_modules = [_][]const u8{};
-
-pub const core_modules = [_][]const u8{};
-
-pub const samples_modules = [_][]const u8{};
-
-pub const all_modules = core_modules ++ studio_modules ++ runner_modules ++ samples_modules;

@@ -880,7 +880,7 @@ test "asset: Should delete asset" {
 
     // Original asset blob dir does not exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, assetdb_private.BLOB_DIR, asset_uuid_str });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, assetdbfs_private.BLOB_DIR, asset_uuid_str });
         defer std.testing.allocator.free(path);
 
         const d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});
@@ -951,7 +951,7 @@ test "asset: Should revive asset" {
 
     // Original asset blob dir does not exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, assetdb_private.BLOB_DIR, asset_uuid_str });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, assetdbfs_private.BLOB_DIR, asset_uuid_str });
         defer std.testing.allocator.free(path);
 
         var d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});
@@ -1013,7 +1013,7 @@ test "asset: Should create asset without asset root" {
 
     // Original asset blob dir does not exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, assetdb_private.BLOB_DIR, asset_uuid_str });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, assetdbfs_private.BLOB_DIR, asset_uuid_str });
         defer std.testing.allocator.free(path);
 
         var d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});
@@ -1078,7 +1078,7 @@ test "asset: Should create folder without asset root" {
 
     // Original asset blob dir does not exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, assetdb_private.BLOB_DIR, asset_uuid_str });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, assetdbfs_private.BLOB_DIR, asset_uuid_str });
         defer std.testing.allocator.free(path);
 
         var d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});
@@ -1321,7 +1321,7 @@ test "asset: Should delete folder" {
 
     // Original asset blob dir does not exist
     {
-        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, assetdb_private.BLOB_DIR, asset_uuid_str });
+        const path = try std.fs.path.join(std.testing.allocator, &.{ root_dir, assetdbfs_private.BLOB_DIR, asset_uuid_str });
         defer std.testing.allocator.free(path);
 
         const d = std.Io.Dir.cwd().openDir(std.testing.io, path, .{});

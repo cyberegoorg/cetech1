@@ -18,10 +18,6 @@ const public = cetech1.assetdb;
 
 const propIdx = cdb.propIdx;
 
-test {
-    _ = std.testing.refAllDecls(@import("assetdb_test.zig"));
-}
-
 const Uuid2ObjId = cetech1.AutoArrayHashMap(uuid.Uuid, cdb.ObjId);
 const ObjId2Uuid = cetech1.AutoArrayHashMap(cdb.ObjId, uuid.Uuid);
 
